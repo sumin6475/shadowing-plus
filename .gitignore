@@ -1,0 +1,24 @@
+# OS
+.DS_Store
+
+# Media video files (keep folder structure)
+media/*.mp4
+media/*.mkv
+media/*.avi
+media/*.mov
+media/*.webm
+
+# Python
+scripts/.env
+scripts/__pycache__/
+
+# Vibe app data (models, logs, config)
+model/
+
+# Node.js
+web/node_modules/
+web/.next/
+web/.env.local
+
+# Debug
+debug_*.json
