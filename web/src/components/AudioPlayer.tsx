@@ -21,12 +21,12 @@ interface AudioPlayerProps {
   src: string;
   duration: number;
   onTimeUpdate?: (time: number) => void;
-  /** When provided, AudioPlayer controls this element instead of its own <audio> */
   externalMediaRef?: React.RefObject<HTMLMediaElement | null>;
+  abRepeat?: { a: number; b: number | null } | null;
 }
 
 const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
-  ({ src, duration, onTimeUpdate, externalMediaRef }, ref) => {
+  ({ src, duration, onTimeUpdate, externalMediaRef, abRepeat }, ref) => {
     const internalAudioRef = useRef<HTMLAudioElement>(null);
     const [playing, setPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -145,8 +145,31 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
             onClick={handleProgressClick}
             className="flex-1 h-2 bg-muted rounded-full cursor-pointer group relative"
           >
+            {abRepeat && duration > 0 && (
+              <>
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-primary z-10"
+                  style={{ left: `${(abRepeat.a / duration) * 100}%` }}
+                />
+                {abRepeat.b !== null && (
+                  <>
+                    <div
+                      className="absolute top-0 bottom-0 bg-primary/20 rounded-full"
+                      style={{
+                        left: `${(abRepeat.a / duration) * 100}%`,
+                        width: `${((abRepeat.b - abRepeat.a) / duration) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-primary z-10"
+                      style={{ left: `${(abRepeat.b / duration) * 100}%` }}
+                    />
+                  </>
+                )}
+              </>
+            )}
             <div
-              className="h-full bg-primary rounded-full transition-[width] duration-100"
+              className="h-full bg-primary rounded-full transition-[width] duration-100 relative z-[5]"
               style={{ width: `${progress}%` }}
             />
           </div>

@@ -3,6 +3,7 @@
 import { useRef, useEffect } from "react";
 import type { Segment } from "@/lib/types";
 import BookmarkButton from "./BookmarkButton";
+import WordText from "./WordText";
 
 interface SubtitlePanelProps {
   segments: Segment[];
@@ -11,6 +12,7 @@ interface SubtitlePanelProps {
   showTranslation: boolean;
   onSegmentClick: (index: number) => void;
   onToggleBookmark: (segmentId: string) => void;
+  onWordClick?: (time: number) => void;
 }
 
 export default function SubtitlePanel({
@@ -20,6 +22,7 @@ export default function SubtitlePanel({
   showTranslation,
   onSegmentClick,
   onToggleBookmark,
+  onWordClick,
 }: SubtitlePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
@@ -58,7 +61,17 @@ export default function SubtitlePanel({
                     isActive ? "text-foreground font-medium" : "text-muted-foreground"
                   }`}
                 >
-                  {seg.text}
+                  {seg.words && seg.words.length > 0 ? (
+                    <WordText
+                      words={seg.words}
+                      onWordClick={onWordClick}
+                      wordClassName={
+                        isActive ? "text-foreground font-medium" : "text-muted-foreground"
+                      }
+                    />
+                  ) : (
+                    seg.text
+                  )}
                 </p>
                 {showTranslation && seg.translation && (
                   <p className="text-xs text-muted-foreground mt-1">

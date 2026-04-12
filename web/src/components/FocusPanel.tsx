@@ -1,23 +1,31 @@
 "use client";
 
 import type { Segment } from "@/lib/types";
+import type { AbRepeat } from "@/app/player/[videoId]/page";
+import WordText from "./WordText";
 
 interface FocusPanelProps {
   segment: Segment | null;
   showTranslation: boolean;
+  abRepeat: AbRepeat | null;
   onPrev: () => void;
   onRepeat: () => void;
   onNext: () => void;
   onToggleTranslation: () => void;
+  onToggleAbRepeat: () => void;
+  onWordClick?: (time: number) => void;
 }
 
 export default function FocusPanel({
   segment,
   showTranslation,
+  abRepeat,
   onPrev,
   onRepeat,
   onNext,
   onToggleTranslation,
+  onToggleAbRepeat,
+  onWordClick,
 }: FocusPanelProps) {
   if (!segment) return null;
 
@@ -25,7 +33,15 @@ export default function FocusPanel({
     <div className="bg-card border-t border-border px-4 py-4">
       <div className="max-w-3xl mx-auto">
         <p className="text-base font-medium text-center leading-relaxed mb-1">
-          {segment.text}
+          {segment.words && segment.words.length > 0 ? (
+            <WordText
+              words={segment.words}
+              onWordClick={onWordClick}
+              wordClassName="text-base font-medium"
+            />
+          ) : (
+            segment.text
+          )}
         </p>
         {showTranslation && segment.translation && (
           <p className="text-sm text-muted-foreground text-center mb-3">
@@ -100,11 +116,30 @@ export default function FocusPanel({
           >
             Trans
           </button>
+
+          <button
+            onClick={onToggleAbRepeat}
+            className={`px-3 py-2 text-sm rounded-lg transition-colors font-mono ${
+              abRepeat
+                ? abRepeat.b !== null
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-accent text-accent-foreground"
+                : "bg-secondary text-secondary-foreground"
+            }`}
+            aria-label="AB Repeat (R)"
+          >
+            {abRepeat
+              ? abRepeat.b !== null
+                ? "A-B"
+                : "A..."
+              : "AB"}
+          </button>
         </div>
 
         <div className="hidden sm:flex justify-center mt-2 gap-4 text-xs text-muted-foreground">
           <span>Space Play/Pause</span>
           <span>← → Skip 3s</span>
+          <span>R AB Repeat</span>
         </div>
       </div>
     </div>

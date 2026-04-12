@@ -8,6 +8,8 @@ import AudioPlayer, { type AudioPlayerHandle } from "@/components/AudioPlayer";
 import SubtitlePanel from "@/components/SubtitlePanel";
 import FocusPanel from "@/components/FocusPanel";
 
+export type AbRepeat = { a: number; b: number | null };
+
 export default function PlayerPage({
   params,
 }: {
@@ -22,11 +24,13 @@ export default function PlayerPage({
   const [showTranslation, setShowTranslation] = useState(true);
   const [loading, setLoading] = useState(true);
   const [hasVideo, setHasVideo] = useState(false);
+  const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
 
   const playerRef = useRef<AudioPlayerHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const currentIndexRef = useRef(0);
   const segmentsRef = useRef<Segment[]>([]);
+  const abRepeatRef = useRef<AbRepeat | null>(null);
 
   // Keep refs in sync
   useEffect(() => {
@@ -35,6 +39,9 @@ export default function PlayerPage({
   useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
+  useEffect(() => {
+    abRepeatRef.current = abRepeat;
+  }, [abRepeat]);
 
   // Check if local video is available
   useEffect(() => {
@@ -76,8 +83,15 @@ export default function PlayerPage({
     load();
   }, [videoId]);
 
-  // Time update handler — find current segment
+  // Time update handler — AB enforcement + segment tracking
   const handleTimeUpdate = useCallback((time: number) => {
+    // AB repeat enforcement
+    const ab = abRepeatRef.current;
+    if (ab && ab.b !== null && time >= ab.b) {
+      playerRef.current?.seekTo(ab.a);
+      return;
+    }
+
     const segs = segmentsRef.current;
     if (segs.length === 0) return;
 
@@ -112,6 +126,26 @@ export default function PlayerPage({
   const repeatCurrent = useCallback(() => {
     goToSegment(currentIndexRef.current);
   }, [goToSegment]);
+
+  const seekToTime = useCallback((time: number) => {
+    playerRef.current?.seekTo(time);
+    playerRef.current?.play();
+  }, []);
+
+  const toggleAbRepeat = useCallback(() => {
+    const current = abRepeatRef.current;
+    const now = playerRef.current?.getCurrentTime() ?? 0;
+
+    if (!current) {
+      setAbRepeat({ a: now, b: null });
+    } else if (current.b === null) {
+      if (now > current.a) {
+        setAbRepeat({ a: current.a, b: now });
+      }
+    } else {
+      setAbRepeat(null);
+    }
+  }, []);
 
   const toggleBookmark = useCallback(async (segmentId: string) => {
     const isBookmarked = bookmarkedIds.has(segmentId);
@@ -166,6 +200,10 @@ export default function PlayerPage({
           e.preventDefault();
           repeatCurrent();
           break;
+        case "r":
+          e.preventDefault();
+          toggleAbRepeat();
+          break;
         case " ":
           e.preventDefault();
           if (playerRef.current?.isPlaying()) {
@@ -193,7 +231,7 @@ export default function PlayerPage({
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [goToPrev, goToNext, repeatCurrent]);
+  }, [goToPrev, goToNext, repeatCurrent, toggleAbRepeat]);
 
   if (loading) {
     return (
@@ -266,6 +304,7 @@ export default function PlayerPage({
                   duration={video.duration ?? 0}
                   onTimeUpdate={handleTimeUpdate}
                   externalMediaRef={videoRef}
+                  abRepeat={abRepeat}
                 />
               </div>
             </div>
@@ -279,6 +318,7 @@ export default function PlayerPage({
                 showTranslation={showTranslation}
                 onSegmentClick={goToSegment}
                 onToggleBookmark={toggleBookmark}
+                onWordClick={seekToTime}
               />
             </div>
           </div>
@@ -287,10 +327,13 @@ export default function PlayerPage({
             <FocusPanel
               segment={currentSegment}
               showTranslation={showTranslation}
+              abRepeat={abRepeat}
               onPrev={goToPrev}
               onRepeat={repeatCurrent}
               onNext={goToNext}
               onToggleTranslation={() => setShowTranslation((v) => !v)}
+              onToggleAbRepeat={toggleAbRepeat}
+              onWordClick={seekToTime}
             />
           </div>
         </>
@@ -303,6 +346,7 @@ export default function PlayerPage({
               src={video.audio_url}
               duration={video.duration ?? 0}
               onTimeUpdate={handleTimeUpdate}
+              abRepeat={abRepeat}
             />
           </div>
 
@@ -314,6 +358,7 @@ export default function PlayerPage({
               showTranslation={showTranslation}
               onSegmentClick={goToSegment}
               onToggleBookmark={toggleBookmark}
+              onWordClick={seekToTime}
             />
           </div>
 
@@ -321,10 +366,13 @@ export default function PlayerPage({
             <FocusPanel
               segment={currentSegment}
               showTranslation={showTranslation}
+              abRepeat={abRepeat}
               onPrev={goToPrev}
               onRepeat={repeatCurrent}
               onNext={goToNext}
               onToggleTranslation={() => setShowTranslation((v) => !v)}
+              onToggleAbRepeat={toggleAbRepeat}
+              onWordClick={seekToTime}
             />
           </div>
         </>
