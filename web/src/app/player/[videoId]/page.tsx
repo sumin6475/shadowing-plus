@@ -25,6 +25,7 @@ export default function PlayerPage({
   const [loading, setLoading] = useState(true);
   const [hasVideo, setHasVideo] = useState(false);
   const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
   const playerRef = useRef<AudioPlayerHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -83,7 +84,7 @@ export default function PlayerPage({
     load();
   }, [videoId]);
 
-  // Time update handler — AB enforcement + segment tracking
+  // Time update handler — AB enforcement + segment tracking + karaoke
   const handleTimeUpdate = useCallback((time: number) => {
     // AB repeat enforcement
     const ab = abRepeatRef.current;
@@ -91,6 +92,8 @@ export default function PlayerPage({
       playerRef.current?.seekTo(ab.a);
       return;
     }
+
+    setCurrentTime(time);
 
     const segs = segmentsRef.current;
     if (segs.length === 0) return;
@@ -314,6 +317,7 @@ export default function PlayerPage({
               <SubtitlePanel
                 segments={segments}
                 currentIndex={currentIndex}
+                currentTime={currentTime}
                 bookmarkedIds={bookmarkedIds}
                 showTranslation={showTranslation}
                 onSegmentClick={goToSegment}
@@ -328,6 +332,7 @@ export default function PlayerPage({
               segment={currentSegment}
               showTranslation={showTranslation}
               abRepeat={abRepeat}
+              currentTime={currentTime}
               onPrev={goToPrev}
               onRepeat={repeatCurrent}
               onNext={goToNext}
@@ -354,6 +359,7 @@ export default function PlayerPage({
             <SubtitlePanel
               segments={segments}
               currentIndex={currentIndex}
+              currentTime={currentTime}
               bookmarkedIds={bookmarkedIds}
               showTranslation={showTranslation}
               onSegmentClick={goToSegment}
@@ -367,6 +373,7 @@ export default function PlayerPage({
               segment={currentSegment}
               showTranslation={showTranslation}
               abRepeat={abRepeat}
+              currentTime={currentTime}
               onPrev={goToPrev}
               onRepeat={repeatCurrent}
               onNext={goToNext}

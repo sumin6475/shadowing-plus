@@ -8,6 +8,7 @@ interface FocusPanelProps {
   segment: Segment | null;
   showTranslation: boolean;
   abRepeat: AbRepeat | null;
+  currentTime: number;
   onPrev: () => void;
   onRepeat: () => void;
   onNext: () => void;
@@ -20,6 +21,7 @@ export default function FocusPanel({
   segment,
   showTranslation,
   abRepeat,
+  currentTime,
   onPrev,
   onRepeat,
   onNext,
@@ -39,7 +41,8 @@ export default function FocusPanel({
             segmentEnd={segment.end_time}
             words={segment.words}
             onWordClick={onWordClick}
-            wordClassName="text-base font-medium"
+            currentTime={currentTime}
+            baseWordClassName="text-base font-medium"
           />
         </p>
         {showTranslation && segment.translation && (

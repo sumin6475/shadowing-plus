@@ -8,6 +8,7 @@ import WordText from "./WordText";
 interface SubtitlePanelProps {
   segments: Segment[];
   currentIndex: number;
+  currentTime: number;
   bookmarkedIds: Set<string>;
   showTranslation: boolean;
   onSegmentClick: (index: number) => void;
@@ -18,6 +19,7 @@ interface SubtitlePanelProps {
 export default function SubtitlePanel({
   segments,
   currentIndex,
+  currentTime,
   bookmarkedIds,
   showTranslation,
   onSegmentClick,
@@ -44,6 +46,7 @@ export default function SubtitlePanel({
       <div className="max-w-3xl mx-auto space-y-1">
         {segments.map((seg, i) => {
           const isActive = i === currentIndex;
+          const isPast = i < currentIndex;
           return (
             <div
               key={seg.id}
@@ -56,20 +59,16 @@ export default function SubtitlePanel({
               }`}
             >
               <div className="flex-1 min-w-0">
-                <p
-                  className={`text-sm leading-relaxed ${
-                    isActive ? "text-foreground font-medium" : "text-muted-foreground"
-                  }`}
-                >
+                <p className="text-sm leading-relaxed">
                   <WordText
                     text={seg.text}
                     segmentStart={seg.start_time}
                     segmentEnd={seg.end_time}
                     words={seg.words}
                     onWordClick={onWordClick}
-                    wordClassName={
-                      isActive ? "text-foreground font-medium" : "text-muted-foreground"
-                    }
+                    currentTime={isActive ? currentTime : undefined}
+                    playedAll={isPast}
+                    baseWordClassName={isActive ? "font-medium" : ""}
                   />
                 </p>
                 {showTranslation && seg.translation && (
