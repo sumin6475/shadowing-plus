@@ -11,7 +11,7 @@ export interface WordEntry {
   word: string;
   start?: number;
   end?: number;
-  meaning: string;
+  meaning?: string;
 }
 
 export interface Segment {

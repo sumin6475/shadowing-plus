@@ -61,17 +61,16 @@ export default function SubtitlePanel({
                     isActive ? "text-foreground font-medium" : "text-muted-foreground"
                   }`}
                 >
-                  {seg.words && seg.words.length > 0 ? (
-                    <WordText
-                      words={seg.words}
-                      onWordClick={onWordClick}
-                      wordClassName={
-                        isActive ? "text-foreground font-medium" : "text-muted-foreground"
-                      }
-                    />
-                  ) : (
-                    seg.text
-                  )}
+                  <WordText
+                    text={seg.text}
+                    segmentStart={seg.start_time}
+                    segmentEnd={seg.end_time}
+                    words={seg.words}
+                    onWordClick={onWordClick}
+                    wordClassName={
+                      isActive ? "text-foreground font-medium" : "text-muted-foreground"
+                    }
+                  />
                 </p>
                 {showTranslation && seg.translation && (
                   <p className="text-xs text-muted-foreground mt-1">

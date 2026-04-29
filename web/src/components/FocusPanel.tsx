@@ -33,15 +33,14 @@ export default function FocusPanel({
     <div className="bg-card border-t border-border px-4 py-4">
       <div className="max-w-3xl mx-auto">
         <p className="text-base font-medium text-center leading-relaxed mb-1">
-          {segment.words && segment.words.length > 0 ? (
-            <WordText
-              words={segment.words}
-              onWordClick={onWordClick}
-              wordClassName="text-base font-medium"
-            />
-          ) : (
-            segment.text
-          )}
+          <WordText
+            text={segment.text}
+            segmentStart={segment.start_time}
+            segmentEnd={segment.end_time}
+            words={segment.words}
+            onWordClick={onWordClick}
+            wordClassName="text-base font-medium"
+          />
         </p>
         {showTranslation && segment.translation && (
           <p className="text-sm text-muted-foreground text-center mb-3">

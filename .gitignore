@@ -1,12 +1,14 @@
 # OS
 .DS_Store
 
-# Media video files (keep folder structure)
+# Media files (keep folder structure)
 media/*.mp4
 media/*.mkv
 media/*.avi
 media/*.mov
 media/*.webm
+media/*.wav
+media/*.mp3
 
 # Python
 scripts/.env

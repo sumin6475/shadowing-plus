@@ -87,29 +87,8 @@ def postprocess_segments(segments: list[dict], audio_duration: float) -> list[di
             else:
                 seg["end"] = seg["start"] + 15.0
 
-    # 3. Detect and fix timing collapse (.42 repeating pattern, etc.)
-    if len(result) >= 5:
-        decimal_parts = [f"{s['end']:.2f}".split('.')[1] for s in result]
-        collapse_start = None
-        run_length = 1
-        for i in range(1, len(decimal_parts)):
-            if decimal_parts[i] == decimal_parts[i - 1]:
-                run_length += 1
-                if run_length >= 5 and collapse_start is None:
-                    collapse_start = i - run_length + 1
-            else:
-                run_length = 1
-
-        if collapse_start is not None:
-            print(f"  ⚠ Timing collapse detected: starting at index {collapse_start}")
-            collapse_segs = result[collapse_start:]
-            block_start = result[collapse_start - 1]["end"] if collapse_start > 0 else result[collapse_start]["start"]
-            total_dur = audio_duration - block_start
-            seg_dur = total_dur / len(collapse_segs) if collapse_segs else 0
-            for j, seg in enumerate(collapse_segs):
-                seg["start"] = round(block_start + j * seg_dur, 2)
-                seg["end"] = round(block_start + (j + 1) * seg_dur, 2)
-            print(f"    → Redistributed timing for {len(collapse_segs)} segments")
+    # (Removed: timing collapse redistribution — caused false positives
+    #  that destroyed accurate Vibe timestamps. Trust Vibe output instead.)
 
     # 4. Remove non-English hallucinations
     before = len(result)
@@ -117,13 +96,11 @@ def postprocess_segments(segments: list[dict], audio_duration: float) -> list[di
     if len(result) < before:
         print(f"  → Removed non-English hallucinations: {before} → {len(result)}")
 
-    # 5. Fix end_time boundaries
+    # 5. Sanity-check end_time (preserve Vibe values; only cap extreme outliers)
     for i, seg in enumerate(result):
+        # Don't let end exceed audio duration or next segment's start
         if i + 1 < len(result):
-            next_start = result[i + 1]["start"]
-            seg["end"] = next_start if next_start - seg["start"] <= 60 else seg["start"] + 15.0
-        else:
-            seg["end"] = min(seg["end"], audio_duration)
+            seg["end"] = min(seg["end"], result[i + 1]["start"])
         seg["end"] = min(seg["end"], audio_duration)
         seg["end"] = max(seg["end"], seg["start"] + 0.5)
 
@@ -170,11 +147,11 @@ def transcribe(audio_path: str, port: str) -> list[dict]:
         resp = requests.post(
             url,
             files={"file": (Path(audio_path).name, f, "audio/mpeg")},
-            data={
-                "model": model_path,
-                "response_format": "verbose_json",
-                "timestamp_granularities[]": "segment",
-            },
+            data=[
+                ("model", model_path),
+                ("response_format", "verbose_json"),
+                ("word_timestamps", "true"),
+            ],
             timeout=600,
         )
 
@@ -212,9 +189,7 @@ def translate_batch(
 
         prompt = f"""You are a translation assistant for English language learners (Korean speakers).
 
-For each segment, provide:
-1. A natural Korean translation that captures the context and nuance (NOT machine-literal translation)
-2. Word-by-word meanings for vocabulary study
+For each segment, provide a natural Korean translation that captures the context and nuance (NOT machine-literal translation).
 
 Context before: {context_before}
 Context after: {context_after}
@@ -227,20 +202,14 @@ Return segments in the SAME ORDER as the input. Do not reorder or skip any.
 {{
   "segments": [
     {{
-      "translation": "Korean translation here",
-      "words": [
-        {{"word": "example", "meaning": "meaning in Korean"}}
-      ]
+      "translation": "Korean translation here"
     }}
   ]
 }}
 
 Rules:
 - Translation should sound natural in Korean, not word-by-word
-- Consider surrounding sentences for context
-- For words, provide the meaning AS USED in this specific context
-- Skip common words (a, the, is, are, was, were, I, you, he, she, it, we, they, etc.) in words list
-- Keep word meanings concise (1-3 words)"""
+- Consider surrounding sentences for context"""
 
         resp = openai_client.chat.completions.create(
             model=model,
@@ -259,20 +228,12 @@ Rules:
             original_seg = batch[batch_pos]
             global_idx = batch_indices[batch_pos]
 
-            # Map word timestamps from Vibe output
-            words_with_time = []
-            vibe_words = original_seg.get("words", [])
-            vibe_word_map = {}
-            for vw in vibe_words:
-                vibe_word_map[vw.get("word", "").strip().lower()] = vw
-
-            for w in item.get("words", []):
-                entry = {"word": w["word"], "meaning": w["meaning"]}
-                vw = vibe_word_map.get(w["word"].strip().lower())
-                if vw:
-                    entry["start"] = vw.get("start", 0)
-                    entry["end"] = vw.get("end", 0)
-                words_with_time.append(entry)
+            # Use Vibe word timestamps directly
+            vibe_words = [
+                {"word": w.get("word", ""), "start": w.get("start"), "end": w.get("end")}
+                for w in original_seg.get("words", [])
+                if w.get("word", "").strip()
+            ]
 
             results.append({
                 "index": global_idx,
@@ -280,7 +241,7 @@ Rules:
                 "start": original_seg["start"],
                 "end": original_seg["end"],
                 "translation": item.get("translation", "[translation failed]"),
-                "words": words_with_time,
+                "words": vibe_words if vibe_words else None,
             })
 
         # Fill placeholders for segments GPT failed to return
@@ -295,7 +256,7 @@ Rules:
                     "start": seg["start"],
                     "end": seg["end"],
                     "translation": "[translation failed]",
-                    "words": [],
+                    "words": None,
                 })
 
         done = min(i + batch_size, len(segments))
