@@ -104,7 +104,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
     const hasExternal = !!externalMediaRef;
 
     return (
-      <div className="bg-card border-b border-border px-4 py-3">
+      <div className="bg-card border-t border-border px-4 py-3">
         {!hasExternal && (
           <audio ref={internalAudioRef} src={src} preload="auto" />
         )}

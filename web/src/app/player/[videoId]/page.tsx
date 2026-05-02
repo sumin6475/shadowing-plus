@@ -343,18 +343,8 @@ export default function PlayerPage({
           </div>
         </>
       ) : (
-        /* ── Audio-only mode: existing vertical layout ── */
+        /* ── Audio-only mode: subtitle → focus → progress (bottom) ── */
         <>
-          <div className="shrink-0">
-            <AudioPlayer
-              ref={playerRef}
-              src={video.audio_url}
-              duration={video.duration ?? 0}
-              onTimeUpdate={handleTimeUpdate}
-              abRepeat={abRepeat}
-            />
-          </div>
-
           <div className="flex-1 min-h-0">
             <SubtitlePanel
               segments={segments}
@@ -380,6 +370,16 @@ export default function PlayerPage({
               onToggleTranslation={() => setShowTranslation((v) => !v)}
               onToggleAbRepeat={toggleAbRepeat}
               onWordClick={seekToTime}
+            />
+          </div>
+
+          <div className="shrink-0">
+            <AudioPlayer
+              ref={playerRef}
+              src={video.audio_url}
+              duration={video.duration ?? 0}
+              onTimeUpdate={handleTimeUpdate}
+              abRepeat={abRepeat}
             />
           </div>
         </>
