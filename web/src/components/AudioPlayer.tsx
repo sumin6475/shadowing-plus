@@ -37,7 +37,9 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
     }, [externalMediaRef]);
 
     useImperativeHandle(ref, () => ({
-      play: () => getMedia()?.play(),
+      play: () => {
+        getMedia()?.play().catch(() => {});
+      },
       pause: () => getMedia()?.pause(),
       seekTo: (time: number) => {
         const el = getMedia();
@@ -75,7 +77,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
       const media = getMedia();
       if (!media) return;
       if (media.paused) {
-        media.play();
+        media.play().catch(() => {});
       } else {
         media.pause();
       }

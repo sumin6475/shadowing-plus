@@ -23,7 +23,7 @@ export default function PlayerPage({
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [showTranslation, setShowTranslation] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [hasVideo, setHasVideo] = useState(false);
+  const [hideVideo, setHideVideo] = useState(false);
   const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
 
@@ -43,13 +43,6 @@ export default function PlayerPage({
   useEffect(() => {
     abRepeatRef.current = abRepeat;
   }, [abRepeat]);
-
-  // Check if local video is available
-  useEffect(() => {
-    fetch(`/api/video/${videoId}`, { method: "HEAD" })
-      .then((res) => setHasVideo(res.ok))
-      .catch(() => setHasVideo(false));
-  }, [videoId]);
 
   // Fetch video + segments + bookmarks
   useEffect(() => {
@@ -278,6 +271,15 @@ export default function PlayerPage({
           </svg>
         </Link>
         <h1 className="text-sm font-medium truncate flex-1">{video.title}</h1>
+        {video.media_type === "video" && video.video_url && (
+          <button
+            onClick={() => setHideVideo((v) => !v)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            title={hideVideo ? "Show video" : "Hide video"}
+          >
+            {hideVideo ? "Show video" : "Hide video"}
+          </button>
+        )}
         <Link
           href="/bookmarks"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -286,7 +288,7 @@ export default function PlayerPage({
         </Link>
       </header>
 
-      {hasVideo ? (
+      {video.media_type === "video" && video.video_url && !hideVideo ? (
         /* ── Video mode: split layout ── */
         <>
           <div className="flex-1 flex flex-col md:flex-row min-h-0">
@@ -295,9 +297,10 @@ export default function PlayerPage({
               <div className="aspect-video bg-black">
                 <video
                   ref={videoRef}
-                  src={`/api/video/${videoId}`}
+                  src={video.video_url ?? undefined}
                   className="w-full h-full object-contain"
                   preload="auto"
+                  playsInline
                 />
               </div>
               <div className="shrink-0">

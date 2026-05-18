@@ -53,7 +53,7 @@ export default function BookmarksPage() {
       }
 
       audio.currentTime = seg.start_time;
-      audio.play();
+      audio.play().catch(() => {});
       setPlayingId(bookmark.id);
 
       // Stop at segment end
