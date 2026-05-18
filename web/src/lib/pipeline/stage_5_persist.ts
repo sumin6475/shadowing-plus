@@ -1,0 +1,65 @@
+import { getJson, jobKey, publicUrl } from "@/lib/r2";
+import { audioKeyFor, getJob, setJobReady, updateJobProgress } from "./jobs";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import type { PipelineSegment } from "@/lib/types";
+
+interface TranslatedTranscript {
+  audio_duration_secs: number | null;
+  segments: PipelineSegment[];
+}
+
+/**
+ * Stage 5: Persist to Supabase.
+ * Creates the videos row + bulk-inserts segments + marks the job as ready.
+ */
+export async function stage5Persist(jobId: string): Promise<string> {
+  const job = await getJob(jobId);
+  if (!job) throw new Error(`Job ${jobId} not found`);
+  await updateJobProgress(jobId, "persist", 0);
+
+  const translated = await getJson<TranslatedTranscript>(
+    jobKey(jobId, "segments_translated.json"),
+  );
+
+  const audioUrl = publicUrl(audioKeyFor(job));
+  const videoUrl = job.media_type === "video" ? publicUrl(job.source_key) : null;
+
+  const db = supabaseAdmin();
+
+  const { data: videoRow, error: videoErr } = await db
+    .from("videos")
+    .insert({
+      title: job.title,
+      duration: translated.audio_duration_secs,
+      audio_url: audioUrl,
+      video_url: videoUrl,
+      media_type: job.media_type,
+    })
+    .select()
+    .single();
+  if (videoErr) throw videoErr;
+  const videoId = videoRow.id as string;
+  await updateJobProgress(jobId, "persist", 30);
+
+  const rows = translated.segments.map((s, i) => ({
+    video_id: videoId,
+    index: s.index ?? i,
+    start_time: s.start,
+    end_time: s.end,
+    text: s.text,
+    translation: s.translation ?? null,
+    words: s.words ?? null,
+  }));
+
+  const BATCH = 200;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const slice = rows.slice(i, i + BATCH);
+    const { error } = await db.from("segments").insert(slice);
+    if (error) throw error;
+    const pct = 30 + Math.round((Math.min(i + BATCH, rows.length) / rows.length) * 65);
+    await updateJobProgress(jobId, "persist", pct);
+  }
+
+  await setJobReady(jobId, videoId);
+  return videoId;
+}
