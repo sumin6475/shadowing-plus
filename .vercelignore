@@ -1,0 +1,10 @@
+media
+model
+supabase
+*.md
+.DS_Store
+web/node_modules
+web/.next
+web/.env*
+!web/.env.example
+web/scripts/wipe-supabase.mjs

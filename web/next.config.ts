@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // ffmpeg-static ships a native binary and resolves its path via __dirname.
+  // Turbopack rewrites that to a /ROOT/... placeholder unless we keep the
+  // package external in the server bundle.
+  serverExternalPackages: ["ffmpeg-static"],
 };
 
 export default nextConfig;
