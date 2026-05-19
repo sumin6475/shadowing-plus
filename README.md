@@ -5,9 +5,6 @@ An English shadowing webapp + installable PWA. Drop in a video or audio file, ge
 <p align="center">
   <img src="docs/screenshots/Slide.png" alt="Shadowing Plus — library, clip player, bookmarks" width="100%" />
 </p>
-<p align="center">
-  <img src="docs/screenshots/Practice.png" alt="Practice — SM-2 SRS drill over bookmarks" width="70%" />
-</p>
 
 - **Library** — drag-drop upload, folder-based organization, dual-mode (video/audio) player.
 - **Clip** — focus line + transcript side by side on desktop; bottom-dock mobile shell; A–B loop; per-line bookmarks; speed dropdown.
@@ -207,6 +204,10 @@ Add every key from `web/.env.local` to the Vercel project's environment variable
 Each stage is idempotent and re-runnable from a job card's retry button. Postprocess is `Segment[] → Segment[]` with no I/O — tested standalone via [`web/src/lib/pipeline/postprocess/__tests__`](web/src/lib/pipeline/postprocess/__tests__).
 
 ### Practice (SRS)
+
+<p align="center">
+  <img src="docs/screenshots/Practice.png" alt="Practice — SM-2 SRS drill over bookmarks" width="100%" />
+</p>
 
 Bookmarks gain SRS state via migration 004. The verdict API ([`web/src/app/api/bookmarks/[id]/verdict/route.ts`](web/src/app/api/bookmarks/[id]/verdict/route.ts)) calls the pure [`applyVerdict()`](web/src/lib/srs.ts) function:
 
