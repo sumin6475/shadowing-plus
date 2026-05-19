@@ -2,6 +2,13 @@
 
 An English shadowing webapp + installable PWA. Drop in a video or audio file, get word-level transcripts with Korean translations, and shadow sentence-by-sentence. Bookmarks fuel a spaced-repetition practice mode that surfaces sentences when they're due.
 
+<p align="center">
+  <img src="docs/screenshots/Slide.png" alt="Shadowing Plus — library, clip player, bookmarks" width="100%" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/Practice.png" alt="Practice — SM-2 SRS drill over bookmarks" width="70%" />
+</p>
+
 - **Library** — drag-drop upload, folder-based organization, dual-mode (video/audio) player.
 - **Clip** — focus line + transcript side by side on desktop; bottom-dock mobile shell; A–B loop; per-line bookmarks; speed dropdown.
 - **Bookmarks** — saved sentences grouped per clip, in-page playback with `endTime` snap.
@@ -108,18 +115,18 @@ npm install
 
 Create `web/.env.local` from the keys below.
 
-| Variable | Where to get it |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project settings → API |
-| `SUPABASE_SERVICE_KEY` | Supabase → Project settings → API → `service_role` (server-only) |
-| `OPENAI_API_KEY` | platform.openai.com |
-| `ELEVENLABS_API_KEY` | elevenlabs.io → My Account → API Keys |
-| `R2_ACCOUNT_ID` | Cloudflare → R2 → top-right |
-| `R2_ACCESS_KEY_ID` | Cloudflare → R2 → Manage R2 API Tokens |
-| `R2_SECRET_ACCESS_KEY` | Cloudflare → R2 → Manage R2 API Tokens |
-| `R2_BUCKET_NAME` | e.g. `shadowing-media` |
-| `R2_PUBLIC_URL` | the `pub-xxxxx.r2.dev` host shown after enabling public access |
+| Variable                        | Where to get it                                                  |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase → Project settings → API                                |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project settings → API                                |
+| `SUPABASE_SERVICE_KEY`          | Supabase → Project settings → API → `service_role` (server-only) |
+| `OPENAI_API_KEY`                | platform.openai.com                                              |
+| `ELEVENLABS_API_KEY`            | elevenlabs.io → My Account → API Keys                            |
+| `R2_ACCOUNT_ID`                 | Cloudflare → R2 → top-right                                      |
+| `R2_ACCESS_KEY_ID`              | Cloudflare → R2 → Manage R2 API Tokens                           |
+| `R2_SECRET_ACCESS_KEY`          | Cloudflare → R2 → Manage R2 API Tokens                           |
+| `R2_BUCKET_NAME`                | e.g. `shadowing-media`                                           |
+| `R2_PUBLIC_URL`                 | the `pub-xxxxx.r2.dev` host shown after enabling public access   |
 
 ### 3. Apply Supabase migrations
 
@@ -130,7 +137,6 @@ Open Supabase → SQL Editor and run these **in order**:
 3. [`supabase/migrations/003_folder_color.sql`](supabase/migrations/003_folder_color.sql) — adds `folders.color` (per-folder accent dot).
 4. [`supabase/migrations/004_bookmarks_srs.sql`](supabase/migrations/004_bookmarks_srs.sql) — adds SRS columns (`ease_factor`, `interval_days`, `due_at`, `last_verdict`, `last_reviewed_at`, `lapses`) + index. Backfills existing rows. Supabase may warn about an UPDATE without WHERE — that's the intentional backfill (uses `COALESCE`, safe to re-run).
 
-
 ### 4. Cloudflare R2 setup (one-time)
 
 1. **Create bucket** — Cloudflare dashboard → R2 → Create bucket (e.g. `shadowing-media`).
@@ -139,13 +145,18 @@ Open Supabase → SQL Editor and run these **in order**:
 4. **CORS policy** — bucket → Settings → CORS Policy:
 
    ```json
-   [{
-     "AllowedOrigins": ["http://localhost:3000", "https://<your-vercel-domain>"],
-     "AllowedMethods": ["GET", "PUT", "HEAD"],
-     "AllowedHeaders": ["*"],
-     "ExposeHeaders": ["ETag"],
-     "MaxAgeSeconds": 3600
-   }]
+   [
+     {
+       "AllowedOrigins": [
+         "http://localhost:3000",
+         "https://<your-vercel-domain>"
+       ],
+       "AllowedMethods": ["GET", "PUT", "HEAD"],
+       "AllowedHeaders": ["*"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
    ```
 
 ### 5. Generate PWA icons (placeholder)
@@ -185,13 +196,13 @@ Add every key from `web/.env.local` to the Vercel project's environment variable
 
 ### Pipeline (R2 + Vercel API routes)
 
-| Stage | Input | Output | Tool |
-|---|---|---|---|
-| 1 — extract | source video | `jobs/{id}/audio.mp3` | `ffmpeg-static` (skipped for `audio` uploads) |
-| 2 — transcribe | audio R2 key | `raw_transcript.json` | ElevenLabs Scribe v2 (`cloud_storage_url` = presigned R2 URL) |
-| 3 — postprocess | raw transcript | `segments.json` | merge duplicates → drop empty → fix timing → regroup sentences → remove hallucinations |
-| 4 — translate | segments | `segments_translated.json` | GPT-4o-mini, 5-segment batches with positional mapping |
-| 5 — persist | translated segments | `videos` + `segments` rows | media-type-aware `audio_url`/`video_url`, marks job `ready` |
+| Stage           | Input               | Output                     | Tool                                                                                   |
+| --------------- | ------------------- | -------------------------- | -------------------------------------------------------------------------------------- |
+| 1 — extract     | source video        | `jobs/{id}/audio.mp3`      | `ffmpeg-static` (skipped for `audio` uploads)                                          |
+| 2 — transcribe  | audio R2 key        | `raw_transcript.json`      | ElevenLabs Scribe v2 (`cloud_storage_url` = presigned R2 URL)                          |
+| 3 — postprocess | raw transcript      | `segments.json`            | merge duplicates → drop empty → fix timing → regroup sentences → remove hallucinations |
+| 4 — translate   | segments            | `segments_translated.json` | GPT-4o-mini, 5-segment batches with positional mapping                                 |
+| 5 — persist     | translated segments | `videos` + `segments` rows | media-type-aware `audio_url`/`video_url`, marks job `ready`                            |
 
 Each stage is idempotent and re-runnable from a job card's retry button. Postprocess is `Segment[] → Segment[]` with no I/O — tested standalone via [`web/src/lib/pipeline/postprocess/__tests__`](web/src/lib/pipeline/postprocess/__tests__).
 
@@ -209,27 +220,27 @@ Bookmarks gain SRS state via migration 004. The verdict API ([`web/src/app/api/b
 
 **Player (`/player/[id]`, desktop):**
 
-| Key | Action |
-|---|---|
-| `Space` | Play / Pause |
-| `A` | Previous segment |
-| `D` | Next segment |
-| `S` | Repeat current segment (Shadow line) |
-| `R` | Toggle A–B repeat |
-| `T` | Toggle translation |
-| `← →` | Seek ±3 seconds |
+| Key     | Action                               |
+| ------- | ------------------------------------ |
+| `Space` | Play / Pause                         |
+| `A`     | Previous segment                     |
+| `D`     | Next segment                         |
+| `S`     | Repeat current segment (Shadow line) |
+| `R`     | Toggle A–B repeat                    |
+| `T`     | Toggle translation                   |
+| `← →`   | Seek ±3 seconds                      |
 
 **Practice (`/practice`, desktop):**
 
-| Key | Action |
-|---|---|
-| `Space` | Play / Pause |
-| `1` / `2` / `3` | Verdict: Again / Good / Easy |
-| `K` or `T` | Toggle Korean translation (peek mode → reveal) |
-| `L` | Toggle A–B loop |
-| `S` | Toggle shadow mode |
-| `,` | Cycle playback speed |
-| `Esc` | Exit to bookmarks |
+| Key             | Action                                         |
+| --------------- | ---------------------------------------------- |
+| `Space`         | Play / Pause                                   |
+| `1` / `2` / `3` | Verdict: Again / Good / Easy                   |
+| `K` or `T`      | Toggle Korean translation (peek mode → reveal) |
+| `L`             | Toggle A–B loop                                |
+| `S`             | Toggle shadow mode                             |
+| `,`             | Cycle playback speed                           |
+| `Esc`           | Exit to bookmarks                              |
 
 Mobile uses on-screen controls only — the same dock + chip system you see in the clip player.
 
