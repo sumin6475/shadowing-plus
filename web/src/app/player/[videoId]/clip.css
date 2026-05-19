@@ -182,16 +182,28 @@
 /* ─── Left: player + focus + controls ─────────────────── */
 
 .clip-page .player-col {
-  display: flex;
-  flex-direction: column;
+  /* Grid so the player row flexes (1fr) while focus + controls take their
+     natural height. Controls never get pushed below the viewport because the
+     player shrinks first to absorb a tall focus line. */
+  display: grid;
+  grid-template-rows: minmax(180px, 1fr) auto auto;
   gap: 24px;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 
 .clip-page .player {
   position: relative;
   width: 100%;
+  height: 100%;
+  /* Aspect-ratio is a hint when the grid row gives plenty of height; the
+     row-1fr + max-height: 100% combo lets the player shrink/grow with the
+     viewport. Video inside uses object-fit: contain so it stays inside the
+     frame with letterbox bars on extreme aspect mismatches. */
   aspect-ratio: 16 / 9;
+  max-height: 100%;
+  margin: 0 auto;
   background: oklch(0.16 0.005 60);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -200,7 +212,9 @@
     0 1px 3px oklch(0 0 0 / 0.10),
     0 20px 40px -24px oklch(0 0 0 / 0.30);
 }
-.clip-page .player-video {
+.clip-page .player-video,
+.clip-page .player-video-slot,
+.clip-page .player-video-slot video {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -559,9 +573,10 @@
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 130px);
-  position: sticky;
-  top: 86px;
+  /* clip-body is locked to viewport height, so just fill the column.
+     The internal .transcript-list scrolls. */
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 .clip-page .transcript-head {
@@ -675,15 +690,35 @@
 
 /* ─── Responsive ───────────────────────────────────────── */
 
+/* Lock to viewport only when the two-column layout fits side-by-side.
+   Below 980px the transcript stacks under the player-col and the page
+   needs to scroll. */
+@media (min-width: 981px) {
+  .clip-page { height: 100dvh; }
+}
+
 @media (max-width: 980px) {
   .clip-page .clip-body {
     grid-template-columns: 1fr;
     padding: 18px;
     gap: 22px;
   }
+  .clip-page .player-col {
+    /* relax the grid: let player keep its natural 16:9 aspect ratio since
+       the page can scroll on narrow desktop. */
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+  .clip-page .player {
+    aspect-ratio: 16 / 9;
+    height: auto;
+    max-height: none;
+  }
   .clip-page .transcript {
     position: static;
     max-height: 60vh;
+    height: auto;
   }
 }
 

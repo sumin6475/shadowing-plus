@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback, use } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useRef,
+  useCallback,
+  use,
+} from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -11,6 +18,8 @@ import ClipPlayer from "@/components/clip/ClipPlayer";
 import FocusLine from "@/components/clip/FocusLine";
 import ClipControls from "@/components/clip/ClipControls";
 import Transcript from "@/components/clip/Transcript";
+import MobileClip from "@/components/mobile/MobileClip";
+import { useIsMobile } from "@/lib/use-is-mobile";
 
 import "./clip.css";
 
@@ -43,6 +52,9 @@ export default function PlayerPage({
 
   const playerRef = useRef<AudioPlayerHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const desktopVideoSlotRef = useRef<HTMLDivElement>(null);
+  const mobileVideoSlotRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
   const currentIndexRef = useRef(0);
   const segmentsRef = useRef<Segment[]>([]);
   const abRepeatRef = useRef<AbRepeat | null>(null);
@@ -169,6 +181,12 @@ export default function PlayerPage({
     playerRef.current?.play();
   }, []);
 
+  const seekBy = useCallback((delta: number) => {
+    const p = playerRef.current;
+    if (!p) return;
+    p.seekTo(Math.max(0, p.getCurrentTime() + delta));
+  }, []);
+
   const togglePlay = useCallback(() => {
     if (playerRef.current?.isPlaying()) {
       playerRef.current.pause();
@@ -280,6 +298,21 @@ export default function PlayerPage({
     return () => window.removeEventListener("keydown", handleKey);
   }, [goToPrev, goToNext, repeatCurrent, toggleAbRepeat, togglePlay]);
 
+  // Hoisted-video projection: the single <video> element below lives in a
+  // hidden pool. After mount (and whenever the active shell changes), we
+  // appendChild it into the visible slot. appendChild MOVES the node rather
+  // than re-creating it, so playback state survives the swap.
+  useLayoutEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const target = isMobile
+      ? mobileVideoSlotRef.current
+      : desktopVideoSlotRef.current;
+    if (target && v.parentElement !== target) {
+      target.appendChild(v);
+    }
+  }, [isMobile, loading, video]);
+
   if (loading) {
     return (
       <div className="clip-page">
@@ -306,71 +339,116 @@ export default function PlayerPage({
   const showVideoFrame = isVideo && !hideVideo;
 
   return (
-    <div className="clip-page">
-      <ClipHeader
-        title={video.title}
-        folderName={folderName}
-        showVideo={!hideVideo}
-        canHideVideo={isVideo}
-        onToggleVideo={() => setHideVideo((v) => !v)}
-      />
+    <>
+      <div className="clip-page">
+        <ClipHeader
+          title={video.title}
+          folderName={folderName}
+          showVideo={!hideVideo}
+          canHideVideo={isVideo}
+          onToggleVideo={() => setHideVideo((v) => !v)}
+        />
 
-      <div className={"clip-body" + (showVideoFrame ? "" : " hide-video")}>
-        <div className="player-col">
-          <ClipPlayer
-            mediaType={video.media_type}
-            videoSrc={showVideoFrame ? video.video_url : null}
-            videoRef={videoRef}
-            playing={playing}
-            currentTime={currentTime}
-            duration={video.duration ?? 0}
-            abA={abRepeat?.a ?? null}
-            abB={abRepeat?.b ?? null}
-            onTogglePlay={togglePlay}
-            onSeek={seekToTime}
-          />
-          <FocusLine
-            segment={currentSegment}
+        <div className={"clip-body" + (showVideoFrame ? "" : " hide-video")}>
+          <div className="player-col">
+            <ClipPlayer
+              mediaType={video.media_type}
+              videoSrc={showVideoFrame ? video.video_url : null}
+              videoSlotRef={desktopVideoSlotRef}
+              playing={playing}
+              currentTime={currentTime}
+              duration={video.duration ?? 0}
+              abA={abRepeat?.a ?? null}
+              abB={abRepeat?.b ?? null}
+              onTogglePlay={togglePlay}
+              onSeek={seekToTime}
+            />
+            <FocusLine
+              segment={currentSegment}
+              showTranslation={showTranslation}
+              currentTime={currentTime}
+              onWordClick={seekToTime}
+            />
+            <ClipControls
+              onPrev={goToPrev}
+              onNext={goToNext}
+              onReplay={repeatCurrent}
+              abActive={abRepeat !== null}
+              onToggleAB={toggleAbRepeat}
+              showTranslation={showTranslation}
+              onToggleTranslation={() => setShowTranslation((v) => !v)}
+              speed={SPEEDS[speedIdx]}
+              speeds={SPEEDS}
+              onSelectSpeed={selectSpeed}
+            />
+          </div>
+
+          <Transcript
+            segments={segments}
+            currentIndex={currentIndex}
             showTranslation={showTranslation}
-            currentTime={currentTime}
-            onWordClick={seekToTime}
-          />
-          <ClipControls
-            onPrev={goToPrev}
-            onNext={goToNext}
-            onReplay={repeatCurrent}
-            abActive={abRepeat !== null}
-            onToggleAB={toggleAbRepeat}
-            showTranslation={showTranslation}
-            onToggleTranslation={() => setShowTranslation((v) => !v)}
-            speed={SPEEDS[speedIdx]}
-            speeds={SPEEDS}
-            onSelectSpeed={selectSpeed}
+            bookmarkedIds={bookmarkedIds}
+            onSelect={goToSegment}
+            onToggleBookmark={toggleBookmark}
           />
         </div>
 
-        <Transcript
-          segments={segments}
-          currentIndex={currentIndex}
-          showTranslation={showTranslation}
-          bookmarkedIds={bookmarkedIds}
-          onSelect={goToSegment}
-          onToggleBookmark={toggleBookmark}
+        {/* AudioPlayer mounts the <audio> element for audio-only or wires to
+            the <video> via externalMediaRef. Chrome hidden — ClipPlayer owns the UI. */}
+        <AudioPlayer
+          ref={playerRef}
+          src={video.audio_url}
+          duration={video.duration ?? 0}
+          onTimeUpdate={handleTimeUpdate}
+          externalMediaRef={showVideoFrame ? videoRef : undefined}
+          abRepeat={abRepeat}
+          onPlayingChange={setPlaying}
+          hideChrome
         />
       </div>
 
-      {/* AudioPlayer mounts the <audio> element for audio-only or wires to
-          the <video> via externalMediaRef. Chrome hidden — ClipPlayer owns the UI. */}
-      <AudioPlayer
-        ref={playerRef}
-        src={video.audio_url}
-        duration={video.duration ?? 0}
-        onTimeUpdate={handleTimeUpdate}
-        externalMediaRef={showVideoFrame ? videoRef : undefined}
-        abRepeat={abRepeat}
-        onPlayingChange={setPlaying}
-        hideChrome
+      <MobileClip
+        video={video}
+        segments={segments}
+        currentIndex={currentIndex}
+        showTranslation={showTranslation}
+        playing={playing}
+        currentTime={currentTime}
+        abActive={abRepeat !== null}
+        speed={SPEEDS[speedIdx]}
+        videoSlotRef={mobileVideoSlotRef}
+        bookmarkedIds={
+          new Set(
+            segments
+              .filter((s) => bookmarkedIds.has(s.id))
+              .map((s) => s.id),
+          )
+        }
+        onTogglePlay={togglePlay}
+        onPrev={goToPrev}
+        onNext={goToNext}
+        onReplay={repeatCurrent}
+        onToggleAB={toggleAbRepeat}
+        onToggleTranslation={() => setShowTranslation((v) => !v)}
+        onSeek={seekToTime}
+        onSeekBy={seekBy}
+        onSelectSegment={goToSegment}
+        onToggleSegmentBookmark={toggleBookmark}
       />
-    </div>
+
+      {/* Hoisted <video>: lives in a hidden pool until the useLayoutEffect
+          above moves it into the active shell's slot via appendChild. */}
+      {showVideoFrame && (
+        <div style={{ display: "none" }} aria-hidden>
+          <video
+            ref={videoRef}
+            src={video.video_url ?? undefined}
+            className="player-video"
+            preload="auto"
+            playsInline
+          />
+        </div>
+      )}
+    </>
   );
 }

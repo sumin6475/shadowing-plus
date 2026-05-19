@@ -7,7 +7,8 @@ import { PauseIcon, PlayIcon } from "./Icons";
 interface Props {
   mediaType: MediaType;
   videoSrc: string | null;
-  videoRef: RefObject<HTMLVideoElement | null>;
+  /** Empty positioned container the page projects the hoisted <video> into. */
+  videoSlotRef: RefObject<HTMLDivElement | null>;
   playing: boolean;
   currentTime: number;
   duration: number;
@@ -34,7 +35,7 @@ function clamp01(n: number): number {
 export default function ClipPlayer({
   mediaType,
   videoSrc,
-  videoRef,
+  videoSlotRef,
   playing,
   currentTime,
   duration,
@@ -58,13 +59,7 @@ export default function ClipPlayer({
   return (
     <div className={"player" + (showVideoEl ? "" : " audio-only")}>
       {showVideoEl ? (
-        <video
-          ref={videoRef}
-          src={videoSrc ?? undefined}
-          className="player-video"
-          preload="auto"
-          playsInline
-        />
+        <div ref={videoSlotRef} className="player-video-slot" />
       ) : (
         <div className="player-stage">Audio</div>
       )}

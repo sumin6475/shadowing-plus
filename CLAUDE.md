@@ -2,104 +2,137 @@
 
 # Shadowing Plus
 
-영어 쉐도잉 학습 웹앱. 사용자가 영상/오디오를 브라우저에서 업로드하면 클라우드 ASR + 번역 파이프라인이 돌고, 문장 단위로 학습한다.
+English shadowing webapp + installable PWA. Users upload video/audio in the browser; a cloud ASR + translation pipeline produces sentence-level transcripts; users shadow line-by-line. Bookmarks feed an SM-2 spaced-repetition practice mode.
 
-## 프로젝트 구조
+## Project structure
 
 ```
 shadowing_plus/
-├── media/                       # 로컬 영상 보관 (선택, .gitignore)
+├── media/                              # local video stash (optional, .gitignore)
 ├── supabase/migrations/
-│   └── 004_rebuild_schema.sql   # 새 스키마 (SQL Editor에 한 번 적용)
-└── web/                         # Next.js 16 앱 (App Router)
-    ├── .env.local               # Supabase + OpenAI + ElevenLabs + R2 키
-    ├── package.json             # 새 deps: @aws-sdk/client-s3, ffmpeg-static, openai, vitest
-    ├── scripts/wipe-supabase.mjs  # 원샷 데이터 와이프 헬퍼
+│   ├── 001_rebuild_schema.sql          # base schema
+│   ├── 002_disable_rls.sql             # forces RLS off (Supabase auto-re-enables)
+│   ├── 003_folder_color.sql            # folders.color
+│   └── 004_bookmarks_srs.sql           # SRS columns on bookmarks
+└── web/                                # Next.js 16 app (App Router)
+    ├── .env.local                      # Supabase + OpenAI + ElevenLabs + R2 keys
+    ├── public/icons/                   # PWA icons (generated; replace with real logo)
+    ├── scripts/
+    │   ├── generate-icons.mjs          # SVG → PNG icon generator (@resvg/resvg-js)
+    │   └── wipe-supabase.mjs           # one-shot data-wipe helper
     └── src/
         ├── app/
-        │   ├── page.tsx                 # 업로드 dropzone + 작업 큐 + 비디오 목록
-        │   ├── player/[videoId]/        # 듀얼 모드 플레이어 (video/audio)
-        │   ├── bookmarks/
+        │   ├── layout.tsx              # fonts, viewport, manifest meta
+        │   ├── manifest.ts             # PWA manifest (standalone, themed)
+        │   ├── mobile.css              # all .m-* mobile-shell styles + media-query gate
+        │   ├── globals.css, home.css, bookmarks/bookmarks.css, player/[videoId]/clip.css, practice/practice.css
+        │   ├── page.tsx                # / — library (renders desktop + MobileLibrary)
+        │   ├── bookmarks/page.tsx      # /bookmarks (desktop + MobileBookmarks)
+        │   ├── player/[videoId]/page.tsx  # dual shell, hoisted <video> element
+        │   ├── practice/page.tsx       # /practice — fetches due bookmarks, renders both shells
         │   └── api/
-        │       ├── upload/route.ts      # presigned URL 발급 + jobs 행 생성
-        │       ├── jobs/route.ts        # GET list
-        │       ├── jobs/[id]/route.ts   # GET / DELETE
-        │       ├── jobs/[id]/run/route.ts    # 파이프라인 시작
-        │       ├── jobs/[id]/retry/route.ts  # stage 별 재시도
-        │       └── videos/[id]/route.ts # 비디오 삭제 (R2 + DB cascade)
+        │       ├── upload/route.ts                 # presigned R2 URL + jobs row
+        │       ├── jobs/route.ts, jobs/[id]/route.ts
+        │       ├── jobs/[id]/run/route.ts, retry/route.ts
+        │       ├── videos/[id]/route.ts            # cascading R2 + DB delete
+        │       └── bookmarks/[id]/verdict/route.ts # SRS verdict → applyVerdict → DB
         ├── components/
-        │   ├── UploadDropzone.tsx
-        │   ├── JobCard.tsx              # 진행도 + stage chip + retry
-        │   ├── AudioPlayer / SubtitlePanel / FocusPanel / WordText / BookmarkButton
+        │   ├── AudioPlayer.tsx         # forwardRef wrapper over <audio>/<video>
+        │   ├── UploadDropzone.tsx, JobCard.tsx
+        │   ├── home/    Sidebar, NewFolderModal, Icons
+        │   ├── clip/    ClipHeader, ClipPlayer (videoSlotRef), FocusLine, ClipControls (speed dropdown), Transcript, Icons
+        │   ├── bookmarks/  BookmarkGroup, BookmarkItem, BookmarksEmpty, Icons
+        │   ├── mobile/  MobileLibrary, MobileClip, MobileBookmarks, MobilePractice, MobileDrawer, MobileTabBar, Icons
+        │   └── practice/  DesktopPractice
         └── lib/
-            ├── types.ts                 # DB row + Pipeline 타입 한곳에
-            ├── supabase.ts              # 클라이언트 (anon)
-            ├── supabase-admin.ts        # 서버 (service key)
-            ├── r2.ts                    # S3 호환 R2 클라이언트
+            ├── types.ts                # DB row + pipeline types (Bookmark includes SRS state)
+            ├── srs.ts                  # SM-2-lite pure function (+ __tests__/srs.test.ts)
+            ├── use-is-mobile.ts        # SSR-safe matchMedia hook (gates effects only)
+            ├── folder-color.ts         # deterministic palette + per-folder override
+            ├── supabase.ts, supabase-admin.ts, r2.ts
             └── pipeline/
-                ├── jobs.ts              # jobs 행 상태 헬퍼
-                ├── orchestrator.ts      # 5단계 시퀀스 + retry-from-stage
-                ├── stage_1_extract.ts   # ffmpeg-static (video → audio.mp3)
-                ├── stage_2_transcribe.ts # ElevenLabs Scribe v2
-                ├── stage_3_postprocess.ts # 후처리 5개 함수 합성
-                ├── stage_4_translate.ts # GPT-4o-mini 배치 번역
-                ├── stage_5_persist.ts   # Supabase videos/segments 저장
-                └── postprocess/
-                    ├── merge_duplicates.ts
-                    ├── drop_empty.ts
-                    ├── fix_timing.ts
-                    ├── regroup_sentences.ts
-                    ├── remove_hallucinations.ts
-                    └── __tests__/*.test.ts (vitest)
+                ├── jobs.ts             # jobs-row state helpers
+                ├── orchestrator.ts     # 5-stage sequence + retry-from-stage
+                ├── stage_1_extract.ts  # ffmpeg-static (video → audio.mp3)
+                ├── stage_2_transcribe.ts  # ElevenLabs Scribe v2
+                ├── stage_3_postprocess.ts # composes the 5 postprocess functions
+                ├── stage_4_translate.ts   # GPT-4o-mini batch translate
+                ├── stage_5_persist.ts     # writes videos + segments rows
+                └── postprocess/        # 5 pure functions + vitest tests
 ```
 
-## 기술 스택
+## Tech stack
 
-- **프론트엔드**: Next.js 16.2.2, React 19, Tailwind CSS 4, TypeScript 5
-- **DB/realtime**: Supabase Postgres (RLS off, anon key 직접 read/write)
-- **미디어 저장소**: Cloudflare R2 (S3 API, 무료 10GB + 무료 egress)
-- **처리**: ElevenLabs Scribe v2 (ASR) + GPT-4o-mini (번역), Vercel API Routes에서 실행
-- **테스트**: vitest (postprocess 순수 함수 25개 케이스)
+- **Frontend**: Next.js 16.2.2, React 19, Tailwind CSS 4, TypeScript 5
+- **DB / realtime**: Supabase Postgres (RLS off, anon key reads/writes directly)
+- **Media storage**: Cloudflare R2 (S3 API, free egress)
+- **Processing**: ElevenLabs Scribe v2 (ASR) + GPT-4o-mini (translation), running on Vercel API Routes
+- **Testing**: vitest (postprocess + SRS pure functions)
 
-## Next.js 16 주의사항
+## Next.js 16 gotchas
 
-`params`, `searchParams`는 **Promise**. 반드시 `await` 필요. 클라이언트 컴포넌트에서는 `use(params)` 사용.
+- `params`, `searchParams`, `cookies()`, `headers()` are all **Promises**. `await` them in server components. In client components use `use(params)`.
+- `themeColor` lives in the `viewport` export, not `metadata` (deprecated path).
+- API route handlers receive `{ params: Promise<{ id: string }> }`.
 
-## DB 스키마 (마이그레이션 004)
+## DB schema (migration 001)
 
 - **videos**: id, title, duration, audio_url, video_url(nullable), media_type('video'|'audio'), folder_id(nullable), created_at
 - **segments**: id, video_id(FK CASCADE), index, start_time, end_time, text, translation, words(JSONB)
-- **bookmarks**: id, segment_id(FK CASCADE), memo, created_at
-- **folders**: id, name, position, created_at
+- **bookmarks**: id, segment_id(FK CASCADE), memo, created_at, **+ SRS columns from migration 004**: ease_factor, interval_days, due_at, last_verdict, last_reviewed_at, lapses
+- **folders**: id, name, position, color, created_at
 - **jobs**: id, video_id(nullable), title, media_type, source_key, status, current_stage, progress, error, created_at, updated_at
-- `jobs`는 realtime publication에 추가됨 (홈에서 실시간 진행도 구독)
+- `jobs` is added to the realtime publication (live progress on home)
 
-## 파이프라인 (5 stages, R2의 JSON으로 체크포인트)
+## Pipeline (5 stages, JSON checkpoints in R2)
 
-| Stage | Input | Output | 동작 |
+| Stage | Input | Output | Behavior |
 |---|---|---|---|
-| 1 extract | `jobs/{id}/source-*` | `jobs/{id}/audio.mp3` | ffmpeg-static (video만; audio_type=audio이면 no-op) |
-| 2 transcribe | audio R2 키 | `jobs/{id}/raw_transcript.json` | ElevenLabs Scribe v2 (`cloud_storage_url`에 R2 presigned URL 넘김), word-level → 문장/갭 청킹 |
+| 1 extract | `jobs/{id}/source-*` | `jobs/{id}/audio.mp3` | ffmpeg-static (video only; no-op when media_type=audio) |
+| 2 transcribe | audio R2 key | `jobs/{id}/raw_transcript.json` | ElevenLabs Scribe v2 (passes a presigned R2 URL as `cloud_storage_url`); word-level → sentence/gap chunks |
 | 3 postprocess | raw_transcript.json | `jobs/{id}/segments.json` | merge_duplicates → drop_empty → fix_timing → regroup_sentences → remove_hallucinations |
-| 4 translate | segments.json | `jobs/{id}/segments_translated.json` | GPT-4o-mini, 5개 배치, 위치 기반 매핑 |
-| 5 persist | segments_translated.json | videos + segments rows | media_type별 audio_url / video_url 결정, ready 마킹 |
+| 4 translate | segments.json | `jobs/{id}/segments_translated.json` | GPT-4o-mini, batches of 5, positional mapping |
+| 5 persist | segments_translated.json | videos + segments rows | media_type-aware audio_url / video_url, marks job ready |
 
-각 단계는 독립 재실행 가능. 실패 시 `current_stage` + `error`만 남기고 멈춤. 홈 카드의 retry 버튼이 임의 stage부터 재개.
+Each stage is independently re-runnable. On failure the job stops with `current_stage` + `error` set; the home-card retry button resumes from any stage.
 
-### Compute 한계
-- Vercel Hobby는 60s timeout. 1.5h 영상 처리 시 timeout 가능성.
-- 옵션 우선순위: (a) `maxDuration` 늘려 Pro 사용 (b) Supabase Edge Functions (150s) (c) Inngest free tier.
-- 코드는 그대로 둔 채 호출자만 바꾸면 됨. 지금은 (a)로 운영.
+### Compute limits
+- Vercel Hobby has a 60s timeout. A 1.5h video can hit it.
+- Escalation order: (a) raise `maxDuration` on Pro, (b) Supabase Edge Functions (150s), (c) Inngest free tier.
+- The code doesn't change; only the call site does. Today we run on (a).
 
-### 후처리는 순수 함수
-`web/src/lib/pipeline/postprocess/*.ts`는 I/O 없음, `Segment[] → Segment[]`. vitest로 단독 테스트 (`npm test`).
+### Postprocess is pure
+`web/src/lib/pipeline/postprocess/*.ts` files have no I/O — `Segment[] → Segment[]`. Test them standalone with `npm test`.
 
-## 환경변수 (`web/.env.local`)
+## Dual-shell architecture
+
+Library / Clip / Bookmarks / Practice each render **both** a desktop shell (`.home-app`, `.clip-page`, `.pr-page`) and a mobile shell (`.m-app`, `.m-practice`) on the same URL. CSS media queries at 768px gate which one paints. Data hooks live in the parent so both shells share state.
+
+The clip page hoists the single `<video>` into a hidden pool; a `useLayoutEffect` re-parents it via `appendChild` into the active shell's `videoSlotRef`. Playback state survives the swap.
+
+The mobile drawer is rendered **inline as a child of `.m-app`** (not via `createPortal`). Reason: a portal escapes the `.m-app` token scope, which makes iOS Safari's text-size-adjust inflate the drawer's fonts. z-index 50 on the drawer still trumps the tab bar (z:30) because `.m-app` doesn't create a stacking context.
+
+## SRS (Practice)
+
+`web/src/lib/srs.ts` is a pure SM-2-lite. Verdict deltas:
+- **Again**: `interval = 0`, `ease = max(1.3, ease - 0.2)`, `lapses += 1`, due in 1 min. Within-session the item is re-pushed to the back of the queue (don't rely on `due_at` mid-session).
+- **Good**: `interval = oldInterval === 0 ? 2 : oldInterval * ease` days. Ease unchanged.
+- **Easy**: `interval = oldInterval === 0 ? 7 : oldInterval * ease * 1.3` days. Ease `+= 0.15`.
+
+`/api/bookmarks/[id]/verdict` accepts either `{ verdict }` (runs applyVerdict) or `{ restore }` (writes raw state — used by the Undo button on both shells).
+
+## PWA
+
+- `manifest.ts` declares the standalone webapp. Icons under `web/public/icons/` are generated by `npm run icons` (uses `@resvg/resvg-js` to rasterize an inline SVG of "S+"). Swap the SVG template in the script to ship a real logo.
+- iOS caches the install icon aggressively. After changing the icon, users must remove and re-add to the home screen.
+- No service worker — `/practice` requires network.
+
+## Env vars (`web/.env.local`)
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_KEY=...      # API 라우트 / 서버 사이드 전용
+SUPABASE_SERVICE_KEY=...           # server-side only (API routes)
 OPENAI_API_KEY=...
 ELEVENLABS_API_KEY=...
 R2_ACCOUNT_ID=...
@@ -109,16 +142,12 @@ R2_BUCKET_NAME=shadowing-media
 R2_PUBLIC_URL=https://pub-xxxxx.r2.dev
 ```
 
-## Cloudflare R2 설정 (최초 1회)
+## Cloudflare R2 setup (one-time)
 
-1. Cloudflare 대시보드 → R2 → Create bucket (이름 자유, 예: `shadowing-media`)
-2. Public access:
-   - 버킷 → Settings → "Public URL Access" 켜기, 발급된 `pub-xxxxx.r2.dev` 도메인을 `R2_PUBLIC_URL`에 넣기
-3. API 토큰:
-   - R2 → Manage R2 API Tokens → Create API token → Permissions: Object Read & Write, Bucket: 위에서 만든 버킷
-   - 발급된 Access Key ID / Secret을 env에 넣기. Account ID는 R2 대시보드 우측에 표시됨
-4. CORS (브라우저에서 presigned PUT 업로드용):
-   - 버킷 → Settings → CORS Policy에 다음 추가:
+1. Cloudflare dashboard → R2 → Create bucket (e.g. `shadowing-media`).
+2. **Public access**: bucket → Settings → "Public URL Access" → on. Put the `pub-xxxxx.r2.dev` host in `R2_PUBLIC_URL`.
+3. **API token**: R2 → Manage R2 API Tokens → Create. Permissions: Object Read & Write, scoped to this bucket. Account ID is shown in the R2 sidebar.
+4. **CORS** (browser uses presigned PUT to upload):
    ```json
    [{
      "AllowedOrigins": ["http://localhost:3000", "https://your-vercel-domain"],
@@ -129,38 +158,55 @@ R2_PUBLIC_URL=https://pub-xxxxx.r2.dev
    }]
    ```
 
-## Supabase 설정 (최초 1회)
+## Supabase setup (one-time)
 
-1. `supabase/migrations/004_rebuild_schema.sql` 내용을 Supabase 대시보드 → SQL Editor에 붙여넣고 실행
-2. Storage 버킷 `audio`는 더 이상 안 씀 (R2로 이전). 남아 있어도 무해.
+Paste each migration into Supabase dashboard → SQL Editor and run **in order**:
 
-## 데이터 와이프 (필요 시)
+1. `supabase/migrations/001_rebuild_schema.sql`
+2. `supabase/migrations/002_disable_rls.sql` (Supabase silently re-enables RLS on new tables; this forces it off)
+3. `supabase/migrations/003_folder_color.sql`
+4. `supabase/migrations/004_bookmarks_srs.sql` (Supabase will warn about an UPDATE without WHERE — that's the intentional backfill, uses COALESCE, safe to re-run)
+
+The legacy Storage bucket `audio` is no longer used (media moved to R2). Leaving it in place is harmless.
+
+## Data wipe (when needed)
 
 ```bash
 cd web && node --env-file=.env.local scripts/wipe-supabase.mjs
 ```
 
-기존 row + audio storage 객체 삭제. 스키마 변경(DROP/CREATE)은 SQL Editor에서 수동.
+Deletes rows + R2 objects only. Schema changes (DROP/CREATE) still go through the SQL Editor.
 
-## 프론트엔드 개발
+## Frontend dev
 
 ```bash
-cd web && npm install   # 최초 1회
-cd web && npm run dev
-cd web && npm test      # 후처리 vitest
-cd web && npm run build # Turbopack 빌드
+cd web && npm install        # first time
+cd web && npm run dev        # http://localhost:3000
+cd web && npm test           # vitest (postprocess + SRS)
+cd web && npm run build      # Turbopack build
+cd web && npm run icons      # regenerate PWA placeholder icons
 ```
 
-## 플레이어 동작
+## Player behavior
 
-- `media_type='video'` + `video_url`이 있으면 좌우 분할 (영상 + 자막). "Hide video" 토글로 오디오 전용 레이아웃으로 전환 가능.
-- `media_type='audio'`이거나 영상이 없으면 자막 + 하단 오디오 플레이어만.
-- 키보드: A=이전 / S=반복 / D=다음 / Space=재생-정지 / R=A-B 반복 / ←→=3초.
+- `media_type='video'` + `video_url` present → split layout (video + transcript). Toggle "Hide video" for an audio-only layout.
+- `media_type='audio'` or no video → transcript with a bottom audio player.
 
-## 테마
+### Keyboard (player)
+A=previous · S=repeat current (Shadow line) · D=next · Space=play/pause · R=A-B repeat · T=toggle translation · ←/→=seek ±3s
 
-CSS 변수 기반. Primary `#e05d38`. 폰트: Inter, Source Serif 4, JetBrains Mono.
+### Keyboard (practice, desktop)
+Space=play/pause · 1/2/3=Again/Good/Easy · K or T=toggle KO · L=toggle A–B loop · S=toggle shadow · `,`=cycle speed · Esc=exit
 
-## Vercel 배포 시 환경변수
+## Theme
 
-위 `web/.env.local`의 항목 전부. `R2_PUBLIC_URL`의 도메인이 next/image 등으로 들어가지는 않으므로 `next.config`에 등록 불필요.
+CSS variable-driven. Primary accent **cobalt `#3B6EE1`** (configurable per token block). Fonts: Pretendard (sans), Instrument Serif (serif), JetBrains Mono. Each scope (`.home-app`, `.clip-page`, `.m-app`, `.pr-page`, `.m-practice`) declares its own token block so they're self-contained.
+
+## Vercel deployment
+
+```bash
+# from the REPO ROOT, not web/
+npx vercel --prod
+```
+
+The project is registered as a monorepo with `web/` as the root. Running from `web/` triggers the 100 MB upload limit. Add every key from `.env.local` to the Vercel project settings before the first deploy. `R2_PUBLIC_URL` does **not** need to be registered with `next.config` (no `next/image` integration).

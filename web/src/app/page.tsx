@@ -18,6 +18,7 @@ import UploadDropzone, {
 import JobCard from "@/components/JobCard";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
+import MobileLibrary from "@/components/mobile/MobileLibrary";
 import {
   ChevronDownIcon,
   DotsIcon,
@@ -70,6 +71,7 @@ export default function HomePage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [bookmarksCount, setBookmarksCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<ActiveSection>({ kind: "all" });
 
@@ -91,7 +93,7 @@ export default function HomePage() {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    const [foldersRes, videosRes, jobsRes] = await Promise.all([
+    const [foldersRes, videosRes, jobsRes, bookmarksRes] = await Promise.all([
       supabase.from("folders").select("*").order("created_at"),
       supabase
         .from("videos")
@@ -101,10 +103,12 @@ export default function HomePage() {
         .from("jobs")
         .select("*")
         .order("created_at", { ascending: false }),
+      supabase.from("bookmarks").select("id", { count: "exact", head: true }),
     ]);
     setFolders(foldersRes.data ?? []);
     setVideos(videosRes.data ?? []);
     setJobs(jobsRes.data ?? []);
+    setBookmarksCount(bookmarksRes.count ?? 0);
   }, []);
 
   useEffect(() => {
@@ -176,7 +180,7 @@ export default function HomePage() {
         // Common cause: migration 006 not applied → no `color` column.
         if (/color/i.test(error.message)) {
           alert(
-            "Couldn't save the folder color. Apply supabase/migrations/006_folder_color.sql, then try again.",
+            "Couldn't save the folder color. Apply supabase/migrations/003_folder_color.sql, then try again.",
           );
         } else {
           alert(`Failed to create folder: ${error.message}`);
@@ -232,7 +236,7 @@ export default function HomePage() {
         // Likely the `color` column hasn't been added yet via migration 006.
         console.warn("folder color update failed:", error.message);
         alert(
-          "Couldn't save the color. Apply supabase/migrations/006_folder_color.sql.",
+          "Couldn't save the color. Apply supabase/migrations/003_folder_color.sql.",
         );
         refreshAll();
       }
@@ -371,6 +375,7 @@ export default function HomePage() {
   }, [visibleVideos]);
 
   return (
+    <>
     <div className="home-app">
       <Sidebar
         active={active}
@@ -618,6 +623,24 @@ export default function HomePage() {
         </div>
       </main>
     </div>
+    <MobileLibrary
+      active={active}
+      setSection={setSection}
+      folders={folders}
+      videos={videos}
+      jobs={jobs}
+      activeFolder={activeFolder ?? null}
+      visibleVideos={visibleVideos}
+      recentCount={recentVideos.length}
+      bookmarksCount={bookmarksCount}
+      sectionHeader={sectionHeader}
+      totalDurationLabel={totalDurationLabel}
+      loading={loading}
+      onPickFile={() => dropzoneRef.current?.pick()}
+      onCreateFolder={openNewFolder}
+      onJobChanged={refreshAll}
+    />
+    </>
   );
 }
 

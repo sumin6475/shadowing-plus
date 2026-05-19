@@ -40,11 +40,22 @@ export interface Segment {
   created_at: string;
 }
 
+export type SrsVerdict = "again" | "good" | "easy";
+
 export interface Bookmark {
   id: string;
   segment_id: string;
   memo: string | null;
   created_at: string;
+  // SRS state (migration 008). Always non-null after backfill but Supabase
+  // still returns `null` if the column is absent on an older copy of the DB,
+  // so the runtime should tolerate that.
+  ease_factor: number;
+  interval_days: number;
+  due_at: string;
+  last_verdict: SrsVerdict | null;
+  last_reviewed_at: string | null;
+  lapses: number;
   segment?: Segment & { video?: Video };
 }
 

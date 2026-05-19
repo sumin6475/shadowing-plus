@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import type { Folder, Video } from "@/lib/types";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
@@ -15,6 +16,10 @@ import NewFolderModal from "@/components/home/NewFolderModal";
 import BookmarkGroup from "@/components/bookmarks/BookmarkGroup";
 import BookmarksEmpty from "@/components/bookmarks/BookmarksEmpty";
 import type { BookmarkItemData } from "@/components/bookmarks/BookmarkItem";
+import MobileBookmarks, {
+  type MobileBookmarkGroup,
+} from "@/components/mobile/MobileBookmarks";
+import { folderColor } from "@/lib/folder-color";
 import {
   ChevronDownIcon,
   DrillIcon,
@@ -39,7 +44,9 @@ interface BookmarkRow {
     translation: string | null;
     start_time: number;
     end_time: number;
-    video: Video & { folder: { name: string } | null };
+    video: Video & {
+      folder: { id: string; name: string; color: string | null } | null;
+    };
   } | null;
 }
 
@@ -48,6 +55,7 @@ interface Group {
   videoTitle: string;
   mediaType: Video["media_type"];
   folderName: string | null;
+  folderColor: string | null;
   duration: number | null;
   items: BookmarkItemData[];
 }
@@ -90,7 +98,7 @@ export default function BookmarksPage() {
       supabase
         .from("bookmarks")
         .select(
-          "id, memo, created_at, segment:segments(id, text, translation, start_time, end_time, video:videos(*, folder:folders(name)))",
+          "id, memo, created_at, segment:segments(id, text, translation, start_time, end_time, video:videos(*, folder:folders(id, name, color)))",
         )
         .order("created_at", { ascending: false }),
       supabase.from("folders").select("*").order("created_at"),
@@ -122,6 +130,9 @@ export default function BookmarksPage() {
           videoTitle: v.title,
           mediaType: v.media_type,
           folderName: v.folder?.name ?? null,
+          folderColor: v.folder
+            ? folderColor({ id: v.folder.id, color: v.folder.color })
+            : null,
           duration: v.duration,
           items: [],
         };
@@ -203,6 +214,32 @@ export default function BookmarksPage() {
     [playingBookmarkId, stopPlayback],
   );
 
+  const editNote = useCallback(
+    async (bookmarkId: string, current: string | null) => {
+      const next = window.prompt("Edit note", current ?? "");
+      if (next === null) return;
+      const trimmed = next.trim();
+      const memo = trimmed === "" ? null : trimmed;
+      await supabase.from("bookmarks").update({ memo }).eq("id", bookmarkId);
+      setBookmarks((prev) =>
+        prev.map((b) => (b.id === bookmarkId ? { ...b, memo } : b)),
+      );
+    },
+    [],
+  );
+
+  const playForMobile = useCallback(
+    (bm: BookmarkItemData, videoId: string) => {
+      const audioUrl = allVideos.find((v) => v.id === videoId)?.audio_url;
+      if (!audioUrl) return;
+      playBookmark(bm, audioUrl);
+    },
+    [allVideos, playBookmark],
+  );
+
+  const mobileGroups: MobileBookmarkGroup[] = groups;
+  const visibleMobile = visible;
+
   // Sidebar navigation: clicking another section from /bookmarks should land
   // on / with that section selected. Persist via localStorage and navigate.
   const handleSidebarSelect = useCallback(
@@ -230,7 +267,7 @@ export default function BookmarksPage() {
       if (error) {
         if (/color/i.test(error.message)) {
           alert(
-            "Couldn't save the folder color. Apply supabase/migrations/006_folder_color.sql, then try again.",
+            "Couldn't save the folder color. Apply supabase/migrations/003_folder_color.sql, then try again.",
           );
         } else {
           alert(`Failed to create folder: ${error.message}`);
@@ -280,7 +317,7 @@ export default function BookmarksPage() {
         .eq("id", id);
       if (error) {
         alert(
-          "Couldn't save the color. Apply supabase/migrations/006_folder_color.sql.",
+          "Couldn't save the color. Apply supabase/migrations/003_folder_color.sql.",
         );
         refresh();
       }
@@ -288,14 +325,18 @@ export default function BookmarksPage() {
     [refresh],
   );
 
-  const recentCount = useMemo(() => {
-    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
-    return allVideos.filter(
-      (v) => new Date(v.created_at).getTime() >= cutoff,
-    ).length;
-  }, [allVideos]);
+  // Cutoff is captured at mount; useState initializer is the canonical place
+  // for a one-shot impure read like Date.now().
+  const [recentCutoff] = useState(() => Date.now() - 14 * 24 * 3600 * 1000);
+  const recentCount = useMemo(
+    () =>
+      allVideos.filter((v) => new Date(v.created_at).getTime() >= recentCutoff)
+        .length,
+    [allVideos, recentCutoff],
+  );
 
   return (
+    <>
     <div className="home-app">
       <Sidebar
         active={{ kind: "all" }}
@@ -337,14 +378,13 @@ export default function BookmarksPage() {
               >
                 <SortIcon /> Newest first <ChevronDownIcon />
               </button>
-              <button
-                type="button"
+              <Link
+                href="/practice"
                 className="btn primary"
-                disabled
-                title="Practice mode (coming soon)"
+                title="Start a Practice all drill"
               >
                 <DrillIcon /> Practice all
-              </button>
+              </Link>
             </div>
           </header>
 
@@ -399,5 +439,19 @@ export default function BookmarksPage() {
 
       <audio ref={audioRef} preload="none" className="bm-audio" />
     </div>
+    <MobileBookmarks
+      groups={mobileGroups}
+      visible={visibleMobile}
+      filters={filters}
+      filterVideoId={filterVideoId}
+      setFilter={setFilterVideoId}
+      totalCount={totalCount}
+      loading={loading}
+      playingBookmarkId={playingBookmarkId}
+      onPlay={playForMobile}
+      onRemove={removeBookmark}
+      onEditNote={editNote}
+    />
+    </>
   );
 }

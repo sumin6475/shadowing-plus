@@ -5,6 +5,7 @@ import {
   putJson,
 } from "@/lib/r2";
 import type { PipelineSegment, PipelineWord } from "@/lib/types";
+import { AUDIO_LANGUAGE } from "./languages";
 
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/speech-to-text";
 const ELEVENLABS_MODEL_ID = "scribe_v2";
@@ -131,7 +132,7 @@ async function callElevenLabs(
   const body = new FormData();
   body.set("model_id", ELEVENLABS_MODEL_ID);
   body.set("timestamps_granularity", "word");
-  body.set("language_code", "eng");
+  body.set("language_code", AUDIO_LANGUAGE.code);
   body.set("tag_audio_events", "false");
   body.set("diarize", "false");
   body.set("cloud_storage_url", audioUrl);

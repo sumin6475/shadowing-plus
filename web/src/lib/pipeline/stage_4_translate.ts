@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { getJson, jobKey, putJson } from "@/lib/r2";
 import { updateJobProgress } from "./jobs";
 import type { PipelineSegment } from "@/lib/types";
+import { AUDIO_LANGUAGE, TRANSLATION_LANGUAGE } from "./languages";
 
 const MODEL = "gpt-4o-mini";
 const BATCH_SIZE = 5;
@@ -22,9 +23,9 @@ function buildPrompt(
   contextAfter: string,
 ): string {
   const list = batch.map((s) => `- ${s.text}`).join("\n");
-  return `You are a translation assistant for English language learners (Korean speakers).
+  return `You are a translation assistant for ${AUDIO_LANGUAGE.name} language learners (${TRANSLATION_LANGUAGE} speakers).
 
-For each segment, provide a natural Korean translation that captures the context and nuance (NOT machine-literal translation).
+For each segment, provide a natural ${TRANSLATION_LANGUAGE} translation that captures the context and nuance (NOT machine-literal translation).
 
 Context before: ${contextBefore}
 Context after: ${contextAfter}
@@ -36,12 +37,12 @@ Output format (JSON only, no markdown):
 Return segments in the SAME ORDER as the input. Do not reorder or skip any.
 {
   "segments": [
-    { "translation": "Korean translation here" }
+    { "translation": "${TRANSLATION_LANGUAGE} translation here" }
   ]
 }
 
 Rules:
-- Translation should sound natural in Korean, not word-by-word
+- Translation should sound natural in ${TRANSLATION_LANGUAGE}, not word-by-word
 - Consider surrounding sentences for context`;
 }
 
