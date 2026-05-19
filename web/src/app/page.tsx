@@ -1,36 +1,68 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import type { Folder, Job, Video } from "@/lib/types";
-import UploadDropzone from "@/components/UploadDropzone";
+import UploadDropzone, {
+  type UploadDropzoneHandle,
+} from "@/components/UploadDropzone";
 import JobCard from "@/components/JobCard";
+import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
+import NewFolderModal from "@/components/home/NewFolderModal";
+import {
+  ChevronDownIcon,
+  DotsIcon,
+  PlayIcon,
+  PlusIcon,
+  SortIcon,
+} from "@/components/home/Icons";
+import { folderColor } from "@/lib/folder-color";
 
-const EXPANDED_KEY = "sp:folders:expanded";
+import "./home.css";
+
+const ACTIVE_SECTION_KEY = "sp:home:section";
+const RECENT_DAYS = 14;
 
 function formatDuration(seconds: number | null): string {
-  if (!seconds) return "--:--";
+  if (!seconds || !Number.isFinite(seconds)) return "--:--";
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function loadExpanded(): Set<string> {
-  if (typeof window === "undefined") return new Set();
+function loadActiveSection(): ActiveSection {
+  if (typeof window === "undefined") return { kind: "all" };
   try {
-    const raw = localStorage.getItem(EXPANDED_KEY);
-    return new Set(raw ? JSON.parse(raw) : []);
+    const raw = localStorage.getItem(ACTIVE_SECTION_KEY);
+    if (!raw) return { kind: "all" };
+    const parsed = JSON.parse(raw) as ActiveSection;
+    if (
+      parsed?.kind === "all" ||
+      parsed?.kind === "recent" ||
+      (parsed?.kind === "folder" && typeof parsed.id === "string")
+    ) {
+      return parsed;
+    }
   } catch {
-    return new Set();
+    /* ignore */
   }
+  return { kind: "all" };
 }
 
-function saveExpanded(set: Set<string>) {
+function saveActiveSection(s: ActiveSection) {
   try {
-    localStorage.setItem(EXPANDED_KEY, JSON.stringify([...set]));
+    localStorage.setItem(ACTIVE_SECTION_KEY, JSON.stringify(s));
   } catch {
-    // ignore
+    /* ignore */
   }
 }
 
@@ -39,26 +71,23 @@ export default function HomePage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [active, setActive] = useState<ActiveSection>({ kind: "all" });
 
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [editVideoTitle, setEditVideoTitle] = useState("");
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
-  const [editFolderName, setEditFolderName] = useState("");
-  const folderInputRef = useRef<HTMLInputElement>(null);
-
-  const [creatingFolder, setCreatingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-  const newFolderInputRef = useRef<HTMLInputElement>(null);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
 
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [menuView, setMenuView] = useState<"main" | "move">("main");
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const dropzoneRef = useRef<UploadDropzoneHandle>(null);
+
+  // Hydrate active section from localStorage (client-only)
   useEffect(() => {
-    setExpanded(loadExpanded());
+    setActive(loadActiveSection());
   }, []);
 
   const refreshAll = useCallback(async () => {
@@ -82,7 +111,7 @@ export default function HomePage() {
     refreshAll().then(() => setLoading(false));
   }, [refreshAll]);
 
-  // Realtime subscription to jobs — keeps progress bars / retry state fresh.
+  // Realtime jobs subscription
   useEffect(() => {
     const channel = supabase
       .channel("jobs-feed")
@@ -96,7 +125,6 @@ export default function HomePage() {
             }
             const next = payload.new as Job;
             const idx = prev.findIndex((j) => j.id === next.id);
-            // When a job becomes "ready" a new video appears; refresh videos.
             if (
               next.status === "ready" &&
               (idx === -1 || prev[idx].status !== "ready")
@@ -116,9 +144,10 @@ export default function HomePage() {
     };
   }, [refreshAll]);
 
+  // Close item menu on outside click
   useEffect(() => {
     if (!menuOpenFor) return;
-    function handleClick(e: MouseEvent) {
+    function handleClick(e: globalThis.MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpenFor(null);
         setMenuView("main");
@@ -128,90 +157,90 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpenFor]);
 
-  const toggleExpand = useCallback((folderId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(folderId)) next.delete(folderId);
-      else next.add(folderId);
-      saveExpanded(next);
-      return next;
-    });
+  const setSection = useCallback((s: ActiveSection) => {
+    setActive(s);
+    saveActiveSection(s);
   }, []);
 
-  const startCreateFolder = useCallback(() => {
-    setCreatingFolder(true);
-    setNewFolderName("");
-    setTimeout(() => newFolderInputRef.current?.focus(), 0);
+  // Folder CRUD
+  const openNewFolder = useCallback(() => setNewFolderOpen(true), []);
+
+  const createFolder = useCallback(
+    async (input: { name: string; color: string }) => {
+      const { data, error } = await supabase
+        .from("folders")
+        .insert({ name: input.name, color: input.color })
+        .select()
+        .single();
+      if (error) {
+        // Common cause: migration 006 not applied → no `color` column.
+        if (/color/i.test(error.message)) {
+          alert(
+            "Couldn't save the folder color. Apply supabase/migrations/006_folder_color.sql, then try again.",
+          );
+        } else {
+          alert(`Failed to create folder: ${error.message}`);
+        }
+        return;
+      }
+      if (data) {
+        setFolders((prev) => [...prev, data as Folder]);
+        setSection({ kind: "folder", id: data.id });
+        setNewFolderOpen(false);
+      }
+    },
+    [setSection],
+  );
+
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    await supabase.from("folders").update({ name }).eq("id", id);
+    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
   }, []);
 
-  const saveNewFolder = useCallback(async () => {
-    const name = newFolderName.trim();
-    if (!name) {
-      setCreatingFolder(false);
-      return;
-    }
-    const { data, error } = await supabase
-      .from("folders")
-      .insert({ name })
-      .select()
-      .single();
-    if (error) {
-      console.error("폴더 생성 실패:", error);
-      alert(`폴더 생성 실패: ${error.message}`);
-      return;
-    }
-    if (data) {
-      setFolders((prev) => [...prev, data]);
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        next.add(data.id);
-        saveExpanded(next);
-        return next;
-      });
-    }
-    setCreatingFolder(false);
-    setNewFolderName("");
-  }, [newFolderName]);
-
-  const startRenameFolder = useCallback((folder: Folder) => {
-    setEditingFolderId(folder.id);
-    setEditFolderName(folder.name);
-    setTimeout(() => folderInputRef.current?.select(), 0);
-  }, []);
-
-  const saveFolderName = useCallback(async () => {
-    if (!editingFolderId) return;
-    const trimmed = editFolderName.trim();
-    if (!trimmed) {
-      setEditingFolderId(null);
-      return;
-    }
-    await supabase
-      .from("folders")
-      .update({ name: trimmed })
-      .eq("id", editingFolderId);
-    setFolders((prev) =>
-      prev.map((f) => (f.id === editingFolderId ? { ...f, name: trimmed } : f)),
-    );
-    setEditingFolderId(null);
-  }, [editingFolderId, editFolderName]);
-
-  const deleteFolder = useCallback(async (folder: Folder) => {
-    if (
-      !confirm(
-        `폴더 "${folder.name}"을 삭제할까요?\n안에 있는 영상은 루트로 이동합니다.`,
+  const deleteFolder = useCallback(
+    async (folder: Folder) => {
+      if (
+        !confirm(
+          `Delete folder "${folder.name}"?\nClips inside will move to the root.`,
+        )
       )
-    )
-      return;
-    await supabase.from("folders").delete().eq("id", folder.id);
-    setFolders((prev) => prev.filter((f) => f.id !== folder.id));
-    setVideos((prev) =>
-      prev.map((v) =>
-        v.folder_id === folder.id ? { ...v, folder_id: null } : v,
-      ),
-    );
-  }, []);
+        return;
+      await supabase.from("folders").delete().eq("id", folder.id);
+      setFolders((prev) => prev.filter((f) => f.id !== folder.id));
+      setVideos((prev) =>
+        prev.map((v) =>
+          v.folder_id === folder.id ? { ...v, folder_id: null } : v,
+        ),
+      );
+      if (active.kind === "folder" && active.id === folder.id) {
+        setSection({ kind: "all" });
+      }
+    },
+    [active, setSection],
+  );
 
+  const setFolderColor = useCallback(
+    async (id: string, color: string) => {
+      setFolders((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, color } : f)),
+      );
+      const { error } = await supabase
+        .from("folders")
+        .update({ color })
+        .eq("id", id);
+      if (error) {
+        // Likely the `color` column hasn't been added yet via migration 006.
+        console.warn("folder color update failed:", error.message);
+        alert(
+          "Couldn't save the color. Apply supabase/migrations/006_folder_color.sql.",
+        );
+        refreshAll();
+      }
+    },
+    [refreshAll],
+  );
+
+  // Video CRUD
   const moveVideo = useCallback(
     async (videoId: string, folderId: string | null) => {
       setVideos((prev) =>
@@ -234,7 +263,6 @@ export default function HomePage() {
       )
     )
       return;
-    // Server route cleans up R2 source + audio + JSON artifacts in addition to DB rows.
     await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
     setVideos((prev) => prev.filter((v) => v.id !== video.id));
     setMenuOpenFor(null);
@@ -242,7 +270,7 @@ export default function HomePage() {
   }, []);
 
   const startEditVideo = useCallback(
-    (e: React.MouseEvent, video: Video) => {
+    (e: MouseEvent, video: Video) => {
       e.preventDefault();
       e.stopPropagation();
       setEditingVideoId(video.id);
@@ -270,7 +298,7 @@ export default function HomePage() {
   }, [editingVideoId, editVideoTitle]);
 
   const handleVideoKey = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
         saveVideoTitle();
@@ -281,342 +309,315 @@ export default function HomePage() {
     [saveVideoTitle],
   );
 
-  const handleFolderKey = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        saveFolderName();
-      } else if (e.key === "Escape") {
-        setEditingFolderId(null);
-      }
-    },
-    [saveFolderName],
-  );
+  const openMenu = useCallback((e: MouseEvent, videoId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuOpenFor((cur) => (cur === videoId ? null : videoId));
+    setMenuView("main");
+  }, []);
 
-  const handleNewFolderKey = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        saveNewFolder();
-      } else if (e.key === "Escape") {
-        setCreatingFolder(false);
-      }
-    },
-    [saveNewFolder],
-  );
+  // Derived: which videos belong to the active section?
+  const todayBucket = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }, []);
+  const recentVideos = useMemo(() => {
+    const cutoff = Date.now() - RECENT_DAYS * 24 * 3600 * 1000;
+    return videos.filter((v) => new Date(v.created_at).getTime() >= cutoff);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videos, todayBucket]);
 
-  const openMenu = useCallback(
-    (e: React.MouseEvent, videoId: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setMenuOpenFor((cur) => (cur === videoId ? null : videoId));
-      setMenuView("main");
-    },
-    [],
-  );
+  const visibleVideos = useMemo(() => {
+    if (active.kind === "all") return videos;
+    if (active.kind === "recent") return recentVideos;
+    return videos.filter((v) => v.folder_id === active.id);
+  }, [active, videos, recentVideos]);
 
-  function renderVideoCard(video: Video) {
-    const isMenuOpen = menuOpenFor === video.id;
-    return (
-      <Link
-        key={video.id}
-        href={`/player/${video.id}`}
-        className="group relative block bg-card rounded-lg border border-border p-4 hover:border-primary/50 transition-colors"
-      >
-        <div className="flex items-center justify-between">
-          {editingVideoId === video.id ? (
-            <input
-              ref={videoInputRef}
-              value={editVideoTitle}
-              onChange={(e) => setEditVideoTitle(e.target.value)}
-              onBlur={saveVideoTitle}
-              onKeyDown={handleVideoKey}
-              onClick={(e) => e.preventDefault()}
-              className="font-medium text-card-foreground bg-transparent border-b-2 border-primary outline-none flex-1 mr-3"
-              autoFocus
-            />
-          ) : (
-            <h2
-              className="font-medium text-card-foreground truncate"
-              onClick={(e) => startEditVideo(e, video)}
-              title="Click to edit title"
-            >
-              {video.title}
-            </h2>
-          )}
-          <div className="flex items-center gap-3 shrink-0">
-            <span className="text-sm text-muted-foreground font-mono">
-              {formatDuration(video.duration)}
-            </span>
-            <button
-              onClick={(e) => openMenu(e, video.id)}
-              className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="More actions"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <circle cx="3" cy="8" r="1.3" />
-                <circle cx="8" cy="8" r="1.3" />
-                <circle cx="13" cy="8" r="1.3" />
-              </svg>
-            </button>
-          </div>
-        </div>
+  const activeFolder =
+    active.kind === "folder" ? folders.find((f) => f.id === active.id) : null;
 
-        {isMenuOpen && (
-          <div
-            ref={menuRef}
-            onClick={(e) => e.preventDefault()}
-            className="absolute right-3 top-12 z-20 bg-card border border-border rounded-lg shadow-lg min-w-[160px] py-1"
-          >
-            {menuView === "main" ? (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setMenuView("move");
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
-                >
-                  폴더로 이동 →
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    deleteVideo(video);
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-accent transition-colors"
-                >
-                  삭제
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setMenuView("main");
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:bg-accent transition-colors"
-                >
-                  ← 뒤로
-                </button>
-                {video.folder_id && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      moveVideo(video.id, null);
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
-                  >
-                    루트로
-                  </button>
-                )}
-                {folders
-                  .filter((f) => f.id !== video.folder_id)
-                  .map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        moveVideo(video.id, f.id);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors truncate"
-                    >
-                      📁 {f.name}
-                    </button>
-                  ))}
-                {folders.length === 0 && (
-                  <p className="px-3 py-2 text-xs text-muted-foreground">
-                    폴더가 없습니다
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </Link>
-    );
-  }
-
-  const rootVideos = videos.filter((v) => !v.folder_id);
-  const videosByFolder = new Map<string, Video[]>();
-  for (const v of videos) {
-    if (v.folder_id) {
-      const list = videosByFolder.get(v.folder_id) ?? [];
-      list.push(v);
-      videosByFolder.set(v.folder_id, list);
+  const sectionHeader = useMemo(() => {
+    if (active.kind === "recent") {
+      return {
+        title: "Recently added",
+        sub: `Clips added in the last ${RECENT_DAYS} days.`,
+        label: "This window",
+      };
     }
-  }
+    if (active.kind === "folder") {
+      return {
+        title: activeFolder?.name ?? "Folder",
+        sub: "Clips you sorted into this folder.",
+        label: "Clips",
+      };
+    }
+    return {
+      title: "All clips",
+      sub: "Everything in your library, newest first.",
+      label: "All clips",
+    };
+  }, [active, activeFolder]);
 
-  const isEmpty =
-    !loading && folders.length === 0 && videos.length === 0 && !creatingFolder;
+  const activeJobs = jobs.filter((j) => j.status !== "ready");
+
+  const totalDurationLabel = useMemo(() => {
+    let total = 0;
+    for (const v of visibleVideos) total += v.duration ?? 0;
+    if (total <= 0) return "";
+    const m = Math.round(total / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  }, [visibleVideos]);
 
   return (
-    <div className="flex flex-col min-h-full">
-      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border px-4 py-3">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-bold text-primary">Shadowing+</h1>
-          <Link
-            href="/bookmarks"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Bookmarks
-          </Link>
-        </div>
-      </header>
+    <div className="home-app">
+      <Sidebar
+        active={active}
+        onSelect={setSection}
+        folders={folders}
+        videos={videos.map((v) => ({ id: v.id, folder_id: v.folder_id }))}
+        allCount={videos.length}
+        recentCount={recentVideos.length}
+        onCreateFolder={openNewFolder}
+        onRenameFolder={renameFolder}
+        onDeleteFolder={deleteFolder}
+        onSetFolderColor={setFolderColor}
+      />
 
-      <main className="flex-1 px-4 py-6">
-        <div className="max-w-3xl mx-auto space-y-6">
-          <UploadDropzone onJobQueued={refreshAll} />
+      <NewFolderModal
+        open={newFolderOpen}
+        onCancel={() => setNewFolderOpen(false)}
+        onCreate={createFolder}
+        existingNames={folders.map((f) => f.name)}
+      />
 
-          {jobs.filter((j) => j.status !== "ready").length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-xs uppercase tracking-wider text-muted-foreground">
-                Processing
-              </h2>
-              <div className="grid gap-2">
-                {jobs
-                  .filter((j) => j.status !== "ready")
-                  .map((j) => (
-                    <JobCard key={j.id} job={j} onChanged={refreshAll} />
-                  ))}
-              </div>
+      <main className="main">
+        <div className="main-inner">
+          <header className="page-head">
+            <div>
+              {active.kind === "folder" && activeFolder && (
+                <span
+                  className="nav-folder-dot"
+                  style={{
+                    display: "inline-block",
+                    marginBottom: 10,
+                    color: folderColor(activeFolder),
+                  }}
+                />
+              )}
+              <h1 className="page-title">{sectionHeader.title}</h1>
+              <p className="page-sub">{sectionHeader.sub}</p>
+            </div>
+            <div className="page-actions">
+              <button type="button" className="btn ghost" disabled title="Sort (coming soon)">
+                <SortIcon /> <span className="btn-label">Sort</span> <ChevronDownIcon />
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => dropzoneRef.current?.pick()}
+              >
+                <PlusIcon /> <span className="btn-label">Add clip</span>
+              </button>
+            </div>
+          </header>
+
+          <UploadDropzone ref={dropzoneRef} onJobQueued={refreshAll} />
+
+          {activeJobs.length > 0 && (
+            <section className="jobs-queue" aria-label="Processing">
+              {activeJobs.map((j) => (
+                <JobCard key={j.id} job={j} onChanged={refreshAll} />
+              ))}
             </section>
           )}
 
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <section>
+            <div className="section-head">
+              <span className="section-title">{sectionHeader.label}</span>
+              <span className="section-meta">
+                {visibleVideos.length} {visibleVideos.length === 1 ? "clip" : "clips"}
+                {totalDurationLabel ? ` · ${totalDurationLabel}` : ""}
+              </span>
             </div>
-          ) : isEmpty ? (
-            <>
-              <div className="text-center py-12 text-muted-foreground">
-                <p className="text-lg mb-2">No videos yet</p>
-                <p className="text-sm">Drop a file above to start studying.</p>
-              </div>
-              <div className="flex justify-center">
-                <button
-                  onClick={startCreateFolder}
-                  className="text-sm text-muted-foreground hover:text-foreground"
-                >
-                  + 새 폴더
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mb-4">
-                {creatingFolder ? (
-                  <input
-                    ref={newFolderInputRef}
-                    value={newFolderName}
-                    onChange={(e) => setNewFolderName(e.target.value)}
-                    onBlur={saveNewFolder}
-                    onKeyDown={handleNewFolderKey}
-                    placeholder="폴더 이름"
-                    className="w-full px-3 py-2 text-sm bg-card border border-primary rounded-lg outline-none"
-                    autoFocus
-                  />
-                ) : (
-                  <button
-                    onClick={startCreateFolder}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    + 새 폴더
-                  </button>
-                )}
-              </div>
 
-              <div className="grid gap-3">
-                {folders.map((folder) => {
-                  const isExpanded = expanded.has(folder.id);
-                  const folderVideos = videosByFolder.get(folder.id) ?? [];
-                  return (
-                    <div
-                      key={folder.id}
-                      className="bg-card rounded-lg border border-border overflow-hidden"
-                    >
-                      <div className="flex items-center px-4 py-3">
-                        <button
-                          onClick={() => toggleExpand(folder.id)}
-                          className="mr-2 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                          aria-label={isExpanded ? "Collapse" : "Expand"}
-                        >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 12 12"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            className={`transition-transform ${
-                              isExpanded ? "rotate-90" : ""
-                            }`}
-                          >
-                            <path d="M4 2l4 4-4 4" />
-                          </svg>
-                        </button>
-                        <span className="mr-2 shrink-0">📁</span>
-                        {editingFolderId === folder.id ? (
-                          <input
-                            ref={folderInputRef}
-                            value={editFolderName}
-                            onChange={(e) => setEditFolderName(e.target.value)}
-                            onBlur={saveFolderName}
-                            onKeyDown={handleFolderKey}
-                            className="font-medium bg-transparent border-b-2 border-primary outline-none flex-1 mr-3"
-                            autoFocus
-                          />
-                        ) : (
-                          <h2
-                            className="font-medium flex-1 cursor-pointer truncate"
-                            onClick={() => startRenameFolder(folder)}
-                            title="Click to rename"
-                          >
-                            {folder.name}
-                          </h2>
-                        )}
-                        <span className="text-xs text-muted-foreground font-mono mr-2 shrink-0">
-                          {folderVideos.length}
-                        </span>
-                        <button
-                          onClick={() => deleteFolder(folder)}
-                          className="p-1 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                          aria-label="Delete folder"
-                        >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 16 16"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                          >
-                            <path d="M4 4l8 8M12 4l-8 8" />
-                          </svg>
-                        </button>
+            {loading ? (
+              <p className="empty">Loading…</p>
+            ) : visibleVideos.length === 0 ? (
+              <div className="empty">
+                <div className="empty-title">No clips here yet</div>
+                <div>Drop a file above to start shadowing.</div>
+              </div>
+            ) : (
+              <ul className="list">
+                {visibleVideos.map((video) => {
+                  const isMenuOpen = menuOpenFor === video.id;
+                  const itemFolder =
+                    video.folder_id &&
+                    !(active.kind === "folder" && active.id === video.folder_id)
+                      ? folders.find((f) => f.id === video.folder_id)
+                      : null;
+                  const card = (
+                    <>
+                      <div className="item-thumb" data-kind={video.media_type}>
+                        <PlayIcon />
                       </div>
-
-                      {isExpanded && folderVideos.length > 0 && (
-                        <div className="border-t border-border bg-background/30 grid gap-2 p-2">
-                          {folderVideos.map(renderVideoCard)}
+                      <div className="item-body">
+                        {editingVideoId === video.id ? (
+                          <span className="item-title">
+                            <input
+                              ref={videoInputRef}
+                              value={editVideoTitle}
+                              onChange={(e) => setEditVideoTitle(e.target.value)}
+                              onBlur={saveVideoTitle}
+                              onKeyDown={handleVideoKey}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              autoFocus
+                            />
+                          </span>
+                        ) : (
+                          <span
+                            className="item-title"
+                            onClick={(e) => startEditVideo(e, video)}
+                            title={video.title}
+                          >
+                            <span className="item-title-text" data-lines="2">
+                              {video.title}
+                              <span className="item-tag">{video.media_type}</span>
+                            </span>
+                          </span>
+                        )}
+                        {itemFolder && (
+                          <div
+                            className="item-folder-sub"
+                            style={{ color: folderColor(itemFolder) }}
+                          >
+                            <span className="item-folder-dot" aria-hidden="true" />
+                            <span className="item-folder-sub-name">
+                              {itemFolder.name}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="item-duration">
+                        {formatDuration(video.duration)}
+                      </div>
+                      <button
+                        type="button"
+                        className={"item-menu" + (isMenuOpen ? " is-open" : "")}
+                        aria-label="More"
+                        onClick={(e) => openMenu(e, video.id)}
+                      >
+                        <DotsIcon />
+                      </button>
+                    </>
+                  );
+                  return (
+                    <li key={video.id} style={{ position: "relative" }}>
+                      <Link
+                        href={`/player/${video.id}`}
+                        className="item"
+                        onClick={(e) => {
+                          if (
+                            editingVideoId === video.id ||
+                            menuOpenFor === video.id
+                          ) {
+                            e.preventDefault();
+                          }
+                        }}
+                      >
+                        {card}
+                      </Link>
+                      {isMenuOpen && (
+                        <div ref={menuRef} className="item-menu-dropdown">
+                          {menuView === "main" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMenuView("move");
+                                }}
+                              >
+                                Move to folder →
+                              </button>
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  deleteVideo(video);
+                                }}
+                              >
+                                Delete clip
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMenuView("main");
+                                }}
+                              >
+                                ← Back
+                              </button>
+                              <div className="menu-sep" />
+                              {video.folder_id && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    moveVideo(video.id, null);
+                                  }}
+                                >
+                                  Move to root
+                                </button>
+                              )}
+                              {folders
+                                .filter((f) => f.id !== video.folder_id)
+                                .map((f) => (
+                                  <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      moveVideo(video.id, f.id);
+                                    }}
+                                  >
+                                    <span
+                                      className="nav-folder-dot"
+                                      style={{ color: folderColor(f) }}
+                                    />
+                                    {f.name}
+                                  </button>
+                                ))}
+                              {folders.length === 0 && (
+                                <p className="menu-empty">No folders yet</p>
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </li>
                   );
                 })}
-
-                {rootVideos.map(renderVideoCard)}
-              </div>
-            </>
-          )}
+              </ul>
+            )}
+          </section>
         </div>
       </main>
     </div>
   );
 }
+

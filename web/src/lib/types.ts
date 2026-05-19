@@ -4,6 +4,7 @@ export interface Folder {
   id: string;
   name: string;
   position: number;
+  color: string | null;
   created_at: string;
 }
 

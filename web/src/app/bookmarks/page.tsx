@@ -1,226 +1,403 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import Link from "next/link";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { Video, Segment, Bookmark } from "@/lib/types";
+import type { Folder, Video } from "@/lib/types";
+import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
+import NewFolderModal from "@/components/home/NewFolderModal";
+import BookmarkGroup from "@/components/bookmarks/BookmarkGroup";
+import BookmarksEmpty from "@/components/bookmarks/BookmarksEmpty";
+import type { BookmarkItemData } from "@/components/bookmarks/BookmarkItem";
+import {
+  ChevronDownIcon,
+  DrillIcon,
+  SortIcon,
+} from "@/components/bookmarks/Icons";
 
-interface BookmarkWithDetails extends Bookmark {
-  segment: Segment & { video: Video };
+import "../home.css";
+import "./bookmarks.css";
+
+// Same key the home page uses for its persisted active section.
+// Writing here lets sidebar clicks on /bookmarks pre-select the right
+// section when we navigate back to /.
+const ACTIVE_SECTION_KEY = "sp:home:section";
+
+interface BookmarkRow {
+  id: string;
+  memo: string | null;
+  created_at: string;
+  segment: {
+    id: string;
+    text: string;
+    translation: string | null;
+    start_time: number;
+    end_time: number;
+    video: Video & { folder: { name: string } | null };
+  } | null;
+}
+
+interface Group {
+  videoId: string;
+  videoTitle: string;
+  mediaType: Video["media_type"];
+  folderName: string | null;
+  duration: number | null;
+  items: BookmarkItemData[];
+}
+
+function formatRelative(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "";
+  const diffMs = Date.now() - t;
+  const sec = Math.round(diffMs / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  const wk = Math.round(day / 7);
+  if (wk < 5) return `${wk}w ago`;
+  const mo = Math.round(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  const yr = Math.round(day / 365);
+  return `${yr}y ago`;
 }
 
 export default function BookmarksPage() {
-  const [bookmarks, setBookmarks] = useState<BookmarkWithDetails[]>([]);
-  const [videos, setVideos] = useState<Video[]>([]);
+  const router = useRouter();
+  const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [filterVideoId, setFilterVideoId] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [playingBookmarkId, setPlayingBookmarkId] = useState<string | null>(
+    null,
+  );
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [bmRes, foldersRes, videosRes] = await Promise.all([
+      supabase
+        .from("bookmarks")
+        .select(
+          "id, memo, created_at, segment:segments(id, text, translation, start_time, end_time, video:videos(*, folder:folders(name)))",
+        )
+        .order("created_at", { ascending: false }),
+      supabase.from("folders").select("*").order("created_at"),
+      supabase
+        .from("videos")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    ]);
+    setBookmarks((bmRes.data ?? []) as unknown as BookmarkRow[]);
+    setFolders((foldersRes.data ?? []) as Folder[]);
+    setAllVideos((videosRes.data ?? []) as Video[]);
+  }, []);
 
   useEffect(() => {
-    async function load() {
-      const { data } = await supabase
-        .from("bookmarks")
-        .select("*, segment:segments(*, video:videos(*))")
-        .order("created_at", { ascending: false });
+    refresh().then(() => setLoading(false));
+  }, [refresh]);
 
-      if (data) {
-        setBookmarks(data as unknown as BookmarkWithDetails[]);
-        // Extract unique videos
-        const videoMap = new Map<string, Video>();
-        for (const b of data as unknown as BookmarkWithDetails[]) {
-          if (b.segment?.video) {
-            videoMap.set(b.segment.video.id, b.segment.video);
-          }
-        }
-        setVideos(Array.from(videoMap.values()));
+  // Group bookmarks by video, preserving the order in which the first
+  // bookmark per video appeared (newest first → oldest).
+  const groups: Group[] = useMemo(() => {
+    const byVideo = new Map<string, Group>();
+    for (const bm of bookmarks) {
+      if (!bm.segment?.video) continue;
+      const v = bm.segment.video;
+      let g = byVideo.get(v.id);
+      if (!g) {
+        g = {
+          videoId: v.id,
+          videoTitle: v.title,
+          mediaType: v.media_type,
+          folderName: v.folder?.name ?? null,
+          duration: v.duration,
+          items: [],
+        };
+        byVideo.set(v.id, g);
       }
-      setLoading(false);
+      g.items.push({
+        bookmarkId: bm.id,
+        segmentId: bm.segment.id,
+        videoId: v.id,
+        text: bm.segment.text,
+        translation: bm.segment.translation,
+        note: bm.memo,
+        startTime: bm.segment.start_time,
+        endTime: bm.segment.end_time,
+        date: formatRelative(bm.created_at),
+      });
     }
-    load();
-  }, []);
+    return Array.from(byVideo.values());
+  }, [bookmarks]);
 
-  const playSegment = useCallback(
-    (bookmark: BookmarkWithDetails) => {
-      const audio = audioRef.current;
-      if (!audio) return;
-
-      const seg = bookmark.segment;
-      const videoUrl = seg.video.audio_url;
-
-      if (audio.src !== videoUrl) {
-        audio.src = videoUrl;
-      }
-
-      audio.currentTime = seg.start_time;
-      audio.play().catch(() => {});
-      setPlayingId(bookmark.id);
-
-      // Stop at segment end
-      const checkEnd = () => {
-        if (audio.currentTime >= seg.end_time) {
-          audio.pause();
-          audio.removeEventListener("timeupdate", checkEnd);
-          setPlayingId(null);
-        }
-      };
-      audio.addEventListener("timeupdate", checkEnd);
-    },
-    [],
+  const totalCount = groups.reduce((n, g) => n + g.items.length, 0);
+  const filters = useMemo(
+    () => [
+      { id: "all", label: "All", count: totalCount },
+      ...groups.map((g) => ({
+        id: g.videoId,
+        label: g.videoTitle,
+        count: g.items.length,
+      })),
+    ],
+    [groups, totalCount],
   );
 
-  const removeBookmark = useCallback(async (bookmarkId: string) => {
-    await supabase.from("bookmarks").delete().eq("id", bookmarkId);
-    setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
+  const visible =
+    filterVideoId === "all"
+      ? groups
+      : groups.filter((g) => g.videoId === filterVideoId);
+
+  const stopPlayback = useCallback(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    a.pause();
+    setPlayingBookmarkId(null);
   }, []);
 
-  const filtered =
-    filterVideoId === "all"
-      ? bookmarks
-      : bookmarks.filter((b) => b.segment?.video?.id === filterVideoId);
+  const playBookmark = useCallback(
+    (bm: BookmarkItemData, audioUrl: string) => {
+      const a = audioRef.current;
+      if (!a) return;
+      if (playingBookmarkId === bm.bookmarkId) {
+        stopPlayback();
+        return;
+      }
+      if (a.src !== audioUrl) a.src = audioUrl;
+      a.currentTime = bm.startTime;
+      a.play().catch(() => {});
+      setPlayingBookmarkId(bm.bookmarkId);
+
+      const onTimeUpdate = () => {
+        if (a.currentTime >= bm.endTime) {
+          a.pause();
+          a.removeEventListener("timeupdate", onTimeUpdate);
+          setPlayingBookmarkId((prev) =>
+            prev === bm.bookmarkId ? null : prev,
+          );
+        }
+      };
+      a.addEventListener("timeupdate", onTimeUpdate);
+    },
+    [playingBookmarkId, stopPlayback],
+  );
+
+  const removeBookmark = useCallback(
+    async (bookmarkId: string) => {
+      if (playingBookmarkId === bookmarkId) stopPlayback();
+      await supabase.from("bookmarks").delete().eq("id", bookmarkId);
+      setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
+    },
+    [playingBookmarkId, stopPlayback],
+  );
+
+  // Sidebar navigation: clicking another section from /bookmarks should land
+  // on / with that section selected. Persist via localStorage and navigate.
+  const handleSidebarSelect = useCallback(
+    (section: ActiveSection) => {
+      try {
+        localStorage.setItem(ACTIVE_SECTION_KEY, JSON.stringify(section));
+      } catch {
+        /* ignore */
+      }
+      router.push("/");
+    },
+    [router],
+  );
+
+  // Folder CRUD performed inline from sidebar interactions.
+  const openNewFolder = useCallback(() => setNewFolderOpen(true), []);
+
+  const createFolder = useCallback(
+    async (input: { name: string; color: string }) => {
+      const { data, error } = await supabase
+        .from("folders")
+        .insert({ name: input.name, color: input.color })
+        .select()
+        .single();
+      if (error) {
+        if (/color/i.test(error.message)) {
+          alert(
+            "Couldn't save the folder color. Apply supabase/migrations/006_folder_color.sql, then try again.",
+          );
+        } else {
+          alert(`Failed to create folder: ${error.message}`);
+        }
+        return;
+      }
+      if (data) {
+        setFolders((prev) => [...prev, data as Folder]);
+        setNewFolderOpen(false);
+        handleSidebarSelect({ kind: "folder", id: data.id });
+      }
+    },
+    [handleSidebarSelect],
+  );
+
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    await supabase.from("folders").update({ name }).eq("id", id);
+    setFolders((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, name } : f)),
+    );
+  }, []);
+
+  const deleteFolder = useCallback(async (folder: Folder) => {
+    if (
+      !confirm(
+        `Delete folder "${folder.name}"?\nClips inside will move to the root.`,
+      )
+    )
+      return;
+    await supabase.from("folders").delete().eq("id", folder.id);
+    setFolders((prev) => prev.filter((f) => f.id !== folder.id));
+    setAllVideos((prev) =>
+      prev.map((v) =>
+        v.folder_id === folder.id ? { ...v, folder_id: null } : v,
+      ),
+    );
+  }, []);
+
+  const setFolderColor = useCallback(
+    async (id: string, color: string) => {
+      setFolders((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, color } : f)),
+      );
+      const { error } = await supabase
+        .from("folders")
+        .update({ color })
+        .eq("id", id);
+      if (error) {
+        alert(
+          "Couldn't save the color. Apply supabase/migrations/006_folder_color.sql.",
+        );
+        refresh();
+      }
+    },
+    [refresh],
+  );
+
+  const recentCount = useMemo(() => {
+    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+    return allVideos.filter(
+      (v) => new Date(v.created_at).getTime() >= cutoff,
+    ).length;
+  }, [allVideos]);
 
   return (
-    <div className="flex flex-col min-h-full">
-      <audio ref={audioRef} preload="none" />
+    <div className="home-app">
+      <Sidebar
+        active={{ kind: "all" }}
+        onSelect={handleSidebarSelect}
+        folders={folders}
+        videos={allVideos.map((v) => ({ id: v.id, folder_id: v.folder_id }))}
+        allCount={allVideos.length}
+        recentCount={recentCount}
+        onCreateFolder={openNewFolder}
+        onRenameFolder={renameFolder}
+        onDeleteFolder={deleteFolder}
+        onSetFolderColor={setFolderColor}
+      />
 
-      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border px-4 py-3">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Home"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+      <NewFolderModal
+        open={newFolderOpen}
+        onCancel={() => setNewFolderOpen(false)}
+        onCreate={createFolder}
+        existingNames={folders.map((f) => f.name)}
+      />
+
+      <main className="main">
+        <div className="main-inner">
+          <header className="bm-head">
+            <div>
+              <h1 className="page-title">Bookmarks</h1>
+              <div className="bm-head-meta">
+                <span><b>{totalCount}</b> saved sentences</span>
+                <span style={{ color: "var(--text-4)" }}>·</span>
+                <span>from <b>{groups.length}</b> {groups.length === 1 ? "clip" : "clips"}</span>
+              </div>
+            </div>
+            <div className="page-actions">
+              <button
+                type="button"
+                className="btn ghost"
+                disabled
+                title="Sort (only Newest first for now)"
               >
-                <path d="M13 4L7 10l6 6" />
-              </svg>
-            </Link>
-            <h1 className="text-lg font-bold">Bookmarks</h1>
-          </div>
+                <SortIcon /> Newest first <ChevronDownIcon />
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled
+                title="Practice mode (coming soon)"
+              >
+                <DrillIcon /> Practice all
+              </button>
+            </div>
+          </header>
 
-          {videos.length > 1 && (
-            <select
-              value={filterVideoId}
-              onChange={(e) => setFilterVideoId(e.target.value)}
-              className="text-sm bg-card border border-border rounded-lg px-2 py-1 text-foreground"
-            >
-              <option value="all">All</option>
-              {videos.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.title}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      </header>
-
-      <main className="flex-1 px-4 py-6">
-        <div className="max-w-3xl mx-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-20 text-muted-foreground">
-              <p className="text-lg mb-2">No bookmarks yet</p>
-              <p className="text-sm">
-                Bookmark sentences while practicing
-              </p>
-            </div>
+            <div className="bm-loading">Loading bookmarks…</div>
+          ) : groups.length === 0 ? (
+            <BookmarksEmpty />
           ) : (
-            <div className="space-y-2">
-              {filtered.map((bookmark) => {
-                const seg = bookmark.segment;
-                if (!seg) return null;
-
-                return (
-                  <div
-                    key={bookmark.id}
-                    className="bg-card rounded-lg border border-border p-4"
+            <>
+              <div className="bm-filters">
+                {filters.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={
+                      "bm-chip" + (filterVideoId === f.id ? " active" : "")
+                    }
+                    onClick={() => setFilterVideoId(f.id)}
                   >
-                    <div className="flex items-start gap-3">
-                      <button
-                        onClick={() => playSegment(bookmark)}
-                        className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
-                          playingId === bookmark.id
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground"
-                        }`}
-                        aria-label="Play"
-                      >
-                        {playingId === bookmark.id ? (
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                          >
-                            <rect x="3" y="2" width="4" height="12" rx="1" />
-                            <rect x="9" y="2" width="4" height="12" rx="1" />
-                          </svg>
-                        ) : (
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                          >
-                            <path d="M4 2.5v11l9-5.5z" />
-                          </svg>
-                        )}
-                      </button>
+                    <span className="bm-chip-label">{f.label}</span>
+                    <span className="bm-chip-count">{f.count}</span>
+                  </button>
+                ))}
+              </div>
 
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-relaxed">
-                          {seg.text}
-                        </p>
-                        {seg.translation && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {seg.translation}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2 mt-2">
-                          <Link
-                            href={`/player/${seg.video?.id}`}
-                            className="text-xs text-primary hover:underline truncate"
-                          >
-                            {seg.video?.title}
-                          </Link>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => removeBookmark(bookmark.id)}
-                        className="shrink-0 p-1 text-muted-foreground hover:text-destructive transition-colors"
-                        aria-label="Remove bookmark"
-                      >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        >
-                          <path d="M4 4l8 8M12 4l-8 8" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+              {visible.map((g) => {
+                const audioUrl = allVideos.find(
+                  (v) => v.id === g.videoId,
+                )?.audio_url;
+                return (
+                  <BookmarkGroup
+                    key={g.videoId}
+                    videoId={g.videoId}
+                    videoTitle={g.videoTitle}
+                    mediaType={g.mediaType}
+                    folderName={g.folderName}
+                    duration={g.duration}
+                    items={g.items}
+                    play={{ playingBookmarkId }}
+                    onPlayBookmark={(bm) => {
+                      if (!audioUrl) return;
+                      playBookmark(bm, audioUrl);
+                    }}
+                    onRemoveBookmark={removeBookmark}
+                  />
                 );
               })}
-            </div>
+            </>
           )}
         </div>
       </main>
+
+      <audio ref={audioRef} preload="none" className="bm-audio" />
     </div>
   );
 }

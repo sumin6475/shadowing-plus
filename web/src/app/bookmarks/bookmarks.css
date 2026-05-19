@@ -1,0 +1,353 @@
+/* ─────────────────────────────────────────────────────────────
+   Shadowing+ — bookmarks page styles
+   Scoped under .home-app so the existing Sidebar + token block
+   keep working. Adds .bm-* selectors for the bookmark-specific
+   content in the main column.
+   ───────────────────────────────────────────────────────────── */
+
+.home-app .bm-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 14px;
+}
+.home-app .bm-head-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.home-app .bm-head-meta b {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* Filter chips */
+.home-app .bm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--hairline-soft);
+  padding-bottom: 14px;
+}
+.home-app .bm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  transition: background .12s, color .12s, border-color .12s;
+  max-width: 260px;
+}
+.home-app .bm-chip:hover { background: var(--surface-2); }
+.home-app .bm-chip.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.home-app .bm-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.home-app .bm-chip-count {
+  font-family: var(--home-font-mono);
+  font-size: 11px;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* Group card */
+.home-app .bm-group { margin-top: 28px; }
+.home-app .bm-group:first-of-type { margin-top: 4px; }
+.home-app .bm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 4px 14px;
+}
+.home-app .bm-group-thumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hairline-soft);
+}
+.home-app .bm-group-thumb[data-kind="video"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: oklch(from var(--accent) 0.90 0.04 h);
+}
+.home-app .bm-group-body { min-width: 0; flex: 1; }
+.home-app .bm-group-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color .12s;
+}
+.home-app .bm-group-title:hover { color: var(--accent-text); }
+.home-app .bm-group-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-4);
+}
+.home-app .bm-group-meta b {
+  color: var(--text-3);
+  font-weight: 500;
+}
+.home-app .bm-group-meta .dot {
+  display: inline-block;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  margin: 0 6px;
+  vertical-align: middle;
+  opacity: 0.6;
+}
+.home-app .bm-group-action { flex-shrink: 0; }
+
+/* Bookmark list */
+.home-app .bm-list {
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.home-app .bm-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 60px 1fr auto;
+  gap: 16px;
+  padding: 16px 18px;
+  align-items: start;
+  cursor: pointer;
+  border-bottom: 1px solid var(--hairline-soft);
+  transition: background .12s;
+}
+.home-app .bm-item:last-child { border-bottom: 0; }
+.home-app .bm-item:hover { background: var(--surface-2); }
+
+.home-app .bm-time {
+  font-family: var(--home-font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  padding-top: 4px;
+}
+
+.home-app .bm-text { min-width: 0; }
+.home-app .bm-en {
+  font-family: var(--home-font-serif);
+  font-weight: 400;
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: -0.008em;
+  color: var(--text);
+  text-wrap: pretty;
+}
+.home-app .bm-en::before {
+  content: "\201C";
+  margin-right: 1px;
+  color: var(--text-4);
+  font-style: italic;
+}
+.home-app .bm-en::after {
+  content: "\201D";
+  margin-left: 1px;
+  color: var(--text-4);
+  font-style: italic;
+}
+.home-app .bm-ko {
+  margin-top: 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  letter-spacing: -0.003em;
+}
+.home-app .bm-note {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-soft);
+}
+
+.home-app .bm-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.home-app .bm-date {
+  font-size: 11px;
+  color: var(--text-4);
+  font-family: var(--home-font-mono);
+  letter-spacing: 0;
+  padding-right: 4px;
+  flex-shrink: 0;
+}
+.home-app .bm-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.home-app .bm-item:hover .bm-actions,
+.home-app .bm-item:focus-within .bm-actions { opacity: 1; }
+.home-app .bm-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s, color .12s, border-color .12s;
+  border: 1px solid transparent;
+}
+.home-app .bm-action:hover {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--hairline);
+}
+.home-app .bm-action.primary {
+  background: var(--accent);
+  color: oklch(0.99 0 0);
+  border-color: var(--accent);
+  opacity: 1;
+}
+.home-app .bm-action.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: oklch(0.99 0 0);
+}
+.home-app .bm-action.is-playing {
+  background: var(--accent);
+  color: oklch(0.99 0 0);
+  border-color: var(--accent);
+}
+
+/* Empty state */
+.home-app .bm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 96px 24px;
+  gap: 18px;
+}
+.home-app .bm-empty-glyph {
+  width: 96px;
+  height: 96px;
+  border-radius: 24px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.home-app .bm-empty-glyph::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border: 1px dashed oklch(from var(--accent) l c h / 0.28);
+  border-radius: 30px;
+  pointer-events: none;
+}
+.home-app .bm-empty-title {
+  font-family: var(--home-font-serif);
+  font-size: 30px;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  margin: 0;
+}
+.home-app .bm-empty-sub {
+  max-width: 420px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+.home-app .bm-empty-hints {
+  display: flex;
+  gap: 28px;
+  margin-top: 8px;
+  color: var(--text-4);
+  font-size: 12.5px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.home-app .bm-empty-hints b {
+  color: var(--text-3);
+  font-weight: 500;
+  font-family: var(--home-font-mono);
+  font-size: 11.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  margin-right: 6px;
+}
+
+.home-app .bm-loading {
+  padding: 80px 0;
+  text-align: center;
+  color: var(--text-3);
+}
+
+/* Inline mini player (hidden audio element parent) */
+.home-app .bm-audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* Responsive */
+@media (max-width: 720px) {
+  .home-app .bm-item {
+    grid-template-columns: 48px 1fr;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .home-app .bm-side {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    justify-content: space-between;
+  }
+  .home-app .bm-actions { opacity: 1; }
+  .home-app .bm-en { font-size: 17px; }
+}

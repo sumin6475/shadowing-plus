@@ -15,6 +15,7 @@ export interface AudioPlayerHandle {
   seekTo: (time: number) => void;
   getCurrentTime: () => number;
   isPlaying: () => boolean;
+  setPlaybackRate: (rate: number) => void;
 }
 
 interface AudioPlayerProps {
@@ -23,10 +24,26 @@ interface AudioPlayerProps {
   onTimeUpdate?: (time: number) => void;
   externalMediaRef?: React.RefObject<HTMLMediaElement | null>;
   abRepeat?: { a: number; b: number | null } | null;
+  onPlayingChange?: (playing: boolean) => void;
+  /** Hide the built-in UI (button + progress bar). The <audio> element still
+   *  mounts, the imperative handle still works, and play/timeupdate events
+   *  still fire — useful when a parent renders its own player chrome. */
+  hideChrome?: boolean;
 }
 
 const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
-  ({ src, duration, onTimeUpdate, externalMediaRef, abRepeat }, ref) => {
+  (
+    {
+      src,
+      duration,
+      onTimeUpdate,
+      externalMediaRef,
+      abRepeat,
+      onPlayingChange,
+      hideChrome,
+    },
+    ref,
+  ) => {
     const internalAudioRef = useRef<HTMLAudioElement>(null);
     const [playing, setPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -47,6 +64,10 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
       },
       getCurrentTime: () => getMedia()?.currentTime ?? 0,
       isPlaying: () => !getMedia()?.paused,
+      setPlaybackRate: (rate: number) => {
+        const el = getMedia();
+        if (el) el.playbackRate = rate;
+      },
     }));
 
     useEffect(() => {
@@ -59,8 +80,14 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         onTimeUpdate?.(t);
       };
 
-      const handlePlay = () => setPlaying(true);
-      const handlePause = () => setPlaying(false);
+      const handlePlay = () => {
+        setPlaying(true);
+        onPlayingChange?.(true);
+      };
+      const handlePause = () => {
+        setPlaying(false);
+        onPlayingChange?.(false);
+      };
 
       media.addEventListener("timeupdate", handleTimeUpdate);
       media.addEventListener("play", handlePlay);
@@ -71,7 +98,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         media.removeEventListener("play", handlePlay);
         media.removeEventListener("pause", handlePause);
       };
-    }, [onTimeUpdate, getMedia]);
+    }, [onTimeUpdate, onPlayingChange, getMedia]);
 
     const togglePlay = useCallback(() => {
       const media = getMedia();
@@ -104,6 +131,12 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
     const hasExternal = !!externalMediaRef;
+
+    if (hideChrome) {
+      return !hasExternal ? (
+        <audio ref={internalAudioRef} src={src} preload="auto" />
+      ) : null;
+    }
 
     return (
       <div className="bg-card border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

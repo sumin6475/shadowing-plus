@@ -2,13 +2,22 @@
 
 import { useEffect, useState, useRef, useCallback, use } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { Video, Segment } from "@/lib/types";
 import AudioPlayer, { type AudioPlayerHandle } from "@/components/AudioPlayer";
-import SubtitlePanel from "@/components/SubtitlePanel";
-import FocusPanel from "@/components/FocusPanel";
+import ClipHeader from "@/components/clip/ClipHeader";
+import ClipPlayer from "@/components/clip/ClipPlayer";
+import FocusLine from "@/components/clip/FocusLine";
+import ClipControls from "@/components/clip/ClipControls";
+import Transcript from "@/components/clip/Transcript";
+
+import "./clip.css";
 
 export type AbRepeat = { a: number; b: number | null };
+
+const SPEEDS = [0.5, 0.7, 0.85, 1.0, 1.15, 1.25, 1.5];
+const DEFAULT_SPEED_IDX = 3;
 
 export default function PlayerPage({
   params,
@@ -16,8 +25,11 @@ export default function PlayerPage({
   params: Promise<{ videoId: string }>;
 }) {
   const { videoId } = use(params);
+  const searchParams = useSearchParams();
+  const seekedFromQueryRef = useRef(false);
 
   const [video, setVideo] = useState<Video | null>(null);
+  const [folderName, setFolderName] = useState<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
@@ -26,6 +38,8 @@ export default function PlayerPage({
   const [hideVideo, setHideVideo] = useState(false);
   const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED_IDX);
 
   const playerRef = useRef<AudioPlayerHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,10 +70,19 @@ export default function PlayerPage({
           .order("index"),
       ]);
 
-      if (videoRes.data) setVideo(videoRes.data);
+      if (videoRes.data) {
+        setVideo(videoRes.data);
+        if (videoRes.data.folder_id) {
+          const { data: folder } = await supabase
+            .from("folders")
+            .select("name")
+            .eq("id", videoRes.data.folder_id)
+            .maybeSingle();
+          if (folder?.name) setFolderName(folder.name);
+        }
+      }
       if (segmentsRes.data) setSegments(segmentsRes.data);
 
-      // Load bookmarks for these segments
       if (segmentsRes.data && segmentsRes.data.length > 0) {
         const segIds = segmentsRes.data.map((s) => s.id);
         const { data: bookmarks } = await supabase
@@ -77,9 +100,27 @@ export default function PlayerPage({
     load();
   }, [videoId]);
 
+  // Apply playback rate whenever speed index changes
+  useEffect(() => {
+    playerRef.current?.setPlaybackRate(SPEEDS[speedIdx]);
+  }, [speedIdx]);
+
+  // Deep-link: seek to ?t= once segments are loaded.
+  useEffect(() => {
+    if (loading || seekedFromQueryRef.current) return;
+    const t = Number(searchParams.get("t"));
+    if (!Number.isFinite(t) || t <= 0) return;
+    seekedFromQueryRef.current = true;
+    // Defer until AudioPlayer's imperative handle is wired.
+    const id = setTimeout(() => {
+      playerRef.current?.seekTo(t);
+      playerRef.current?.play();
+    }, 50);
+    return () => clearTimeout(id);
+  }, [loading, searchParams]);
+
   // Time update handler — AB enforcement + segment tracking + karaoke
   const handleTimeUpdate = useCallback((time: number) => {
-    // AB repeat enforcement
     const ab = abRepeatRef.current;
     if (ab && ab.b !== null && time >= ab.b) {
       playerRef.current?.seekTo(ab.a);
@@ -128,6 +169,14 @@ export default function PlayerPage({
     playerRef.current?.play();
   }, []);
 
+  const togglePlay = useCallback(() => {
+    if (playerRef.current?.isPlaying()) {
+      playerRef.current.pause();
+    } else {
+      playerRef.current?.play();
+    }
+  }, []);
+
   const toggleAbRepeat = useCallback(() => {
     const current = abRepeatRef.current;
     const now = playerRef.current?.getCurrentTime() ?? 0;
@@ -143,35 +192,37 @@ export default function PlayerPage({
     }
   }, []);
 
-  const toggleBookmark = useCallback(async (segmentId: string) => {
-    const isBookmarked = bookmarkedIds.has(segmentId);
+  const selectSpeed = useCallback((s: number) => {
+    const idx = SPEEDS.indexOf(s);
+    if (idx !== -1) setSpeedIdx(idx);
+  }, []);
 
-    // Update UI first
-    setBookmarkedIds((prev) => {
-      const next = new Set(prev);
+  const toggleBookmark = useCallback(
+    async (segmentId: string) => {
+      const isBookmarked = bookmarkedIds.has(segmentId);
+
+      setBookmarkedIds((prev) => {
+        const next = new Set(prev);
+        if (isBookmarked) next.delete(segmentId);
+        else next.add(segmentId);
+        return next;
+      });
+
       if (isBookmarked) {
-        next.delete(segmentId);
+        supabase.from("bookmarks").delete().eq("segment_id", segmentId).then();
       } else {
-        next.add(segmentId);
+        const { data: existing } = await supabase
+          .from("bookmarks")
+          .select("id")
+          .eq("segment_id", segmentId)
+          .limit(1);
+        if (!existing || existing.length === 0) {
+          supabase.from("bookmarks").insert({ segment_id: segmentId }).then();
+        }
       }
-      return next;
-    });
-
-    // DB call outside setter to avoid StrictMode double-invoke
-    if (isBookmarked) {
-      supabase.from("bookmarks").delete().eq("segment_id", segmentId).then();
-    } else {
-      // Prevent duplicates: check existence before insert
-      const { data: existing } = await supabase
-        .from("bookmarks")
-        .select("id")
-        .eq("segment_id", segmentId)
-        .limit(1);
-      if (!existing || existing.length === 0) {
-        supabase.from("bookmarks").insert({ segment_id: segmentId }).then();
-      }
-    }
-  }, [bookmarkedIds]);
+    },
+    [bookmarkedIds],
+  );
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -200,13 +251,13 @@ export default function PlayerPage({
           e.preventDefault();
           toggleAbRepeat();
           break;
+        case "t":
+          e.preventDefault();
+          setShowTranslation((v) => !v);
+          break;
         case " ":
           e.preventDefault();
-          if (playerRef.current?.isPlaying()) {
-            playerRef.current.pause();
-          } else {
-            playerRef.current?.play();
-          }
+          togglePlay();
           break;
         case "arrowleft":
           e.preventDefault();
@@ -227,166 +278,99 @@ export default function PlayerPage({
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [goToPrev, goToNext, repeatCurrent, toggleAbRepeat]);
+  }, [goToPrev, goToNext, repeatCurrent, toggleAbRepeat, togglePlay]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="clip-page">
+        <div className="clip-loading">Loading…</div>
       </div>
     );
   }
 
   if (!video) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <p className="text-muted-foreground">Video not found</p>
-        <Link href="/" className="text-primary hover:underline text-sm">
-          Back to home
-        </Link>
+      <div className="clip-page">
+        <div className="clip-loading">
+          <span>Clip not found · </span>
+          <Link href="/" style={{ color: "var(--accent-text)", marginLeft: 6 }}>
+            Back to library
+          </Link>
+        </div>
       </div>
     );
   }
 
   const currentSegment = segments[currentIndex] ?? null;
+  const isVideo = video.media_type === "video" && !!video.video_url;
+  const showVideoFrame = isVideo && !hideVideo;
 
   return (
-    <div className="flex flex-col h-dvh">
-      {/* Header */}
-      <header className="bg-card border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
-        <Link
-          href="/"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Go back"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M13 4L7 10l6 6" />
-          </svg>
-        </Link>
-        <h1 className="text-sm font-medium truncate flex-1">{video.title}</h1>
-        {video.media_type === "video" && video.video_url && (
-          <button
-            onClick={() => setHideVideo((v) => !v)}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            title={hideVideo ? "Show video" : "Hide video"}
-          >
-            {hideVideo ? "Show video" : "Hide video"}
-          </button>
-        )}
-        <Link
-          href="/bookmarks"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Bookmarks
-        </Link>
-      </header>
+    <div className="clip-page">
+      <ClipHeader
+        title={video.title}
+        folderName={folderName}
+        showVideo={!hideVideo}
+        canHideVideo={isVideo}
+        onToggleVideo={() => setHideVideo((v) => !v)}
+      />
 
-      {video.media_type === "video" && video.video_url && !hideVideo ? (
-        /* ── Video mode: split layout ── */
-        <>
-          <div className="flex-1 flex flex-col md:flex-row min-h-0">
-            {/* Left: Video + Progress */}
-            <div className="md:w-1/2 flex flex-col shrink-0">
-              <div className="aspect-video bg-black">
-                <video
-                  ref={videoRef}
-                  src={video.video_url ?? undefined}
-                  className="w-full h-full object-contain"
-                  preload="auto"
-                  playsInline
-                />
-              </div>
-              <div className="shrink-0">
-                <AudioPlayer
-                  ref={playerRef}
-                  src={video.audio_url}
-                  duration={video.duration ?? 0}
-                  onTimeUpdate={handleTimeUpdate}
-                  externalMediaRef={videoRef}
-                  abRepeat={abRepeat}
-                />
-              </div>
-            </div>
+      <div className={"clip-body" + (showVideoFrame ? "" : " hide-video")}>
+        <div className="player-col">
+          <ClipPlayer
+            mediaType={video.media_type}
+            videoSrc={showVideoFrame ? video.video_url : null}
+            videoRef={videoRef}
+            playing={playing}
+            currentTime={currentTime}
+            duration={video.duration ?? 0}
+            abA={abRepeat?.a ?? null}
+            abB={abRepeat?.b ?? null}
+            onTogglePlay={togglePlay}
+            onSeek={seekToTime}
+          />
+          <FocusLine
+            segment={currentSegment}
+            showTranslation={showTranslation}
+            currentTime={currentTime}
+            onWordClick={seekToTime}
+          />
+          <ClipControls
+            onPrev={goToPrev}
+            onNext={goToNext}
+            onReplay={repeatCurrent}
+            abActive={abRepeat !== null}
+            onToggleAB={toggleAbRepeat}
+            showTranslation={showTranslation}
+            onToggleTranslation={() => setShowTranslation((v) => !v)}
+            speed={SPEEDS[speedIdx]}
+            speeds={SPEEDS}
+            onSelectSpeed={selectSpeed}
+          />
+        </div>
 
-            {/* Right: Subtitle Panel */}
-            <div className="flex-1 min-h-0 md:border-l border-border">
-              <SubtitlePanel
-                segments={segments}
-                currentIndex={currentIndex}
-                currentTime={currentTime}
-                bookmarkedIds={bookmarkedIds}
-                showTranslation={showTranslation}
-                onSegmentClick={goToSegment}
-                onToggleBookmark={toggleBookmark}
-                onWordClick={seekToTime}
-              />
-            </div>
-          </div>
+        <Transcript
+          segments={segments}
+          currentIndex={currentIndex}
+          showTranslation={showTranslation}
+          bookmarkedIds={bookmarkedIds}
+          onSelect={goToSegment}
+          onToggleBookmark={toggleBookmark}
+        />
+      </div>
 
-          <div className="shrink-0">
-            <FocusPanel
-              segment={currentSegment}
-              showTranslation={showTranslation}
-              abRepeat={abRepeat}
-              currentTime={currentTime}
-              onPrev={goToPrev}
-              onRepeat={repeatCurrent}
-              onNext={goToNext}
-              onToggleTranslation={() => setShowTranslation((v) => !v)}
-              onToggleAbRepeat={toggleAbRepeat}
-              onWordClick={seekToTime}
-            />
-          </div>
-        </>
-      ) : (
-        /* ── Audio-only mode: subtitle → focus → progress (bottom) ── */
-        <>
-          <div className="flex-1 min-h-0">
-            <SubtitlePanel
-              segments={segments}
-              currentIndex={currentIndex}
-              currentTime={currentTime}
-              bookmarkedIds={bookmarkedIds}
-              showTranslation={showTranslation}
-              onSegmentClick={goToSegment}
-              onToggleBookmark={toggleBookmark}
-              onWordClick={seekToTime}
-            />
-          </div>
-
-          <div className="shrink-0">
-            <FocusPanel
-              segment={currentSegment}
-              showTranslation={showTranslation}
-              abRepeat={abRepeat}
-              currentTime={currentTime}
-              onPrev={goToPrev}
-              onRepeat={repeatCurrent}
-              onNext={goToNext}
-              onToggleTranslation={() => setShowTranslation((v) => !v)}
-              onToggleAbRepeat={toggleAbRepeat}
-              onWordClick={seekToTime}
-            />
-          </div>
-
-          <div className="shrink-0">
-            <AudioPlayer
-              ref={playerRef}
-              src={video.audio_url}
-              duration={video.duration ?? 0}
-              onTimeUpdate={handleTimeUpdate}
-              abRepeat={abRepeat}
-            />
-          </div>
-        </>
-      )}
+      {/* AudioPlayer mounts the <audio> element for audio-only or wires to
+          the <video> via externalMediaRef. Chrome hidden — ClipPlayer owns the UI. */}
+      <AudioPlayer
+        ref={playerRef}
+        src={video.audio_url}
+        duration={video.duration ?? 0}
+        onTimeUpdate={handleTimeUpdate}
+        externalMediaRef={showVideoFrame ? videoRef : undefined}
+        abRepeat={abRepeat}
+        onPlayingChange={setPlaying}
+        hideChrome
+      />
     </div>
   );
 }

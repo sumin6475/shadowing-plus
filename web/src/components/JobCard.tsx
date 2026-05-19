@@ -19,11 +19,6 @@ const STAGES: StageName[] = [
   "persist",
 ];
 
-function stageIndex(stage: StageName | null): number {
-  if (!stage) return -1;
-  return STAGES.indexOf(stage);
-}
-
 interface Props {
   job: Job;
   onChanged: () => void;
@@ -34,14 +29,15 @@ export default function JobCard({ job, onChanged }: Props) {
 
   const isFailed = job.status === "failed";
   const isReady = job.status === "ready";
-  const isRunning =
-    job.status !== "ready" && job.status !== "failed" && job.status !== "pending";
+  const isRunning = !isFailed && !isReady && job.status !== "pending";
 
   const stageLabel = job.current_stage
     ? STAGE_LABELS[job.current_stage]
     : isReady
       ? "Ready"
       : "Queued";
+
+  const currentIdx = job.current_stage ? STAGES.indexOf(job.current_stage) : -1;
 
   async function retry(stage: StageName) {
     setBusy(stage);
@@ -70,91 +66,77 @@ export default function JobCard({ job, onChanged }: Props) {
     }
   }
 
+  const fillCls =
+    "job-progress-fill" +
+    (isFailed ? " is-failed" : isReady ? " is-ready" : isRunning ? " is-running" : "");
+  const fillWidth = isFailed ? Math.max(job.progress, 10) : job.progress;
+
   return (
-    <div className="bg-card rounded-lg border border-border p-4 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium truncate">{job.title}</p>
-          <p className="text-xs text-muted-foreground">{stageLabel}</p>
+    <div className="job-card">
+      <div className="job-card-head">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="job-title">{job.title}</div>
+          <div className="job-stage">{stageLabel}</div>
         </div>
         <button
+          type="button"
+          className="job-remove"
           onClick={remove}
           disabled={busy !== null}
-          className="text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0 disabled:opacity-50"
         >
           {busy === "delete" ? "…" : "Remove"}
         </button>
       </div>
 
-      {/* Progress bar */}
-      <div className="h-1.5 bg-border rounded-full overflow-hidden">
-        <div
-          className={`h-full transition-all ${
-            isFailed
-              ? "bg-destructive"
-              : isReady
-                ? "bg-emerald-500"
-                : "bg-primary"
-          } ${isRunning ? "animate-pulse" : ""}`}
-          style={{
-            width: `${isFailed ? Math.max(job.progress, 10) : job.progress}%`,
-          }}
-        />
+      <div className="job-progress">
+        <div className={fillCls} style={{ width: `${fillWidth}%` }} />
       </div>
 
-      {/* Stage chips */}
-      <div className="flex gap-1.5 flex-wrap text-[10px] uppercase tracking-wider">
+      <div className="stage-chips">
         {STAGES.map((s) => {
-          const cur = stageIndex(job.current_stage);
           const sIdx = STAGES.indexOf(s);
-          const done = isReady || sIdx < cur || (isFailed && sIdx < cur);
-          const active = !isFailed && !isReady && sIdx === cur;
-          const failedHere = isFailed && sIdx === cur;
+          const done = isReady || sIdx < currentIdx;
+          const active = !isFailed && !isReady && sIdx === currentIdx;
+          const failedHere = isFailed && sIdx === currentIdx;
+          let cls = "stage-chip";
+          if (failedHere) cls += " is-failed";
+          else if (active) cls += " is-active";
+          else if (done) cls += " is-done";
           return (
-            <span
-              key={s}
-              className={`px-1.5 py-0.5 rounded ${
-                failedHere
-                  ? "bg-destructive/20 text-destructive"
-                  : active
-                    ? "bg-primary/20 text-primary"
-                    : done
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                      : "bg-muted text-muted-foreground"
-              }`}
-            >
+            <span key={s} className={cls}>
               {s}
             </span>
           );
         })}
       </div>
 
-      {/* Error + retry */}
       {isFailed && job.current_stage && (
-        <div className="space-y-2 pt-1">
-          <p className="text-xs text-destructive break-all line-clamp-3">
-            {job.error}
-          </p>
-          <div className="flex gap-2 flex-wrap">
+        <>
+          <div className="job-error">{job.error}</div>
+          <div className="job-actions">
             <button
+              type="button"
+              className="btn primary"
               onClick={() => retry(job.current_stage!)}
               disabled={busy !== null}
-              className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
-              {busy === job.current_stage ? "Retrying…" : `Retry "${job.current_stage}"`}
+              {busy === job.current_stage
+                ? "Retrying…"
+                : `Retry "${job.current_stage}"`}
             </button>
             {STAGES.filter((s) => s !== job.current_stage).map((s) => (
               <button
                 key={s}
+                type="button"
+                className="btn"
                 onClick={() => retry(s)}
                 disabled={busy !== null}
-                className="text-xs px-2 py-1 rounded border border-border hover:bg-accent disabled:opacity-50"
               >
                 from {s}
               </button>
             ))}
           </div>
-        </div>
+        </>
       )}
     </div>
   );
