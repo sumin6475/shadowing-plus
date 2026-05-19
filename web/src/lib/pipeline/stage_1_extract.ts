@@ -14,11 +14,16 @@ function runFfmpegExtract(inputPath: string, outputPath: string): Promise<void> 
     );
   }
   return new Promise((resolve, reject) => {
+    // CBR 192kbps (matches the audio quality of the previous `-q:a 4` VBR
+    // setting while giving byte-precise seek — important for iOS Safari's
+    // mid-play `currentTime` accuracy in the practice loop). `-write_xing 1`
+    // is the libmp3lame default but kept explicit as a safety net.
     const proc = spawn(ffmpegPath as unknown as string, [
       "-i", inputPath,
       "-vn",
       "-acodec", "libmp3lame",
-      "-q:a", "4",
+      "-b:a", "192k",
+      "-write_xing", "1",
       "-y", outputPath,
     ]);
     let stderr = "";

@@ -121,20 +121,37 @@ export default function MobilePractice({ initialQueue }: { initialQueue: Practic
       setCurrentTime(a.currentTime);
       if (loopGuardRef.current) return;
       if (!item) return;
-      if (a.currentTime >= item.endTime) {
-        if (loop) {
-          loopGuardRef.current = true;
-          a.currentTime = item.startTime;
-          a.playbackRate = speed;
-          const onSeeked = () => {
-            loopGuardRef.current = false;
-            a.removeEventListener("seeked", onSeeked);
-          };
-          a.addEventListener("seeked", onSeeked);
-        } else {
-          a.pause();
-        }
+      if (a.currentTime < item.endTime) return;
+      if (!loop) {
+        a.pause();
+        return;
       }
+      // Pause-seek-verify-play sequence. iOS Safari's mid-play `currentTime`
+      // setter rounds to the nearest decoded MP3 frame, which on VBR audio
+      // drifts slightly earlier each loop. Pausing first dodges that
+      // quirk; the seeked → verify → tiny nudge corrects any residual drift
+      // before play resumes.
+      loopGuardRef.current = true;
+      a.pause();
+      a.currentTime = item.startTime;
+      const onSeeked = () => {
+        a.removeEventListener("seeked", onSeeked);
+        const drift = item.startTime - a.currentTime;
+        if (drift > 0.02) {
+          // Landed before startTime — nudge slightly past target so the
+          // next decoded frame falls at or after startTime.
+          a.currentTime = item.startTime + 0.01;
+        }
+        a.playbackRate = speed;
+        a.play()
+          .then(() => {
+            loopGuardRef.current = false;
+          })
+          .catch(() => {
+            loopGuardRef.current = false;
+          });
+      };
+      a.addEventListener("seeked", onSeeked);
     };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
@@ -411,7 +428,12 @@ export default function MobilePractice({ initialQueue }: { initialQueue: Practic
         </button>
       </div>
 
-      <audio ref={audioRef} preload="auto" style={{ display: "none" }} />
+      <audio
+        ref={audioRef}
+        preload="auto"
+        playsInline
+        style={{ display: "none" }}
+      />
     </div>
   );
 }
