@@ -31,8 +31,19 @@ export default function Transcript({
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLDivElement>(".line.is-current");
-    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const container = listRef.current;
+    if (!container) return;
+    const el = container.querySelector<HTMLDivElement>(".line.is-current");
+    if (!el) return;
+
+    const cRect = container.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+
+    const fullyVisible = eRect.top >= cRect.top && eRect.bottom <= cRect.bottom;
+    if (fullyVisible) return;
+
+    const top = container.scrollTop + (eRect.top - cRect.top);
+    container.scrollTo({ top, behavior: "smooth" });
   }, [currentIndex]);
 
   return (
