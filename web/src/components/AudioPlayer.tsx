@@ -134,14 +134,14 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
 
     if (hideChrome) {
       return !hasExternal ? (
-        <audio ref={internalAudioRef} src={src} preload="auto" />
+        <audio ref={internalAudioRef} src={src} preload="metadata" />
       ) : null;
     }
 
     return (
       <div className="bg-card border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {!hasExternal && (
-          <audio ref={internalAudioRef} src={src} preload="auto" />
+          <audio ref={internalAudioRef} src={src} preload="metadata" />
         )}
         <div className="max-w-3xl mx-auto flex items-center gap-3">
           <button

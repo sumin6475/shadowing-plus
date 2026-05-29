@@ -44,6 +44,8 @@ export default function PlayerPage({
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [showTranslation, setShowTranslation] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [hideVideo, setHideVideo] = useState(false);
   const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -70,47 +72,116 @@ export default function PlayerPage({
     abRepeatRef.current = abRepeat;
   }, [abRepeat]);
 
-  // Fetch video + segments + bookmarks
+  // Fetch video + segments + bookmarks. Initial segments query drops the
+  // `words` JSONB column — a 40-min clip's full payload is ~1–3 MB otherwise,
+  // which stalls badly on cellular. Words are lazy-fetched per focused row
+  // below. The whole load is guarded with a 30s AbortController so a stalled
+  // request can't trap the page in "Loading…" forever.
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
     async function load() {
-      const [videoRes, segmentsRes] = await Promise.all([
-        supabase.from("videos").select("*").eq("id", videoId).single(),
-        supabase
-          .from("segments")
-          .select("*")
-          .eq("video_id", videoId)
-          .order("index"),
-      ]);
+      try {
+        const [videoRes, segmentsRes] = await Promise.all([
+          supabase
+            .from("videos")
+            .select("*")
+            .eq("id", videoId)
+            .abortSignal(controller.signal)
+            .single(),
+          supabase
+            .from("segments")
+            .select(
+              "id, video_id, index, start_time, end_time, text, translation, created_at",
+            )
+            .eq("video_id", videoId)
+            .order("index")
+            .abortSignal(controller.signal),
+        ]);
+        if (cancelled) return;
 
-      if (videoRes.data) {
-        setVideo(videoRes.data);
-        if (videoRes.data.folder_id) {
-          const { data: folder } = await supabase
-            .from("folders")
-            .select("name")
-            .eq("id", videoRes.data.folder_id)
-            .maybeSingle();
-          if (folder?.name) setFolderName(folder.name);
+        if (videoRes.error) throw videoRes.error;
+        if (segmentsRes.error) throw segmentsRes.error;
+
+        if (videoRes.data) {
+          setVideo(videoRes.data);
+          if (videoRes.data.folder_id) {
+            const { data: folder } = await supabase
+              .from("folders")
+              .select("name")
+              .eq("id", videoRes.data.folder_id)
+              .abortSignal(controller.signal)
+              .maybeSingle();
+            if (!cancelled && folder?.name) setFolderName(folder.name);
+          }
         }
-      }
-      if (segmentsRes.data) setSegments(segmentsRes.data);
+        // Backfill words=null so the lazy-fetch effect knows what's missing.
+        const segs: Segment[] = (segmentsRes.data ?? []).map((s) => ({
+          ...(s as Omit<Segment, "words">),
+          words: null,
+        }));
+        setSegments(segs);
 
-      if (segmentsRes.data && segmentsRes.data.length > 0) {
-        const segIds = segmentsRes.data.map((s) => s.id);
-        const { data: bookmarks } = await supabase
-          .from("bookmarks")
-          .select("segment_id")
-          .in("segment_id", segIds);
+        if (segs.length > 0) {
+          const segIds = segs.map((s) => s.id);
+          const { data: bookmarks } = await supabase
+            .from("bookmarks")
+            .select("segment_id")
+            .in("segment_id", segIds)
+            .abortSignal(controller.signal);
 
-        if (bookmarks) {
-          setBookmarkedIds(new Set(bookmarks.map((b) => b.segment_id)));
+          if (!cancelled && bookmarks) {
+            setBookmarkedIds(new Set(bookmarks.map((b) => b.segment_id)));
+          }
         }
-      }
 
-      setLoading(false);
+        if (!cancelled) setLoadError(null);
+      } catch (e) {
+        if (cancelled) return;
+        const msg =
+          e instanceof Error
+            ? e.name === "AbortError"
+              ? "Request timed out"
+              : e.message
+            : String(e);
+        setLoadError(msg);
+      } finally {
+        clearTimeout(timeoutId);
+        if (!cancelled) setLoading(false);
+      }
     }
     load();
-  }, [videoId]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [videoId, loadAttempt]);
+
+  // Lazy-fetch the `words` array for the currently-focused segment only.
+  // Initial fetch above strips words to keep the payload small; word-level
+  // seek/highlight only needs the active row. Words stay cached after.
+  useEffect(() => {
+    const seg = segments[currentIndex];
+    if (!seg || seg.words !== null) return;
+    let cancelled = false;
+    supabase
+      .from("segments")
+      .select("words")
+      .eq("id", seg.id)
+      .single()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setSegments((prev) =>
+          prev.map((s) => (s.id === seg.id ? { ...s, words: data.words } : s)),
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentIndex, segments]);
 
   // Apply playback rate whenever speed index changes
   useEffect(() => {
@@ -321,14 +392,40 @@ export default function PlayerPage({
     );
   }
 
-  if (!video) {
+  if (loadError || !video) {
+    const label = loadError ? "Couldn't load this clip" : "Clip not found";
     return (
       <div className="clip-page">
         <div className="clip-loading">
-          <span>Clip not found · </span>
-          <Link href="/" style={{ color: "var(--accent-text)", marginLeft: 6 }}>
-            Back to library
-          </Link>
+          <span>{label} · </span>
+          {loadError ? (
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                setLoadError(null);
+                setLoadAttempt((n) => n + 1);
+              }}
+              style={{
+                color: "var(--accent-text)",
+                marginLeft: 6,
+                background: "transparent",
+                border: 0,
+                cursor: "pointer",
+                font: "inherit",
+                textDecoration: "underline",
+              }}
+            >
+              Retry
+            </button>
+          ) : (
+            <Link
+              href="/"
+              style={{ color: "var(--accent-text)", marginLeft: 6 }}
+            >
+              Back to library
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -461,7 +558,7 @@ export default function PlayerPage({
             ref={videoRef}
             src={video.video_url ?? undefined}
             className="player-video"
-            preload="auto"
+            preload="metadata"
             playsInline
           />
         </div>
