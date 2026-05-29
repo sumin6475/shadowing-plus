@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { PracticeStatus } from "@/lib/types";
+import StatusControl from "@/components/home/StatusControl";
 import { BackIcon, BookmarkIcon, EyeOffIcon } from "./Icons";
 
 interface Props {
@@ -9,6 +11,8 @@ interface Props {
   showVideo: boolean;
   canHideVideo: boolean;
   onToggleVideo: () => void;
+  status: PracticeStatus;
+  onSetStatus: (next: PracticeStatus) => void;
 }
 
 export default function ClipHeader({
@@ -17,6 +21,8 @@ export default function ClipHeader({
   showVideo,
   canHideVideo,
   onToggleVideo,
+  status,
+  onSetStatus,
 }: Props) {
   return (
     <header className="clip-head">
@@ -31,6 +37,7 @@ export default function ClipHeader({
           </div>
           <div className="clip-title-row">
             <span className="clip-title">{title}</span>
+            <StatusControl status={status} onSet={onSetStatus} variant="static" />
           </div>
         </div>
         <div className="clip-actions">

@@ -587,6 +587,13 @@
   box-shadow: var(--shadow-card-hover);
   border-color: var(--hairline);
 }
+/* Lift the whole row above its siblings while the status picker is open.
+   The transform on :hover creates a local stacking context that traps the
+   popover; raising the parent <li> (already position:relative) is what lets
+   the menu paint over the rows below. */
+.home-app .list > li:has(.status-menu) {
+  z-index: 30;
+}
 
 .home-app .item-thumb {
   flex-shrink: 0;
@@ -704,6 +711,245 @@
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
+
+/* ─── Clip practice status ─────────────────────────────── */
+
+.home-app .item-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.home-app .status-control { position: relative; }
+
+.home-app .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.002em;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: filter .12s, background .12s, border-color .12s;
+}
+.home-app .status-pill:hover { filter: brightness(0.97); }
+[data-theme="dark"] .home-app .status-pill:hover { filter: brightness(1.12); }
+.home-app .status-pill.is-open { filter: brightness(0.97); }
+[data-theme="dark"] .home-app .status-pill.is-open { filter: brightness(1.12); }
+
+.home-app .status-pill.focusing {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: oklch(from var(--accent) 0.90 calc(c * 0.4) h);
+}
+[data-theme="dark"] .home-app .status-pill.focusing {
+  border-color: oklch(from var(--accent) 0.40 calc(c * 0.45) h);
+}
+
+.home-app .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+  position: relative;
+}
+.home-app .status-pill.focusing .status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  animation: home-status-pulse 1.8s ease-out infinite;
+}
+@keyframes home-status-pulse {
+  0%   { transform: scale(0.6); opacity: 0.55; }
+  70%  { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-app .status-pill.focusing .status-dot::after { animation: none; }
+}
+
+.home-app .status-pill.done {
+  background: oklch(0.955 0.035 155);
+  color: oklch(0.46 0.10 155);
+  border-color: oklch(0.90 0.05 155);
+}
+[data-theme="dark"] .home-app .status-pill.done {
+  background: oklch(0.31 0.05 155);
+  color: oklch(0.82 0.10 155);
+  border-color: oklch(0.38 0.06 155);
+}
+.home-app .status-pill.done svg { margin: 0 -1px; }
+
+/* Quiet "set status" affordance — surfaces on row hover */
+.home-app .status-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-4);
+  border: 1px dashed var(--hairline);
+  background: transparent;
+  opacity: 0;
+  transition: opacity .14s, color .12s, border-color .12s, background .12s;
+}
+.home-app .item:hover .status-set,
+.home-app .status-set:focus-visible,
+.home-app .status-set.is-open { opacity: 1; }
+.home-app .status-set:hover {
+  color: var(--accent-text);
+  border-color: oklch(from var(--accent) 0.85 calc(c * 0.5) h);
+  background: var(--accent-soft);
+}
+[data-theme="dark"] .home-app .status-set:hover {
+  border-color: oklch(from var(--accent) 0.42 calc(c * 0.5) h);
+}
+
+/* Picker popover */
+.home-app .status-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 224px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card-hover);
+  cursor: default;
+  animation: home-status-menu-in .14s cubic-bezier(.2,.7,.2,1);
+}
+@keyframes home-status-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.home-app .status-menu-head {
+  padding: 6px 9px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+.home-app .status-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 7px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  transition: background .1s;
+}
+.home-app .status-opt:hover { background: var(--surface-2); }
+.home-app .status-opt.selected { background: var(--accent-soft); }
+.home-app .status-opt-glyph {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+}
+.home-app .status-opt-glyph.focusing {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.home-app .status-opt-glyph.focusing .status-dot::after { display: none; }
+.home-app .status-opt-glyph.done {
+  color: oklch(0.46 0.10 155);
+  background: oklch(0.955 0.035 155);
+}
+[data-theme="dark"] .home-app .status-opt-glyph.done {
+  color: oklch(0.82 0.10 155);
+  background: oklch(0.31 0.05 155);
+}
+.home-app .status-opt-glyph.none { color: var(--text-4); background: var(--surface-2); }
+.home-app .status-opt-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.home-app .status-opt-label { font-size: 13px; font-weight: 500; letter-spacing: -0.004em; }
+.home-app .status-opt-desc { font-size: 11.5px; color: var(--text-4); }
+.home-app .status-opt.clear .status-opt-label { color: var(--text-2); }
+.home-app .status-opt-check { color: var(--accent-text); flex-shrink: 0; }
+
+/* Segmented status filter in the section head */
+.home-app .filter-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-pill);
+}
+.home-app .filter-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: -0.003em;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background .12s, color .12s, box-shadow .12s;
+}
+.home-app .filter-seg button:hover { color: var(--text); }
+.home-app .filter-seg button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+}
+.home-app .filter-seg .seg-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.home-app .filter-seg .seg-dot.focusing { background: var(--accent); }
+.home-app .filter-seg .seg-dot.done { background: oklch(0.55 0.10 155); }
+[data-theme="dark"] .home-app .filter-seg .seg-dot.done { background: oklch(0.68 0.10 155); }
+.home-app .filter-seg .seg-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+}
+.home-app .filter-seg button.active .seg-count { color: var(--text-3); }
+
+/* Empty result when a filter matches nothing */
+.home-app .filter-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-3);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.home-app .filter-empty .fe-title { font-size: 14px; font-weight: 500; color: var(--text-2); }
+.home-app .filter-empty .fe-sub { font-size: 12.5px; color: var(--text-4); }
 
 .home-app .item-menu {
   flex-shrink: 0;

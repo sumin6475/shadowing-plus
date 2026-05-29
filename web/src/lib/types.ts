@@ -10,6 +10,8 @@ export interface Folder {
 
 export type MediaType = "video" | "audio";
 
+export type PracticeStatus = "none" | "focusing" | "done";
+
 export interface Video {
   id: string;
   title: string;
@@ -18,6 +20,9 @@ export interface Video {
   video_url: string | null;
   media_type: MediaType;
   folder_id: string | null;
+  // Migration 005. Older DB copies may return null/undefined; callers should
+  // coalesce to "none".
+  practice_status: PracticeStatus;
   created_at: string;
 }
 

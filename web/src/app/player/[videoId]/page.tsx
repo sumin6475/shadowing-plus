@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { Video, Segment } from "@/lib/types";
+import type { PracticeStatus, Video, Segment } from "@/lib/types";
 import AudioPlayer, { type AudioPlayerHandle } from "@/components/AudioPlayer";
 import ClipHeader from "@/components/clip/ClipHeader";
 import ClipPlayer from "@/components/clip/ClipPlayer";
@@ -337,6 +337,21 @@ export default function PlayerPage({
   const currentSegment = segments[currentIndex] ?? null;
   const isVideo = video.media_type === "video" && !!video.video_url;
   const showVideoFrame = isVideo && !hideVideo;
+  const practiceStatus: PracticeStatus = video.practice_status || "none";
+
+  const setPracticeStatus = async (next: PracticeStatus) => {
+    setVideo((prev) => (prev ? { ...prev, practice_status: next } : prev));
+    const { error } = await supabase
+      .from("videos")
+      .update({ practice_status: next })
+      .eq("id", video.id);
+    if (error) {
+      console.warn("video status update failed:", error.message);
+      alert(
+        "Couldn't save status. Apply supabase/migrations/005_video_practice_status.sql.",
+      );
+    }
+  };
 
   return (
     <>
@@ -347,6 +362,8 @@ export default function PlayerPage({
           showVideo={!hideVideo}
           canHideVideo={isVideo}
           onToggleVideo={() => setHideVideo((v) => !v)}
+          status={practiceStatus}
+          onSetStatus={setPracticeStatus}
         />
 
         <div className={"clip-body" + (showVideoFrame ? "" : " hide-video")}>

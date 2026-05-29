@@ -105,3 +105,19 @@ export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" {...stroke} {...props}>
+      <path d="M2.5 6.2l2.4 2.4L9.8 3.5" />
+    </svg>
+  );
+}
+
+export function CircleDashedIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" {...stroke} {...props}>
+      <circle cx="8" cy="8" r="6" strokeDasharray="2 2" />
+    </svg>
+  );
+}

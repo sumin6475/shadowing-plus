@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { Folder, Video, Job } from "@/lib/types";
+import type { Folder, PracticeStatus, Video, Job } from "@/lib/types";
 import { folderColor } from "@/lib/folder-color";
-import JobCard from "@/components/JobCard";
+import MobileJobCard from "./MobileJobCard";
+import MobileStatusBadge from "./MobileStatusBadge";
+import MobileStatusSheet from "./MobileStatusSheet";
 import type { ActiveSection } from "@/components/home/Sidebar";
 import MobileDrawer from "./MobileDrawer";
 import MobileTabBar from "./MobileTabBar";
@@ -32,6 +34,7 @@ interface Props {
   onPickFile: () => void;
   onCreateFolder: () => void;
   onJobChanged: () => void;
+  onSetVideoStatus: (videoId: string, next: PracticeStatus) => void;
 }
 
 function formatDuration(seconds: number | null): string {
@@ -57,8 +60,34 @@ export default function MobileLibrary({
   onPickFile,
   onCreateFolder,
   onJobChanged,
+  onSetVideoStatus,
 }: Props) {
   const [drawer, setDrawer] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "focusing" | "done">(
+    "all",
+  );
+  const [sheetTarget, setSheetTarget] = useState<{
+    id: string;
+    title: string;
+    status: PracticeStatus;
+  } | null>(null);
+
+  const statusOf = (v: Video): PracticeStatus => v.practice_status || "none";
+  const statusCounts = useMemo(() => {
+    let focusing = 0;
+    let done = 0;
+    for (const v of visibleVideos) {
+      const s = statusOf(v);
+      if (s === "focusing") focusing++;
+      else if (s === "done") done++;
+    }
+    return { all: visibleVideos.length, focusing, done };
+  }, [visibleVideos]);
+
+  const shownVideos = useMemo(() => {
+    if (statusFilter === "all") return visibleVideos;
+    return visibleVideos.filter((v) => statusOf(v) === statusFilter);
+  }, [visibleVideos, statusFilter]);
 
   const folderCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -166,7 +195,7 @@ export default function MobileLibrary({
         {activeJobs.length > 0 && (
           <section className="m-jobs-queue" aria-label="Processing">
             {activeJobs.map((j) => (
-              <JobCard key={j.id} job={j} onChanged={onJobChanged} />
+              <MobileJobCard key={j.id} job={j} onChanged={onJobChanged} />
             ))}
           </section>
         )}
@@ -181,13 +210,51 @@ export default function MobileLibrary({
             </div>
           </div>
 
+          {visibleVideos.length > 0 && (
+            <div className="m-status-seg" role="tablist" aria-label="Practice status filter">
+              {(
+                [
+                  { key: "all", label: "All" },
+                  { key: "focusing", label: "Focusing", dot: "focusing" },
+                  { key: "done", label: "Completed", dot: "done" },
+                ] as const
+              ).map((seg) => (
+                <button
+                  type="button"
+                  key={seg.key}
+                  className={statusFilter === seg.key ? "active" : ""}
+                  role="tab"
+                  aria-selected={statusFilter === seg.key}
+                  onClick={() => setStatusFilter(seg.key)}
+                >
+                  {"dot" in seg && (
+                    <span className={"m-seg-dot " + seg.dot} aria-hidden="true" />
+                  )}
+                  <span>{seg.label}</span>
+                  <span className="m-seg-count">{statusCounts[seg.key]}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {loading ? (
             <div className="m-empty">Loading…</div>
           ) : visibleVideos.length === 0 ? (
             <div className="m-empty">No clips yet. Drop a file above.</div>
+          ) : shownVideos.length === 0 ? (
+            <div className="m-filter-empty">
+              <div className="m-filter-empty-title">
+                {statusFilter === "focusing"
+                  ? "Nothing in focus here"
+                  : "No completed clips here"}
+              </div>
+              <div className="m-filter-empty-sub">
+                Tap a clip&apos;s status badge to change it.
+              </div>
+            </div>
           ) : (
             <div className="m-list">
-              {visibleVideos.map((video) => {
+              {shownVideos.map((video) => {
                 const itemFolder =
                   video.folder_id &&
                   !(active.kind === "folder" && active.id === video.folder_id)
@@ -216,6 +283,16 @@ export default function MobileLibrary({
                         <span>{formatDuration(video.duration)}</span>
                       </span>
                     </span>
+                    <MobileStatusBadge
+                      status={statusOf(video)}
+                      onOpen={() =>
+                        setSheetTarget({
+                          id: video.id,
+                          title: video.title,
+                          status: statusOf(video),
+                        })
+                      }
+                    />
                   </Link>
                 );
               })}
@@ -223,6 +300,15 @@ export default function MobileLibrary({
           )}
         </section>
       </div>
+
+      <MobileStatusSheet
+        target={sheetTarget}
+        onClose={() => setSheetTarget(null)}
+        onPick={(next) => {
+          if (sheetTarget) onSetVideoStatus(sheetTarget.id, next);
+          setSheetTarget(null);
+        }}
+      />
 
       {/* Drawer */}
       <MobileDrawer

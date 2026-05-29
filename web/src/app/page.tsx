@@ -11,13 +11,14 @@ import {
 } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import type { Folder, Job, Video } from "@/lib/types";
+import type { Folder, Job, PracticeStatus, Video } from "@/lib/types";
 import UploadDropzone, {
   type UploadDropzoneHandle,
 } from "@/components/UploadDropzone";
 import JobCard from "@/components/JobCard";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
+import StatusControl from "@/components/home/StatusControl";
 import MobileLibrary from "@/components/mobile/MobileLibrary";
 import {
   ChevronDownIcon,
@@ -80,6 +81,10 @@ export default function HomePage() {
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+
+  const [statusFilter, setStatusFilter] = useState<"all" | "focusing" | "done">(
+    "all",
+  );
 
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [menuView, setMenuView] = useState<"main" | "move">("main");
@@ -260,6 +265,29 @@ export default function HomePage() {
     [],
   );
 
+  const setVideoStatus = useCallback(
+    async (videoId: string, next: PracticeStatus) => {
+      setVideos((prev) =>
+        prev.map((v) =>
+          v.id === videoId ? { ...v, practice_status: next } : v,
+        ),
+      );
+      const { error } = await supabase
+        .from("videos")
+        .update({ practice_status: next })
+        .eq("id", videoId);
+      if (error) {
+        // Likely migration 005 not applied → no practice_status column.
+        console.warn("video status update failed:", error.message);
+        alert(
+          "Couldn't save status. Apply supabase/migrations/005_video_practice_status.sql.",
+        );
+        refreshAll();
+      }
+    },
+    [refreshAll],
+  );
+
   const deleteVideo = useCallback(async (video: Video) => {
     if (
       !confirm(
@@ -374,6 +402,23 @@ export default function HomePage() {
     return `${h}h ${m % 60}m`;
   }, [visibleVideos]);
 
+  const statusOf = (v: Video): PracticeStatus => v.practice_status || "none";
+  const statusCounts = useMemo(() => {
+    let focusing = 0;
+    let done = 0;
+    for (const v of visibleVideos) {
+      const s = statusOf(v);
+      if (s === "focusing") focusing++;
+      else if (s === "done") done++;
+    }
+    return { all: visibleVideos.length, focusing, done };
+  }, [visibleVideos]);
+
+  const shownVideos = useMemo(() => {
+    if (statusFilter === "all") return visibleVideos;
+    return visibleVideos.filter((v) => statusOf(v) === statusFilter);
+  }, [visibleVideos, statusFilter]);
+
   return (
     <>
     <div className="home-app">
@@ -441,10 +486,38 @@ export default function HomePage() {
           <section>
             <div className="section-head">
               <span className="section-title">{sectionHeader.label}</span>
-              <span className="section-meta">
-                {visibleVideos.length} {visibleVideos.length === 1 ? "clip" : "clips"}
-                {totalDurationLabel ? ` · ${totalDurationLabel}` : ""}
-              </span>
+              <div className="section-meta">
+                {visibleVideos.length > 0 && (
+                  <div
+                    className="filter-seg"
+                    role="tablist"
+                    aria-label="Practice status filter"
+                  >
+                    {(
+                      [
+                        { key: "all", label: "All" },
+                        { key: "focusing", label: "Focusing", dot: "focusing" },
+                        { key: "done", label: "Completed", dot: "done" },
+                      ] as const
+                    ).map((seg) => (
+                      <button
+                        type="button"
+                        key={seg.key}
+                        className={statusFilter === seg.key ? "active" : ""}
+                        role="tab"
+                        aria-selected={statusFilter === seg.key}
+                        onClick={() => setStatusFilter(seg.key)}
+                      >
+                        {"dot" in seg && (
+                          <span className={"seg-dot " + seg.dot} aria-hidden="true" />
+                        )}
+                        <span>{seg.label}</span>
+                        <span className="seg-count">{statusCounts[seg.key]}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {loading ? (
@@ -454,9 +527,20 @@ export default function HomePage() {
                 <div className="empty-title">No clips here yet</div>
                 <div>Drop a file above to start shadowing.</div>
               </div>
+            ) : shownVideos.length === 0 ? (
+              <div className="filter-empty">
+                <div className="fe-title">
+                  {statusFilter === "focusing"
+                    ? "Nothing in focus right now"
+                    : "No completed clips yet"}
+                </div>
+                <div className="fe-sub">
+                  Open a clip&apos;s status badge to change it.
+                </div>
+              </div>
             ) : (
               <ul className="list">
-                {visibleVideos.map((video) => {
+                {shownVideos.map((video) => {
                   const isMenuOpen = menuOpenFor === video.id;
                   const itemFolder =
                     video.folder_id &&
@@ -508,8 +592,14 @@ export default function HomePage() {
                           </div>
                         )}
                       </div>
-                      <div className="item-duration">
-                        {formatDuration(video.duration)}
+                      <div className="item-meta">
+                        <StatusControl
+                          status={statusOf(video)}
+                          onSet={(next) => setVideoStatus(video.id, next)}
+                        />
+                        <div className="item-duration">
+                          {formatDuration(video.duration)}
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -639,6 +729,7 @@ export default function HomePage() {
       onPickFile={() => dropzoneRef.current?.pick()}
       onCreateFolder={openNewFolder}
       onJobChanged={refreshAll}
+      onSetVideoStatus={setVideoStatus}
     />
     </>
   );
