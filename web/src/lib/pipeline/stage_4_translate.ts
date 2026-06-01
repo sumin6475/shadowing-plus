@@ -8,6 +8,26 @@ const MODEL = "gpt-4o-mini";
 const BATCH_SIZE = 5;
 
 /**
+ * Re-throw OpenAI errors with a human-readable English message for the
+ * common billing/auth failures so the job-card error band shows something
+ * actionable instead of the raw SDK string. Anything else passes through.
+ */
+function rewrap(e: unknown): never {
+  const status = (e as { status?: number })?.status;
+  if (status === 429) {
+    throw new Error(
+      "OpenAI quota exhausted. Top up your account at https://platform.openai.com/account/billing, then click \"Retry translate\" on this job.",
+    );
+  }
+  if (status === 401) {
+    throw new Error(
+      "OpenAI API key was rejected. Verify OPENAI_API_KEY in your environment, then retry.",
+    );
+  }
+  throw e instanceof Error ? e : new Error(String(e));
+}
+
+/**
  * Sentences of surrounding context shown to the model on each batch. 5–7 is
  * the sweet spot:
  * - ≤4: polysemous phrases like "work in" can't anchor to a domain (gym vs.
@@ -94,12 +114,17 @@ Return JSON with these fields:
 
 Output JSON only, no commentary.`;
 
-  const resp = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0.2,
-  });
+  let resp;
+  try {
+    resp = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+    });
+  } catch (e) {
+    rewrap(e);
+  }
 
   const content = resp.choices[0]?.message?.content ?? "{}";
   let parsed: Partial<VideoProfile>;
@@ -220,17 +245,22 @@ export async function stage4Translate(jobId: string): Promise<void> {
       .map((s) => s.text)
       .join(" ");
 
-    const resp = await openai.chat.completions.create({
-      model: MODEL,
-      messages: [
-        {
-          role: "user",
-          content: buildPrompt(batch, contextBefore, contextAfter, profile),
-        },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-    });
+    let resp;
+    try {
+      resp = await openai.chat.completions.create({
+        model: MODEL,
+        messages: [
+          {
+            role: "user",
+            content: buildPrompt(batch, contextBefore, contextAfter, profile),
+          },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+    } catch (e) {
+      rewrap(e);
+    }
 
     const content = resp.choices[0]?.message?.content ?? "{}";
     let parsed: { segments?: Array<{ translation?: string }> };
