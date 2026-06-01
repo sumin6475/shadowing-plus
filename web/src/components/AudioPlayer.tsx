@@ -60,7 +60,20 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
       pause: () => getMedia()?.pause(),
       seekTo: (time: number) => {
         const el = getMedia();
-        if (el) el.currentTime = time;
+        if (!el) return;
+        // Safari (and sometimes mobile Chrome) drops currentTime assignments
+        // that come in before the media's metadata is loaded. Defer to the
+        // loadedmetadata event when duration isn't known yet so restored /
+        // deep-linked seeks actually land.
+        if (Number.isFinite(el.duration) && el.duration > 0) {
+          el.currentTime = time;
+        } else {
+          const apply = () => {
+            el.removeEventListener("loadedmetadata", apply);
+            el.currentTime = time;
+          };
+          el.addEventListener("loadedmetadata", apply);
+        }
       },
       getCurrentTime: () => getMedia()?.currentTime ?? 0,
       isPlaying: () => !getMedia()?.paused,

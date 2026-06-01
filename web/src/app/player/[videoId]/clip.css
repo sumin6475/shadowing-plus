@@ -39,7 +39,7 @@
   --radius-lg:   16px;
   --radius-pill: 999px;
 
-  --focus-size: 30px;
+  --focus-size: 26px;
 
   min-height: 100vh;
   background: var(--bg);
@@ -352,14 +352,28 @@
 
 .clip-page .player-col {
   /* Grid so the player row flexes (1fr) while focus + controls take their
-     natural height. Controls never get pushed below the viewport because the
-     player shrinks first to absorb a tall focus line. */
+     natural height. A long focus sentence used to crush the video down to
+     180px; the floor is now min(40vh, 320px) so the video stays watchable
+     even when the subtitle wraps to 3 lines. The 1fr can still grow to
+     fill extra vertical space when the focus line is short. */
   display: grid;
-  grid-template-rows: minmax(180px, 1fr) auto auto;
+  grid-template-rows: minmax(min(50vh, 420px), 1fr) auto auto;
   gap: 24px;
   min-width: 0;
   min-height: 0;
   height: 100%;
+}
+/* When the focus line is hidden via the header toggle, the grid collapses
+   to two rows so the video reclaims the whole gap. */
+.clip-page .player-col.no-focus {
+  grid-template-rows: minmax(min(50vh, 420px), 1fr) auto;
+  gap: 18px;
+}
+/* Audio-only clips have a 72px player bar — the 40vh floor leaves a big
+   empty box between the bar and the focus line. Let every row hug content
+   instead so audio sits compactly above its subtitle. */
+.clip-page .player-col:has(.player.audio-only) {
+  grid-template-rows: auto auto auto;
 }
 
 .clip-page .player {
@@ -488,7 +502,7 @@
 
 .clip-page .focus {
   text-align: center;
-  padding: 8px 4px 4px;
+  padding: 8px 2px 4px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -504,11 +518,11 @@
 .clip-page .focus-en {
   font-family: var(--home-font-serif);
   font-weight: 400;
-  font-size: var(--focus-size, 30px);
+  font-size: var(--focus-size, 26px);
   line-height: 1.25;
   letter-spacing: -0.012em;
   color: var(--text);
-  max-width: 620px;
+  max-width: 860px;
   text-wrap: balance;
 }
 .clip-page .focus-en .clip-word-played { color: var(--text); }
@@ -517,7 +531,7 @@
   font-size: 15px;
   font-weight: 400;
   color: var(--text-3);
-  max-width: 560px;
+  max-width: 780px;
   text-wrap: balance;
   letter-spacing: -0.003em;
 }

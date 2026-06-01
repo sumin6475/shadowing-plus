@@ -28,6 +28,31 @@ export type AbRepeat = { a: number; b: number | null };
 const SPEEDS = [0.5, 0.7, 0.85, 1.0, 1.15, 1.25, 1.5];
 const DEFAULT_SPEED_IDX = 3;
 
+// Per-clip resume state. Reading users come back to the same clip many times
+// during shadowing practice, so we restore both the play position and any A-B
+// loop they've marked. Wiped via localStorage if a clip gets re-uploaded under
+// the same id (rare).
+type PlayerPersisted = { t: number; ab: AbRepeat | null };
+const PLAYER_STORAGE_KEY = (id: string) => `sp:player:${id}`;
+
+function loadPersisted(id: string): PlayerPersisted | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PLAYER_STORAGE_KEY(id));
+    return raw ? (JSON.parse(raw) as PlayerPersisted) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersisted(id: string, value: PlayerPersisted) {
+  try {
+    localStorage.setItem(PLAYER_STORAGE_KEY(id), JSON.stringify(value));
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function PlayerPage({
   params,
 }: {
@@ -47,6 +72,7 @@ export default function PlayerPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [hideVideo, setHideVideo] = useState(false);
+  const [hideFocus, setHideFocus] = useState(false);
   const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -60,6 +86,14 @@ export default function PlayerPage({
   const currentIndexRef = useRef(0);
   const segmentsRef = useRef<Segment[]>([]);
   const abRepeatRef = useRef<AbRepeat | null>(null);
+  const currentTimeRef = useRef(0);
+  const restoredRef = useRef(false);
+  const lastSaveRef = useRef(0);
+  // Guard so the initial render (t=0, ab=null, before restore applies)
+  // doesn't immediately overwrite the persisted state. Flips to true as
+  // soon as playback advances past 1s or AB is set — both signals that
+  // the current state is meaningful and worth saving.
+  const hasInteractedRef = useRef(false);
 
   // Keep refs in sync
   useEffect(() => {
@@ -71,6 +105,9 @@ export default function PlayerPage({
   useEffect(() => {
     abRepeatRef.current = abRepeat;
   }, [abRepeat]);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   // Fetch video + segments + bookmarks. Initial segments query drops the
   // `words` JSONB column — a 40-min clip's full payload is ~1–3 MB otherwise,
@@ -201,6 +238,65 @@ export default function PlayerPage({
     }, 50);
     return () => clearTimeout(id);
   }, [loading, searchParams]);
+
+  // Restore A-B + resume position from localStorage (once per mount, after load).
+  // Query ?t= still wins over the persisted t — that's an explicit user intent.
+  useEffect(() => {
+    if (loading || restoredRef.current) return;
+    restoredRef.current = true;
+
+    const persisted = loadPersisted(videoId);
+    if (!persisted) return;
+
+    if (persisted.ab) setAbRepeat(persisted.ab);
+
+    const queryT = Number(searchParams.get("t"));
+    const queryTValid = Number.isFinite(queryT) && queryT > 0;
+    if (!queryTValid && Number.isFinite(persisted.t) && persisted.t > 1) {
+      const id = setTimeout(() => playerRef.current?.seekTo(persisted.t), 50);
+      return () => clearTimeout(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Throttled save while playback advances. Trails by up to 2s so a sudden
+  // close still loses very little. Normalize a near-finished t to 0 so a
+  // re-watch starts from the top. Skips entirely until the user has done
+  // something meaningful (currentTime >= 1 or AB set) so the initial empty
+  // state doesn't overwrite a persisted resume point.
+  useEffect(() => {
+    if (loading) return;
+    if (currentTime >= 1) hasInteractedRef.current = true;
+    if (!hasInteractedRef.current) return;
+    const now = Date.now();
+    if (now - lastSaveRef.current < 2000) return;
+    lastSaveRef.current = now;
+    const duration = video?.duration ?? 0;
+    const tToSave =
+      duration > 0 && currentTime >= duration - 3 ? 0 : currentTime;
+    savePersisted(videoId, { t: tToSave, ab: abRepeat });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, loading, videoId]);
+
+  // AB toggle saves immediately (these changes are rare and high-signal).
+  useEffect(() => {
+    if (loading) return;
+    if (abRepeat !== null) hasInteractedRef.current = true;
+    if (!hasInteractedRef.current) return;
+    savePersisted(videoId, { t: currentTimeRef.current, ab: abRepeat });
+  }, [abRepeat, loading, videoId]);
+
+  // Flush latest position when leaving the page.
+  useEffect(() => {
+    return () => {
+      if (!hasInteractedRef.current) return;
+      const duration = video?.duration ?? 0;
+      const t = currentTimeRef.current;
+      const tToSave = duration > 0 && t >= duration - 3 ? 0 : t;
+      savePersisted(videoId, { t: tToSave, ab: abRepeatRef.current });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
 
   // Time update handler — AB enforcement + segment tracking + karaoke
   const handleTimeUpdate = useCallback((time: number) => {
@@ -459,12 +555,14 @@ export default function PlayerPage({
           showVideo={!hideVideo}
           canHideVideo={isVideo}
           onToggleVideo={() => setHideVideo((v) => !v)}
+          showFocus={!hideFocus}
+          onToggleFocus={() => setHideFocus((v) => !v)}
           status={practiceStatus}
           onSetStatus={setPracticeStatus}
         />
 
         <div className={"clip-body" + (showVideoFrame ? "" : " hide-video")}>
-          <div className="player-col">
+          <div className={"player-col" + (hideFocus ? " no-focus" : "")}>
             <ClipPlayer
               mediaType={video.media_type}
               videoSrc={showVideoFrame ? video.video_url : null}
@@ -477,12 +575,14 @@ export default function PlayerPage({
               onTogglePlay={togglePlay}
               onSeek={seekToTime}
             />
-            <FocusLine
-              segment={currentSegment}
-              showTranslation={showTranslation}
-              currentTime={currentTime}
-              onWordClick={seekToTime}
-            />
+            {!hideFocus && (
+              <FocusLine
+                segment={currentSegment}
+                showTranslation={showTranslation}
+                currentTime={currentTime}
+                onWordClick={seekToTime}
+              />
+            )}
             <ClipControls
               onPrev={goToPrev}
               onNext={goToNext}

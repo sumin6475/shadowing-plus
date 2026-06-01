@@ -11,6 +11,8 @@ interface Props {
   showVideo: boolean;
   canHideVideo: boolean;
   onToggleVideo: () => void;
+  showFocus: boolean;
+  onToggleFocus: () => void;
   status: PracticeStatus;
   onSetStatus: (next: PracticeStatus) => void;
 }
@@ -21,6 +23,8 @@ export default function ClipHeader({
   showVideo,
   canHideVideo,
   onToggleVideo,
+  showFocus,
+  onToggleFocus,
   status,
   onSetStatus,
 }: Props) {
@@ -55,6 +59,14 @@ export default function ClipHeader({
               <span>{showVideo ? "Hide video" : "Show video"}</span>
             </button>
           )}
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onToggleFocus}
+          >
+            <EyeOffIcon />
+            <span>{showFocus ? "Hide subtitle" : "Show subtitle"}</span>
+          </button>
         </div>
       </div>
     </header>
