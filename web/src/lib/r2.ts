@@ -112,6 +112,32 @@ export function publicUrl(key: string): string {
   return `${base}/${key}`;
 }
 
+/**
+ * Inverse of publicUrl(): recover the R2 object key from a stored public URL.
+ * Returns null when the URL doesn't sit under R2_PUBLIC_URL (e.g. a legacy
+ * Storage URL), so callers can skip it rather than mis-key a HEAD.
+ */
+export function keyFromPublicUrl(url: string): string | null {
+  const base = requireEnv("R2_PUBLIC_URL").replace(/\/$/, "");
+  const prefix = `${base}/`;
+  return url.startsWith(prefix) ? url.slice(prefix.length) : null;
+}
+
+/**
+ * HEAD an object and return its size in bytes. Returns 0 when the object is
+ * missing or the request fails, so a single bad key never sinks an aggregate.
+ */
+export async function headSize(key: string): Promise<number> {
+  try {
+    const resp = await client().send(
+      new HeadObjectCommand({ Bucket: bucket(), Key: key }),
+    );
+    return resp.ContentLength ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function jobKey(jobId: string, suffix: string): string {
   return `jobs/${jobId}/${suffix}`;
 }

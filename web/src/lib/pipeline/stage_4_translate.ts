@@ -5,7 +5,23 @@ import type { PipelineSegment } from "@/lib/types";
 import { AUDIO_LANGUAGE, TRANSLATION_LANGUAGE } from "./languages";
 
 const MODEL = "gpt-4o-mini";
-const BATCH_SIZE = 5;
+/**
+ * Segments per GPT call. Larger batches amortise the per-call latency floor
+ * (~1–2s regardless of payload), so a 20-min video goes from ~70 calls to
+ * ~18. Kept at 20 so a single dropped/garbled JSON response only costs one
+ * batch's worth of re-translation on retry, and the per-call output stays
+ * well inside the model's token budget.
+ */
+const BATCH_SIZE = 20;
+/**
+ * How many batches translate concurrently. The batch loop is pure network
+ * I/O, so the wall-clock was previously (batch count) × (round-trip) — fully
+ * serial. Running CONCURRENCY batches at once collapses that to roughly
+ * (batch count / CONCURRENCY) × (round-trip). 6 is a safe default that stays
+ * under gpt-4o-mini's requests-per-minute limit on typical accounts; raise it
+ * if your OpenAI tier allows.
+ */
+const CONCURRENCY = 6;
 
 /**
  * Re-throw OpenAI errors with a human-readable English message for the
@@ -153,13 +169,13 @@ Output JSON only, no commentary.`;
  * carries the genre-specific choices instead of the prompt hard-coding any
  * particular register or tone.
  */
-function buildPrompt(
-  batch: PipelineSegment[],
-  contextBefore: string,
-  contextAfter: string,
-  profile: VideoProfile,
-): string {
-  const list = batch.map((s, i) => `${i + 1}. ${s.text}`).join("\n");
+/**
+ * Static-per-video system message: translation craft + the video profile +
+ * output contract. Identical across every batch of a video, so OpenAI's
+ * automatic prompt caching discounts these tokens on calls 2..N. Only the
+ * per-batch context + segment list (the user message) varies.
+ */
+function buildSystemPrompt(profile: VideoProfile): string {
   const entities = profile.named_entities.length
     ? profile.named_entities.join(", ")
     : "(none identified)";
@@ -187,13 +203,6 @@ ${terms}
 7. **Disambiguation via context.** Use the surrounding sentences and the video profile to pick the right sense of polysemous words. Always prefer the domain-appropriate reading over the most common dictionary meaning.
 8. **Audience interjections.** If the transcript embeds an off-speaker interjection (e.g. "(Right.)" from a host), keep it in parentheses in the translation.
 
-## Surrounding context (for reference only — do NOT translate these)
-Before this batch: ${contextBefore || "(start of transcript)"}
-After this batch: ${contextAfter || "(end of transcript)"}
-
-## Segments to translate (in order)
-${list}
-
 ## Output format (JSON only, no markdown)
 Return translations in the SAME ORDER as the input. Do not reorder, skip, or merge segments. If a segment is a single filler word, translate that filler word — do not return an empty string.
 {
@@ -204,11 +213,92 @@ Return translations in the SAME ORDER as the input. Do not reorder, skip, or mer
 }
 
 /**
+ * Per-batch user message: the surrounding context (reference only) and the
+ * numbered segment list to translate.
+ */
+function buildUserPrompt(
+  batch: PipelineSegment[],
+  contextBefore: string,
+  contextAfter: string,
+): string {
+  const list = batch.map((s, i) => `${i + 1}. ${s.text}`).join("\n");
+
+  return `## Surrounding context (for reference only — do NOT translate these)
+Before this batch: ${contextBefore || "(start of transcript)"}
+After this batch: ${contextAfter || "(end of transcript)"}
+
+## Segments to translate (in order)
+${list}`;
+}
+
+/** A contiguous slice of segments to translate in one GPT call, tagged with
+ *  its start offset so results land back in the right place. */
+interface Batch {
+  start: number;
+  segs: PipelineSegment[];
+  contextBefore: string;
+  contextAfter: string;
+}
+
+/**
+ * Translate one batch and return the translations positionally aligned to
+ * `batch.segs` (length-matched, padded with a sentinel if the model drops
+ * entries). Throws via rewrap() on API failure so the orchestrator can mark
+ * the job failed at this stage.
+ */
+async function translateBatch(
+  openai: OpenAI,
+  batch: Batch,
+  systemPrompt: string,
+): Promise<string[]> {
+  let resp;
+  try {
+    resp = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: buildUserPrompt(
+            batch.segs,
+            batch.contextBefore,
+            batch.contextAfter,
+          ),
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+    });
+  } catch (e) {
+    rewrap(e);
+  }
+
+  const content = resp.choices[0]?.message?.content ?? "{}";
+  let parsed: { segments?: Array<{ translation?: string }> };
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    parsed = {};
+  }
+  const items = parsed.segments ?? [];
+
+  // Match by batch position (not GPT's returned index) to defend against the
+  // model dropping or reordering entries.
+  return batch.segs.map((_, k) => items[k]?.translation ?? "[translation failed]");
+}
+
+/**
  * Stage 4: Batched GPT-4o-mini translation with a video-level profile.
  *
  * Pipeline:
  *   1. profileVideo()      — 1 GPT call, extracts genre/register/entities/domain terms
  *   2. translateBatch × N  — batched translation with wide context window + profile injection
+ *
+ * The batch loop is pure network I/O, so batches run CONCURRENCY-at-a-time
+ * through a worker pool rather than serially — this is what keeps a 20-min
+ * video inside Vercel's function timeout. Each batch writes its results into a
+ * pre-sized `out` array at its own offset, so concurrent completion order
+ * never affects the final segment order.
  *
  * Translation index is matched by batch position (not GPT's returned index)
  * to defend against the model dropping or reordering entries. The pipeline
@@ -226,62 +316,53 @@ export async function stage4Translate(jobId: string): Promise<void> {
     jobKey(jobId, "segments.json"),
   );
   const segments = input.segments;
-  const out: PipelineSegment[] = [];
 
   // ── Step A: one-shot video profile ──────────────────────────
   const profile = await profileVideo(openai, segments);
   await updateJobProgress(jobId, "translate", 5);
+  const systemPrompt = buildSystemPrompt(profile);
 
-  // ── Step B: batched translation with wide context + profile ──
+  // ── Step B: build batches, then translate them concurrently ──
+  const batches: Batch[] = [];
   for (let i = 0; i < segments.length; i += BATCH_SIZE) {
-    const batch = segments.slice(i, i + BATCH_SIZE);
-
-    const contextBefore = segments
-      .slice(Math.max(0, i - CONTEXT_WINDOW), i)
-      .map((s) => s.text)
-      .join(" ");
-    const contextAfter = segments
-      .slice(i + batch.length, i + batch.length + CONTEXT_WINDOW)
-      .map((s) => s.text)
-      .join(" ");
-
-    let resp;
-    try {
-      resp = await openai.chat.completions.create({
-        model: MODEL,
-        messages: [
-          {
-            role: "user",
-            content: buildPrompt(batch, contextBefore, contextAfter, profile),
-          },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
-      });
-    } catch (e) {
-      rewrap(e);
-    }
-
-    const content = resp.choices[0]?.message?.content ?? "{}";
-    let parsed: { segments?: Array<{ translation?: string }> };
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      parsed = {};
-    }
-    const items = parsed.segments ?? [];
-
-    for (let k = 0; k < batch.length; k++) {
-      const seg = batch[k];
-      const translation = items[k]?.translation ?? "[translation failed]";
-      out.push({ ...seg, translation });
-    }
-
-    const done = Math.min(i + BATCH_SIZE, segments.length);
-    // 5% spent on profile; remaining 95% is for batch translation
-    const pct = 5 + Math.round((done / segments.length) * 95);
-    await updateJobProgress(jobId, "translate", pct);
+    const segs = segments.slice(i, i + BATCH_SIZE);
+    batches.push({
+      start: i,
+      segs,
+      contextBefore: segments
+        .slice(Math.max(0, i - CONTEXT_WINDOW), i)
+        .map((s) => s.text)
+        .join(" "),
+      contextAfter: segments
+        .slice(i + segs.length, i + segs.length + CONTEXT_WINDOW)
+        .map((s) => s.text)
+        .join(" "),
+    });
   }
+
+  const out: PipelineSegment[] = new Array(segments.length);
+  let done = 0; // segments translated so far (monotonic; JS is single-threaded)
+
+  // Concurrency-limited worker pool: `next` hands each worker the next batch
+  // index until they're exhausted. CONCURRENCY batches are in flight at once.
+  let next = 0;
+  async function worker(): Promise<void> {
+    for (let idx = next++; idx < batches.length; idx = next++) {
+      const batch = batches[idx];
+      const translations = await translateBatch(openai, batch, systemPrompt);
+      for (let k = 0; k < batch.segs.length; k++) {
+        out[batch.start + k] = { ...batch.segs[k], translation: translations[k] };
+      }
+      done += batch.segs.length;
+      // 5% spent on profile; remaining 95% is for batch translation.
+      const pct = 5 + Math.round((done / segments.length) * 95);
+      await updateJobProgress(jobId, "translate", pct);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, batches.length) }, () => worker()),
+  );
 
   const result: TranslatedTranscript = {
     audio_duration_secs: input.audio_duration_secs,

@@ -121,3 +121,31 @@ export function CircleDashedIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <path d="M3 4.5h10M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5" />
+      <path d="M4.5 4.5l.7 8.4a1 1 0 001 .9h3.6a1 1 0 001-.9l.7-8.4" />
+      <path d="M6.7 7v4.5M9.3 7v4.5" />
+    </svg>
+  );
+}
+
+export function DrillIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <circle cx="8" cy="8" r="5.5" />
+      <circle cx="8" cy="8" r="2.5" />
+    </svg>
+  );
+}
+
+export function UndoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <path d="M3 8a4.5 4.5 0 109-2.7" />
+      <path d="M2.5 3v3h3" />
+    </svg>
+  );
+}

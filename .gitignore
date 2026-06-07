@@ -25,3 +25,13 @@ web/.env.local
 # Debug
 debug_*.json
 .vercel
+
+# Docs (local only)
+ARCHITECTURE.md
+TRANSLATE_STAGE_SNAPSHOT.md
+
+# Editor
+.obsidian/
+
+# Scratch
+test.ts

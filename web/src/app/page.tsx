@@ -18,6 +18,8 @@ import UploadDropzone, {
 import JobCard from "@/components/JobCard";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
+import ConfirmDeleteClipModal from "@/components/home/ConfirmDeleteClipModal";
+import UndoToast from "@/components/home/UndoToast";
 import StatusControl from "@/components/home/StatusControl";
 import MobileLibrary from "@/components/mobile/MobileLibrary";
 import {
@@ -71,6 +73,7 @@ function saveActiveSection(s: ActiveSection) {
 export default function HomePage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [sizes, setSizes] = useState<Record<string, number>>({});
   const [jobs, setJobs] = useState<Job[]>([]);
   const [bookmarksCount, setBookmarksCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -81,6 +84,15 @@ export default function HomePage() {
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+
+  // Two-step destructive delete:
+  // - pendingDelete: clip queued for the confirm modal
+  // - recentlyDeleted: clip hidden locally after confirm; if Undo isn't pressed
+  //   within `deleteTimerRef`'s window, commitDelete fires the real DELETE.
+  const [pendingDelete, setPendingDelete] = useState<Video | null>(null);
+  const [recentlyDeleted, setRecentlyDeleted] = useState<Video | null>(null);
+  const deleteTimerRef = useRef<number | null>(null);
+  const recentlyDeletedRef = useRef<Video | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<"all" | "focusing" | "done">(
     "all",
@@ -119,6 +131,17 @@ export default function HomePage() {
   useEffect(() => {
     refreshAll().then(() => setLoading(false));
   }, [refreshAll]);
+
+  // Per-video R2 storage footprint (bytes). Measured server-side since the DB
+  // has no size column. Best-effort: failure just leaves the GB label hidden.
+  useEffect(() => {
+    fetch("/api/storage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.sizes) setSizes(d.sizes as Record<string, number>);
+      })
+      .catch(() => {});
+  }, [videos.length]);
 
   // Realtime jobs subscription
   useEffect(() => {
@@ -288,17 +311,78 @@ export default function HomePage() {
     [refreshAll],
   );
 
-  const deleteVideo = useCallback(async (video: Video) => {
-    if (
-      !confirm(
-        `Delete "${video.title}"?\nAll segments and bookmarks will also be deleted.`,
-      )
-    )
-      return;
-    await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
-    setVideos((prev) => prev.filter((v) => v.id !== video.id));
+  // Open the destructive confirm modal. Actual DELETE is deferred so the
+  // user has a 6s window to undo from the toast.
+  const deleteVideo = useCallback((video: Video) => {
+    setPendingDelete(video);
     setMenuOpenFor(null);
     setMenuView("main");
+  }, []);
+
+  const commitDelete = useCallback((video: Video) => {
+    if (deleteTimerRef.current !== null) {
+      window.clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    fetch(`/api/videos/${video.id}`, { method: "DELETE" }).catch(() => {
+      /* swallow — server-side fallback (no DB record found) is benign */
+    });
+    setVideos((prev) => prev.filter((v) => v.id !== video.id));
+    setRecentlyDeleted(null);
+    recentlyDeletedRef.current = null;
+  }, []);
+
+  const confirmDeleteVideo = useCallback(() => {
+    const video = pendingDelete;
+    if (!video) return;
+    setPendingDelete(null);
+    // If a prior pending delete was still in its grace window, commit it now
+    // before queueing the new one — never run two undo toasts at once.
+    if (recentlyDeletedRef.current) {
+      commitDelete(recentlyDeletedRef.current);
+    }
+    setRecentlyDeleted(video);
+    recentlyDeletedRef.current = video;
+    deleteTimerRef.current = window.setTimeout(() => {
+      commitDelete(video);
+    }, 6000);
+  }, [pendingDelete, commitDelete]);
+
+  const undoDelete = useCallback(() => {
+    if (deleteTimerRef.current !== null) {
+      window.clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setRecentlyDeleted(null);
+    recentlyDeletedRef.current = null;
+  }, []);
+
+  const dismissUndo = useCallback(() => {
+    const v = recentlyDeletedRef.current;
+    if (!v) return;
+    commitDelete(v);
+  }, [commitDelete]);
+
+  // Safety nets so a pending delete still commits if the user closes the tab
+  // or navigates away during the 6s grace window.
+  useEffect(() => {
+    function flush() {
+      const v = recentlyDeletedRef.current;
+      if (!v) return;
+      // `keepalive` lets the request outlive the document.
+      fetch(`/api/videos/${v.id}`, { method: "DELETE", keepalive: true }).catch(
+        () => {},
+      );
+    }
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      flush();
+      if (deleteTimerRef.current !== null) {
+        window.clearTimeout(deleteTimerRef.current);
+        deleteTimerRef.current = null;
+      }
+    };
   }, []);
 
   const startEditVideo = useCallback(
@@ -402,6 +486,17 @@ export default function HomePage() {
     return `${h}h ${m % 60}m`;
   }, [visibleVideos]);
 
+  const totalSizeLabel = useMemo(() => {
+    let bytes = 0;
+    for (const v of visibleVideos) bytes += sizes[v.id] ?? 0;
+    if (bytes <= 0) return "";
+    const gb = bytes / 1e9;
+    if (gb >= 1) return `${gb.toFixed(1)} GB`;
+    const mb = bytes / 1e6;
+    if (mb >= 1) return `${Math.round(mb)} MB`;
+    return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+  }, [visibleVideos, sizes]);
+
   const statusOf = (v: Video): PracticeStatus => v.practice_status || "none";
   const statusCounts = useMemo(() => {
     let focusing = 0;
@@ -415,9 +510,13 @@ export default function HomePage() {
   }, [visibleVideos]);
 
   const shownVideos = useMemo(() => {
-    if (statusFilter === "all") return visibleVideos;
-    return visibleVideos.filter((v) => statusOf(v) === statusFilter);
-  }, [visibleVideos, statusFilter]);
+    const hiddenId = recentlyDeleted?.id;
+    const base = hiddenId
+      ? visibleVideos.filter((v) => v.id !== hiddenId)
+      : visibleVideos;
+    if (statusFilter === "all") return base;
+    return base.filter((v) => statusOf(v) === statusFilter);
+  }, [visibleVideos, statusFilter, recentlyDeleted]);
 
   return (
     <>
@@ -486,6 +585,14 @@ export default function HomePage() {
           <section>
             <div className="section-head">
               <span className="section-title">{sectionHeader.label}</span>
+              {visibleVideos.length > 0 && (
+                <span className="clips-meta">
+                  {visibleVideos.length}{" "}
+                  {visibleVideos.length === 1 ? "clip" : "clips"}
+                  {totalDurationLabel ? ` · ${totalDurationLabel}` : ""}
+                  {totalSizeLabel ? ` · ${totalSizeLabel}` : ""}
+                </span>
+              )}
               <div className="section-meta">
                 {visibleVideos.length > 0 && (
                   <div
@@ -712,6 +819,17 @@ export default function HomePage() {
           </section>
         </div>
       </main>
+      <ConfirmDeleteClipModal
+        open={!!pendingDelete}
+        video={pendingDelete}
+        folder={
+          pendingDelete && pendingDelete.folder_id
+            ? folders.find((f) => f.id === pendingDelete.folder_id) ?? null
+            : null
+        }
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmDeleteVideo}
+      />
     </div>
     <MobileLibrary
       active={active}
@@ -725,11 +843,19 @@ export default function HomePage() {
       bookmarksCount={bookmarksCount}
       sectionHeader={sectionHeader}
       totalDurationLabel={totalDurationLabel}
+      totalSizeLabel={totalSizeLabel}
       loading={loading}
       onPickFile={() => dropzoneRef.current?.pick()}
       onCreateFolder={openNewFolder}
       onJobChanged={refreshAll}
       onSetVideoStatus={setVideoStatus}
+    />
+    <UndoToast
+      key={recentlyDeleted?.id ?? "none"}
+      open={!!recentlyDeleted}
+      label="Clip deleted"
+      onUndo={undoDelete}
+      onDismiss={dismissUndo}
     />
     </>
   );
