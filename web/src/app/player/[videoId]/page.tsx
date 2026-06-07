@@ -19,6 +19,7 @@ import FocusLine from "@/components/clip/FocusLine";
 import ClipControls from "@/components/clip/ClipControls";
 import Transcript from "@/components/clip/Transcript";
 import MobileClip from "@/components/mobile/MobileClip";
+import { LoopIcon } from "@/components/mobile/Icons";
 import { useIsMobile } from "@/lib/use-is-mobile";
 
 import "./clip.css";
@@ -480,50 +481,90 @@ export default function PlayerPage({
     }
   }, [isMobile, loading, video]);
 
+  // Soft re-fetch: bump loadAttempt (a dep of the fetch effect) instead of a
+  // full page reload, so retrying keeps SPA state. Shared by both shells.
+  const retryLoad = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
+    setLoadAttempt((n) => n + 1);
+  }, []);
+
   if (loading) {
+    // Both shells render; the 768px media query shows exactly one. The mobile
+    // copy is essential: `.clip-page` is `display:none` on mobile, so without
+    // an `.m-app` sibling the screen is blank while a (long) clip loads.
     return (
-      <div className="clip-page">
-        <div className="clip-loading">Loading…</div>
-      </div>
+      <>
+        <div className="clip-page">
+          <div className="clip-loading">Loading…</div>
+        </div>
+        <div className="m-app">
+          <div className="m-clip-status">
+            <div className="m-clip-status-msg">Loading…</div>
+          </div>
+        </div>
+      </>
     );
   }
 
   if (loadError || !video) {
     const label = loadError ? "Couldn't load this clip" : "Clip not found";
     return (
-      <div className="clip-page">
-        <div className="clip-loading">
-          <span>{label} · </span>
-          {loadError ? (
-            <button
-              type="button"
-              onClick={() => {
-                setLoading(true);
-                setLoadError(null);
-                setLoadAttempt((n) => n + 1);
-              }}
-              style={{
-                color: "var(--accent-text)",
-                marginLeft: 6,
-                background: "transparent",
-                border: 0,
-                cursor: "pointer",
-                font: "inherit",
-                textDecoration: "underline",
-              }}
-            >
-              Retry
-            </button>
-          ) : (
-            <Link
-              href="/"
-              style={{ color: "var(--accent-text)", marginLeft: 6 }}
-            >
-              Back to library
-            </Link>
-          )}
+      <>
+        <div className="clip-page">
+          <div className="clip-loading">
+            <span>{label} · </span>
+            {loadError ? (
+              <button
+                type="button"
+                onClick={retryLoad}
+                style={{
+                  color: "var(--accent-text)",
+                  marginLeft: 6,
+                  background: "transparent",
+                  border: 0,
+                  cursor: "pointer",
+                  font: "inherit",
+                  textDecoration: "underline",
+                }}
+              >
+                Retry
+              </button>
+            ) : (
+              <Link
+                href="/"
+                style={{ color: "var(--accent-text)", marginLeft: 6 }}
+              >
+                Back to library
+              </Link>
+            )}
+          </div>
         </div>
-      </div>
+        <div className="m-app">
+          <div className="m-clip-status">
+            <div className="m-clip-status-title">{label}</div>
+            {loadError ? (
+              <>
+                <div className="m-clip-status-sub">
+                  Check your connection and try again.
+                </div>
+                <button
+                  type="button"
+                  className="m-clip-reload"
+                  onClick={retryLoad}
+                >
+                  <LoopIcon />
+                  Reload
+                </button>
+              </>
+            ) : (
+              <Link href="/" className="m-clip-reload">
+                Back to library
+              </Link>
+            )}
+          </div>
+        </div>
+      </>
     );
   }
 
