@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type RefObject, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type RefObject, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { Segment, Video } from "@/lib/types";
 import WordText from "@/components/WordText";
@@ -8,6 +8,7 @@ import {
   BackIcon,
   BookmarkFilledIcon,
   BookmarkIcon,
+  EyeIcon,
   EyeOffIcon,
   NextIcon,
   PauseIcon,
@@ -60,6 +61,9 @@ function clamp01(n: number): number {
   return n;
 }
 
+// Mobile-only preference: hide the focus subtitle card below the player.
+const FOCUS_HIDDEN_KEY = "sp:m:focus-hidden";
+
 export default function MobileClip({
   video,
   segments,
@@ -86,6 +90,27 @@ export default function MobileClip({
   const transcriptRef = useRef<HTMLDivElement>(null);
   const isVideo = video.media_type === "video" && !!video.video_url;
   const segment = segments[currentIndex] ?? null;
+
+  // Focus card visibility. Read from localStorage after mount (SSR-safe), and
+  // persist so the choice sticks across clips/sessions.
+  const [showFocus, setShowFocus] = useState(true);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(FOCUS_HIDDEN_KEY) === "1") setShowFocus(false);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const toggleFocus = () =>
+    setShowFocus((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(FOCUS_HIDDEN_KEY, next ? "0" : "1");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   const duration = video.duration ?? 0;
   const progressPct = duration > 0 ? clamp01(currentTime / duration) * 100 : 0;
 
@@ -177,7 +202,7 @@ export default function MobileClip({
         </div>
 
         {/* Focus card */}
-        {segment && (
+        {showFocus && segment && (
           <div className="m-focus">
             <div className="m-focus-time">{formatTime(segment.start_time)}</div>
             <p className="m-focus-en">
@@ -261,6 +286,15 @@ export default function MobileClip({
           >
             Trans
             <span className="m-tool-chip-key">T</span>
+          </button>
+          <button
+            type="button"
+            className={"m-tool-chip" + (showFocus ? " is-on" : "")}
+            onClick={toggleFocus}
+            aria-pressed={showFocus}
+          >
+            {showFocus ? <EyeIcon /> : <EyeOffIcon />}
+            Focus
           </button>
           <button
             type="button"
