@@ -13,6 +13,7 @@ import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { PracticeStatus, Video, Segment } from "@/lib/types";
 import AudioPlayer, { type AudioPlayerHandle } from "@/components/AudioPlayer";
+import YoutubePlayer from "@/components/YoutubePlayer";
 import ClipHeader from "@/components/clip/ClipHeader";
 import ClipPlayer from "@/components/clip/ClipPlayer";
 import FocusLine from "@/components/clip/FocusLine";
@@ -569,7 +570,9 @@ export default function PlayerPage({
   }
 
   const currentSegment = segments[currentIndex] ?? null;
-  const isVideo = video.media_type === "video" && !!video.video_url;
+  const isYoutube = video.audio_url?.startsWith("youtube://") ?? false;
+  const youtubeVideoId = isYoutube ? video.audio_url.replace("youtube://", "") : null;
+  const isVideo = (video.media_type === "video" && !!video.video_url) || isYoutube;
   const showVideoFrame = isVideo && !hideVideo;
   const practiceStatus: PracticeStatus = video.practice_status || "none";
 
@@ -590,11 +593,13 @@ export default function PlayerPage({
   return (
     <>
       <div className="clip-page">
+        {/* YouTube has no separate audio track — the iframe must stay mounted,
+            so audio-only "Hide video" isn't supported for YouTube clips. */}
         <ClipHeader
           title={video.title}
           folderName={folderName}
           showVideo={!hideVideo}
-          canHideVideo={isVideo}
+          canHideVideo={isVideo && !isYoutube}
           onToggleVideo={() => setHideVideo((v) => !v)}
           showFocus={!hideFocus}
           onToggleFocus={() => setHideFocus((v) => !v)}
@@ -650,16 +655,32 @@ export default function PlayerPage({
 
         {/* AudioPlayer mounts the <audio> element for audio-only or wires to
             the <video> via externalMediaRef. Chrome hidden — ClipPlayer owns the UI. */}
-        <AudioPlayer
-          ref={playerRef}
-          src={video.audio_url}
-          duration={video.duration ?? 0}
-          onTimeUpdate={handleTimeUpdate}
-          externalMediaRef={showVideoFrame ? videoRef : undefined}
-          abRepeat={abRepeat}
-          onPlayingChange={setPlaying}
-          hideChrome
-        />
+        {isYoutube ? (
+          // Hidden pool: the YoutubePlayer hoists its (absolutely-positioned)
+          // container into the active slot via appendChild. Keeping its home
+          // here display:none means it can never overlay the page if hoisting
+          // hasn't happened yet (mirrors the hoisted <video> pool below).
+          <div style={{ display: "none" }} aria-hidden>
+            <YoutubePlayer
+              ref={playerRef}
+              videoId={youtubeVideoId!}
+              onTimeUpdate={handleTimeUpdate}
+              onPlayingChange={setPlaying}
+              videoSlotRef={isMobile ? mobileVideoSlotRef : desktopVideoSlotRef}
+            />
+          </div>
+        ) : (
+          <AudioPlayer
+            ref={playerRef}
+            src={video.audio_url}
+            duration={video.duration ?? 0}
+            onTimeUpdate={handleTimeUpdate}
+            externalMediaRef={showVideoFrame ? videoRef : undefined}
+            abRepeat={abRepeat}
+            onPlayingChange={setPlaying}
+            hideChrome
+          />
+        )}
       </div>
 
       <MobileClip
@@ -693,7 +714,7 @@ export default function PlayerPage({
 
       {/* Hoisted <video>: lives in a hidden pool until the useLayoutEffect
           above moves it into the active shell's slot via appendChild. */}
-      {showVideoFrame && (
+      {showVideoFrame && !isYoutube && (
         <div style={{ display: "none" }} aria-hidden>
           <video
             ref={videoRef}

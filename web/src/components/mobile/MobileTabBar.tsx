@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { HomeIcon, BookmarkIcon, PracticeIcon } from "./Icons";
+import { HomeIcon, BookmarkIcon, PracticeIcon, GearIcon } from "./Icons";
 
-export type MobileTab = "library" | "bookmarks" | "practice";
+export type MobileTab = "library" | "bookmarks" | "practice" | "settings";
 
 export default function MobileTabBar({ active }: { active: MobileTab }) {
   // prefetch={false}: this tab bar lives inside the `.m-app` shell, which is
@@ -24,6 +24,10 @@ export default function MobileTabBar({ active }: { active: MobileTab }) {
       <Link href="/practice" prefetch={false} className={"m-tab" + (active === "practice" ? " active" : "")}>
         <span className="m-tab-icon"><PracticeIcon /></span>
         Practice
+      </Link>
+      <Link href="/settings" prefetch={false} className={"m-tab" + (active === "settings" ? " active" : "")}>
+        <span className="m-tab-icon"><GearIcon /></span>
+        Settings
       </Link>
     </nav>
   );

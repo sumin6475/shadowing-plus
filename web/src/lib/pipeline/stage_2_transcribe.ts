@@ -6,6 +6,7 @@ import {
 } from "@/lib/r2";
 import type { PipelineSegment, PipelineWord } from "@/lib/types";
 import { AUDIO_LANGUAGE } from "./languages";
+import { recordUsage } from "@/lib/usage";
 
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/speech-to-text";
 const ELEVENLABS_MODEL_ID = "scribe_v2";
@@ -167,6 +168,15 @@ export async function stage2Transcribe(jobId: string): Promise<void> {
 
   const data = await callElevenLabs(audioUrl, apiKey);
   await updateJobProgress(jobId, "transcribe", 80);
+
+  await recordUsage({
+    jobId,
+    label: job.title,
+    provider: "elevenlabs",
+    model: ELEVENLABS_MODEL_ID,
+    kind: "transcribe",
+    audioSeconds: data.audio_duration_secs ?? 0,
+  });
 
   const segments = groupWordsIntoSegments(data.words ?? []);
   const out: RawTranscript = {

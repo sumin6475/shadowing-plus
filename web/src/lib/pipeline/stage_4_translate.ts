@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { getJson, jobKey, putJson } from "@/lib/r2";
-import { updateJobProgress } from "./jobs";
+import { getJob, updateJobProgress } from "./jobs";
+import { recordUsage } from "@/lib/usage";
 import type { PipelineSegment } from "@/lib/types";
 import { AUDIO_LANGUAGE, TRANSLATION_LANGUAGE } from "./languages";
 
@@ -103,9 +104,15 @@ interface TranslatedTranscript {
  * batch prompt so segment-level translations keep macro context that
  * batch-only translation easily loses.
  */
+interface UsageCtx {
+  jobId: string;
+  label: string | null;
+}
+
 async function profileVideo(
   openai: OpenAI,
   segments: PipelineSegment[],
+  ctx: UsageCtx,
 ): Promise<VideoProfile> {
   const sample =
     segments.length <= 60
@@ -141,6 +148,16 @@ Output JSON only, no commentary.`;
   } catch (e) {
     rewrap(e);
   }
+
+  await recordUsage({
+    jobId: ctx.jobId,
+    label: ctx.label,
+    provider: "openai",
+    model: MODEL,
+    kind: "profile",
+    inputTokens: resp.usage?.prompt_tokens ?? 0,
+    outputTokens: resp.usage?.completion_tokens ?? 0,
+  });
 
   const content = resp.choices[0]?.message?.content ?? "{}";
   let parsed: Partial<VideoProfile>;
@@ -204,10 +221,10 @@ ${terms}
 8. **Audience interjections.** If the transcript embeds an off-speaker interjection (e.g. "(Right.)" from a host), keep it in parentheses in the translation.
 
 ## Output format (JSON only, no markdown)
-Return translations in the SAME ORDER as the input. Do not reorder, skip, or merge segments. If a segment is a single filler word, translate that filler word — do not return an empty string.
+Return one object per input segment, each tagged with its source number "n" (the number shown before the segment). Every input number must appear EXACTLY once — do not reorder, skip, or merge segments. Even if two adjacent segments form one sentence, translate each on its own line by splitting the sentence across them. If a segment is a single filler word, translate that filler word — do not return an empty string.
 {
   "segments": [
-    { "translation": "natural ${TRANSLATION_LANGUAGE} translation here" }
+    { "n": 1, "translation": "natural ${TRANSLATION_LANGUAGE} translation here" }
   ]
 }`;
 }
@@ -250,6 +267,7 @@ async function translateBatch(
   openai: OpenAI,
   batch: Batch,
   systemPrompt: string,
+  ctx: UsageCtx,
 ): Promise<string[]> {
   let resp;
   try {
@@ -273,8 +291,18 @@ async function translateBatch(
     rewrap(e);
   }
 
+  await recordUsage({
+    jobId: ctx.jobId,
+    label: ctx.label,
+    provider: "openai",
+    model: MODEL,
+    kind: "translate",
+    inputTokens: resp.usage?.prompt_tokens ?? 0,
+    outputTokens: resp.usage?.completion_tokens ?? 0,
+  });
+
   const content = resp.choices[0]?.message?.content ?? "{}";
-  let parsed: { segments?: Array<{ translation?: string }> };
+  let parsed: { segments?: Array<{ n?: number; translation?: string }> };
   try {
     parsed = JSON.parse(content);
   } catch {
@@ -282,9 +310,27 @@ async function translateBatch(
   }
   const items = parsed.segments ?? [];
 
-  // Match by batch position (not GPT's returned index) to defend against the
-  // model dropping or reordering entries.
-  return batch.segs.map((_, k) => items[k]?.translation ?? "[translation failed]");
+  // Map by the model-returned source number "n" (1-based) rather than array
+  // position. If the model merges/drops/reorders entries — common with rolling
+  // caption fragments that split a sentence across lines — position-based
+  // mapping shifts EVERY following line (off-by-one cascade). Keying on "n"
+  // keeps the rest aligned; only the genuinely-missing line is flagged.
+  const byNum = new Map<number, string>();
+  for (const it of items) {
+    const n = typeof it?.n === "number" ? it.n : undefined;
+    const t = typeof it?.translation === "string" ? it.translation : "";
+    if (n !== undefined && t.trim() && !byNum.has(n)) byNum.set(n, t);
+  }
+
+  return batch.segs.map((_, k) => {
+    const keyed = byNum.get(k + 1);
+    if (keyed !== undefined) return keyed;
+    // Fallback for models that omit "n" entirely: positional, as before.
+    const positional = items[k]?.translation;
+    return typeof positional === "string" && positional.trim()
+      ? positional
+      : "[translation failed]";
+  });
 }
 
 /**
@@ -317,8 +363,12 @@ export async function stage4Translate(jobId: string): Promise<void> {
   );
   const segments = input.segments;
 
+  // Snapshot the job title for usage rows so they survive job deletion.
+  const job = await getJob(jobId);
+  const usageCtx: UsageCtx = { jobId, label: job?.title ?? null };
+
   // ── Step A: one-shot video profile ──────────────────────────
-  const profile = await profileVideo(openai, segments);
+  const profile = await profileVideo(openai, segments, usageCtx);
   await updateJobProgress(jobId, "translate", 5);
   const systemPrompt = buildSystemPrompt(profile);
 
@@ -349,7 +399,7 @@ export async function stage4Translate(jobId: string): Promise<void> {
   async function worker(): Promise<void> {
     for (let idx = next++; idx < batches.length; idx = next++) {
       const batch = batches[idx];
-      const translations = await translateBatch(openai, batch, systemPrompt);
+      const translations = await translateBatch(openai, batch, systemPrompt, usageCtx);
       for (let k = 0; k < batch.segs.length; k++) {
         out[batch.start + k] = { ...batch.segs[k], translation: translations[k] };
       }

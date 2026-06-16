@@ -9,9 +9,9 @@ import {
   BookmarkIcon,
   ChevronDownIcon,
   DotsIcon,
+  GearIcon,
   InboxIcon,
   LibraryIcon,
-  PlusIcon,
   SearchIcon,
 } from "./Icons";
 
@@ -47,6 +47,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const onBookmarksRoute = pathname?.startsWith("/bookmarks");
+  const onSettingsRoute = pathname?.startsWith("/settings");
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -89,8 +90,9 @@ export default function Sidebar({
     }
   }
 
-  const isAllActive = active.kind === "all" && !onBookmarksRoute;
-  const isRecentActive = active.kind === "recent" && !onBookmarksRoute;
+  const isAllActive = active.kind === "all" && !onBookmarksRoute && !onSettingsRoute;
+  const isRecentActive =
+    active.kind === "recent" && !onBookmarksRoute && !onSettingsRoute;
 
   return (
     <aside className="sidebar">
@@ -253,10 +255,19 @@ export default function Sidebar({
       </nav>
 
       <div className="sidebar-foot">
-        <span>v2 · Shadowing+</span>
-        <span className="kbd-hint" aria-hidden>
-          <ChevronDownIcon />
-        </span>
+        <Link
+          href="/settings"
+          className={"nav-item" + (onSettingsRoute ? " active" : "")}
+        >
+          <span className="nav-icon"><GearIcon /></span>
+          <span className="nav-label">Settings</span>
+        </Link>
+        <div className="sidebar-foot-meta">
+          <span>v2 · Shadowing+</span>
+          <span className="kbd-hint" aria-hidden>
+            <ChevronDownIcon />
+          </span>
+        </div>
       </div>
     </aside>
   );

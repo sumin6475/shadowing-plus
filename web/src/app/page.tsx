@@ -83,6 +83,10 @@ export default function HomePage() {
   const [editVideoTitle, setEditVideoTitle] = useState("");
   const videoInputRef = useRef<HTMLInputElement>(null);
 
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
   const [newFolderOpen, setNewFolderOpen] = useState(false);
 
   // Two-step destructive delete:
@@ -127,6 +131,39 @@ export default function HomePage() {
     setJobs(jobsRes.data ?? []);
     setBookmarksCount(bookmarksRes.count ?? 0);
   }, []);
+
+  const handleYoutubeImport = useCallback(async () => {
+    const trimmedUrl = youtubeUrl.trim();
+    if (!trimmedUrl) return;
+
+    setImporting(true);
+    setImportError(null);
+
+    try {
+      const resp = await fetch("/api/youtube/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmedUrl }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || "Failed to import YouTube video");
+      }
+
+      setYoutubeUrl("");
+
+      fetch(`/api/jobs/${data.jobId}/run`, { method: "POST" }).catch((e) => {
+        console.error("run failed", e);
+      });
+
+      await refreshAll();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+    }
+  }, [youtubeUrl, refreshAll]);
 
   useEffect(() => {
     refreshAll().then(() => setLoading(false));
@@ -573,6 +610,40 @@ export default function HomePage() {
           </header>
 
           <UploadDropzone ref={dropzoneRef} onJobQueued={refreshAll} />
+
+          <div className="youtube-import-card">
+            <div className="youtube-import-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.517 3.545 12 3.545 12 3.545s-7.516 0-9.387.507A3.002 3.002 0 0 0 .502 6.163C0 8.07 0 12 0 12s0 3.93.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.871.507 9.387.507 9.387.507s7.517 0 9.387-.507a3.002 3.002 0 0 0 2.11-2.11C24 15.93 24 12 24 12s0-3.93-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+            </div>
+            <div className="youtube-import-body">
+              <div className="youtube-import-title">Import from YouTube</div>
+              <div className="youtube-import-input-wrapper">
+                <input
+                  type="text"
+                  placeholder="Paste YouTube video link (e.g. https://www.youtube.com/watch?v=...)"
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !importing && youtubeUrl.trim()) {
+                      handleYoutubeImport();
+                    }
+                  }}
+                  disabled={importing}
+                />
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={handleYoutubeImport}
+                  disabled={importing || !youtubeUrl.trim()}
+                >
+                  {importing ? "Importing…" : "Import"}
+                </button>
+              </div>
+              {importError && <div className="youtube-import-error">{importError}</div>}
+            </div>
+          </div>
 
           {activeJobs.length > 0 && (
             <section className="jobs-queue" aria-label="Processing">

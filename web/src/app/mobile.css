@@ -838,7 +838,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   height: calc(var(--m-tab-h) + var(--m-bottom-safe));
   padding-bottom: var(--m-bottom-safe);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: oklch(from var(--bg) l c h / 0.92);
   -webkit-backdrop-filter: saturate(160%) blur(14px);
   backdrop-filter: saturate(160%) blur(14px);

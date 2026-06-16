@@ -20,6 +20,15 @@ export function SearchIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function GearIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <circle cx="8" cy="8" r="2.1" />
+      <path d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6L3.5 3.5" />
+    </svg>
+  );
+}
+
 export function LibraryIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>

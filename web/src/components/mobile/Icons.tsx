@@ -15,6 +15,7 @@ export {
   DotsIcon,
   SortIcon,
   ChevronDownIcon,
+  GearIcon,
 } from "@/components/home/Icons";
 
 const s14: SVGProps<SVGSVGElement> = {

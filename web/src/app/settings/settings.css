@@ -1,0 +1,350 @@
+/* ─────────────────────────────────────────────────────────────
+   Settings — usage & cost panel. The `.usage` block is self-contained
+   (its own token values) so it renders identically inside the desktop
+   `.home-app` shell and the mobile `.m-app` shell.
+   ───────────────────────────────────────────────────────────── */
+
+.usage {
+  --u-surface: oklch(1 0 0);
+  --u-surface-2: oklch(0.975 0.004 70);
+  --u-hairline: oklch(0.91 0.006 70);
+  --u-text: oklch(0.24 0.012 60);
+  --u-text-2: oklch(0.42 0.011 60);
+  --u-text-3: oklch(0.58 0.010 60);
+  --u-accent: oklch(0.58 0.165 258);
+  --u-accent-soft: oklch(0.955 0.0264 258);
+  --u-openai: oklch(0.62 0.13 165);
+  --u-eleven: oklch(0.62 0.17 30);
+  --u-radius: 14px;
+  --u-radius-sm: 10px;
+
+  margin-top: 18px;
+  font-family: inherit;
+  color: var(--u-text);
+}
+
+[data-theme="dark"] .usage {
+  --u-surface: oklch(0.215 0.007 65);
+  --u-surface-2: oklch(0.245 0.007 65);
+  --u-hairline: oklch(0.295 0.008 65);
+  --u-text: oklch(0.96 0.005 70);
+  --u-text-2: oklch(0.78 0.008 70);
+  --u-text-3: oklch(0.62 0.008 70);
+  --u-accent: oklch(0.70 0.16 258);
+  --u-accent-soft: oklch(0.30 0.05 258);
+}
+
+.usage-empty,
+.usage-note,
+.usage-warn,
+.usage-disclaimer {
+  border-radius: var(--u-radius);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.usage-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--u-text-3);
+  background: var(--u-surface);
+  border: 1px solid var(--u-hairline);
+}
+
+.usage-note {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  color: var(--u-text-2);
+  background: var(--u-accent-soft);
+  border: 1px solid color-mix(in oklch, var(--u-accent) 22%, transparent);
+}
+
+.usage-warn {
+  padding: 16px 18px;
+  color: var(--u-text-2);
+  background: oklch(0.97 0.04 75);
+  border: 1px solid oklch(0.85 0.09 75);
+}
+.usage-warn-title {
+  font-weight: 650;
+  color: var(--u-text);
+  margin-bottom: 4px;
+}
+
+.usage-link {
+  background: none;
+  border: 0;
+  color: var(--u-accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  padding: 0;
+}
+
+/* ── Stat cards ── */
+.usage-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.usage-card {
+  background: var(--u-surface);
+  border: 1px solid var(--u-hairline);
+  border-radius: var(--u-radius);
+  padding: 16px 18px;
+}
+.usage-card.hero {
+  background: linear-gradient(
+    160deg,
+    var(--u-accent-soft),
+    var(--u-surface) 75%
+  );
+  border-color: color-mix(in oklch, var(--u-accent) 25%, transparent);
+}
+.usage-card-label {
+  font-size: 12.5px;
+  color: var(--u-text-3);
+  font-weight: 550;
+}
+.usage-card-value {
+  margin-top: 8px;
+  font-size: 26px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.usage-card.hero .usage-card-value {
+  color: var(--u-accent);
+}
+.usage-card-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--u-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Sections ── */
+.usage-section-title {
+  margin: 26px 0 12px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--u-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.usage-providers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.usage-prov {
+  background: var(--u-surface);
+  border: 1px solid var(--u-hairline);
+  border-radius: var(--u-radius);
+  padding: 16px 18px;
+}
+.usage-prov-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--u-text-2);
+}
+.usage-prov-cost {
+  margin-top: 10px;
+  font-size: 22px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.usage-prov-meta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--u-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: none;
+}
+.usage-dot.openai {
+  background: var(--u-openai);
+}
+.usage-dot.eleven {
+  background: var(--u-eleven);
+}
+
+/* ── Monthly bars ── */
+.usage-months {
+  background: var(--u-surface);
+  border: 1px solid var(--u-hairline);
+  border-radius: var(--u-radius);
+  padding: 10px 16px;
+}
+.usage-month-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 84px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.usage-month-row + .usage-month-row {
+  border-top: 1px solid var(--u-hairline);
+}
+.usage-month-key {
+  font-size: 13px;
+  color: var(--u-text-2);
+  font-variant-numeric: tabular-nums;
+}
+.usage-month-bar {
+  height: 8px;
+  background: var(--u-surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.usage-month-fill {
+  display: block;
+  height: 100%;
+  background: var(--u-accent);
+  border-radius: 999px;
+}
+.usage-month-cost {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Recent activity table ── */
+.usage-table {
+  background: var(--u-surface);
+  border: 1px solid var(--u-hairline);
+  border-radius: var(--u-radius);
+  overflow: hidden;
+}
+.usage-tr {
+  display: grid;
+  grid-template-columns: 2fr 1.4fr 1fr 0.8fr 0.8fr;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  font-size: 13px;
+}
+.usage-tr + .usage-tr {
+  border-top: 1px solid var(--u-hairline);
+}
+.usage-th {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--u-text-3);
+  background: var(--u-surface-2);
+}
+.ta-r {
+  text-align: right;
+}
+.usage-mono {
+  font-variant-numeric: tabular-nums;
+}
+.usage-td-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--u-text);
+}
+.usage-td-kind {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--u-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-td-time {
+  color: var(--u-text-3);
+}
+
+.usage-disclaimer {
+  margin-top: 22px;
+  padding: 14px 16px;
+  font-size: 12px;
+  color: var(--u-text-3);
+  background: var(--u-surface-2);
+  border: 1px solid var(--u-hairline);
+}
+.usage code {
+  font-family: var(--home-font-mono, ui-monospace, monospace);
+  font-size: 0.92em;
+  background: var(--u-surface-2);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+/* ── Mobile shell header ── */
+.m-settings-top {
+  display: none;
+}
+.m-settings-body {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .usage-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+  .usage-providers {
+    grid-template-columns: 1fr;
+  }
+  .usage-tr {
+    grid-template-columns: 1.6fr 1fr 0.8fr;
+  }
+  /* Hide the two least-critical columns on narrow screens. */
+  .usage-tr > :nth-child(2),
+  .usage-tr > :nth-child(5) {
+    display: none;
+  }
+
+  .m-settings-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--u-hairline, oklch(0.91 0.006 70));
+    position: sticky;
+    top: 0;
+    background: var(--bg, oklch(0.985 0.004 70));
+    z-index: 5;
+  }
+  .m-settings-title {
+    font-weight: 650;
+    font-size: 16px;
+  }
+  .m-settings-back,
+  .m-settings-refresh {
+    font-size: 14px;
+    color: var(--accent, oklch(0.58 0.165 258));
+    background: none;
+    border: 0;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .m-settings-body {
+    display: block;
+    padding: 0 16px calc(72px + env(safe-area-inset-bottom));
+  }
+  .m-settings-body .usage {
+    margin-top: 6px;
+  }
+}

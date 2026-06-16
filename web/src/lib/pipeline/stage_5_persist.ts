@@ -21,8 +21,13 @@ export async function stage5Persist(jobId: string): Promise<string> {
     jobKey(jobId, "segments_translated.json"),
   );
 
-  const audioUrl = publicUrl(audioKeyFor(job));
-  const videoUrl = job.media_type === "video" ? publicUrl(job.source_key) : null;
+  const isYoutube = job.source_key.startsWith("youtube://");
+  const ytVideoId = isYoutube ? job.source_key.replace("youtube://", "") : "";
+
+  const audioUrl = isYoutube ? job.source_key : publicUrl(audioKeyFor(job));
+  const videoUrl = isYoutube
+    ? `https://www.youtube.com/watch?v=${ytVideoId}`
+    : (job.media_type === "video" ? publicUrl(job.source_key) : null);
 
   const db = supabaseAdmin();
 
