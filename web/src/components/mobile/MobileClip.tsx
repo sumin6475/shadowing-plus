@@ -28,6 +28,7 @@ interface Props {
   playing: boolean;
   currentTime: number;
   abActive: boolean;
+  loopActive: boolean;
   speed: number;
   videoSlotRef: RefObject<HTMLDivElement | null>;
   bookmarkedIds: Set<string>;
@@ -36,6 +37,7 @@ interface Props {
   onNext: () => void;
   onReplay: () => void;
   onToggleAB: () => void;
+  onToggleLoop: () => void;
   onToggleTranslation: () => void;
   onSeek: (t: number) => void;
   onSeekBy: (delta: number) => void;
@@ -72,6 +74,7 @@ export default function MobileClip({
   playing,
   currentTime,
   abActive,
+  loopActive,
   speed,
   videoSlotRef,
   bookmarkedIds,
@@ -80,6 +83,7 @@ export default function MobileClip({
   onNext,
   onReplay,
   onToggleAB,
+  onToggleLoop,
   onToggleTranslation,
   onSeek,
   onSeekBy,
@@ -303,6 +307,14 @@ export default function MobileClip({
           >
             A–B
             <span className="m-tool-chip-key">R</span>
+          </button>
+          <button
+            type="button"
+            className={"m-tool-chip" + (loopActive ? " is-on" : "")}
+            onClick={onToggleLoop}
+            aria-pressed={loopActive}
+          >
+            Loop
           </button>
           <button type="button" className="m-tool-chip" title="Playback speed">
             <span style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", letterSpacing: 0 }}>

@@ -7,7 +7,6 @@ import type { Folder } from "@/lib/types";
 import { FOLDER_COLOR_OPTIONS, folderColor } from "@/lib/folder-color";
 import {
   BookmarkIcon,
-  ChevronDownIcon,
   DotsIcon,
   GearIcon,
   InboxIcon,
@@ -262,12 +261,6 @@ export default function Sidebar({
           <span className="nav-icon"><GearIcon /></span>
           <span className="nav-label">Settings</span>
         </Link>
-        <div className="sidebar-foot-meta">
-          <span>v2 · Shadowing+</span>
-          <span className="kbd-hint" aria-hidden>
-            <ChevronDownIcon />
-          </span>
-        </div>
       </div>
     </aside>
   );

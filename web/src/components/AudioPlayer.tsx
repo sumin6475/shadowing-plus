@@ -25,6 +25,9 @@ interface AudioPlayerProps {
   externalMediaRef?: React.RefObject<HTMLMediaElement | null>;
   abRepeat?: { a: number; b: number | null } | null;
   onPlayingChange?: (playing: boolean) => void;
+  /** Fired when playback reaches the end of the media. The parent decides
+   *  what to do (e.g. restart from 0 when full-clip loop is on). */
+  onEnded?: () => void;
   /** Hide the built-in UI (button + progress bar). The <audio> element still
    *  mounts, the imperative handle still works, and play/timeupdate events
    *  still fire — useful when a parent renders its own player chrome. */
@@ -40,6 +43,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
       externalMediaRef,
       abRepeat,
       onPlayingChange,
+      onEnded,
       hideChrome,
     },
     ref,
@@ -101,17 +105,22 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         setPlaying(false);
         onPlayingChange?.(false);
       };
+      const handleEnded = () => {
+        onEnded?.();
+      };
 
       media.addEventListener("timeupdate", handleTimeUpdate);
       media.addEventListener("play", handlePlay);
       media.addEventListener("pause", handlePause);
+      media.addEventListener("ended", handleEnded);
 
       return () => {
         media.removeEventListener("timeupdate", handleTimeUpdate);
         media.removeEventListener("play", handlePlay);
         media.removeEventListener("pause", handlePause);
+        media.removeEventListener("ended", handleEnded);
       };
-    }, [onTimeUpdate, onPlayingChange, getMedia]);
+    }, [onTimeUpdate, onPlayingChange, onEnded, getMedia]);
 
     const togglePlay = useCallback(() => {
       const media = getMedia();

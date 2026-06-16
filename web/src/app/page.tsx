@@ -73,7 +73,6 @@ function saveActiveSection(s: ActiveSection) {
 export default function HomePage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
-  const [sizes, setSizes] = useState<Record<string, number>>({});
   const [jobs, setJobs] = useState<Job[]>([]);
   const [bookmarksCount, setBookmarksCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -168,17 +167,6 @@ export default function HomePage() {
   useEffect(() => {
     refreshAll().then(() => setLoading(false));
   }, [refreshAll]);
-
-  // Per-video R2 storage footprint (bytes). Measured server-side since the DB
-  // has no size column. Best-effort: failure just leaves the GB label hidden.
-  useEffect(() => {
-    fetch("/api/storage")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.sizes) setSizes(d.sizes as Record<string, number>);
-      })
-      .catch(() => {});
-  }, [videos.length]);
 
   // Realtime jobs subscription
   useEffect(() => {
@@ -523,17 +511,6 @@ export default function HomePage() {
     return `${h}h ${m % 60}m`;
   }, [visibleVideos]);
 
-  const totalSizeLabel = useMemo(() => {
-    let bytes = 0;
-    for (const v of visibleVideos) bytes += sizes[v.id] ?? 0;
-    if (bytes <= 0) return "";
-    const gb = bytes / 1e9;
-    if (gb >= 1) return `${gb.toFixed(1)} GB`;
-    const mb = bytes / 1e6;
-    if (mb >= 1) return `${Math.round(mb)} MB`;
-    return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
-  }, [visibleVideos, sizes]);
-
   const statusOf = (v: Video): PracticeStatus => v.practice_status || "none";
   const statusCounts = useMemo(() => {
     let focusing = 0;
@@ -661,7 +638,6 @@ export default function HomePage() {
                   {visibleVideos.length}{" "}
                   {visibleVideos.length === 1 ? "clip" : "clips"}
                   {totalDurationLabel ? ` · ${totalDurationLabel}` : ""}
-                  {totalSizeLabel ? ` · ${totalSizeLabel}` : ""}
                 </span>
               )}
               <div className="section-meta">
@@ -914,7 +890,6 @@ export default function HomePage() {
       bookmarksCount={bookmarksCount}
       sectionHeader={sectionHeader}
       totalDurationLabel={totalDurationLabel}
-      totalSizeLabel={totalSizeLabel}
       loading={loading}
       youtubeUrl={youtubeUrl}
       importing={importing}

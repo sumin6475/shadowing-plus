@@ -63,6 +63,14 @@ function duration(seconds: number): string {
   if (m >= 1) return `${m.toFixed(1)}m`;
   return `${Math.round(seconds)}s`;
 }
+function bytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const gb = n / 1e9;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = n / 1e6;
+  if (mb >= 1) return `${Math.round(mb)} MB`;
+  return `${Math.max(1, Math.round(n / 1e3))} KB`;
+}
 function monthLabel(key: string): string {
   const [y, m] = key.split("-");
   return `${y}.${m}`;
@@ -90,16 +98,26 @@ const KIND_LABEL: Record<string, string> = {
   transcribe: "Transcribe",
 };
 
+interface LargestClip {
+  id: string;
+  title: string;
+  bytes: number;
+}
+
 function UsagePanel({
   data,
   loading,
   error,
   onRetry,
+  storageTotal,
+  largestClips,
 }: {
   data: UsageSummary | null;
   loading: boolean;
   error: string | null;
   onRetry: () => void;
+  storageTotal: number;
+  largestClips: LargestClip[];
 }) {
   if (loading) {
     return <div className="usage"><div className="usage-empty">Loading…</div></div>;
@@ -167,6 +185,11 @@ function UsagePanel({
           <div className="usage-card-value">{num(data.eventCount)}</div>
           <div className="usage-card-sub">Billable requests</div>
         </div>
+        <div className="usage-card">
+          <div className="usage-card-label">Storage used</div>
+          <div className="usage-card-value">{bytes(storageTotal)}</div>
+          <div className="usage-card-sub">Media stored in R2</div>
+        </div>
       </div>
 
       <div className="usage-section-title">By provider</div>
@@ -211,6 +234,31 @@ function UsagePanel({
                     />
                   </span>
                   <span className="usage-month-cost">{usd(m.cost)}</span>
+                </div>
+              ));
+            })()}
+          </div>
+        </>
+      )}
+
+      {largestClips.length > 0 && (
+        <>
+          <div className="usage-section-title">Storage by clip</div>
+          <div className="usage-months">
+            {(() => {
+              const max = Math.max(...largestClips.map((c) => c.bytes), 1);
+              return largestClips.map((c) => (
+                <div key={c.id} className="usage-month-row usage-clip-row">
+                  <span className="usage-month-key usage-clip-name" title={c.title}>
+                    {c.title}
+                  </span>
+                  <span className="usage-month-bar">
+                    <span
+                      className="usage-month-fill"
+                      style={{ width: `${Math.max(3, (c.bytes / max) * 100)}%` }}
+                    />
+                  </span>
+                  <span className="usage-month-cost">{bytes(c.bytes)}</span>
                 </div>
               ));
             })()}
@@ -268,6 +316,7 @@ export default function SettingsPage() {
   const [data, setData] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sizes, setSizes] = useState<Record<string, number>>({});
 
   const loadUsage = useCallback(async () => {
     setLoading(true);
@@ -298,9 +347,36 @@ export default function SettingsPage() {
       .then(({ data }) => setFolders((data ?? []) as Folder[]));
     supabase
       .from("videos")
-      .select("id, folder_id, created_at")
+      .select("id, folder_id, created_at, title")
       .then(({ data }) => setVideos((data ?? []) as Video[]));
   }, []);
+
+  // R2 storage footprint per clip (bytes). Measured server-side; best-effort.
+  useEffect(() => {
+    fetch("/api/storage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.sizes) setSizes(d.sizes as Record<string, number>);
+      })
+      .catch(() => {});
+  }, []);
+
+  const storageTotal = useMemo(
+    () => Object.values(sizes).reduce((a, b) => a + (b || 0), 0),
+    [sizes],
+  );
+
+  const largestClips = useMemo<LargestClip[]>(() => {
+    return videos
+      .map((v) => ({
+        id: v.id,
+        title: v.title || "(untitled)",
+        bytes: sizes[v.id] ?? 0,
+      }))
+      .filter((c) => c.bytes > 0)
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, 8);
+  }, [videos, sizes]);
 
   const handleSidebarSelect = useCallback(
     (section: ActiveSection) => {
@@ -393,7 +469,14 @@ export default function SettingsPage() {
               </div>
             </header>
 
-            <UsagePanel data={data} loading={loading} error={error} onRetry={loadUsage} />
+            <UsagePanel
+              data={data}
+              loading={loading}
+              error={error}
+              onRetry={loadUsage}
+              storageTotal={storageTotal}
+              largestClips={largestClips}
+            />
           </div>
         </main>
       </div>
@@ -409,7 +492,14 @@ export default function SettingsPage() {
           </button>
         </header>
         <div className="m-settings-body">
-          <UsagePanel data={data} loading={loading} error={error} onRetry={loadUsage} />
+          <UsagePanel
+            data={data}
+            loading={loading}
+            error={error}
+            onRetry={loadUsage}
+            storageTotal={storageTotal}
+            largestClips={largestClips}
+          />
         </div>
         <MobileTabBar active="settings" />
       </div>

@@ -34,7 +34,7 @@ const DEFAULT_SPEED_IDX = 3;
 // during shadowing practice, so we restore both the play position and any A-B
 // loop they've marked. Wiped via localStorage if a clip gets re-uploaded under
 // the same id (rare).
-type PlayerPersisted = { t: number; ab: AbRepeat | null };
+type PlayerPersisted = { t: number; ab: AbRepeat | null; loop?: boolean };
 const PLAYER_STORAGE_KEY = (id: string) => `sp:player:${id}`;
 
 function loadPersisted(id: string): PlayerPersisted | null {
@@ -76,6 +76,7 @@ export default function PlayerPage({
   const [hideVideo, setHideVideo] = useState(false);
   const [hideFocus, setHideFocus] = useState(false);
   const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
+  const [loopClip, setLoopClip] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED_IDX);
@@ -88,6 +89,7 @@ export default function PlayerPage({
   const currentIndexRef = useRef(0);
   const segmentsRef = useRef<Segment[]>([]);
   const abRepeatRef = useRef<AbRepeat | null>(null);
+  const loopClipRef = useRef(false);
   const currentTimeRef = useRef(0);
   const restoredRef = useRef(false);
   const lastSaveRef = useRef(0);
@@ -107,6 +109,9 @@ export default function PlayerPage({
   useEffect(() => {
     abRepeatRef.current = abRepeat;
   }, [abRepeat]);
+  useEffect(() => {
+    loopClipRef.current = loopClip;
+  }, [loopClip]);
   useEffect(() => {
     currentTimeRef.current = currentTime;
   }, [currentTime]);
@@ -251,6 +256,7 @@ export default function PlayerPage({
     if (!persisted) return;
 
     if (persisted.ab) setAbRepeat(persisted.ab);
+    if (persisted.loop) setLoopClip(true);
 
     const queryT = Number(searchParams.get("t"));
     const queryTValid = Number.isFinite(queryT) && queryT > 0;
@@ -276,7 +282,7 @@ export default function PlayerPage({
     const duration = video?.duration ?? 0;
     const tToSave =
       duration > 0 && currentTime >= duration - 3 ? 0 : currentTime;
-    savePersisted(videoId, { t: tToSave, ab: abRepeat });
+    savePersisted(videoId, { t: tToSave, ab: abRepeat, loop: loopClipRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, loading, videoId]);
 
@@ -285,8 +291,23 @@ export default function PlayerPage({
     if (loading) return;
     if (abRepeat !== null) hasInteractedRef.current = true;
     if (!hasInteractedRef.current) return;
-    savePersisted(videoId, { t: currentTimeRef.current, ab: abRepeat });
+    savePersisted(videoId, {
+      t: currentTimeRef.current,
+      ab: abRepeat,
+      loop: loopClipRef.current,
+    });
   }, [abRepeat, loading, videoId]);
+
+  // Loop toggle saves immediately too.
+  useEffect(() => {
+    if (loading) return;
+    hasInteractedRef.current = true;
+    savePersisted(videoId, {
+      t: currentTimeRef.current,
+      ab: abRepeatRef.current,
+      loop: loopClip,
+    });
+  }, [loopClip, loading, videoId]);
 
   // Flush latest position when leaving the page.
   useEffect(() => {
@@ -295,7 +316,11 @@ export default function PlayerPage({
       const duration = video?.duration ?? 0;
       const t = currentTimeRef.current;
       const tToSave = duration > 0 && t >= duration - 3 ? 0 : t;
-      savePersisted(videoId, { t: tToSave, ab: abRepeatRef.current });
+      savePersisted(videoId, {
+        t: tToSave,
+        ab: abRepeatRef.current,
+        loop: loopClipRef.current,
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
@@ -379,6 +404,19 @@ export default function PlayerPage({
     }
   }, []);
 
+  const toggleLoop = useCallback(() => {
+    setLoopClip((v) => !v);
+  }, []);
+
+  // Full-clip loop: when the media ends and loop is on, restart from the top.
+  // Fires off the players' native end events (HTML `ended` / YT ENDED state),
+  // so it triggers exactly once at the true end rather than racing timeupdate.
+  const handleEnded = useCallback(() => {
+    if (!loopClipRef.current) return;
+    playerRef.current?.seekTo(0);
+    playerRef.current?.play();
+  }, []);
+
   const selectSpeed = useCallback((s: number) => {
     const idx = SPEEDS.indexOf(s);
     if (idx !== -1) setSpeedIdx(idx);
@@ -438,6 +476,10 @@ export default function PlayerPage({
           e.preventDefault();
           toggleAbRepeat();
           break;
+        case "l":
+          e.preventDefault();
+          toggleLoop();
+          break;
         case "t":
           e.preventDefault();
           setShowTranslation((v) => !v);
@@ -465,7 +507,80 @@ export default function PlayerPage({
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [goToPrev, goToNext, repeatCurrent, toggleAbRepeat, togglePlay]);
+  }, [goToPrev, goToNext, repeatCurrent, toggleAbRepeat, toggleLoop, togglePlay]);
+
+  // Media Session: lock-screen / notification transport controls + metadata.
+  // This is what keeps uploaded audio/video playing in the background on mobile
+  // (Android especially) and surfaces controls on the lock screen. YouTube clips
+  // play inside an iframe that owns its own media session AND blocks background
+  // playback, so we skip wiring it for them.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (!video) return;
+    if (video.audio_url?.startsWith("youtube://")) return;
+
+    const ms = navigator.mediaSession;
+    ms.metadata = new MediaMetadata({
+      title: video.title || "Shadowing+",
+      artist: folderName || "Shadowing+",
+      album: "Shadowing+",
+      artwork: [
+        { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      ],
+    });
+
+    const set = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler | null,
+    ) => {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {
+        /* action not supported on this platform */
+      }
+    };
+
+    set("play", () => playerRef.current?.play());
+    set("pause", () => playerRef.current?.pause());
+    set("previoustrack", () => goToPrev());
+    set("nexttrack", () => goToNext());
+    set("seekbackward", (d) => seekBy(-(d.seekOffset ?? 10)));
+    set("seekforward", (d) => seekBy(d.seekOffset ?? 10));
+    set("seekto", (d) => {
+      if (typeof d.seekTime === "number") playerRef.current?.seekTo(d.seekTime);
+    });
+
+    const actions: MediaSessionAction[] = [
+      "play",
+      "pause",
+      "previoustrack",
+      "nexttrack",
+      "seekbackward",
+      "seekforward",
+      "seekto",
+    ];
+    return () => actions.forEach((a) => set(a, null));
+  }, [video, folderName, goToPrev, goToNext, seekBy]);
+
+  // Keep the OS transport UI in sync with play state + scrubber position.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    ms.playbackState = playing ? "playing" : "paused";
+    const dur = video?.duration ?? 0;
+    if (dur > 0 && "setPositionState" in ms) {
+      try {
+        ms.setPositionState({
+          duration: dur,
+          position: Math.min(Math.max(0, currentTime), dur),
+          playbackRate: SPEEDS[speedIdx],
+        });
+      } catch {
+        /* invalid state (e.g. position > duration mid-seek) — ignore */
+      }
+    }
+  }, [playing, currentTime, video?.duration, speedIdx]);
 
   // Hoisted-video projection: the single <video> element below lives in a
   // hidden pool. After mount (and whenever the active shell changes), we
@@ -635,6 +750,8 @@ export default function PlayerPage({
               onReplay={repeatCurrent}
               abActive={abRepeat !== null}
               onToggleAB={toggleAbRepeat}
+              loopActive={loopClip}
+              onToggleLoop={toggleLoop}
               showTranslation={showTranslation}
               onToggleTranslation={() => setShowTranslation((v) => !v)}
               speed={SPEEDS[speedIdx]}
@@ -666,6 +783,7 @@ export default function PlayerPage({
               videoId={youtubeVideoId!}
               onTimeUpdate={handleTimeUpdate}
               onPlayingChange={setPlaying}
+              onEnded={handleEnded}
               videoSlotRef={isMobile ? mobileVideoSlotRef : desktopVideoSlotRef}
             />
           </div>
@@ -678,6 +796,7 @@ export default function PlayerPage({
             externalMediaRef={showVideoFrame ? videoRef : undefined}
             abRepeat={abRepeat}
             onPlayingChange={setPlaying}
+            onEnded={handleEnded}
             hideChrome
           />
         )}
@@ -691,6 +810,7 @@ export default function PlayerPage({
         playing={playing}
         currentTime={currentTime}
         abActive={abRepeat !== null}
+        loopActive={loopClip}
         speed={SPEEDS[speedIdx]}
         videoSlotRef={mobileVideoSlotRef}
         bookmarkedIds={
@@ -705,6 +825,7 @@ export default function PlayerPage({
         onNext={goToNext}
         onReplay={repeatCurrent}
         onToggleAB={toggleAbRepeat}
+        onToggleLoop={toggleLoop}
         onToggleTranslation={() => setShowTranslation((v) => !v)}
         onSeek={seekToTime}
         onSeekBy={seekBy}

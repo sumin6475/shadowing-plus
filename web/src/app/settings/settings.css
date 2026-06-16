@@ -205,6 +205,16 @@
   color: var(--u-text-2);
   font-variant-numeric: tabular-nums;
 }
+/* Clip rows reuse the month-bar layout but need a wider, truncating label. */
+.usage-clip-row {
+  grid-template-columns: minmax(0, 1.3fr) 1fr 84px;
+}
+.usage-clip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .usage-month-bar {
   height: 8px;
   background: var(--u-surface-2);

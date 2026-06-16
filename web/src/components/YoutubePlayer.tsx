@@ -13,6 +13,7 @@ interface YoutubePlayerProps {
   videoId: string;
   onTimeUpdate?: (time: number) => void;
   onPlayingChange?: (playing: boolean) => void;
+  onEnded?: () => void;
   videoSlotRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -69,7 +70,7 @@ function loadYoutubeApi(): Promise<void> {
 }
 
 const YoutubePlayer = forwardRef<AudioPlayerHandle, YoutubePlayerProps>(
-  ({ videoId, onTimeUpdate, onPlayingChange, videoSlotRef }, ref) => {
+  ({ videoId, onTimeUpdate, onPlayingChange, onEnded, videoSlotRef }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const iframeWrapperRef = useRef<HTMLDivElement>(null);
     const playerRef = useRef<YTPlayer | null>(null);
@@ -84,10 +85,12 @@ const YoutubePlayer = forwardRef<AudioPlayerHandle, YoutubePlayerProps>(
     // Keep the latest callbacks reachable from the stable effect closures.
     const onTimeUpdateRef = useRef(onTimeUpdate);
     const onPlayingChangeRef = useRef(onPlayingChange);
+    const onEndedRef = useRef(onEnded);
     useEffect(() => {
       onTimeUpdateRef.current = onTimeUpdate;
       onPlayingChangeRef.current = onPlayingChange;
-    }, [onTimeUpdate, onPlayingChange]);
+      onEndedRef.current = onEnded;
+    }, [onTimeUpdate, onPlayingChange, onEnded]);
 
     // Queue actions called before player is ready
     const runOrQueue = (action: () => void) => {
@@ -202,7 +205,8 @@ const YoutubePlayer = forwardRef<AudioPlayerHandle, YoutubePlayerProps>(
             onStateChange: (event: { data: number }) => {
               if (!active) return;
               const state = event.data;
-              const isPlaying = state === window.YT?.PlayerState?.PLAYING;
+              const states = window.YT?.PlayerState;
+              const isPlaying = state === states?.PLAYING;
 
               onPlayingChangeRef.current?.(isPlaying);
 
@@ -213,6 +217,9 @@ const YoutubePlayer = forwardRef<AudioPlayerHandle, YoutubePlayerProps>(
                 const p = playerRef.current;
                 if (p && typeof p.getCurrentTime === "function") {
                   onTimeUpdateRef.current?.(p.getCurrentTime());
+                }
+                if (state === states?.ENDED) {
+                  onEndedRef.current?.();
                 }
               }
             },

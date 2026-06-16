@@ -30,7 +30,6 @@ interface Props {
   bookmarksCount: number;
   sectionHeader: { title: string; sub: string; label: string };
   totalDurationLabel: string;
-  totalSizeLabel?: string;
   loading: boolean;
   youtubeUrl: string;
   importing: boolean;
@@ -62,7 +61,6 @@ export default function MobileLibrary({
   bookmarksCount,
   sectionHeader,
   totalDurationLabel,
-  totalSizeLabel,
   loading,
   youtubeUrl,
   importing,
@@ -259,7 +257,6 @@ export default function MobileLibrary({
             <div className="m-section-meta">
               {visibleVideos.length} {visibleVideos.length === 1 ? "clip" : "clips"}
               {totalDurationLabel ? ` · ${totalDurationLabel}` : ""}
-              {totalSizeLabel ? ` · ${totalSizeLabel}` : ""}
             </div>
           </div>
 

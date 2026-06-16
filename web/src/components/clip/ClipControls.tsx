@@ -9,6 +9,8 @@ interface Props {
   onReplay: () => void;
   abActive: boolean;
   onToggleAB: () => void;
+  loopActive: boolean;
+  onToggleLoop: () => void;
   showTranslation: boolean;
   onToggleTranslation: () => void;
   speed: number;
@@ -126,6 +128,8 @@ export default function ClipControls({
   onReplay,
   abActive,
   onToggleAB,
+  loopActive,
+  onToggleLoop,
   showTranslation,
   onToggleTranslation,
   speed,
@@ -167,6 +171,15 @@ export default function ClipControls({
           <span>A–B</span>
           <span className="key">R</span>
         </button>
+        <button
+          type="button"
+          className={"ctl toggle" + (loopActive ? " active" : "")}
+          onClick={onToggleLoop}
+          title="Loop the whole clip"
+        >
+          <span>Loop</span>
+          <span className="key">L</span>
+        </button>
 
         <div className="ctl-sep" />
 
@@ -177,6 +190,7 @@ export default function ClipControls({
         <span><b>Space</b> Play / Pause</span>
         <span><b>← →</b> Skip 3s</span>
         <span><b>R</b> AB Repeat</span>
+        <span><b>L</b> Loop clip</span>
       </div>
     </div>
   );
