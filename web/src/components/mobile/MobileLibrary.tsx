@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Folder, PracticeStatus, Video, Job } from "@/lib/types";
 import { folderColor } from "@/lib/folder-color";
+import { clipKind } from "@/lib/clip-kind";
 import MobileJobCard from "./MobileJobCard";
 import MobileStatusBadge from "./MobileStatusBadge";
 import MobileStatusSheet from "./MobileStatusSheet";
@@ -318,8 +319,10 @@ export default function MobileLibrary({
                     <span className="m-clip-body">
                       <span className="m-clip-title">
                         {video.title}
-                        {video.media_type === "audio" && (
-                          <span className="m-clip-tag" style={{ marginLeft: 6 }}>audio</span>
+                        {clipKind(video) !== "video" && (
+                          <span className="m-clip-tag" style={{ marginLeft: 6 }}>
+                            {clipKind(video)}
+                          </span>
                         )}
                       </span>
                       <span className="m-clip-meta">

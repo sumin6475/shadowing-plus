@@ -30,6 +30,7 @@ import {
   SortIcon,
 } from "@/components/home/Icons";
 import { folderColor } from "@/lib/folder-color";
+import { clipKind } from "@/lib/clip-kind";
 
 import "./home.css";
 
@@ -730,7 +731,7 @@ export default function HomePage() {
                           >
                             <span className="item-title-text" data-lines="2">
                               {video.title}
-                              <span className="item-tag">{video.media_type}</span>
+                              <span className="item-tag">{clipKind(video)}</span>
                             </span>
                           </span>
                         )}
