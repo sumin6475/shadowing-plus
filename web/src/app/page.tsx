@@ -916,6 +916,11 @@ export default function HomePage() {
       totalDurationLabel={totalDurationLabel}
       totalSizeLabel={totalSizeLabel}
       loading={loading}
+      youtubeUrl={youtubeUrl}
+      importing={importing}
+      importError={importError}
+      onYoutubeUrlChange={setYoutubeUrl}
+      onYoutubeImport={handleYoutubeImport}
       onPickFile={() => dropzoneRef.current?.pick()}
       onCreateFolder={openNewFolder}
       onJobChanged={refreshAll}
