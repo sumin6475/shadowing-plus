@@ -45,6 +45,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   --accent-hover:  oklch(0.52 0.165 258);
   --accent-soft:   oklch(0.955 0.0264 258);
   --accent-text:   oklch(0.48 0.165 258);
+  --danger:        oklch(0.58 0.18 25);
 
   --shadow-card:
     0 1px 0 oklch(1 0 0 / 0.6) inset,
@@ -87,6 +88,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   --accent-hover:  oklch(0.76 0.165 258);
   --accent-soft:   oklch(0.32 0.06 258);
   --accent-text:   oklch(0.78 0.16 258);
+  --danger:        oklch(0.68 0.17 25);
 }
 
 /* horizontal scrollers — hide scrollbars */
@@ -186,18 +188,23 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   padding-bottom: calc(var(--m-bottom-safe) + 24px);
 }
 
-/* Clip-mode: player + focus stay pinned, only the transcript list scrolls.
-   .m-app is a column flex with min-height: 100dvh; the dock is fixed so
-   it doesn't consume flow height. We size m-content to fill the gap
-   between the sticky bar and the dock and let the transcript flex inside.
-   Dock height ≈ 10 (top padding) + 34 (tools) + 10 (gap) + 48 (play row)
-   + 6 (bottom padding) + safe-area-inset-bottom = 108px + safe area. */
+/* Clip page is a fixed, non-scrolling shell: bar + content + dock form a
+   flex column that exactly fills the viewport, so nothing can hide behind
+   the dock. (`.m-dock` only renders on the clip page, so `:has(.m-dock)`
+   scopes these rules to it without touching the library/practice shells.) */
+.m-app:has(.m-dock) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.m-app:has(.m-dock) .m-bar.clip-bar { flex-shrink: 0; }
+
+/* Clip-mode: player + focus stay pinned, only the transcript list scrolls. */
 .m-content.m-content-clip {
-  padding: 14px var(--m-pad-x) 8px;
+  padding: 14px var(--m-pad-x) 0;
   gap: 14px;
-  height: calc(
-    100dvh - var(--m-top-safe) - var(--m-bar-h) - 108px - var(--m-bottom-safe)
-  );
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 .m-content-clip .m-player,
@@ -208,9 +215,6 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-.m-content-clip .m-transcript-head {
-  flex-shrink: 0;
 }
 .m-content-clip .m-transcript-list {
   flex: 1;
@@ -438,6 +442,22 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   font-family: var(--font-sans);
   letter-spacing: 0;
 }
+.m-clip-menu {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin: 2px -4px 0 -6px;
+  width: 30px;
+  height: 28px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.m-clip-menu:active { background: var(--surface-2); color: var(--text-2); }
 
 /* ─── DROPZONE ────────────────────────────────────────────── */
 .m-dropzone {
@@ -1079,24 +1099,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .m-transcript {
   display: flex;
   flex-direction: column;
-  background: var(--bg-elev);
-  border: 1px solid var(--hairline-soft);
-  border-radius: var(--m-radius);
-  overflow: hidden;
-}
-.m-transcript-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.m-transcript-title {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-4);
+  min-height: 0;
 }
 .m-line {
   position: relative;
@@ -1157,16 +1160,13 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .m-line-bookmark.is-on { color: var(--accent); }
 
 /* ─── CLIP DOCK ───────────────────────────────────────────── */
+/* A flex sibling at the bottom of the clip shell (not fixed) so the
+   transcript above it can never be hidden behind it. */
 .m-dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex-shrink: 0;
   z-index: 30;
   padding: 10px var(--m-pad-x) calc(var(--m-bottom-safe) + 6px);
-  background: oklch(from var(--bg) l c h / 0.92);
-  -webkit-backdrop-filter: saturate(160%) blur(14px);
-  backdrop-filter: saturate(160%) blur(14px);
+  background: var(--bg);
   border-top: 1px solid var(--hairline-soft);
   display: flex;
   flex-direction: column;
@@ -1751,6 +1751,74 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   color: var(--accent-text);
   flex-shrink: 0;
 }
+.m-sheet-opt.danger .m-sheet-opt-label { color: var(--danger); }
+.m-sheet-opt-glyph.danger {
+  color: var(--danger);
+  background: oklch(0.955 0.03 25);
+}
+[data-theme="dark"] .m-sheet-opt-glyph.danger {
+  color: oklch(0.78 0.13 25);
+  background: oklch(0.32 0.07 25);
+}
+
+/* Rename / confirm steps inside the clip sheet */
+.m-sheet-input {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  font-size: 16px; /* ≥16px so iOS Safari doesn't zoom on focus */
+  color: var(--text);
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  outline: none;
+  letter-spacing: -0.005em;
+}
+.m-sheet-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.m-sheet-warn {
+  margin-top: 10px;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.m-sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.m-sheet-btn {
+  flex: 1;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.m-sheet-btn.ghost {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.m-sheet-btn.ghost:active { background: var(--hairline-soft); }
+.m-sheet-btn.primary {
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+}
+.m-sheet-btn.primary:active { background: var(--accent-hover); }
+.m-sheet-btn.primary:disabled { opacity: 0.5; }
+.m-sheet-btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+.m-sheet-btn.danger:active { filter: brightness(0.95); }
 
 /* ──────────────────────────────────────────────────────────
    LANDSCAPE — clip player.
@@ -1782,7 +1850,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     gap: 18px;
     overflow: hidden;
     padding-top: 10px;
-    padding-bottom: calc(var(--m-bottom-safe) + 72px);
+    padding-bottom: 10px;
   }
   .m-content:has(.m-player) .m-player {
     width: auto;

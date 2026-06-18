@@ -1,16 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Folder, PracticeStatus, Video, Job } from "@/lib/types";
 import { folderColor } from "@/lib/folder-color";
 import { clipKind } from "@/lib/clip-kind";
+import { useUpload } from "@/lib/useUpload";
 import MobileJobCard from "./MobileJobCard";
 import MobileStatusBadge from "./MobileStatusBadge";
 import MobileStatusSheet from "./MobileStatusSheet";
+import MobileClipSheet from "./MobileClipSheet";
 import type { ActiveSection } from "@/components/home/Sidebar";
 import MobileDrawer from "./MobileDrawer";
 import MobileTabBar from "./MobileTabBar";
+import { DotsIcon } from "@/components/home/Icons";
 import {
   HamburgerIcon,
   PlayIcon,
@@ -25,7 +28,6 @@ interface Props {
   folders: Folder[];
   videos: Video[];
   jobs: Job[];
-  activeFolder: Folder | null;
   visibleVideos: Video[];
   recentCount: number;
   bookmarksCount: number;
@@ -35,12 +37,14 @@ interface Props {
   youtubeUrl: string;
   importing: boolean;
   importError: string | null;
+  recentlyDeletedId: string | null;
   onYoutubeUrlChange: (value: string) => void;
   onYoutubeImport: () => void;
-  onPickFile: () => void;
   onCreateFolder: () => void;
   onJobChanged: () => void;
   onSetVideoStatus: (videoId: string, next: PracticeStatus) => void;
+  onRenameVideo: (videoId: string, title: string) => void;
+  onDeleteVideo: (video: Video) => void;
 }
 
 function formatDuration(seconds: number | null): string {
@@ -56,7 +60,6 @@ export default function MobileLibrary({
   folders,
   videos,
   jobs,
-  activeFolder,
   visibleVideos,
   recentCount,
   bookmarksCount,
@@ -66,12 +69,14 @@ export default function MobileLibrary({
   youtubeUrl,
   importing,
   importError,
+  recentlyDeletedId,
   onYoutubeUrlChange,
   onYoutubeImport,
-  onPickFile,
   onCreateFolder,
   onJobChanged,
   onSetVideoStatus,
+  onRenameVideo,
+  onDeleteVideo,
 }: Props) {
   const [drawer, setDrawer] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "focusing" | "done">(
@@ -82,31 +87,56 @@ export default function MobileLibrary({
     title: string;
     status: PracticeStatus;
   } | null>(null);
+  const [clipMenuTarget, setClipMenuTarget] = useState<Video | null>(null);
+
+  // The mobile shell owns its own file input: a file <input> nested inside the
+  // desktop `.home-app` (which is `display:none` on mobile) never fires its
+  // `change` event on mobile browsers, so the picked file was being dropped.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { handleFiles, uploading, error: uploadError } = useUpload(onJobChanged);
+  const pickFile = () => fileInputRef.current?.click();
+
+  // Hide a clip the moment it's queued for deletion, even though the real
+  // DELETE is deferred (the undo toast keeps the 6s grace window).
+  const liveVideos = useMemo(
+    () =>
+      recentlyDeletedId
+        ? videos.filter((v) => v.id !== recentlyDeletedId)
+        : videos,
+    [videos, recentlyDeletedId],
+  );
+  const liveVisibleVideos = useMemo(
+    () =>
+      recentlyDeletedId
+        ? visibleVideos.filter((v) => v.id !== recentlyDeletedId)
+        : visibleVideos,
+    [visibleVideos, recentlyDeletedId],
+  );
 
   const statusOf = (v: Video): PracticeStatus => v.practice_status || "none";
   const statusCounts = useMemo(() => {
     let focusing = 0;
     let done = 0;
-    for (const v of visibleVideos) {
+    for (const v of liveVisibleVideos) {
       const s = statusOf(v);
       if (s === "focusing") focusing++;
       else if (s === "done") done++;
     }
-    return { all: visibleVideos.length, focusing, done };
-  }, [visibleVideos]);
+    return { all: liveVisibleVideos.length, focusing, done };
+  }, [liveVisibleVideos]);
 
   const shownVideos = useMemo(() => {
-    if (statusFilter === "all") return visibleVideos;
-    return visibleVideos.filter((v) => statusOf(v) === statusFilter);
-  }, [visibleVideos, statusFilter]);
+    if (statusFilter === "all") return liveVisibleVideos;
+    return liveVisibleVideos.filter((v) => statusOf(v) === statusFilter);
+  }, [liveVisibleVideos, statusFilter]);
 
   const folderCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const v of videos) {
+    for (const v of liveVideos) {
       if (v.folder_id) counts[v.folder_id] = (counts[v.folder_id] ?? 0) + 1;
     }
     return counts;
-  }, [videos]);
+  }, [liveVideos]);
 
   const activeJobs = jobs.filter((j) => j.status !== "ready");
 
@@ -118,6 +148,20 @@ export default function MobileLibrary({
 
   return (
     <div className="m-app">
+      {/* Hidden file input — lives inside the visible `.m-app` shell so the
+          `change` event actually fires after picking on mobile. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,audio/*"
+        multiple
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+        onChange={(e) => {
+          if (e.target.files) handleFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+
       {/* TOP BAR */}
       <div className="m-bar">
         <button
@@ -140,7 +184,7 @@ export default function MobileLibrary({
           type="button"
           className="m-icon-btn"
           aria-label="Add clip"
-          onClick={onPickFile}
+          onClick={pickFile}
         >
           <PlusIcon />
         </button>
@@ -156,7 +200,7 @@ export default function MobileLibrary({
             onClick={() => setSection({ kind: "all" })}
           >
             All clips
-            <span className="m-chip-count">{videos.length}</span>
+            <span className="m-chip-count">{liveVideos.length}</span>
           </button>
           <button
             type="button"
@@ -193,12 +237,21 @@ export default function MobileLibrary({
           <p className="m-page-sub">{sectionHeader.sub}</p>
         </div>
 
-        {/* Dropzone (click delegates to the shared UploadDropzone via ref) */}
-        <button type="button" className="m-dropzone" onClick={onPickFile}>
+        {/* Dropzone — opens the mobile file input */}
+        <button
+          type="button"
+          className="m-dropzone"
+          onClick={pickFile}
+          disabled={uploading}
+        >
           <span className="m-dropzone-icon"><UploadIcon /></span>
           <span className="m-dropzone-body">
-            <span className="m-dropzone-title">Drop a video or audio file</span>
-            <span className="m-dropzone-sub">MP4 · MP3 · WAV · M4A · MOV</span>
+            <span className="m-dropzone-title">
+              {uploading ? "Uploading…" : "Drop a video or audio file"}
+            </span>
+            <span className="m-dropzone-sub">
+              {uploadError ?? "MP4 · MP3 · WAV · M4A · MOV"}
+            </span>
           </span>
         </button>
 
@@ -256,12 +309,12 @@ export default function MobileLibrary({
           <div className="m-section-head">
             <div className="m-section-title">{sectionHeader.label}</div>
             <div className="m-section-meta">
-              {visibleVideos.length} {visibleVideos.length === 1 ? "clip" : "clips"}
+              {liveVisibleVideos.length} {liveVisibleVideos.length === 1 ? "clip" : "clips"}
               {totalDurationLabel ? ` · ${totalDurationLabel}` : ""}
             </div>
           </div>
 
-          {visibleVideos.length > 0 && (
+          {liveVisibleVideos.length > 0 && (
             <div className="m-status-seg" role="tablist" aria-label="Practice status filter">
               {(
                 [
@@ -290,7 +343,7 @@ export default function MobileLibrary({
 
           {loading ? (
             <div className="m-empty">Loading…</div>
-          ) : visibleVideos.length === 0 ? (
+          ) : liveVisibleVideos.length === 0 ? (
             <div className="m-empty">No clips yet. Drop a file above.</div>
           ) : shownVideos.length === 0 ? (
             <div className="m-filter-empty">
@@ -346,6 +399,18 @@ export default function MobileLibrary({
                         })
                       }
                     />
+                    <button
+                      type="button"
+                      className="m-clip-menu"
+                      aria-label="Clip options"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setClipMenuTarget(video);
+                      }}
+                    >
+                      <DotsIcon />
+                    </button>
                   </Link>
                 );
               })}
@@ -363,6 +428,13 @@ export default function MobileLibrary({
         }}
       />
 
+      <MobileClipSheet
+        target={clipMenuTarget}
+        onClose={() => setClipMenuTarget(null)}
+        onRename={onRenameVideo}
+        onDelete={onDeleteVideo}
+      />
+
       {/* Drawer */}
       <MobileDrawer
         open={drawer}
@@ -370,7 +442,7 @@ export default function MobileLibrary({
         active={active}
         onSelect={setSection}
         folders={folders}
-        allCount={videos.length}
+        allCount={liveVideos.length}
         recentCount={recentCount}
         bookmarksCount={bookmarksCount}
         folderCounts={folderCounts}

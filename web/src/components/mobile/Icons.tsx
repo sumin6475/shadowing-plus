@@ -232,6 +232,15 @@ export function TrashIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function PencilIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z" />
+      <path d="M9.5 4l2.5 2.5" />
+    </svg>
+  );
+}
+
 export function HomeIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...s20} {...props}>

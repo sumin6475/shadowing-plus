@@ -358,21 +358,31 @@ export default function HomePage() {
     recentlyDeletedRef.current = null;
   }, []);
 
+  // Hide the clip locally and start the 6s undo window; the real DELETE only
+  // fires when the window elapses (or the tab closes — see the flush effect).
+  const scheduleDelete = useCallback(
+    (video: Video) => {
+      // If a prior pending delete was still in its grace window, commit it now
+      // before queueing the new one — never run two undo toasts at once.
+      if (recentlyDeletedRef.current) {
+        commitDelete(recentlyDeletedRef.current);
+      }
+      setRecentlyDeleted(video);
+      recentlyDeletedRef.current = video;
+      deleteTimerRef.current = window.setTimeout(() => {
+        commitDelete(video);
+      }, 6000);
+    },
+    [commitDelete],
+  );
+
+  // Desktop path: the confirm modal resolves, then we schedule the delete.
   const confirmDeleteVideo = useCallback(() => {
     const video = pendingDelete;
     if (!video) return;
     setPendingDelete(null);
-    // If a prior pending delete was still in its grace window, commit it now
-    // before queueing the new one — never run two undo toasts at once.
-    if (recentlyDeletedRef.current) {
-      commitDelete(recentlyDeletedRef.current);
-    }
-    setRecentlyDeleted(video);
-    recentlyDeletedRef.current = video;
-    deleteTimerRef.current = window.setTimeout(() => {
-      commitDelete(video);
-    }, 6000);
-  }, [pendingDelete, commitDelete]);
+    scheduleDelete(video);
+  }, [pendingDelete, scheduleDelete]);
 
   const undoDelete = useCallback(() => {
     if (deleteTimerRef.current !== null) {
@@ -422,22 +432,23 @@ export default function HomePage() {
     [],
   );
 
+  // Persist a new clip title (optimistic). Shared by the desktop inline editor
+  // and the mobile clip sheet.
+  const renameVideo = useCallback(async (videoId: string, rawTitle: string) => {
+    const trimmed = rawTitle.trim();
+    if (!trimmed) return;
+    setVideos((prev) =>
+      prev.map((v) => (v.id === videoId ? { ...v, title: trimmed } : v)),
+    );
+    await supabase.from("videos").update({ title: trimmed }).eq("id", videoId);
+  }, []);
+
   const saveVideoTitle = useCallback(async () => {
     if (!editingVideoId) return;
     const trimmed = editVideoTitle.trim();
-    if (!trimmed) {
-      setEditingVideoId(null);
-      return;
-    }
-    await supabase
-      .from("videos")
-      .update({ title: trimmed })
-      .eq("id", editingVideoId);
-    setVideos((prev) =>
-      prev.map((v) => (v.id === editingVideoId ? { ...v, title: trimmed } : v)),
-    );
     setEditingVideoId(null);
-  }, [editingVideoId, editVideoTitle]);
+    if (trimmed) await renameVideo(editingVideoId, trimmed);
+  }, [editingVideoId, editVideoTitle, renameVideo]);
 
   const handleVideoKey = useCallback(
     (e: KeyboardEvent) => {
@@ -885,7 +896,6 @@ export default function HomePage() {
       folders={folders}
       videos={videos}
       jobs={jobs}
-      activeFolder={activeFolder ?? null}
       visibleVideos={visibleVideos}
       recentCount={recentVideos.length}
       bookmarksCount={bookmarksCount}
@@ -895,12 +905,14 @@ export default function HomePage() {
       youtubeUrl={youtubeUrl}
       importing={importing}
       importError={importError}
+      recentlyDeletedId={recentlyDeleted?.id ?? null}
       onYoutubeUrlChange={setYoutubeUrl}
       onYoutubeImport={handleYoutubeImport}
-      onPickFile={() => dropzoneRef.current?.pick()}
       onCreateFolder={openNewFolder}
       onJobChanged={refreshAll}
       onSetVideoStatus={setVideoStatus}
+      onRenameVideo={renameVideo}
+      onDeleteVideo={scheduleDelete}
     />
     <UndoToast
       key={recentlyDeleted?.id ?? "none"}

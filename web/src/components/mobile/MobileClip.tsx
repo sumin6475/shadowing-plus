@@ -18,7 +18,7 @@ import {
   Skip3BackIcon,
   Skip3ForwardIcon,
 } from "./Icons";
-import { ChevronDownIcon, DotsIcon, SearchIcon } from "@/components/home/Icons";
+import { ChevronDownIcon } from "@/components/home/Icons";
 
 interface Props {
   video: Video;
@@ -118,10 +118,30 @@ export default function MobileClip({
   const duration = video.duration ?? 0;
   const progressPct = duration > 0 ? clamp01(currentTime / duration) * 100 : 0;
 
-  // Autoscroll: only "turn the page" when the current line drifts into the
-  // bottom 40% of the visible transcript (or already goes past the bottom
-  // edge near the dock). Then snap it to the top so upcoming lines fill
-  // the rest. Lines that move through the upper 60% stay in place.
+  // Karaoke scroll: the current line stays pinned at ~1/3 down the transcript
+  // viewport while the lines slide underneath it. We track the list's visible
+  // height so we can pad the top/bottom enough that even the first and last
+  // lines can reach the anchor.
+  const [listHeight, setListHeight] = useState(0);
+  useEffect(() => {
+    const listEl = transcriptRef.current;
+    if (!listEl) return;
+    const ro = new ResizeObserver(() => {
+      // Read clientHeight (the scroll viewport, padding included) rather than
+      // contentRect.height — the latter excludes our own karaoke padding, which
+      // would feed back into the padding calc and oscillate. clientHeight is
+      // fixed by the flex layout, so it's stable. Async callback, fires once
+      // on observe to seed the initial value.
+      setListHeight(listEl.clientHeight);
+    });
+    ro.observe(listEl);
+    return () => ro.disconnect();
+  }, []);
+
+  const ANCHOR = 0.34; // current line sits ~1/3 from the top
+  const padTop = Math.round(listHeight * ANCHOR);
+  const padBottom = Math.round(listHeight * (1 - ANCHOR));
+
   useEffect(() => {
     const listEl = transcriptRef.current;
     const lineEl = listEl?.querySelector<HTMLElement>(".m-line.is-current");
@@ -129,17 +149,10 @@ export default function MobileClip({
 
     const listRect = listEl.getBoundingClientRect();
     const lineRect = lineEl.getBoundingClientRect();
-    const visibleHeight = listRect.height;
-    const lineTopWithin = lineRect.top - listRect.top;
-
-    const pastUpperThird = lineTopWithin > visibleHeight * 0.6;
-    const clippedAtBottom = lineRect.bottom > listRect.bottom;
-    const fullyAboveView = lineRect.bottom < listRect.top;
-
-    if (pastUpperThird || clippedAtBottom || fullyAboveView) {
-      lineEl.scrollIntoView({ block: "start", behavior: "smooth" });
-    }
-  }, [currentIndex]);
+    const target =
+      listEl.scrollTop + (lineRect.top - listRect.top) - listRect.height * ANCHOR;
+    listEl.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }, [currentIndex, listHeight]);
 
   const handleProgressClick = (e: MouseEvent<HTMLDivElement>) => {
     if (duration <= 0) return;
@@ -229,20 +242,11 @@ export default function MobileClip({
 
         {/* Transcript */}
         <div className="m-transcript">
-          <div className="m-transcript-head">
-            <div className="m-transcript-title">
-              Transcript · {segments.length} lines
-            </div>
-            <div className="m-transcript-actions" style={{ display: "flex", gap: 2 }}>
-              <button type="button" aria-label="Search" className="m-icon-btn" style={{ width: 30, height: 30 }}>
-                <SearchIcon />
-              </button>
-              <button type="button" aria-label="More" className="m-icon-btn" style={{ width: 30, height: 30 }}>
-                <DotsIcon />
-              </button>
-            </div>
-          </div>
-          <div ref={transcriptRef} className="m-transcript-list">
+          <div
+            ref={transcriptRef}
+            className="m-transcript-list"
+            style={{ paddingTop: padTop, paddingBottom: padBottom }}
+          >
             {segments.map((seg, i) => {
               const isBookmarked = bookmarkedIds.has(seg.id);
               return (
