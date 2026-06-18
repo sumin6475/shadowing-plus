@@ -23,6 +23,7 @@ import UndoToast from "@/components/home/UndoToast";
 import StatusControl from "@/components/home/StatusControl";
 import MobileLibrary from "@/components/mobile/MobileLibrary";
 import {
+  CheckIcon,
   ChevronDownIcon,
   DotsIcon,
   PlayIcon,
@@ -105,6 +106,12 @@ export default function HomePage() {
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [menuView, setMenuView] = useState<"main" | "move">("main");
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Bulk selection: pick multiple clips and move them to a folder at once.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const bulkMenuRef = useRef<HTMLDivElement>(null);
 
   const dropzoneRef = useRef<UploadDropzoneHandle>(null);
 
@@ -215,9 +222,24 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpenFor]);
 
+  // Close the bulk "move to folder" menu on outside click
+  useEffect(() => {
+    if (!bulkMoveOpen) return;
+    function handleClick(e: globalThis.MouseEvent) {
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node)) {
+        setBulkMoveOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [bulkMoveOpen]);
+
   const setSection = useCallback((s: ActiveSection) => {
     setActive(s);
     saveActiveSection(s);
+    // Selections are scoped to the current view — drop them when it changes.
+    setSelectedIds(new Set());
+    setBulkMoveOpen(false);
   }, []);
 
   // Folder CRUD
@@ -312,6 +334,45 @@ export default function HomePage() {
         .eq("id", videoId);
     },
     [],
+  );
+
+  // Bulk move several clips to a folder (or to the root when folderId is null).
+  const moveVideos = useCallback(
+    async (ids: string[], folderId: string | null) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      setVideos((prev) =>
+        prev.map((v) => (idSet.has(v.id) ? { ...v, folder_id: folderId } : v)),
+      );
+      await supabase
+        .from("videos")
+        .update({ folder_id: folderId })
+        .in("id", ids);
+    },
+    [],
+  );
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setBulkMoveOpen(false);
+  }, []);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const bulkMove = useCallback(
+    async (folderId: string | null) => {
+      await moveVideos(Array.from(selectedIds), folderId);
+      exitSelectMode();
+    },
+    [selectedIds, moveVideos, exitSelectMode],
   );
 
   const setVideoStatus = useCallback(
@@ -544,6 +605,22 @@ export default function HomePage() {
     return base.filter((v) => statusOf(v) === statusFilter);
   }, [visibleVideos, statusFilter, recentlyDeleted]);
 
+  // Selection helpers (scoped to the currently shown clips).
+  const allShownSelected =
+    shownVideos.length > 0 && shownVideos.every((v) => selectedIds.has(v.id));
+  const someShownSelected = shownVideos.some((v) => selectedIds.has(v.id));
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (shownVideos.every((v) => next.has(v.id))) {
+        shownVideos.forEach((v) => next.delete(v.id));
+      } else {
+        shownVideos.forEach((v) => next.add(v.id));
+      }
+      return next;
+    });
+  };
+
   return (
     <>
     <div className="home-app">
@@ -585,6 +662,20 @@ export default function HomePage() {
               <p className="page-sub">{sectionHeader.sub}</p>
             </div>
             <div className="page-actions">
+              {videos.length > 0 && (
+                <button
+                  type="button"
+                  className={"btn ghost" + (selectMode ? " is-active" : "")}
+                  onClick={() => {
+                    setMenuOpenFor(null);
+                    if (selectMode) exitSelectMode();
+                    else setSelectMode(true);
+                  }}
+                >
+                  <CheckIcon />{" "}
+                  <span className="btn-label">{selectMode ? "Cancel" : "Select"}</span>
+                </button>
+              )}
               <button type="button" className="btn ghost" disabled title="Sort (coming soon)">
                 <SortIcon /> <span className="btn-label">Sort</span> <ChevronDownIcon />
               </button>
@@ -686,6 +777,54 @@ export default function HomePage() {
               </div>
             </div>
 
+            {selectMode && (shownVideos.length > 0 || selectedIds.size > 0) && (
+              <div className="bulk-bar">
+                <label className="bulk-check">
+                  <input
+                    type="checkbox"
+                    checked={allShownSelected}
+                    disabled={shownVideos.length === 0}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someShownSelected && !allShownSelected;
+                    }}
+                    onChange={toggleSelectAll}
+                  />
+                  <span>Select all</span>
+                </label>
+                <span className="bulk-count">{selectedIds.size} selected</span>
+                <div className="bulk-actions" ref={bulkMenuRef}>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={selectedIds.size === 0}
+                    onClick={() => setBulkMoveOpen((o) => !o)}
+                  >
+                    Move to folder <ChevronDownIcon />
+                  </button>
+                  {bulkMoveOpen && (
+                    <div className="bulk-menu">
+                      <button type="button" onClick={() => bulkMove(null)}>
+                        Remove from folder
+                      </button>
+                      {folders.length > 0 && <div className="menu-sep" />}
+                      {folders.map((f) => (
+                        <button key={f.id} type="button" onClick={() => bulkMove(f.id)}>
+                          <span
+                            className="nav-folder-dot"
+                            style={{ color: folderColor(f) }}
+                          />
+                          {f.name}
+                        </button>
+                      ))}
+                      {folders.length === 0 && (
+                        <p className="menu-empty">No folders yet</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <p className="empty">Loading…</p>
             ) : visibleVideos.length === 0 ? (
@@ -777,12 +916,22 @@ export default function HomePage() {
                       </button>
                     </>
                   );
+                  const isSelected = selectedIds.has(video.id);
                   return (
                     <li key={video.id} style={{ position: "relative" }}>
                       <Link
                         href={`/player/${video.id}`}
-                        className="item"
+                        className={
+                          "item" +
+                          (selectMode ? " is-selectmode" : "") +
+                          (selectMode && isSelected ? " is-selected" : "")
+                        }
                         onClick={(e) => {
+                          if (selectMode) {
+                            e.preventDefault();
+                            toggleSelected(video.id);
+                            return;
+                          }
                           if (
                             editingVideoId === video.id ||
                             menuOpenFor === video.id
@@ -791,6 +940,14 @@ export default function HomePage() {
                           }
                         }}
                       >
+                        {selectMode && (
+                          <span
+                            className={"item-check" + (isSelected ? " checked" : "")}
+                            aria-hidden="true"
+                          >
+                            {isSelected && <CheckIcon />}
+                          </span>
+                        )}
                         {card}
                       </Link>
                       {isMenuOpen && (
