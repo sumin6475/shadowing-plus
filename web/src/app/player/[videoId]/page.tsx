@@ -68,7 +68,6 @@ export default function PlayerPage({
 }) {
   const { videoId } = use(params);
   const searchParams = useSearchParams();
-  const seekedFromQueryRef = useRef(false);
 
   const [video, setVideo] = useState<Video | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
@@ -98,6 +97,11 @@ export default function PlayerPage({
   const loopModeRef = useRef<LoopMode>("off");
   const currentTimeRef = useRef(0);
   const restoredRef = useRef(false);
+  // Pending one-shot seeks. They hold their target until the seek actually
+  // lands, then clear — so a dropped call (Strict Mode remount, late media
+  // load) is retried instead of lost, and a later load flip won't re-yank.
+  const resumeTargetRef = useRef<number | null>(null);
+  const deepLinkTargetRef = useRef<number | null>(null);
   const lastSaveRef = useRef(0);
   // Guard so the initial render (t=0, ab=null, before restore applies)
   // doesn't immediately overwrite the persisted state. Flips to true as
@@ -238,41 +242,97 @@ export default function PlayerPage({
     playerRef.current?.setPlaybackRate(SPEEDS[speedIdx]);
   }, [speedIdx]);
 
-  // Deep-link: seek to ?t= once segments are loaded.
+  // Reliably move the player to `target`. The audio/video and YouTube players
+  // both defer/queue a seek until they're ready, but a single call can still be
+  // dropped (Strict Mode remount, late media load), so retry until the position
+  // actually lands — reading it back from the player — then stop and run
+  // `onLanded`. Stopping on success means we never yank the user back once they
+  // start scrubbing. Returns a cleanup that cancels the retry.
+  const robustSeek = useCallback(
+    (target: number, opts?: { play?: boolean; onLanded?: () => void }) => {
+      let settled = false;
+      let played = false;
+      const attempt = () => {
+        const p = playerRef.current;
+        if (!p) return;
+        const cur = p.getCurrentTime();
+        if (cur > 0.5 && Math.abs(cur - target) < 1.5) {
+          settled = true;
+          opts?.onLanded?.();
+          return;
+        }
+        p.seekTo(target);
+        if (opts?.play && !played) {
+          p.play();
+          played = true;
+        }
+      };
+      attempt();
+      const iv = setInterval(() => {
+        if (settled) {
+          clearInterval(iv);
+          return;
+        }
+        attempt();
+      }, 250);
+      const stop = setTimeout(() => clearInterval(iv), 6000);
+      return () => {
+        clearInterval(iv);
+        clearTimeout(stop);
+      };
+    },
+    [],
+  );
+
+  // Deep-link: seek to ?t= (and play) once segments are loaded.
   useEffect(() => {
-    if (loading || seekedFromQueryRef.current) return;
-    const t = Number(searchParams.get("t"));
-    if (!Number.isFinite(t) || t <= 0) return;
-    seekedFromQueryRef.current = true;
-    // Defer until AudioPlayer's imperative handle is wired.
-    const id = setTimeout(() => {
-      playerRef.current?.seekTo(t);
-      playerRef.current?.play();
-    }, 50);
-    return () => clearTimeout(id);
-  }, [loading, searchParams]);
-
-  // Restore A-B + resume position from localStorage (once per mount, after load).
-  // Query ?t= still wins over the persisted t — that's an explicit user intent.
-  useEffect(() => {
-    if (loading || restoredRef.current) return;
-    restoredRef.current = true;
-
-    const persisted = loadPersisted(videoId);
-    if (!persisted) return;
-
-    if (persisted.ab) setAbRepeat(persisted.ab);
-    if (persisted.loop === true || persisted.loop === "clip") setLoopMode("clip");
-    else if (persisted.loop === "sentence") setLoopMode("sentence");
-
-    const queryT = Number(searchParams.get("t"));
-    const queryTValid = Number.isFinite(queryT) && queryT > 0;
-    if (!queryTValid && Number.isFinite(persisted.t) && persisted.t > 1) {
-      const id = setTimeout(() => playerRef.current?.seekTo(persisted.t), 50);
-      return () => clearTimeout(id);
+    if (loading) return;
+    if (deepLinkTargetRef.current === null) {
+      const t = Number(searchParams.get("t"));
+      if (Number.isFinite(t) && t > 0) deepLinkTargetRef.current = t;
     }
+    const target = deepLinkTargetRef.current;
+    if (target === null) return;
+    return robustSeek(target, {
+      play: true,
+      onLanded: () => {
+        deepLinkTargetRef.current = null;
+      },
+    });
+  }, [loading, searchParams, robustSeek]);
+
+  // Restore A-B + loop + resume position from localStorage (once per mount,
+  // after load). Query ?t= wins over the persisted t — explicit user intent.
+  useEffect(() => {
+    if (loading) return;
+
+    if (!restoredRef.current) {
+      restoredRef.current = true;
+      const persisted = loadPersisted(videoId);
+      if (persisted) {
+        if (persisted.ab) setAbRepeat(persisted.ab);
+        if (persisted.loop === true || persisted.loop === "clip") setLoopMode("clip");
+        else if (persisted.loop === "sentence") setLoopMode("sentence");
+
+        const queryT = Number(searchParams.get("t"));
+        const queryTValid = Number.isFinite(queryT) && queryT > 0;
+        if (!queryTValid && Number.isFinite(persisted.t) && persisted.t > 1) {
+          resumeTargetRef.current = persisted.t;
+        }
+      }
+    }
+
+    // Run the resume seek on every (Strict Mode) setup until it lands; the
+    // target is consumed only on success, so it isn't lost to a cleanup.
+    const target = resumeTargetRef.current;
+    if (target === null) return;
+    return robustSeek(target, {
+      onLanded: () => {
+        resumeTargetRef.current = null;
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, robustSeek]);
 
   // Throttled save while playback advances. Trails by up to 2s so a sudden
   // close still loses very little. Normalize a near-finished t to 0 so a
