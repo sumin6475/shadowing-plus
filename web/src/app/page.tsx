@@ -100,7 +100,7 @@ export default function HomePage() {
   const recentlyDeletedRef = useRef<Video | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<"all" | "focusing" | "done">(
-    "all",
+    "focusing",
   );
 
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);

@@ -80,7 +80,7 @@ export default function MobileLibrary({
 }: Props) {
   const [drawer, setDrawer] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "focusing" | "done">(
-    "all",
+    "focusing",
   );
   const [sheetTarget, setSheetTarget] = useState<{
     id: string;
