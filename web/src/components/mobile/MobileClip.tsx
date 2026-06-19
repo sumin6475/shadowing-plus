@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type RefObject, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { Segment, Video } from "@/lib/types";
+import type { LoopMode, Segment, Video } from "@/lib/types";
 import WordText from "@/components/WordText";
 import {
   BackIcon,
@@ -28,7 +28,7 @@ interface Props {
   playing: boolean;
   currentTime: number;
   abActive: boolean;
-  loopActive: boolean;
+  loopMode: LoopMode;
   speed: number;
   videoSlotRef: RefObject<HTMLDivElement | null>;
   bookmarkedIds: Set<string>;
@@ -74,7 +74,7 @@ export default function MobileClip({
   playing,
   currentTime,
   abActive,
-  loopActive,
+  loopMode,
   speed,
   videoSlotRef,
   bookmarkedIds,
@@ -314,11 +314,12 @@ export default function MobileClip({
           </button>
           <button
             type="button"
-            className={"m-tool-chip" + (loopActive ? " is-on" : "")}
+            className={"m-tool-chip" + (loopMode !== "off" ? " is-on" : "")}
             onClick={onToggleLoop}
-            aria-pressed={loopActive}
+            aria-pressed={loopMode !== "off"}
+            title="Loop: off → whole clip → current sentence"
           >
-            Loop
+            {loopMode === "sentence" ? "Loop line" : "Loop"}
           </button>
           <button type="button" className="m-tool-chip" title="Playback speed">
             <span style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", letterSpacing: 0 }}>

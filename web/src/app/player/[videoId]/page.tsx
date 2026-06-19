@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { PracticeStatus, Video, Segment } from "@/lib/types";
+import type { LoopMode, PracticeStatus, Video, Segment } from "@/lib/types";
 import AudioPlayer, { type AudioPlayerHandle } from "@/components/AudioPlayer";
 import YoutubePlayer from "@/components/YoutubePlayer";
 import ClipHeader from "@/components/clip/ClipHeader";
@@ -34,7 +34,13 @@ const DEFAULT_SPEED_IDX = 3;
 // during shadowing practice, so we restore both the play position and any A-B
 // loop they've marked. Wiped via localStorage if a clip gets re-uploaded under
 // the same id (rare).
-type PlayerPersisted = { t: number; ab: AbRepeat | null; loop?: boolean };
+// `loop` was once a boolean (full-clip on/off); now it's a LoopMode. Reads
+// tolerate the legacy boolean (true → "clip") for clips persisted before this.
+type PlayerPersisted = {
+  t: number;
+  ab: AbRepeat | null;
+  loop?: LoopMode | boolean;
+};
 const PLAYER_STORAGE_KEY = (id: string) => `sp:player:${id}`;
 
 function loadPersisted(id: string): PlayerPersisted | null {
@@ -76,7 +82,7 @@ export default function PlayerPage({
   const [hideVideo, setHideVideo] = useState(false);
   const [hideFocus, setHideFocus] = useState(false);
   const [abRepeat, setAbRepeat] = useState<AbRepeat | null>(null);
-  const [loopClip, setLoopClip] = useState(false);
+  const [loopMode, setLoopMode] = useState<LoopMode>("off");
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED_IDX);
@@ -89,7 +95,7 @@ export default function PlayerPage({
   const currentIndexRef = useRef(0);
   const segmentsRef = useRef<Segment[]>([]);
   const abRepeatRef = useRef<AbRepeat | null>(null);
-  const loopClipRef = useRef(false);
+  const loopModeRef = useRef<LoopMode>("off");
   const currentTimeRef = useRef(0);
   const restoredRef = useRef(false);
   const lastSaveRef = useRef(0);
@@ -110,8 +116,8 @@ export default function PlayerPage({
     abRepeatRef.current = abRepeat;
   }, [abRepeat]);
   useEffect(() => {
-    loopClipRef.current = loopClip;
-  }, [loopClip]);
+    loopModeRef.current = loopMode;
+  }, [loopMode]);
   useEffect(() => {
     currentTimeRef.current = currentTime;
   }, [currentTime]);
@@ -256,7 +262,8 @@ export default function PlayerPage({
     if (!persisted) return;
 
     if (persisted.ab) setAbRepeat(persisted.ab);
-    if (persisted.loop) setLoopClip(true);
+    if (persisted.loop === true || persisted.loop === "clip") setLoopMode("clip");
+    else if (persisted.loop === "sentence") setLoopMode("sentence");
 
     const queryT = Number(searchParams.get("t"));
     const queryTValid = Number.isFinite(queryT) && queryT > 0;
@@ -282,7 +289,7 @@ export default function PlayerPage({
     const duration = video?.duration ?? 0;
     const tToSave =
       duration > 0 && currentTime >= duration - 3 ? 0 : currentTime;
-    savePersisted(videoId, { t: tToSave, ab: abRepeat, loop: loopClipRef.current });
+    savePersisted(videoId, { t: tToSave, ab: abRepeat, loop: loopModeRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, loading, videoId]);
 
@@ -294,7 +301,7 @@ export default function PlayerPage({
     savePersisted(videoId, {
       t: currentTimeRef.current,
       ab: abRepeat,
-      loop: loopClipRef.current,
+      loop: loopModeRef.current,
     });
   }, [abRepeat, loading, videoId]);
 
@@ -305,9 +312,9 @@ export default function PlayerPage({
     savePersisted(videoId, {
       t: currentTimeRef.current,
       ab: abRepeatRef.current,
-      loop: loopClip,
+      loop: loopMode,
     });
-  }, [loopClip, loading, videoId]);
+  }, [loopMode, loading, videoId]);
 
   // Flush latest position when leaving the page.
   useEffect(() => {
@@ -319,7 +326,7 @@ export default function PlayerPage({
       savePersisted(videoId, {
         t: tToSave,
         ab: abRepeatRef.current,
-        loop: loopClipRef.current,
+        loop: loopModeRef.current,
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -331,6 +338,21 @@ export default function PlayerPage({
     if (ab && ab.b !== null && time >= ab.b) {
       playerRef.current?.seekTo(ab.a);
       return;
+    }
+
+    // Loop the focused sentence: snap back to its start once playback runs
+    // past it. Whatever line is currently in focus is the one that loops, so
+    // moving focus (next/prev/tap) moves the loop with it.
+    if (loopModeRef.current === "sentence") {
+      const segs = segmentsRef.current;
+      const seg = segs[currentIndexRef.current];
+      if (seg) {
+        const end = seg.end_time ?? segs[currentIndexRef.current + 1]?.start_time;
+        if (end != null && time >= end) {
+          playerRef.current?.seekTo(seg.start_time);
+          return;
+        }
+      }
     }
 
     setCurrentTime(time);
@@ -404,17 +426,27 @@ export default function PlayerPage({
     }
   }, []);
 
+  // Cycle the loop button: off → clip (whole clip) → sentence (focus line) → off.
   const toggleLoop = useCallback(() => {
-    setLoopClip((v) => !v);
+    setLoopMode((m) => (m === "off" ? "clip" : m === "clip" ? "sentence" : "off"));
   }, []);
 
-  // Full-clip loop: when the media ends and loop is on, restart from the top.
-  // Fires off the players' native end events (HTML `ended` / YT ENDED state),
-  // so it triggers exactly once at the true end rather than racing timeupdate.
+  // When the media ends: restart the whole clip ("clip") or the focused
+  // sentence ("sentence"). Fires off the players' native end events
+  // (HTML `ended` / YT ENDED state), so it triggers exactly once at the
+  // true end rather than racing timeupdate.
   const handleEnded = useCallback(() => {
-    if (!loopClipRef.current) return;
-    playerRef.current?.seekTo(0);
-    playerRef.current?.play();
+    const mode = loopModeRef.current;
+    if (mode === "clip") {
+      playerRef.current?.seekTo(0);
+      playerRef.current?.play();
+    } else if (mode === "sentence") {
+      const seg = segmentsRef.current[currentIndexRef.current];
+      if (seg) {
+        playerRef.current?.seekTo(seg.start_time);
+        playerRef.current?.play();
+      }
+    }
   }, []);
 
   const selectSpeed = useCallback((s: number) => {
@@ -750,7 +782,7 @@ export default function PlayerPage({
               onReplay={repeatCurrent}
               abActive={abRepeat !== null}
               onToggleAB={toggleAbRepeat}
-              loopActive={loopClip}
+              loopMode={loopMode}
               onToggleLoop={toggleLoop}
               showTranslation={showTranslation}
               onToggleTranslation={() => setShowTranslation((v) => !v)}
@@ -810,7 +842,7 @@ export default function PlayerPage({
         playing={playing}
         currentTime={currentTime}
         abActive={abRepeat !== null}
-        loopActive={loopClip}
+        loopMode={loopMode}
         speed={SPEEDS[speedIdx]}
         videoSlotRef={mobileVideoSlotRef}
         bookmarkedIds={

@@ -12,6 +12,9 @@ export type MediaType = "video" | "audio";
 
 export type PracticeStatus = "none" | "focusing" | "done";
 
+// Loop button cycles: off → clip (whole clip) → sentence (current focus line).
+export type LoopMode = "off" | "clip" | "sentence";
+
 export interface Video {
   id: string;
   title: string;

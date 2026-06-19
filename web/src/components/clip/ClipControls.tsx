@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { LoopMode } from "@/lib/types";
 import { NextIcon, PrevIcon, ReplayIcon } from "./Icons";
 
 interface Props {
@@ -9,7 +10,7 @@ interface Props {
   onReplay: () => void;
   abActive: boolean;
   onToggleAB: () => void;
-  loopActive: boolean;
+  loopMode: LoopMode;
   onToggleLoop: () => void;
   showTranslation: boolean;
   onToggleTranslation: () => void;
@@ -128,7 +129,7 @@ export default function ClipControls({
   onReplay,
   abActive,
   onToggleAB,
-  loopActive,
+  loopMode,
   onToggleLoop,
   showTranslation,
   onToggleTranslation,
@@ -173,11 +174,11 @@ export default function ClipControls({
         </button>
         <button
           type="button"
-          className={"ctl toggle" + (loopActive ? " active" : "")}
+          className={"ctl toggle" + (loopMode !== "off" ? " active" : "")}
           onClick={onToggleLoop}
-          title="Loop the whole clip"
+          title="Loop: off → whole clip → current sentence"
         >
-          <span>Loop</span>
+          <span>{loopMode === "sentence" ? "Loop line" : "Loop"}</span>
           <span className="key">L</span>
         </button>
 
@@ -190,7 +191,7 @@ export default function ClipControls({
         <span><b>Space</b> Play / Pause</span>
         <span><b>← →</b> Skip 3s</span>
         <span><b>R</b> AB Repeat</span>
-        <span><b>L</b> Loop clip</span>
+        <span><b>L</b> Loop clip / line</span>
       </div>
     </div>
   );
