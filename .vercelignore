@@ -1,6 +1,10 @@
-media
-model
-supabase
+# Anchor these to the repo root only. Bare `media` matched ANY path segment
+# named media — including web/src/app/api/media/, which silently dropped the
+# R2-signing route from every deploy and 404'd all playback. Leading "/" scopes
+# each to the top-level folder (the big local media/, model/, supabase/ dirs).
+/media
+/model
+/supabase
 *.md
 .DS_Store
 web/node_modules
