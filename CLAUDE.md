@@ -24,8 +24,11 @@ An English-shadowing webapp + installable PWA: users drop in a video/audio file 
 
 Follow Code HQ's CLAUDE.md and Sumin's voice principles in 00_Resources (voice-principles.md).
 
-- **RLS is OFF on purpose** (single-user) — don't "fix" it; `002_disable_rls.sql` re-forces it off because Supabase silently re-enables it on new tables.
-- **Deploy only from the repo root** (`npx vercel --prod`) — running inside `web/` trips the 100 MB upload limit.
+- **RLS is now ON with per-user policies** (migration `008_auth_rls.sql`, Phase 1 multi-user). This reverses the old single-user "RLS off" stance — `002_disable_rls.sql` is history. Client queries are scoped by `auth.uid()`; service-key routes must filter by `user_id` themselves (the service key bypasses RLS).
+- **Deploy only from the repo root** (`npx vercel --prod`) — running inside `web/` trips the 100 MB upload limit. **Prefer `/deploy`** (its post-deploy checks catch what bare `vercel --prod` doesn't); if deploying by hand, do the two checks below every time.
+- **After a deploy, verify the route is actually shipped — read the response BODY, not just the status.** `curl` a key API route on `shadowing-plus.vercel.app`: an HTML `<!DOCTYPE html>…` 404 means the route was never deployed (missing file or `.vercelignore` dropped it), while a JSON body (`{"error":…}`) means it exists and ran. A route that 404s only in production is a deploy/ignore problem, not a code problem. Also confirm the stable alias serves the new build (`vercel alias set <deployment-url> shadowing-plus.vercel.app` if it lags).
+- **`.vercelignore` patterns are unanchored** — a bare `media`/`model`/`supabase` line matches `web/src/app/api/media/` etc. and silently drops it from the upload (this 404'd all playback once). Anchor root-only ignores with a leading `/`; check `.vercelignore` at BOTH repo root and `web/`.
+- **A failure that spans desktop + mobile + PWA at once is a shared server/deploy cause, not a client-specific policy** — verify the API/route responds in production before writing client-side workarounds.
 - **Translation matches by batch position (k), not the GPT-returned index** (drop/reorder defense); the fixed prompt is a `system` message for caching.
 - Language pair is centralized in `web/src/lib/pipeline/languages.ts` (currently `eng` → Korean); changing it also means swapping the font in `layout.tsx`.
 
