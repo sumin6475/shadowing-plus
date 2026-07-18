@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getSessionUserId } from "@/lib/supabase-server";
 import {
   ELEVENLABS_USD_PER_MINUTE,
   OPENAI_PRICING,
@@ -26,10 +27,15 @@ function monthKey(iso: string): string {
 }
 
 export async function GET() {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const { data, error } = await supabaseAdmin()
       .from("usage_events")
       .select("*")
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (error) {

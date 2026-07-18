@@ -1,18 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { Folder, Video } from "@/lib/types";
-import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
-import NewFolderModal from "@/components/home/NewFolderModal";
-import MobileTabBar from "@/components/mobile/MobileTabBar";
+import type { Video } from "@/lib/types";
+import "./usage.css";
 
-import "../home.css";
-import "./settings.css";
-
-const ACTIVE_SECTION_KEY = "sp:home:section";
+// Token/cost/storage dashboard. Self-contained: it fetches its own usage +
+// storage data, so the Settings modal's Usage tab just renders <UsagePanel />.
+// (Lifted from the former /settings page.)
 
 interface ProviderOpenAI {
   cost: number;
@@ -47,6 +42,11 @@ interface UsageSummary {
   providers: { openai: ProviderOpenAI; elevenlabs: ProviderEleven };
   byMonth: { month: string; cost: number }[];
   recent: RecentEvent[];
+}
+interface LargestClip {
+  id: string;
+  title: string;
+  bytes: number;
 }
 
 function usd(n: number): string {
@@ -98,27 +98,69 @@ const KIND_LABEL: Record<string, string> = {
   transcribe: "Transcribe",
 };
 
-interface LargestClip {
-  id: string;
-  title: string;
-  bytes: number;
-}
+export default function UsagePanel() {
+  const [data, setData] = useState<UsageSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sizes, setSizes] = useState<Record<string, number>>({});
+  const [videos, setVideos] = useState<Pick<Video, "id" | "title">[]>([]);
 
-function UsagePanel({
-  data,
-  loading,
-  error,
-  onRetry,
-  storageTotal,
-  largestClips,
-}: {
-  data: UsageSummary | null;
-  loading: boolean;
-  error: string | null;
-  onRetry: () => void;
-  storageTotal: number;
-  largestClips: LargestClip[];
-}) {
+  const loadUsage = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/usage");
+      const json = (await res.json()) as UsageSummary;
+      if (!json.ok && !json.needsMigration) {
+        throw new Error(json.error || "Failed to load usage");
+      }
+      setData(json);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
+
+  useEffect(() => {
+    supabase
+      .from("videos")
+      .select("id, title")
+      .then(({ data }) =>
+        setVideos((data ?? []) as Pick<Video, "id" | "title">[]),
+      );
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/storage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.sizes) setSizes(d.sizes as Record<string, number>);
+      })
+      .catch(() => {});
+  }, []);
+
+  const storageTotal = useMemo(
+    () => Object.values(sizes).reduce((a, b) => a + (b || 0), 0),
+    [sizes],
+  );
+
+  const largestClips = useMemo<LargestClip[]>(() => {
+    return videos
+      .map((v) => ({
+        id: v.id,
+        title: v.title || "(untitled)",
+        bytes: sizes[v.id] ?? 0,
+      }))
+      .filter((c) => c.bytes > 0)
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, 8);
+  }, [videos, sizes]);
+
   if (loading) {
     return <div className="usage"><div className="usage-empty">Loading…</div></div>;
   }
@@ -127,7 +169,7 @@ function UsagePanel({
       <div className="usage">
         <div className="usage-empty">
           Couldn&apos;t load usage · {error}{" "}
-          <button type="button" className="usage-link" onClick={onRetry}>
+          <button type="button" className="usage-link" onClick={loadUsage}>
             Retry
           </button>
         </div>
@@ -304,205 +346,5 @@ function UsagePanel({
         <code>web/src/lib/usage.ts</code>.
       </div>
     </div>
-  );
-}
-
-export default function SettingsPage() {
-  const router = useRouter();
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [newFolderOpen, setNewFolderOpen] = useState(false);
-
-  const [data, setData] = useState<UsageSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [sizes, setSizes] = useState<Record<string, number>>({});
-
-  const loadUsage = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/usage");
-      const json = (await res.json()) as UsageSummary;
-      if (!json.ok && !json.needsMigration) {
-        throw new Error(json.error || "Failed to load usage");
-      }
-      setData(json);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadUsage();
-  }, [loadUsage]);
-
-  useEffect(() => {
-    supabase
-      .from("folders")
-      .select("*")
-      .order("created_at")
-      .then(({ data }) => setFolders((data ?? []) as Folder[]));
-    supabase
-      .from("videos")
-      .select("id, folder_id, created_at, title")
-      .then(({ data }) => setVideos((data ?? []) as Video[]));
-  }, []);
-
-  // R2 storage footprint per clip (bytes). Measured server-side; best-effort.
-  useEffect(() => {
-    fetch("/api/storage")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.sizes) setSizes(d.sizes as Record<string, number>);
-      })
-      .catch(() => {});
-  }, []);
-
-  const storageTotal = useMemo(
-    () => Object.values(sizes).reduce((a, b) => a + (b || 0), 0),
-    [sizes],
-  );
-
-  const largestClips = useMemo<LargestClip[]>(() => {
-    return videos
-      .map((v) => ({
-        id: v.id,
-        title: v.title || "(untitled)",
-        bytes: sizes[v.id] ?? 0,
-      }))
-      .filter((c) => c.bytes > 0)
-      .sort((a, b) => b.bytes - a.bytes)
-      .slice(0, 8);
-  }, [videos, sizes]);
-
-  const handleSidebarSelect = useCallback(
-    (section: ActiveSection) => {
-      try {
-        localStorage.setItem(ACTIVE_SECTION_KEY, JSON.stringify(section));
-      } catch {
-        /* ignore */
-      }
-      router.push("/");
-    },
-    [router],
-  );
-
-  const openNewFolder = useCallback(() => setNewFolderOpen(true), []);
-
-  const createFolder = useCallback(
-    async (input: { name: string; color: string }) => {
-      const { data, error } = await supabase
-        .from("folders")
-        .insert({ name: input.name, color: input.color })
-        .select()
-        .single();
-      if (error) {
-        alert(`Failed to create folder: ${error.message}`);
-        return;
-      }
-      if (data) {
-        setNewFolderOpen(false);
-        handleSidebarSelect({ kind: "folder", id: data.id });
-      }
-    },
-    [handleSidebarSelect],
-  );
-
-  const renameFolder = useCallback(async (id: string, name: string) => {
-    await supabase.from("folders").update({ name }).eq("id", id);
-    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
-  }, []);
-
-  const deleteFolder = useCallback(async (folder: Folder) => {
-    if (!confirm(`Delete folder "${folder.name}"?`)) return;
-    await supabase.from("folders").delete().eq("id", folder.id);
-    setFolders((prev) => prev.filter((f) => f.id !== folder.id));
-  }, []);
-
-  const setFolderColor = useCallback(async (id: string, color: string) => {
-    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, color } : f)));
-    await supabase.from("folders").update({ color }).eq("id", id);
-  }, []);
-
-  const recentCount = useMemo(() => {
-    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
-    return videos.filter((v) => new Date(v.created_at).getTime() >= cutoff).length;
-  }, [videos]);
-
-  return (
-    <>
-      <div className="home-app">
-        <Sidebar
-          active={{ kind: "all" }}
-          onSelect={handleSidebarSelect}
-          folders={folders}
-          videos={videos.map((v) => ({ id: v.id, folder_id: v.folder_id }))}
-          allCount={videos.length}
-          recentCount={recentCount}
-          onCreateFolder={openNewFolder}
-          onRenameFolder={renameFolder}
-          onDeleteFolder={deleteFolder}
-          onSetFolderColor={setFolderColor}
-        />
-
-        <NewFolderModal
-          open={newFolderOpen}
-          onCancel={() => setNewFolderOpen(false)}
-          onCreate={createFolder}
-          existingNames={folders.map((f) => f.name)}
-        />
-
-        <main className="main">
-          <div className="main-inner">
-            <header className="page-head">
-              <div>
-                <h1 className="page-title">Settings</h1>
-                <p className="page-sub">Track your token usage and estimated cost.</p>
-              </div>
-              <div className="page-actions">
-                <button type="button" className="btn ghost" onClick={loadUsage}>
-                  Refresh
-                </button>
-              </div>
-            </header>
-
-            <UsagePanel
-              data={data}
-              loading={loading}
-              error={error}
-              onRetry={loadUsage}
-              storageTotal={storageTotal}
-              largestClips={largestClips}
-            />
-          </div>
-        </main>
-      </div>
-
-      <div className="m-app">
-        <header className="m-settings-top">
-          <Link href="/" className="m-settings-back" aria-label="Back">
-            ‹ Library
-          </Link>
-          <span className="m-settings-title">Settings</span>
-          <button type="button" className="m-settings-refresh" onClick={loadUsage}>
-            Refresh
-          </button>
-        </header>
-        <div className="m-settings-body">
-          <UsagePanel
-            data={data}
-            loading={loading}
-            error={error}
-            onRetry={loadUsage}
-            storageTotal={storageTotal}
-            largestClips={largestClips}
-          />
-        </div>
-        <MobileTabBar active="settings" />
-      </div>
-    </>
   );
 }

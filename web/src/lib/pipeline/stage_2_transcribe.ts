@@ -171,6 +171,7 @@ export async function stage2Transcribe(jobId: string): Promise<void> {
 
   await recordUsage({
     jobId,
+    userId: job.user_id,
     label: job.title,
     provider: "elevenlabs",
     model: ELEVENLABS_MODEL_ID,

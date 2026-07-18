@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { SrsVerdict } from "@/lib/types";
 import { folderColor } from "@/lib/folder-color";
 import { applyVerdict, type SrsState } from "@/lib/srs";
+import { resolveAudioUrl } from "@/lib/resolve-media";
 import type { PracticeQueueItem } from "@/components/mobile/MobilePractice";
 import { PauseIcon, PlayIcon } from "@/components/clip/Icons";
 import { SettingsIcon } from "@/components/mobile/Icons";
@@ -108,24 +109,30 @@ export default function DesktopPractice({
 
   // Wire audio src + seek. Seek must wait for loadedmetadata; setting
   // currentTime before metadata is ignored by some browsers (iOS Safari).
+  // The item's audioUrl is a bare R2 key, so resolve it to a signed URL first.
   useEffect(() => {
     if (!item || !audioRef.current) return;
     const a = audioRef.current;
+    let cancelled = false;
     const seek = () => {
       a.currentTime = item.startTime;
       setCurrentTime(item.startTime);
     };
     a.playbackRate = speed;
-    if (a.src !== item.audioUrl) {
-      a.src = item.audioUrl;
-      a.addEventListener("loadedmetadata", seek, { once: true });
-      a.load();
-    } else if (a.readyState >= 1) {
-      seek();
-    } else {
-      a.addEventListener("loadedmetadata", seek, { once: true });
-    }
+    resolveAudioUrl(item.videoId).then((url) => {
+      if (cancelled || !url) return;
+      if (a.src !== url) {
+        a.src = url;
+        a.addEventListener("loadedmetadata", seek, { once: true });
+        a.load();
+      } else if (a.readyState >= 1) {
+        seek();
+      } else {
+        a.addEventListener("loadedmetadata", seek, { once: true });
+      }
+    });
     return () => {
+      cancelled = true;
       a.removeEventListener("loadedmetadata", seek);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

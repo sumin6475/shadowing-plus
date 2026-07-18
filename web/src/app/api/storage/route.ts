@@ -1,6 +1,22 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { headSize, keyFromPublicUrl } from "@/lib/r2";
+import { getSessionUserId } from "@/lib/supabase-server";
+import { headSize } from "@/lib/r2";
+
+// audio_url / video_url now hold a bare R2 object key (post R2-privacy change),
+// except for external refs (YouTube), which we skip since they have no R2
+// footprint. A bare key is anything without an URL scheme.
+function r2KeyOrNull(ref: string | null): string | null {
+  if (!ref) return null;
+  if (
+    ref.startsWith("http://") ||
+    ref.startsWith("https://") ||
+    ref.startsWith("youtube://")
+  ) {
+    return null;
+  }
+  return ref;
+}
 
 // R2 is the only source of truth for file sizes (no size column in the DB),
 // so this is measured live. The clip count is tiny today; if the library
@@ -20,9 +36,14 @@ interface VideoRow {
  * and sum their ContentLength.
  */
 export async function GET() {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const { data, error } = await supabaseAdmin()
     .from("videos")
-    .select("id, audio_url, video_url");
+    .select("id, audio_url, video_url")
+    .eq("user_id", userId);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -32,8 +53,7 @@ export async function GET() {
   const entries = await Promise.all(
     videos.map(async (v) => {
       const keys = [v.audio_url, v.video_url]
-        .filter((u): u is string => Boolean(u))
-        .map(keyFromPublicUrl)
+        .map(r2KeyOrNull)
         .filter((k): k is string => Boolean(k));
       const sizes = await Promise.all(keys.map(headSize));
       const total = sizes.reduce((a, b) => a + b, 0);

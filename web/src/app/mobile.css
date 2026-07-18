@@ -1329,6 +1329,16 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   gap: 10px;
   box-shadow: var(--shadow-card);
 }
+/* Deep-link target from the Review bot's "Shadow in app" — flash the tapped
+   sentence. JS clears .highlighted after ~2.6s. */
+.m-bm-card.highlighted {
+  border-color: var(--accent);
+  animation: m-bm-flash 2.6s ease-out;
+}
+@keyframes m-bm-flash {
+  0%, 25% { background: var(--accent-soft); }
+  100% { background: var(--surface); }
+}
 .m-bm-card-time {
   font-family: var(--font-mono);
   font-size: 11px;

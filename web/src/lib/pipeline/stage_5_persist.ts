@@ -1,4 +1,4 @@
-import { getJson, jobKey, publicUrl } from "@/lib/r2";
+import { getJson, jobKey } from "@/lib/r2";
 import { audioKeyFor, getJob, setJobReady, updateJobProgress } from "./jobs";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { PipelineSegment } from "@/lib/types";
@@ -24,10 +24,14 @@ export async function stage5Persist(jobId: string): Promise<string> {
   const isYoutube = job.source_key.startsWith("youtube://");
   const ytVideoId = isYoutube ? job.source_key.replace("youtube://", "") : "";
 
-  const audioUrl = isYoutube ? job.source_key : publicUrl(audioKeyFor(job));
+  // Privacy: R2-backed media is stored as a bare object KEY, not a permanent
+  // public URL. The player resolves keys → short-lived signed URLs at read time
+  // (see /api/media/[videoId]), so uploads are never world-readable. YouTube
+  // sources stay as external URLs (public by nature) and are passed through.
+  const audioUrl = isYoutube ? job.source_key : audioKeyFor(job);
   const videoUrl = isYoutube
     ? `https://www.youtube.com/watch?v=${ytVideoId}`
-    : (job.media_type === "video" ? publicUrl(job.source_key) : null);
+    : (job.media_type === "video" ? job.source_key : null);
 
   const db = supabaseAdmin();
 
@@ -39,6 +43,10 @@ export async function stage5Persist(jobId: string): Promise<string> {
       audio_url: audioUrl,
       video_url: videoUrl,
       media_type: job.media_type,
+      // Owner carried from the job. The service key bypasses RLS, so this must
+      // be set explicitly (DEFAULT auth.uid() won't fire without a session).
+      // Segments inherit ownership via a traversal RLS policy over videos.
+      user_id: job.user_id,
     })
     .select()
     .single();

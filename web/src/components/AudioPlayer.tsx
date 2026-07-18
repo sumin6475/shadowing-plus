@@ -19,7 +19,10 @@ export interface AudioPlayerHandle {
 }
 
 interface AudioPlayerProps {
-  src: string;
+  /** Playable media URL. May be undefined briefly while the parent resolves a
+   *  stored R2 key into a signed URL; the <audio> element mounts without a
+   *  source until it arrives. */
+  src?: string;
   duration: number;
   onTimeUpdate?: (time: number) => void;
   externalMediaRef?: React.RefObject<HTMLMediaElement | null>;

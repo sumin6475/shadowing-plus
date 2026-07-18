@@ -301,14 +301,7 @@
   border-radius: 5px;
 }
 
-/* ── Mobile shell header ── */
-.m-settings-top {
-  display: none;
-}
-.m-settings-body {
-  display: none;
-}
-
+/* ── Mobile: usage layout only (page chrome lived in the retired settings page) ── */
 @media (max-width: 768px) {
   .usage-cards {
     grid-template-columns: 1fr 1fr;
@@ -323,38 +316,5 @@
   .usage-tr > :nth-child(2),
   .usage-tr > :nth-child(5) {
     display: none;
-  }
-
-  .m-settings-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--u-hairline, oklch(0.91 0.006 70));
-    position: sticky;
-    top: 0;
-    background: var(--bg, oklch(0.985 0.004 70));
-    z-index: 5;
-  }
-  .m-settings-title {
-    font-weight: 650;
-    font-size: 16px;
-  }
-  .m-settings-back,
-  .m-settings-refresh {
-    font-size: 14px;
-    color: var(--accent, oklch(0.58 0.165 258));
-    background: none;
-    border: 0;
-    cursor: pointer;
-    text-decoration: none;
-  }
-  .m-settings-body {
-    display: block;
-    padding: 0 16px calc(72px + env(safe-area-inset-bottom));
-  }
-  .m-settings-body .usage {
-    margin-top: 6px;
   }
 }

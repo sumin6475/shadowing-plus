@@ -28,7 +28,6 @@ import {
   DotsIcon,
   PlayIcon,
   PlusIcon,
-  SortIcon,
 } from "@/components/home/Icons";
 import { folderColor } from "@/lib/folder-color";
 import { clipKind } from "@/lib/clip-kind";
@@ -176,36 +175,56 @@ export default function HomePage() {
     refreshAll().then(() => setLoading(false));
   }, [refreshAll]);
 
-  // Realtime jobs subscription
+  // Realtime jobs subscription, scoped to the current user. The channel is
+  // named per-user and the postgres_changes filter restricts payloads to this
+  // user's rows — without the filter, every client would receive every user's
+  // job events over the socket even though their .from() reads are RLS-scoped.
   useEffect(() => {
-    const channel = supabase
-      .channel("jobs-feed")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "jobs" },
-        (payload) => {
-          setJobs((prev) => {
-            if (payload.eventType === "DELETE") {
-              return prev.filter((j) => j.id !== (payload.old as Job).id);
-            }
-            const next = payload.new as Job;
-            const idx = prev.findIndex((j) => j.id === next.id);
-            if (
-              next.status === "ready" &&
-              (idx === -1 || prev[idx].status !== "ready")
-            ) {
-              refreshAll();
-            }
-            if (idx === -1) return [next, ...prev];
-            const copy = prev.slice();
-            copy[idx] = next;
-            return copy;
-          });
-        },
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (cancelled || !user) return;
+
+      channel = supabase
+        .channel(`jobs-feed-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "jobs",
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            setJobs((prev) => {
+              if (payload.eventType === "DELETE") {
+                return prev.filter((j) => j.id !== (payload.old as Job).id);
+              }
+              const next = payload.new as Job;
+              const idx = prev.findIndex((j) => j.id === next.id);
+              if (
+                next.status === "ready" &&
+                (idx === -1 || prev[idx].status !== "ready")
+              ) {
+                refreshAll();
+              }
+              if (idx === -1) return [next, ...prev];
+              const copy = prev.slice();
+              copy[idx] = next;
+              return copy;
+            });
+          },
+        )
+        .subscribe();
+    })();
+
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
     };
   }, [refreshAll]);
 
@@ -253,7 +272,7 @@ export default function HomePage() {
         .select()
         .single();
       if (error) {
-        // Common cause: migration 006 not applied → no `color` column.
+        // Common cause: migration 003_folder_color.sql not applied → no `color` column.
         if (/color/i.test(error.message)) {
           alert(
             "Couldn't save the folder color. Apply supabase/migrations/003_folder_color.sql, then try again.",
@@ -309,7 +328,7 @@ export default function HomePage() {
         .update({ color })
         .eq("id", id);
       if (error) {
-        // Likely the `color` column hasn't been added yet via migration 006.
+        // Likely the `color` column hasn't been added yet via migration 003_folder_color.sql.
         console.warn("folder color update failed:", error.message);
         alert(
           "Couldn't save the color. Apply supabase/migrations/003_folder_color.sql.",
@@ -676,9 +695,6 @@ export default function HomePage() {
                   <span className="btn-label">{selectMode ? "Cancel" : "Select"}</span>
                 </button>
               )}
-              <button type="button" className="btn ghost" disabled title="Sort (coming soon)">
-                <SortIcon /> <span className="btn-label">Sort</span> <ChevronDownIcon />
-              </button>
               <button
                 type="button"
                 className="btn primary"

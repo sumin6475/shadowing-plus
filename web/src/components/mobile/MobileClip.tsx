@@ -95,16 +95,17 @@ export default function MobileClip({
   const isVideo = video.media_type === "video" && !!video.video_url;
   const segment = segments[currentIndex] ?? null;
 
-  // Focus card visibility. Read from localStorage after mount (SSR-safe), and
-  // persist so the choice sticks across clips/sessions.
-  const [showFocus, setShowFocus] = useState(true);
-  useEffect(() => {
+  // Focus card visibility. Seed lazily from localStorage (SSR-safe: window is
+  // undefined on the server, so it defaults to visible and hydrates from the
+  // stored choice on the client). Persisted so the choice sticks across clips.
+  const [showFocus, setShowFocus] = useState(() => {
+    if (typeof window === "undefined") return true;
     try {
-      if (localStorage.getItem(FOCUS_HIDDEN_KEY) === "1") setShowFocus(false);
+      return localStorage.getItem(FOCUS_HIDDEN_KEY) !== "1";
     } catch {
-      /* ignore */
+      return true;
     }
-  }, []);
+  });
   const toggleFocus = () =>
     setShowFocus((v) => {
       const next = !v;

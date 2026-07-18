@@ -151,6 +151,19 @@
 .home-app .bm-item:last-child { border-bottom: 0; }
 .home-app .bm-item:hover { background: var(--surface-2); }
 
+/* Deep-link target from the Review bot: a brief accent flash so the user's eye
+   lands on the sentence they tapped in Telegram. JS removes .highlighted after
+   ~2.6s; the transition eases the color back out. */
+.home-app .bm-item.highlighted {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+  animation: bm-flash 2.6s ease-out;
+}
+@keyframes bm-flash {
+  0%, 25% { background: var(--accent-soft); }
+  100% { background: transparent; }
+}
+
 .home-app .bm-time {
   font-family: var(--home-font-mono);
   font-size: 12px;

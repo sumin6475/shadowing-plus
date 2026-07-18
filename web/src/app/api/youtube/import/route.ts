@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createJob } from "@/lib/pipeline/jobs";
+import { getSessionUserId } from "@/lib/supabase-server";
 import { putJson, jobKey } from "@/lib/r2";
 import {
   mergeDuplicates,
@@ -308,6 +309,10 @@ async function getYoutubeCaptionsTracklist(videoId: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const { url } = await req.json();
     if (!url) {
@@ -381,6 +386,7 @@ export async function POST(req: NextRequest) {
       title: cleanTitle,
       media_type: "video",
       source_key: `youtube://${videoId}`,
+      user_id: userId,
     });
 
     // Write segments.json to R2

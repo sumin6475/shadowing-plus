@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createJob } from "@/lib/pipeline/jobs";
 import { getSignedUploadUrl, jobKey } from "@/lib/r2";
+import { getSessionUserId } from "@/lib/supabase-server";
 import type { MediaType } from "@/lib/types";
 
 interface UploadRequest {
@@ -16,6 +17,10 @@ function safeFilename(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   let body: UploadRequest;
   try {
     body = (await req.json()) as UploadRequest;
@@ -42,6 +47,7 @@ export async function POST(req: NextRequest) {
     title: body.title.trim(),
     media_type: body.mediaType,
     source_key: "pending",
+    user_id: userId,
   });
   const sourceKey = jobKey(tempJob.id, `source-${filename}`);
 

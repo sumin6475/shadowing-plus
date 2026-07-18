@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJob } from "@/lib/pipeline/jobs";
 import { runPipeline, STAGE_SEQUENCE } from "@/lib/pipeline/orchestrator";
+import { getSessionUserId } from "@/lib/supabase-server";
 import type { StageName } from "@/lib/types";
 
 export const maxDuration = 300;
@@ -10,8 +11,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const job = await getJob(id);
-  if (!job) {
+  if (!job || job.user_id !== userId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

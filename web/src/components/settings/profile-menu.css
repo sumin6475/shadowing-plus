@@ -1,0 +1,111 @@
+/* ── Sidebar-foot profile menu ── */
+
+.pm-root {
+  position: relative;
+}
+
+.pm-trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pm-trigger:hover {
+  background: var(--surface-2, #f3efe6);
+}
+
+.pm-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #2a2622;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.pm-email {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-2, #4a453d);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-chevron {
+  font-size: 12px;
+  color: var(--text-4, #9a927f);
+  flex-shrink: 0;
+}
+
+/* Dropdown opens UPWARD from the foot. */
+.pm-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ece7dd;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.14);
+  padding: 6px;
+  z-index: 40;
+}
+
+.pm-menu-email {
+  padding: 8px 10px 6px;
+  font-size: 12.5px;
+  color: #9a927f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-menu-sep {
+  height: 1px;
+  background: #f0ece3;
+  margin: 4px 0;
+}
+
+.pm-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2a2622;
+  cursor: pointer;
+}
+
+.pm-menu-item:hover {
+  background: #f3efe6;
+}
+
+.pm-menu-danger {
+  color: #b4462f;
+}
+
+.pm-menu-danger:hover {
+  background: #fbf1ee;
+}
+
+.pm-menu-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

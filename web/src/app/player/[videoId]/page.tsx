@@ -70,6 +70,13 @@ export default function PlayerPage({
   const searchParams = useSearchParams();
 
   const [video, setVideo] = useState<Video | null>(null);
+  // Playable media URLs resolved from the video's stored R2 keys (or external
+  // refs) via /api/media/[videoId]. The raw `video.audio_url`/`video_url` are
+  // now bare keys, so these signed URLs are what the <audio>/<video> src use.
+  const [media, setMedia] = useState<{
+    audioUrl: string | null;
+    videoUrl: string | null;
+  } | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -161,6 +168,22 @@ export default function PlayerPage({
 
         if (videoRes.data) {
           setVideo(videoRes.data);
+          // Resolve the stored R2 keys into short-lived signed URLs for
+          // playback. External refs (YouTube) pass through unchanged.
+          try {
+            const mediaRes = await fetch(`/api/media/${videoId}`, {
+              signal: controller.signal,
+            });
+            if (mediaRes.ok && !cancelled) {
+              const m = (await mediaRes.json()) as {
+                audioUrl: string | null;
+                videoUrl: string | null;
+              };
+              setMedia(m);
+            }
+          } catch {
+            // Non-fatal: leave media null; the src falls back to the raw value.
+          }
           if (videoRes.data.folder_id) {
             const { data: folder } = await supabase
               .from("folders")
@@ -818,7 +841,7 @@ export default function PlayerPage({
           <div className={"player-col" + (hideFocus ? " no-focus" : "")}>
             <ClipPlayer
               mediaType={video.media_type}
-              videoSrc={showVideoFrame ? video.video_url : null}
+              videoSrc={showVideoFrame ? (media?.videoUrl ?? null) : null}
               videoSlotRef={desktopVideoSlotRef}
               playing={playing}
               currentTime={currentTime}
@@ -882,7 +905,7 @@ export default function PlayerPage({
         ) : (
           <AudioPlayer
             ref={playerRef}
-            src={video.audio_url}
+            src={media?.audioUrl ?? undefined}
             duration={video.duration ?? 0}
             onTimeUpdate={handleTimeUpdate}
             externalMediaRef={showVideoFrame ? videoRef : undefined}
@@ -931,7 +954,7 @@ export default function PlayerPage({
         <div style={{ display: "none" }} aria-hidden>
           <video
             ref={videoRef}
-            src={video.video_url ?? undefined}
+            src={media?.videoUrl ?? undefined}
             className="player-video"
             preload="metadata"
             playsInline

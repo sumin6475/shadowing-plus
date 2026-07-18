@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Folder } from "@/lib/types";
+import ProfileMenu from "@/components/settings/ProfileMenu";
 import { FOLDER_COLOR_OPTIONS, folderColor } from "@/lib/folder-color";
 import {
   BookmarkIcon,
   DotsIcon,
-  GearIcon,
   InboxIcon,
   LibraryIcon,
   SearchIcon,
@@ -46,7 +46,6 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const onBookmarksRoute = pathname?.startsWith("/bookmarks");
-  const onSettingsRoute = pathname?.startsWith("/settings");
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -89,9 +88,8 @@ export default function Sidebar({
     }
   }
 
-  const isAllActive = active.kind === "all" && !onBookmarksRoute && !onSettingsRoute;
-  const isRecentActive =
-    active.kind === "recent" && !onBookmarksRoute && !onSettingsRoute;
+  const isAllActive = active.kind === "all" && !onBookmarksRoute;
+  const isRecentActive = active.kind === "recent" && !onBookmarksRoute;
 
   return (
     <aside className="sidebar">
@@ -254,13 +252,7 @@ export default function Sidebar({
       </nav>
 
       <div className="sidebar-foot">
-        <Link
-          href="/settings"
-          className={"nav-item" + (onSettingsRoute ? " active" : "")}
-        >
-          <span className="nav-icon"><GearIcon /></span>
-          <span className="nav-label">Settings</span>
-        </Link>
+        <ProfileMenu />
       </div>
     </aside>
   );

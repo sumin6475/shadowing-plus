@@ -10,6 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { resolveAudioUrl, resolveAudioUrls } from "@/lib/resolve-media";
 import type { Folder, Video } from "@/lib/types";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
@@ -92,6 +93,18 @@ export default function BookmarksPage() {
     null,
   );
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  // Deep-link target from the Review bot's "Shadow in app" button
+  // (/bookmarks?bookmarkId=...). Read post-mount from the URL (not
+  // useSearchParams, which would force a Suspense boundary around this page).
+  // Cleared after a brief highlight so a page refresh doesn't re-flash it.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  // Preloaded signed audio URLs, keyed by videoId. Populated after bookmarks
+  // load so a play() can run synchronously in the tap handler (see
+  // resolveAudioUrls). A ref mirror lets the tap handler read the latest map
+  // without adding it to playBookmark's dependency list.
+  const [audioUrls, setAudioUrls] = useState<Map<string, string>>(new Map());
+  const audioUrlsRef = useRef<Map<string, string>>(audioUrls);
+  audioUrlsRef.current = audioUrls;
 
   const refresh = useCallback(async () => {
     const [bmRes, foldersRes, videosRes] = await Promise.all([
@@ -113,7 +126,17 @@ export default function BookmarksPage() {
   }, []);
 
   useEffect(() => {
-    refresh().then(() => setLoading(false));
+    let active = true;
+    void (async () => {
+      try {
+        await refresh();
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [refresh]);
 
   // Group bookmarks by video, preserving the order in which the first
@@ -153,6 +176,61 @@ export default function BookmarksPage() {
     return Array.from(byVideo.values());
   }, [bookmarks]);
 
+  // Preload signed audio URLs for every video in view, so tapping ▶ can start
+  // playback synchronously (mobile PWAs / in-app browsers block audio started
+  // after an await). Runs whenever the set of videos changes.
+  useEffect(() => {
+    const ids = groups.map((g) => g.videoId);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    void resolveAudioUrls(ids).then((map) => {
+      if (!cancelled) setAudioUrls(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [groups]);
+
+  // Once bookmarks are loaded, honor a ?bookmarkId= deep link: reveal the
+  // target's clip (the filter may hide it), scroll it into view, flash a
+  // highlight, then clear the query param so a refresh doesn't re-trigger.
+  useEffect(() => {
+    if (loading) return;
+    const targetId = new URLSearchParams(window.location.search).get(
+      "bookmarkId",
+    );
+    if (!targetId) return;
+
+    const owner = groups.find((g) =>
+      g.items.some((it) => it.bookmarkId === targetId),
+    );
+    if (!owner) return; // not this user's bookmark, or already deleted
+
+    setFilterVideoId(owner.videoId);
+    setHighlightId(targetId);
+
+    // Wait a frame so the filtered list has rendered the anchor before we
+    // scroll to it. Desktop and mobile render separate DOM trees (one hidden
+    // by CSS), so try both anchors — scrollIntoView is a no-op on the hidden
+    // one.
+    const raf = requestAnimationFrame(() => {
+      const el =
+        document.getElementById(`bm-${targetId}`) ??
+        document.getElementById(`m-bm-${targetId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    // Drop the param from the URL without a navigation, so a manual refresh
+    // lands on a clean /bookmarks.
+    window.history.replaceState(null, "", "/bookmarks");
+
+    const clear = setTimeout(() => setHighlightId(null), 2600);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(clear);
+    };
+  }, [loading, groups]);
+
   const totalCount = groups.reduce((n, g) => n + g.items.length, 0);
   const filters = useMemo(
     () => [
@@ -179,28 +257,83 @@ export default function BookmarksPage() {
   }, []);
 
   const playBookmark = useCallback(
-    (bm: BookmarkItemData, audioUrl: string) => {
+    (bm: BookmarkItemData) => {
       const a = audioRef.current;
       if (!a) return;
       if (playingBookmarkId === bm.bookmarkId) {
         stopPlayback();
         return;
       }
-      if (a.src !== audioUrl) a.src = audioUrl;
-      a.currentTime = bm.startTime;
-      a.play().catch(() => {});
-      setPlayingBookmarkId(bm.bookmarkId);
 
-      const onTimeUpdate = () => {
-        if (a.currentTime >= bm.endTime) {
-          a.pause();
-          a.removeEventListener("timeupdate", onTimeUpdate);
-          setPlayingBookmarkId((prev) =>
-            prev === bm.bookmarkId ? null : prev,
-          );
-        }
+      // Stop the previous clip's end-watcher before starting a new one.
+      const startWatcher = () => {
+        const onTimeUpdate = () => {
+          if (a.currentTime >= bm.endTime) {
+            a.pause();
+            a.removeEventListener("timeupdate", onTimeUpdate);
+            setPlayingBookmarkId((prev) =>
+              prev === bm.bookmarkId ? null : prev,
+            );
+          }
+        };
+        a.addEventListener("timeupdate", onTimeUpdate);
       };
-      a.addEventListener("timeupdate", onTimeUpdate);
+
+      // Seek to the clip start (deferring past loadedmetadata when needed —
+      // Safari drops a currentTime set before metadata is ready) then play.
+      const seekAndPlay = () => {
+        if (Number.isFinite(a.duration) && a.duration > 0) {
+          a.currentTime = bm.startTime;
+        } else {
+          const onReady = () => {
+            a.removeEventListener("loadedmetadata", onReady);
+            a.currentTime = bm.startTime;
+          };
+          a.addEventListener("loadedmetadata", onReady);
+        }
+        return a.play();
+      };
+
+      // Re-sign and retry once, for the rare case a preloaded URL has expired.
+      // This path is async so it loses the tap gesture, but it only runs when
+      // the fast synchronous path failed — mobile's first tap normally hits the
+      // preloaded URL below and plays inside the gesture.
+      const resignAndRetry = () => {
+        void resolveAudioUrl(bm.videoId).then((fresh) => {
+          if (!fresh) return;
+          setAudioUrls((prev) => new Map(prev).set(bm.videoId, fresh));
+          a.src = fresh;
+          a.load();
+          seekAndPlay()?.catch(() => {});
+        });
+      };
+
+      const preloaded = audioUrlsRef.current.get(bm.videoId);
+      if (preloaded) {
+        // Fast path: URL already in hand, so this runs synchronously inside the
+        // tap — the requirement for audio to start in mobile PWAs / in-app
+        // browsers.
+        if (a.src !== preloaded) {
+          a.src = preloaded;
+          a.load();
+        }
+        setPlayingBookmarkId(bm.bookmarkId);
+        startWatcher();
+        seekAndPlay()?.catch(resignAndRetry);
+        return;
+      }
+
+      // Slow path: not preloaded yet (rare) — resolve then play. Best-effort;
+      // may be blocked on mobile since it's post-await.
+      void resolveAudioUrl(bm.videoId).then((url) => {
+        if (!url) return;
+        setAudioUrls((prev) => new Map(prev).set(bm.videoId, url));
+        a.src = url;
+        a.load();
+        setPlayingBookmarkId(bm.bookmarkId);
+        startWatcher();
+        seekAndPlay()?.catch(() => {});
+      });
     },
     [playingBookmarkId, stopPlayback],
   );
@@ -229,12 +362,10 @@ export default function BookmarksPage() {
   );
 
   const playForMobile = useCallback(
-    (bm: BookmarkItemData, videoId: string) => {
-      const audioUrl = allVideos.find((v) => v.id === videoId)?.audio_url;
-      if (!audioUrl) return;
-      playBookmark(bm, audioUrl);
+    (bm: BookmarkItemData) => {
+      playBookmark(bm);
     },
-    [allVideos, playBookmark],
+    [playBookmark],
   );
 
   const mobileGroups: MobileBookmarkGroup[] = groups;
@@ -411,9 +542,6 @@ export default function BookmarksPage() {
               </div>
 
               {visible.map((g) => {
-                const audioUrl = allVideos.find(
-                  (v) => v.id === g.videoId,
-                )?.audio_url;
                 return (
                   <BookmarkGroup
                     key={g.videoId}
@@ -424,9 +552,9 @@ export default function BookmarksPage() {
                     duration={g.duration}
                     items={g.items}
                     play={{ playingBookmarkId }}
+                    highlightedBookmarkId={highlightId}
                     onPlayBookmark={(bm) => {
-                      if (!audioUrl) return;
-                      playBookmark(bm, audioUrl);
+                      playBookmark(bm);
                     }}
                     onRemoveBookmark={removeBookmark}
                   />
@@ -448,6 +576,7 @@ export default function BookmarksPage() {
       totalCount={totalCount}
       loading={loading}
       playingBookmarkId={playingBookmarkId}
+      highlightedBookmarkId={highlightId}
       onPlay={playForMobile}
       onRemove={removeBookmark}
       onEditNote={editNote}

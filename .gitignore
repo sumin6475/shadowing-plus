@@ -30,8 +30,18 @@ debug_*.json
 ARCHITECTURE.md
 TRANSLATE_STAGE_SNAPSHOT.md
 
+# Launch / business docs (local only)
+docs/launch/
+
 # Editor
 .obsidian/
 
 # Scratch
 test.ts
+
+# Build System (ai-layer) — hooks + loop artifacts
+__pycache__/
+e2e-screenshots/
+.claude/claude-md-review.md
+.claude/.claude-md-review-state
+.env*

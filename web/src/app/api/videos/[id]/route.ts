@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getSessionUserId } from "@/lib/supabase-server";
 import { deleteKey, jobKey } from "@/lib/r2";
 
 export async function DELETE(
@@ -7,16 +8,37 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const db = supabaseAdmin();
+
+  // Confirm ownership before touching anything. 404 (not 403) to avoid leaking
+  // that a video with this id exists for another user.
+  const { data: video } = await db
+    .from("videos")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!video) {
+    return NextResponse.json({ ok: true });
+  }
 
   // Find associated job (if any) for R2 cleanup
   const { data: jobs } = await db
     .from("jobs")
     .select("id, source_key")
-    .eq("video_id", id);
+    .eq("video_id", id)
+    .eq("user_id", userId);
 
   // Cascade delete: segments + bookmarks via FK ON DELETE CASCADE
-  const { error } = await db.from("videos").delete().eq("id", id);
+  const { error } = await db
+    .from("videos")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

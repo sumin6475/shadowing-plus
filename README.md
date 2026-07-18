@@ -270,3 +270,26 @@ Deletes all rows and audio objects. Schema changes (DROP / CREATE) still need to
 ## License
 
 MIT
+
+---
+
+## Engineering notes (migrated from the former CLAUDE.md)
+
+*The rest of the former CLAUDE.md duplicated this README / ARCHITECTURE.md; these are the bits that weren't documented elsewhere.*
+
+### Next.js 16 gotchas
+- `params`, `searchParams`, `cookies()`, `headers()` are all **Promises**. `await` them in server components. In client components use `use(params)`.
+- `themeColor` lives in the `viewport` export, not `metadata` (deprecated path).
+- API route handlers receive `{ params: Promise<{ id: string }> }`.
+
+### Compute limits
+- Vercel Hobby has a 60s timeout. A 1.5h video can hit it.
+- Escalation order: (a) raise `maxDuration` on Pro, (b) Supabase Edge Functions (150s), (c) Inngest free tier.
+- The code doesn't change; only the call site does. Today we run on (a).
+
+### Dual-shell architecture
+Library / Clip / Bookmarks / Practice each render **both** a desktop shell (`.home-app`, `.clip-page`, `.pr-page`) and a mobile shell (`.m-app`, `.m-practice`) on the same URL. CSS media queries at 768px gate which one paints. Data hooks live in the parent so both shells share state.
+
+The clip page hoists the single `<video>` into a hidden pool; a `useLayoutEffect` re-parents it via `appendChild` into the active shell's `videoSlotRef`. Playback state survives the swap.
+
+The mobile drawer is rendered **inline as a child of `.m-app`** (not via `createPortal`). Reason: a portal escapes the `.m-app` token scope, which makes iOS Safari's text-size-adjust inflate the drawer's fonts. z-index 50 on the drawer still trumps the tab bar (z:30) because `.m-app` doesn't create a stacking context.

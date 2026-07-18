@@ -106,6 +106,7 @@ interface TranslatedTranscript {
  */
 interface UsageCtx {
   jobId: string;
+  userId: string | null;
   label: string | null;
 }
 
@@ -151,6 +152,7 @@ Output JSON only, no commentary.`;
 
   await recordUsage({
     jobId: ctx.jobId,
+    userId: ctx.userId,
     label: ctx.label,
     provider: "openai",
     model: MODEL,
@@ -293,6 +295,7 @@ async function translateBatch(
 
   await recordUsage({
     jobId: ctx.jobId,
+    userId: ctx.userId,
     label: ctx.label,
     provider: "openai",
     model: MODEL,
@@ -365,7 +368,11 @@ export async function stage4Translate(jobId: string): Promise<void> {
 
   // Snapshot the job title for usage rows so they survive job deletion.
   const job = await getJob(jobId);
-  const usageCtx: UsageCtx = { jobId, label: job?.title ?? null };
+  const usageCtx: UsageCtx = {
+    jobId,
+    userId: job?.user_id ?? null,
+    label: job?.title ?? null,
+  };
 
   // ── Step A: one-shot video profile ──────────────────────────
   const profile = await profileVideo(openai, segments, usageCtx);

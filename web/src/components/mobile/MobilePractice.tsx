@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { Folder, SrsVerdict } from "@/lib/types";
 import { folderColor } from "@/lib/folder-color";
 import { applyVerdict, type SrsState } from "@/lib/srs";
+import { resolveAudioUrl } from "@/lib/resolve-media";
 import {
   CloseIcon,
   LoopIcon,
@@ -89,21 +90,27 @@ export default function MobilePractice({ initialQueue }: { initialQueue: Practic
   useEffect(() => {
     if (!item || !audioRef.current) return;
     const a = audioRef.current;
+    let cancelled = false;
     const seek = () => {
       a.currentTime = item.startTime;
       a.playbackRate = speed;
       setCurrentTime(item.startTime);
     };
-    if (a.src !== item.audioUrl) {
-      a.src = item.audioUrl;
-      a.addEventListener("loadedmetadata", seek, { once: true });
-      a.load();
-    } else if (a.readyState >= 1) {
-      seek();
-    } else {
-      a.addEventListener("loadedmetadata", seek, { once: true });
-    }
+    // item.audioUrl is a bare R2 key; resolve it to a signed URL first.
+    resolveAudioUrl(item.videoId).then((url) => {
+      if (cancelled || !url) return;
+      if (a.src !== url) {
+        a.src = url;
+        a.addEventListener("loadedmetadata", seek, { once: true });
+        a.load();
+      } else if (a.readyState >= 1) {
+        seek();
+      } else {
+        a.addEventListener("loadedmetadata", seek, { once: true });
+      }
+    });
     return () => {
+      cancelled = true;
       a.removeEventListener("loadedmetadata", seek);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

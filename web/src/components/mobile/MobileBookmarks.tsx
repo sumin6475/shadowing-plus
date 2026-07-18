@@ -35,7 +35,9 @@ interface Props {
   totalCount: number;
   loading: boolean;
   playingBookmarkId: string | null;
-  onPlay: (bm: BookmarkItemData, videoId: string) => void;
+  /** Deep-link target to highlight + scroll to (from the Review bot). */
+  highlightedBookmarkId?: string | null;
+  onPlay: (bm: BookmarkItemData) => void;
   onRemove: (bookmarkId: string) => void;
   onEditNote: (bookmarkId: string, current: string | null) => void;
 }
@@ -63,6 +65,7 @@ export default function MobileBookmarks({
   totalCount,
   loading,
   playingBookmarkId,
+  highlightedBookmarkId,
   onPlay,
   onRemove,
   onEditNote,
@@ -169,8 +172,16 @@ export default function MobileBookmarks({
 
                 {g.items.map((bm) => {
                   const isPlaying = playingBookmarkId === bm.bookmarkId;
+                  const isHighlighted =
+                    highlightedBookmarkId === bm.bookmarkId;
                   return (
-                    <div key={bm.bookmarkId} className="m-bm-card">
+                    <div
+                      key={bm.bookmarkId}
+                      id={`m-bm-${bm.bookmarkId}`}
+                      className={
+                        "m-bm-card" + (isHighlighted ? " highlighted" : "")
+                      }
+                    >
                       <div className="m-bm-card-time">{formatTime(bm.startTime)}</div>
                       <p className="m-bm-card-en">{bm.text}</p>
                       {bm.translation && (
@@ -205,7 +216,7 @@ export default function MobileBookmarks({
                             type="button"
                             className="m-bm-action primary"
                             aria-label={isPlaying ? "Pause" : "Play"}
-                            onClick={() => onPlay(bm, g.videoId)}
+                            onClick={() => onPlay(bm)}
                           >
                             {isPlaying ? <PauseIcon /> : <PlayIcon />}
                           </button>

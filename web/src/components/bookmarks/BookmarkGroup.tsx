@@ -25,6 +25,8 @@ interface Props {
   duration: number | null;
   items: BookmarkItemData[];
   play: PlayState;
+  /** Deep-link target to highlight + scroll to, if it lives in this group. */
+  highlightedBookmarkId?: string | null;
   onPlayBookmark: (bm: BookmarkItemData) => void;
   onRemoveBookmark: (bookmarkId: string) => void;
 }
@@ -37,6 +39,7 @@ export default function BookmarkGroup({
   duration,
   items,
   play,
+  highlightedBookmarkId,
   onPlayBookmark,
   onRemoveBookmark,
 }: Props) {
@@ -78,6 +81,7 @@ export default function BookmarkGroup({
             key={bm.bookmarkId}
             bm={bm}
             playing={play.playingBookmarkId === bm.bookmarkId}
+            highlighted={highlightedBookmarkId === bm.bookmarkId}
             onPlay={() => onPlayBookmark(bm)}
             onRemove={() => onRemoveBookmark(bm.bookmarkId)}
           />

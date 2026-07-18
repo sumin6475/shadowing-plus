@@ -26,11 +26,20 @@ export interface BookmarkItemData {
 interface Props {
   bm: BookmarkItemData;
   playing: boolean;
+  /** True when this item is the deep-link target (from Telegram); adds a
+   *  transient highlight and is the scroll anchor. */
+  highlighted?: boolean;
   onPlay: () => void;
   onRemove: () => void;
 }
 
-export default function BookmarkItem({ bm, playing, onPlay, onRemove }: Props) {
+export default function BookmarkItem({
+  bm,
+  playing,
+  highlighted,
+  onPlay,
+  onRemove,
+}: Props) {
   const router = useRouter();
 
   const open = () => {
@@ -39,7 +48,8 @@ export default function BookmarkItem({ bm, playing, onPlay, onRemove }: Props) {
 
   return (
     <div
-      className="bm-item"
+      id={`bm-${bm.bookmarkId}`}
+      className={"bm-item" + (highlighted ? " highlighted" : "")}
       role="button"
       tabIndex={0}
       onClick={open}

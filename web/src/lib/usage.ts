@@ -37,6 +37,10 @@ export function elevenlabsCostUsd(audioSeconds: number): number {
 
 export interface RecordUsageInput {
   jobId?: string | null;
+  // Owner (migration 008). Denormalized onto usage_events so per-user spend
+  // survives job deletion (job_id is ON DELETE SET NULL). Optional so legacy
+  // callers don't break, but the pipeline always passes it.
+  userId?: string | null;
   label?: string | null;
   provider: "openai" | "elevenlabs";
   model: string;
@@ -65,6 +69,7 @@ export async function recordUsage(input: RecordUsageInput): Promise<void> {
       .from("usage_events")
       .insert({
         job_id: input.jobId ?? null,
+        user_id: input.userId ?? null,
         label: input.label ?? null,
         provider: input.provider,
         model: input.model,

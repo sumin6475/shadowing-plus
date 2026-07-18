@@ -13,10 +13,13 @@ export async function getJob(jobId: string): Promise<Job | null> {
   return (data ?? null) as Job | null;
 }
 
-export async function listJobs(): Promise<Job[]> {
+// Scoped to one owner — the library feed must only show the caller's jobs.
+// (The service key bypasses RLS, so this .eq is the enforcement point.)
+export async function listJobs(userId: string): Promise<Job[]> {
   const { data, error } = await supabaseAdmin()
     .from(TABLE)
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as Job[];
@@ -26,6 +29,9 @@ export async function createJob(input: {
   title: string;
   media_type: "video" | "audio";
   source_key: string;
+  // Owner. Required post-auth: the service key can't rely on DEFAULT auth.uid(),
+  // so the creating route passes the verified session user id explicitly.
+  user_id: string;
 }): Promise<Job> {
   const { data, error } = await supabaseAdmin()
     .from(TABLE)
@@ -33,6 +39,7 @@ export async function createJob(input: {
       title: input.title,
       media_type: input.media_type,
       source_key: input.source_key,
+      user_id: input.user_id,
       status: "pending",
       progress: 0,
     })
@@ -97,6 +104,44 @@ export async function setJobReady(
 export async function deleteJob(jobId: string): Promise<void> {
   const { error } = await supabaseAdmin().from(TABLE).delete().eq("id", jobId);
   if (error) throw error;
+}
+
+// The in-progress statuses a running pipeline moves through. `pending` is
+// excluded on purpose: a pending job hasn't entered the pipeline yet (its
+// upload may still be streaming to R2), so it must not be reaped.
+const IN_PROGRESS_STATUSES: JobStatus[] = [
+  "extracting",
+  "transcribing",
+  "postprocessing",
+  "translating",
+  "persisting",
+];
+
+/**
+ * Fail jobs that have been stuck mid-pipeline longer than `staleMs`.
+ *
+ * The orchestrator only calls `setJobFailed` from a caught JS exception, so a
+ * hard function timeout or instance death (common on Vercel's 60s Hobby cap for
+ * long media) leaves a job frozen in an in-progress status with no error. This
+ * reaper is the backstop: it flips those to `failed` so the UI can offer retry.
+ * Stages are R2-checkpoint-resumable, so retry resumes without re-paying work.
+ *
+ * Returns the ids it reaped.
+ */
+export async function reapStuckJobs(staleMs = 10 * 60 * 1000): Promise<string[]> {
+  const cutoff = new Date(Date.now() - staleMs).toISOString();
+  const { data, error } = await supabaseAdmin()
+    .from(TABLE)
+    .update({
+      status: "failed" as JobStatus,
+      error: "Timed out — the pipeline stopped responding. Press retry to resume.",
+      updated_at: new Date().toISOString(),
+    })
+    .in("status", IN_PROGRESS_STATUSES)
+    .lt("updated_at", cutoff)
+    .select("id");
+  if (error) throw error;
+  return (data ?? []).map((r) => (r as { id: string }).id);
 }
 
 /**

@@ -55,7 +55,7 @@ export interface Bookmark {
   segment_id: string;
   memo: string | null;
   created_at: string;
-  // SRS state (migration 008). Always non-null after backfill but Supabase
+  // SRS state (migration 004_bookmarks_srs.sql). Always non-null after backfill but Supabase
   // still returns `null` if the column is absent on an older copy of the DB,
   // so the runtime should tolerate that.
   ease_factor: number;
@@ -94,6 +94,8 @@ export interface Job {
   current_stage: StageName | null;
   progress: number;
   error: string | null;
+  // Owner (migration 008_auth_rls.sql). Set at createJob time from the session.
+  user_id: string;
   created_at: string;
   updated_at: string;
 }
