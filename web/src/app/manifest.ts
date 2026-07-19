@@ -5,7 +5,10 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Shadowing+",
     short_name: "Shadowing+",
     description: "Shadow English clips with sentence-level practice.",
-    start_url: "/",
+    // Installed PWA opens straight into the app (/), not the marketing landing.
+    // Logged-out users still get bounced to /login by the proxy. scope stays "/"
+    // so the PWA controls both the landing and the app.
+    start_url: "/app",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
