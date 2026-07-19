@@ -80,7 +80,7 @@ export default function MobileBookmarks({
           type="button"
           className="m-icon-btn bordered"
           aria-label="Back"
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/app")}
         >
           <BackIcon />
         </button>
@@ -113,7 +113,7 @@ export default function MobileBookmarks({
         ) : groups.length === 0 ? (
           <div className="m-empty">
             <p style={{ marginBottom: 12 }}>No bookmarks yet.</p>
-            <Link href="/" style={{ color: "var(--accent-text)" }}>
+            <Link href="/app" style={{ color: "var(--accent-text)" }}>
               Pick a clip to start saving sentences →
             </Link>
           </div>

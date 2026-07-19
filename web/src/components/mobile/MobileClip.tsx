@@ -170,7 +170,7 @@ export default function MobileClip({
           type="button"
           className="m-icon-btn bordered"
           aria-label="Back"
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/app")}
         >
           <BackIcon />
         </button>

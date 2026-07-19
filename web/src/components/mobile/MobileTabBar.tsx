@@ -17,7 +17,7 @@ export default function MobileTabBar({ active }: { active: MobileTab }) {
   return (
     <>
       <nav className="m-tabbar" aria-label="Mobile navigation">
-        <Link href="/" prefetch={false} className={"m-tab" + (active === "library" ? " active" : "")}>
+        <Link href="/app" prefetch={false} className={"m-tab" + (active === "library" ? " active" : "")}>
           <span className="m-tab-icon"><HomeIcon /></span>
           Library
         </Link>

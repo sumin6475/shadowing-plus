@@ -1,1140 +1,501 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type MouseEvent,
-} from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import type { Folder, Job, PracticeStatus, Video } from "@/lib/types";
-import UploadDropzone, {
-  type UploadDropzoneHandle,
-} from "@/components/UploadDropzone";
-import JobCard from "@/components/JobCard";
-import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
-import NewFolderModal from "@/components/home/NewFolderModal";
-import ConfirmDeleteClipModal from "@/components/home/ConfirmDeleteClipModal";
-import UndoToast from "@/components/home/UndoToast";
-import StatusControl from "@/components/home/StatusControl";
-import MobileLibrary from "@/components/mobile/MobileLibrary";
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  DotsIcon,
-  PlayIcon,
-  PlusIcon,
-} from "@/components/home/Icons";
-import { folderColor } from "@/lib/folder-color";
-import { clipKind } from "@/lib/clip-kind";
-import { TRANSLATION_LANG_PREF_KEY } from "@/lib/pipeline/languages";
-import { canImportYoutube } from "@/lib/youtubeImport";
-import Dashboard from "@/components/home/Dashboard";
+import "./landing.css";
 
-import "./home.css";
-import "./dashboard.css";
+// Public marketing landing (route: /). Ported from the Claude Design
+// landing.html. The authenticated app lives at /app (see app/app/page.tsx);
+// the proxy gates /app, so logged-out users who click through land on /login.
+// CTAs adapt: signed-in visitors get "Open app", everyone else "Sign in".
 
-const ACTIVE_SECTION_KEY = "sp:home:section";
-const RECENT_DAYS = 14;
+const APP = "/app";
+const LOGIN = "/login";
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds || !Number.isFinite(seconds)) return "--:--";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
+// Deterministic waveform bars for the practice mock (peak near the middle).
+const WAVE = Array.from({ length: 44 }, (_, i) => {
+  const dist = Math.abs(i - 16);
+  const env = Math.max(0.35, 1 - dist / 18);
+  const h = Math.round((5 + ((i * 37) % 17)) * env);
+  return { h, on: i <= 16 };
+});
 
-function loadActiveSection(): ActiveSection {
-  if (typeof window === "undefined") return { kind: "home" };
-  try {
-    const raw = localStorage.getItem(ACTIVE_SECTION_KEY);
-    if (!raw) return { kind: "home" };
-    const parsed = JSON.parse(raw) as ActiveSection;
-    if (
-      parsed?.kind === "home" ||
-      parsed?.kind === "all" ||
-      parsed?.kind === "recent" ||
-      (parsed?.kind === "folder" && typeof parsed.id === "string")
-    ) {
-      return parsed;
-    }
-  } catch {
-    /* ignore */
-  }
-  return { kind: "home" };
-}
-
-function saveActiveSection(s: ActiveSection) {
-  try {
-    localStorage.setItem(ACTIVE_SECTION_KEY, JSON.stringify(s));
-  } catch {
-    /* ignore */
-  }
-}
-
-export default function HomePage() {
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [bookmarksCount, setBookmarksCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState<ActiveSection>({ kind: "all" });
-
-  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
-  const [editVideoTitle, setEditVideoTitle] = useState("");
-  const videoInputRef = useRef<HTMLInputElement>(null);
-
-  const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  // Signed-in user id — gates the owner-only YouTube import (personal-use tool).
-  const [userId, setUserId] = useState<string | null>(null);
-  // Signed-in email — used for the dashboard greeting.
-  const [email, setEmail] = useState<string | null>(null);
-
-  const [newFolderOpen, setNewFolderOpen] = useState(false);
-
-  // Two-step destructive delete:
-  // - pendingDelete: clip queued for the confirm modal
-  // - recentlyDeleted: clip hidden locally after confirm; if Undo isn't pressed
-  //   within `deleteTimerRef`'s window, commitDelete fires the real DELETE.
-  const [pendingDelete, setPendingDelete] = useState<Video | null>(null);
-  const [recentlyDeleted, setRecentlyDeleted] = useState<Video | null>(null);
-  const deleteTimerRef = useRef<number | null>(null);
-  const recentlyDeletedRef = useRef<Video | null>(null);
-
-  const [statusFilter, setStatusFilter] = useState<"all" | "focusing" | "done">(
-    "focusing",
+function ThemeIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <circle cx="10" cy="10" r="4" />
+      <path d="M10 1.5v2M10 16.5v2M18.5 10h-2M3.5 10h-2M15.8 4.2l-1.4 1.4M5.6 14.4l-1.4 1.4M15.8 15.8l-1.4-1.4M5.6 5.6L4.2 4.2" />
+    </svg>
   );
+}
+function PlaySquare() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="3" width="12" height="10" rx="2" />
+      <path d="M6.5 6l3 2-3 2z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+function Check() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M3 8.5l3 3 7-8" />
+    </svg>
+  );
+}
 
-  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
-  const [menuView, setMenuView] = useState<"main" | "move">("main");
-  const menuRef = useRef<HTMLDivElement>(null);
+export default function LandingPage() {
+  const [authed, setAuthed] = useState(false);
 
-  // Bulk selection: pick multiple clips and move them to a folder at once.
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
-  const bulkMenuRef = useRef<HTMLDivElement>(null);
-
-  const dropzoneRef = useRef<UploadDropzoneHandle>(null);
-
-  // Hydrate active section from localStorage (client-only)
+  // Apply the saved landing theme on mount (separate from the app's theme).
+  // Managed via the DOM directly, not React state, so no re-render is needed.
   useEffect(() => {
-    setActive(loadActiveSection());
-  }, []);
-
-  const refreshAll = useCallback(async () => {
-    const [foldersRes, videosRes, jobsRes, bookmarksRes] = await Promise.all([
-      supabase.from("folders").select("*").order("created_at"),
-      supabase
-        .from("videos")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("jobs")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase.from("bookmarks").select("id", { count: "exact", head: true }),
-    ]);
-    setFolders(foldersRes.data ?? []);
-    setVideos(videosRes.data ?? []);
-    setJobs(jobsRes.data ?? []);
-    setBookmarksCount(bookmarksRes.count ?? 0);
-  }, []);
-
-  const handleYoutubeImport = useCallback(async () => {
-    const trimmedUrl = youtubeUrl.trim();
-    if (!trimmedUrl) return;
-
-    setImporting(true);
-    setImportError(null);
-
     try {
-      // YouTube import pulls the English caption track, so only the translation
-      // target is user-selectable — carry the Settings → Language preference.
-      let targetLang: string | undefined;
-      try {
-        targetLang =
-          localStorage.getItem(TRANSLATION_LANG_PREF_KEY) ?? undefined;
-      } catch {
-        targetLang = undefined;
+      const saved = localStorage.getItem("sp-landing-theme");
+      if (saved === "dark" || saved === "light") {
+        document.documentElement.dataset.theme = saved;
       }
-
-      const resp = await fetch("/api/youtube/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: trimmedUrl, targetLang }),
-      });
-
-      const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error(data.error || "Failed to import YouTube video");
-      }
-
-      setYoutubeUrl("");
-
-      fetch(`/api/jobs/${data.jobId}/run`, { method: "POST" }).catch((e) => {
-        console.error("run failed", e);
-      });
-
-      await refreshAll();
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setImporting(false);
+    } catch {
+      /* ignore */
     }
-  }, [youtubeUrl, refreshAll]);
+  }, []);
 
   useEffect(() => {
-    refreshAll().then(() => setLoading(false));
-  }, [refreshAll]);
+    supabase.auth.getUser().then(({ data }) => setAuthed(!!data.user));
+  }, []);
 
-  // Realtime jobs subscription, scoped to the current user. The channel is
-  // named per-user and the postgres_changes filter restricts payloads to this
-  // user's rows — without the filter, every client would receive every user's
-  // job events over the socket even though their .from() reads are RLS-scoped.
+  // Scroll-reveal.
   useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let cancelled = false;
-
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (cancelled || !user) return;
-      setUserId(user.id);
-      setEmail(user.email ?? null);
-
-      channel = supabase
-        .channel(`jobs-feed-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "jobs",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            setJobs((prev) => {
-              if (payload.eventType === "DELETE") {
-                return prev.filter((j) => j.id !== (payload.old as Job).id);
-              }
-              const next = payload.new as Job;
-              const idx = prev.findIndex((j) => j.id === next.id);
-              if (
-                next.status === "ready" &&
-                (idx === -1 || prev[idx].status !== "ready")
-              ) {
-                refreshAll();
-              }
-              if (idx === -1) return [next, ...prev];
-              const copy = prev.slice();
-              copy[idx] = next;
-              return copy;
-            });
-          },
-        )
-        .subscribe();
-    })();
-
-    return () => {
-      cancelled = true;
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [refreshAll]);
-
-  // Close item menu on outside click
-  useEffect(() => {
-    if (!menuOpenFor) return;
-    function handleClick(e: globalThis.MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpenFor(null);
-        setMenuView("main");
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [menuOpenFor]);
-
-  // Close the bulk "move to folder" menu on outside click
-  useEffect(() => {
-    if (!bulkMoveOpen) return;
-    function handleClick(e: globalThis.MouseEvent) {
-      if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node)) {
-        setBulkMoveOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [bulkMoveOpen]);
-
-  const setSection = useCallback((s: ActiveSection) => {
-    setActive(s);
-    saveActiveSection(s);
-    // Selections are scoped to the current view — drop them when it changes.
-    setSelectedIds(new Set());
-    setBulkMoveOpen(false);
-  }, []);
-
-  // Folder CRUD
-  const openNewFolder = useCallback(() => setNewFolderOpen(true), []);
-
-  const createFolder = useCallback(
-    async (input: { name: string; color: string }) => {
-      const { data, error } = await supabase
-        .from("folders")
-        .insert({ name: input.name, color: input.color })
-        .select()
-        .single();
-      if (error) {
-        // Common cause: migration 003_folder_color.sql not applied → no `color` column.
-        if (/color/i.test(error.message)) {
-          alert(
-            "Couldn't save the folder color. Apply supabase/migrations/003_folder_color.sql, then try again.",
-          );
-        } else {
-          alert(`Failed to create folder: ${error.message}`);
-        }
-        return;
-      }
-      if (data) {
-        setFolders((prev) => [...prev, data as Folder]);
-        setSection({ kind: "folder", id: data.id });
-        setNewFolderOpen(false);
-      }
-    },
-    [setSection],
-  );
-
-  const renameFolder = useCallback(async (id: string, name: string) => {
-    await supabase.from("folders").update({ name }).eq("id", id);
-    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
-  }, []);
-
-  const deleteFolder = useCallback(
-    async (folder: Folder) => {
-      if (
-        !confirm(
-          `Delete folder "${folder.name}"?\nClips inside will move to the root.`,
-        )
-      )
-        return;
-      await supabase.from("folders").delete().eq("id", folder.id);
-      setFolders((prev) => prev.filter((f) => f.id !== folder.id));
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.folder_id === folder.id ? { ...v, folder_id: null } : v,
-        ),
-      );
-      if (active.kind === "folder" && active.id === folder.id) {
-        setSection({ kind: "all" });
-      }
-    },
-    [active, setSection],
-  );
-
-  const setFolderColor = useCallback(
-    async (id: string, color: string) => {
-      setFolders((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, color } : f)),
-      );
-      const { error } = await supabase
-        .from("folders")
-        .update({ color })
-        .eq("id", id);
-      if (error) {
-        // Likely the `color` column hasn't been added yet via migration 003_folder_color.sql.
-        console.warn("folder color update failed:", error.message);
-        alert(
-          "Couldn't save the color. Apply supabase/migrations/003_folder_color.sql.",
-        );
-        refreshAll();
-      }
-    },
-    [refreshAll],
-  );
-
-  // Video CRUD
-  const moveVideo = useCallback(
-    async (videoId: string, folderId: string | null) => {
-      setVideos((prev) =>
-        prev.map((v) => (v.id === videoId ? { ...v, folder_id: folderId } : v)),
-      );
-      setMenuOpenFor(null);
-      setMenuView("main");
-      await supabase
-        .from("videos")
-        .update({ folder_id: folderId })
-        .eq("id", videoId);
-    },
-    [],
-  );
-
-  // Bulk move several clips to a folder (or to the root when folderId is null).
-  const moveVideos = useCallback(
-    async (ids: string[], folderId: string | null) => {
-      if (ids.length === 0) return;
-      const idSet = new Set(ids);
-      setVideos((prev) =>
-        prev.map((v) => (idSet.has(v.id) ? { ...v, folder_id: folderId } : v)),
-      );
-      await supabase
-        .from("videos")
-        .update({ folder_id: folderId })
-        .in("id", ids);
-    },
-    [],
-  );
-
-  const exitSelectMode = useCallback(() => {
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    setBulkMoveOpen(false);
-  }, []);
-
-  const toggleSelected = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const bulkMove = useCallback(
-    async (folderId: string | null) => {
-      await moveVideos(Array.from(selectedIds), folderId);
-      exitSelectMode();
-    },
-    [selectedIds, moveVideos, exitSelectMode],
-  );
-
-  const setVideoStatus = useCallback(
-    async (videoId: string, next: PracticeStatus) => {
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === videoId ? { ...v, practice_status: next } : v,
-        ),
-      );
-      const { error } = await supabase
-        .from("videos")
-        .update({ practice_status: next })
-        .eq("id", videoId);
-      if (error) {
-        // Likely migration 005 not applied → no practice_status column.
-        console.warn("video status update failed:", error.message);
-        alert(
-          "Couldn't save status. Apply supabase/migrations/005_video_practice_status.sql.",
-        );
-        refreshAll();
-      }
-    },
-    [refreshAll],
-  );
-
-  // Open the destructive confirm modal. Actual DELETE is deferred so the
-  // user has a 6s window to undo from the toast.
-  const deleteVideo = useCallback((video: Video) => {
-    setPendingDelete(video);
-    setMenuOpenFor(null);
-    setMenuView("main");
-  }, []);
-
-  const commitDelete = useCallback((video: Video) => {
-    if (deleteTimerRef.current !== null) {
-      window.clearTimeout(deleteTimerRef.current);
-      deleteTimerRef.current = null;
-    }
-    fetch(`/api/videos/${video.id}`, { method: "DELETE" }).catch(() => {
-      /* swallow — server-side fallback (no DB record found) is benign */
-    });
-    setVideos((prev) => prev.filter((v) => v.id !== video.id));
-    setRecentlyDeleted(null);
-    recentlyDeletedRef.current = null;
-  }, []);
-
-  // Hide the clip locally and start the 6s undo window; the real DELETE only
-  // fires when the window elapses (or the tab closes — see the flush effect).
-  const scheduleDelete = useCallback(
-    (video: Video) => {
-      // If a prior pending delete was still in its grace window, commit it now
-      // before queueing the new one — never run two undo toasts at once.
-      if (recentlyDeletedRef.current) {
-        commitDelete(recentlyDeletedRef.current);
-      }
-      setRecentlyDeleted(video);
-      recentlyDeletedRef.current = video;
-      deleteTimerRef.current = window.setTimeout(() => {
-        commitDelete(video);
-      }, 6000);
-    },
-    [commitDelete],
-  );
-
-  // Desktop path: the confirm modal resolves, then we schedule the delete.
-  const confirmDeleteVideo = useCallback(() => {
-    const video = pendingDelete;
-    if (!video) return;
-    setPendingDelete(null);
-    scheduleDelete(video);
-  }, [pendingDelete, scheduleDelete]);
-
-  const undoDelete = useCallback(() => {
-    if (deleteTimerRef.current !== null) {
-      window.clearTimeout(deleteTimerRef.current);
-      deleteTimerRef.current = null;
-    }
-    setRecentlyDeleted(null);
-    recentlyDeletedRef.current = null;
-  }, []);
-
-  const dismissUndo = useCallback(() => {
-    const v = recentlyDeletedRef.current;
-    if (!v) return;
-    commitDelete(v);
-  }, [commitDelete]);
-
-  // Safety nets so a pending delete still commits if the user closes the tab
-  // or navigates away during the 6s grace window.
-  useEffect(() => {
-    function flush() {
-      const v = recentlyDeletedRef.current;
-      if (!v) return;
-      // `keepalive` lets the request outlive the document.
-      fetch(`/api/videos/${v.id}`, { method: "DELETE", keepalive: true }).catch(
-        () => {},
-      );
-    }
-    window.addEventListener("beforeunload", flush);
-    return () => {
-      window.removeEventListener("beforeunload", flush);
-      flush();
-      if (deleteTimerRef.current !== null) {
-        window.clearTimeout(deleteTimerRef.current);
-        deleteTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const startEditVideo = useCallback(
-    (e: MouseEvent, video: Video) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setEditingVideoId(video.id);
-      setEditVideoTitle(video.title);
-      setTimeout(() => videoInputRef.current?.select(), 0);
-    },
-    [],
-  );
-
-  // Persist a new clip title (optimistic). Shared by the desktop inline editor
-  // and the mobile clip sheet.
-  const renameVideo = useCallback(async (videoId: string, rawTitle: string) => {
-    const trimmed = rawTitle.trim();
-    if (!trimmed) return;
-    setVideos((prev) =>
-      prev.map((v) => (v.id === videoId ? { ...v, title: trimmed } : v)),
+    const els = document.querySelectorAll(".landing .rv");
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("in");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.12 },
     );
-    await supabase.from("videos").update({ title: trimmed }).eq("id", videoId);
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
   }, []);
 
-  const saveVideoTitle = useCallback(async () => {
-    if (!editingVideoId) return;
-    const trimmed = editVideoTitle.trim();
-    setEditingVideoId(null);
-    if (trimmed) await renameVideo(editingVideoId, trimmed);
-  }, [editingVideoId, editVideoTitle, renameVideo]);
-
-  const handleVideoKey = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        saveVideoTitle();
-      } else if (e.key === "Escape") {
-        setEditingVideoId(null);
-      }
-    },
-    [saveVideoTitle],
-  );
-
-  const openMenu = useCallback((e: MouseEvent, videoId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setMenuOpenFor((cur) => (cur === videoId ? null : videoId));
-    setMenuView("main");
-  }, []);
-
-  // Derived: which videos belong to the active section?
-  const todayBucket = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  }, []);
-  const recentVideos = useMemo(() => {
-    const cutoff = Date.now() - RECENT_DAYS * 24 * 3600 * 1000;
-    return videos.filter((v) => new Date(v.created_at).getTime() >= cutoff);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videos, todayBucket]);
-
-  const visibleVideos = useMemo(() => {
-    if (active.kind === "all") return videos;
-    if (active.kind === "recent") return recentVideos;
-    if (active.kind === "folder") {
-      return videos.filter((v) => v.folder_id === active.id);
+  function toggleTheme() {
+    const next =
+      document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem("sp-landing-theme", next);
+    } catch {
+      /* ignore */
     }
-    return [];
-  }, [active, videos, recentVideos]);
+  }
 
-  const activeFolder =
-    active.kind === "folder" ? folders.find((f) => f.id === active.id) : null;
-
-  const sectionHeader = useMemo(() => {
-    if (active.kind === "recent") {
-      return {
-        title: "Recently added",
-        sub: `Clips added in the last ${RECENT_DAYS} days.`,
-        label: "This window",
-      };
-    }
-    if (active.kind === "folder") {
-      return {
-        title: activeFolder?.name ?? "Folder",
-        sub: "Clips you sorted into this folder.",
-        label: "Clips",
-      };
-    }
-    return {
-      title: "All clips",
-      sub: "Everything in your library, newest first.",
-      label: "All clips",
-    };
-  }, [active, activeFolder]);
-
-  const activeJobs = jobs.filter((j) => j.status !== "ready");
-
-  const totalDurationLabel = useMemo(() => {
-    let total = 0;
-    for (const v of visibleVideos) total += v.duration ?? 0;
-    if (total <= 0) return "";
-    const m = Math.round(total / 60);
-    if (m < 60) return `${m}m`;
-    const h = Math.floor(m / 60);
-    return `${h}h ${m % 60}m`;
-  }, [visibleVideos]);
-
-  const statusOf = (v: Video): PracticeStatus => v.practice_status || "none";
-  const statusCounts = useMemo(() => {
-    let focusing = 0;
-    let done = 0;
-    for (const v of visibleVideos) {
-      const s = statusOf(v);
-      if (s === "focusing") focusing++;
-      else if (s === "done") done++;
-    }
-    return { all: visibleVideos.length, focusing, done };
-  }, [visibleVideos]);
-
-  const shownVideos = useMemo(() => {
-    const hiddenId = recentlyDeleted?.id;
-    const base = hiddenId
-      ? visibleVideos.filter((v) => v.id !== hiddenId)
-      : visibleVideos;
-    if (statusFilter === "all") return base;
-    return base.filter((v) => statusOf(v) === statusFilter);
-  }, [visibleVideos, statusFilter, recentlyDeleted]);
-
-  // Selection helpers (scoped to the currently shown clips).
-  const allShownSelected =
-    shownVideos.length > 0 && shownVideos.every((v) => selectedIds.has(v.id));
-  const someShownSelected = shownVideos.some((v) => selectedIds.has(v.id));
-  const toggleSelectAll = () => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (shownVideos.every((v) => next.has(v.id))) {
-        shownVideos.forEach((v) => next.delete(v.id));
-      } else {
-        shownVideos.forEach((v) => next.add(v.id));
-      }
-      return next;
-    });
-  };
+  const primaryHref = authed ? APP : LOGIN;
+  const primaryLabel = authed ? "Open app" : "Start free";
 
   return (
-    <>
-    <div className="home-app">
-      <Sidebar
-        active={active}
-        onSelect={setSection}
-        folders={folders}
-        videos={videos.map((v) => ({ id: v.id, folder_id: v.folder_id }))}
-        allCount={videos.length}
-        recentCount={recentVideos.length}
-        onCreateFolder={openNewFolder}
-        onRenameFolder={renameFolder}
-        onDeleteFolder={deleteFolder}
-        onSetFolderColor={setFolderColor}
-      />
+    <div className="landing">
+      {/* NAV */}
+      <nav className="nav">
+        <div className="nav-inner">
+          <a href="#top" className="brand">
+            Shadowing<span className="plus">+</span>
+          </a>
+          <div className="nav-links">
+            <a href="#features">Features</a>
+            <a href="#how">How it works</a>
+            <a href="#pricing">Pricing</a>
+            <Link href={APP}>Library</Link>
+          </div>
+          <div className="nav-right">
+            <button className="theme-btn" onClick={toggleTheme} aria-label="Toggle theme">
+              <ThemeIcon />
+            </button>
+            {authed ? (
+              <Link href={APP} className="btn primary sm">Open app</Link>
+            ) : (
+              <>
+                <Link href={LOGIN} className="btn sm">Sign in</Link>
+                <Link href={LOGIN} className="btn primary sm">Start free</Link>
+              </>
+            )}
+          </div>
+        </div>
+      </nav>
 
-      <NewFolderModal
-        open={newFolderOpen}
-        onCancel={() => setNewFolderOpen(false)}
-        onCreate={createFolder}
-        existingNames={folders.map((f) => f.name)}
-      />
+      {/* HERO */}
+      <header className="hero" id="top">
+        <div className="wrap">
+          <span className="kicker"><span className="bar" />Shadowing, anytime</span>
+          <h1 className="serif">
+            Shadow it.<br />
+            <span className="em">Until you own it.</span>
+            <span className="pm">+</span>
+          </h1>
+          <p className="lede">
+            Turn any video into a sentence-by-sentence shadowing drill. Loop a line,
+            hide the subtitle, and bring back only the ones that didn&rsquo;t quite
+            click — <em>every day.</em>
+          </p>
+          <div className="hero-cta">
+            <Link href={primaryHref} className="btn primary lg">{primaryLabel}</Link>
+            <a href="#how" className="btn lg">See how it works</a>
+          </div>
+          <p className="hero-note">Free forever for solo practice · No card required</p>
 
-      {active.kind === "home" ? (
-        <Dashboard
-          email={email}
-          videos={videos}
-          folders={folders}
-          bookmarksCount={bookmarksCount}
-          onAddClip={() => dropzoneRef.current?.pick()}
-          onOpenLibrary={() => setSection({ kind: "all" })}
-          onSelectFolder={(id) => setSection({ kind: "folder", id })}
-          onNewFolder={openNewFolder}
-        />
-      ) : (
-      <main className="main">
-        <div className="main-inner">
-          <header className="page-head">
-            <div>
-              {active.kind === "folder" && activeFolder && (
-                <span
-                  className="nav-folder-dot"
-                  style={{
-                    display: "inline-block",
-                    marginBottom: 10,
-                    color: folderColor(activeFolder),
-                  }}
-                />
-              )}
-              <h1 className="page-title">{sectionHeader.title}</h1>
-              <p className="page-sub">{sectionHeader.sub}</p>
+          {/* product shot: library */}
+          <div className="frame hero-frame rv">
+            <div className="frame-chrome">
+              <div className="frame-dots"><span /><span /><span /></div>
+              <div className="frame-crumb"><b>Library</b><span className="sep">›</span><span className="cur">All clips</span></div>
             </div>
-            <div className="page-actions">
-              {videos.length > 0 && (
-                <button
-                  type="button"
-                  className={"btn ghost" + (selectMode ? " is-active" : "")}
-                  onClick={() => {
-                    setMenuOpenFor(null);
-                    if (selectMode) exitSelectMode();
-                    else setSelectMode(true);
-                  }}
-                >
-                  <CheckIcon />{" "}
-                  <span className="btn-label">{selectMode ? "Cancel" : "Select"}</span>
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => dropzoneRef.current?.pick()}
-              >
-                <PlusIcon /> <span className="btn-label">Add clip</span>
-              </button>
-            </div>
-          </header>
-
-          <UploadDropzone ref={dropzoneRef} onJobQueued={refreshAll} />
-
-          {/* Owner-only, hidden from the public product. See lib/youtubeImport.ts. */}
-          {canImportYoutube(userId) && (
-          <div className="youtube-import-card">
-            <div className="youtube-import-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.517 3.545 12 3.545 12 3.545s-7.516 0-9.387.507A3.002 3.002 0 0 0 .502 6.163C0 8.07 0 12 0 12s0 3.93.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.871.507 9.387.507 9.387.507s7.517 0 9.387-.507a3.002 3.002 0 0 0 2.11-2.11C24 15.93 24 12 24 12s0-3.93-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-              </svg>
-            </div>
-            <div className="youtube-import-body">
-              <div className="youtube-import-title">Import from YouTube</div>
-              <div className="youtube-import-input-wrapper">
-                <input
-                  type="text"
-                  placeholder="Paste YouTube video link (e.g. https://www.youtube.com/watch?v=...)"
-                  value={youtubeUrl}
-                  onChange={(e) => setYoutubeUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !importing && youtubeUrl.trim()) {
-                      handleYoutubeImport();
-                    }
-                  }}
-                  disabled={importing}
-                />
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={handleYoutubeImport}
-                  disabled={importing || !youtubeUrl.trim()}
-                >
-                  {importing ? "Importing…" : "Import"}
-                </button>
+            <div className="appmock">
+              <aside className="am-side">
+                <div className="am-search">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5" /><path d="M11 11l3 3" /></svg>
+                  Search clips
+                </div>
+                <div className="am-navsec">
+                  <div className="am-navhead">Library</div>
+                  <div className="am-nav active"><PlaySquare />All clips<span className="ct">8</span></div>
+                  <div className="am-nav">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2l1.8 3.7 4.1.6-3 2.9.7 4.1L8 11.9 4.4 13.3l.7-4.1-3-2.9 4.1-.6z" /></svg>
+                    Bookmarks<span className="ct">24</span>
+                  </div>
+                </div>
+                <div className="am-navsec">
+                  <div className="am-navhead">Folders</div>
+                  <div className="am-nav" style={{ color: "var(--accent)" }}><span className="d" />Favorites<span className="ct">4</span></div>
+                  <div className="am-nav" style={{ color: "oklch(0.58 0.16 258)" }}><span className="d" />The Newsroom<span className="ct">7</span></div>
+                  <div className="am-nav" style={{ color: "oklch(0.65 0.13 75)" }}><span className="d" />Friends · S1–S3<span className="ct">12</span></div>
+                  <div className="am-nav" style={{ color: "var(--moss)" }}><span className="d" />TED Talks<span className="ct">5</span></div>
+                </div>
+              </aside>
+              <div className="am-main">
+                <div className="am-h">All clips</div>
+                <div className="am-hsub">Everything in your library, newest first.</div>
+                <div className="am-list">
+                  <div className="am-item">
+                    <span className="am-thumb"><PlaySquare /></span>
+                    <div className="am-tbody"><div className="am-ttl">The Newsroom — America is not the greatest country…</div><div className="am-tmeta"><span className="d" style={{ background: "oklch(0.58 0.16 258)" }} />The Newsroom</div></div>
+                    <span className="pill focus"><span className="dot" />Focusing</span>
+                    <span className="am-dur">4:48</span>
+                  </div>
+                  <div className="am-item">
+                    <span className="am-thumb"><PlaySquare /></span>
+                    <div className="am-tbody"><div className="am-ttl">Phoebe Becomes Chandler&rsquo;s Secretary | Friends</div><div className="am-tmeta"><span className="d" style={{ background: "oklch(0.65 0.13 75)" }} />Friends · S1–S3</div></div>
+                    <span className="pill done"><Check />Done</span>
+                    <span className="am-dur">5:08</span>
+                  </div>
+                  <div className="am-item">
+                    <span className="am-thumb"><PlaySquare /></span>
+                    <div className="am-tbody"><div className="am-ttl">Steve Jobs — Stanford Commencement Address</div><div className="am-tmeta"><span className="d" style={{ background: "var(--moss)" }} />TED Talks</div></div>
+                    <span className="pill focus"><span className="dot" />Focusing</span>
+                    <span className="am-dur">15:04</span>
+                  </div>
+                </div>
               </div>
-              {importError && <div className="youtube-import-error">{importError}</div>}
             </div>
           </div>
-          )}
+        </div>
+      </header>
 
-          {activeJobs.length > 0 && (
-            <section className="jobs-queue" aria-label="Processing">
-              {activeJobs.map((j) => (
-                <JobCard key={j.id} job={j} onChanged={refreshAll} />
-              ))}
-            </section>
-          )}
+      {/* SOCIAL PROOF */}
+      <div className="proof">
+        <div className="wrap">
+          <p className="proof-label">Practice from the shows, talks and clips you already love</p>
+          <div className="proof-row">
+            <span className="src-chip"><span className="g" style={{ background: "oklch(0.58 0.16 258)" }} />The Newsroom</span>
+            <span className="src-chip"><span className="g" style={{ background: "oklch(0.65 0.13 75)" }} />Friends</span>
+            <span className="src-chip"><span className="g" style={{ background: "var(--moss)" }} />TED Talks</span>
+            <span className="src-chip"><span className="g" style={{ background: "var(--accent)" }} />YouTube</span>
+            <span className="src-chip"><span className="g" style={{ background: "oklch(0.58 0.18 290)" }} />Podcasts</span>
+            <span className="src-chip"><span className="g" style={{ background: "oklch(0.55 0.14 20)" }} />Films</span>
+          </div>
+        </div>
+      </div>
 
-          <section>
-            <div className="section-head">
-              <span className="section-title">{sectionHeader.label}</span>
-              {visibleVideos.length > 0 && (
-                <span className="clips-meta">
-                  {visibleVideos.length}{" "}
-                  {visibleVideos.length === 1 ? "clip" : "clips"}
-                  {totalDurationLabel ? ` · ${totalDurationLabel}` : ""}
-                </span>
-              )}
-              <div className="section-meta">
-                {visibleVideos.length > 0 && (
-                  <div
-                    className="filter-seg"
-                    role="tablist"
-                    aria-label="Practice status filter"
-                  >
-                    {(
-                      [
-                        { key: "all", label: "All" },
-                        { key: "focusing", label: "Focusing", dot: "focusing" },
-                        { key: "done", label: "Completed", dot: "done" },
-                      ] as const
-                    ).map((seg) => (
-                      <button
-                        type="button"
-                        key={seg.key}
-                        className={statusFilter === seg.key ? "active" : ""}
-                        role="tab"
-                        aria-selected={statusFilter === seg.key}
-                        onClick={() => setStatusFilter(seg.key)}
-                      >
-                        {"dot" in seg && (
-                          <span className={"seg-dot " + seg.dot} aria-hidden="true" />
-                        )}
-                        <span>{seg.label}</span>
-                        <span className="seg-count">{statusCounts[seg.key]}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+      {/* HOW IT WORKS */}
+      <section className="sec" id="how">
+        <div className="wrap">
+          <div className="sec-head center rv">
+            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />How it works</span>
+            <h2 className="serif">From a link to fluent, one line at a time</h2>
+            <p>No editing, no timelines. Drop a source and Shadowing+ breaks it into loopable sentences you can drill until they&rsquo;re yours.</p>
+          </div>
+
+          <div className="feat-row rv">
+            <div className="feat-copy">
+              <span className="kicker"><span className="bar" />Step 01 — Capture</span>
+              <h3>Any video, one drop</h3>
+              <p>Paste a YouTube link or drag in a file. Shadowing+ auto-aligns the captions and adds a translation, so a raw clip becomes a structured drill in seconds.</p>
+              <div className="feat-tags">
+                <span className="feat-tag">YouTube &amp; local files</span>
+                <span className="feat-tag">Auto-aligned captions</span>
+                <span className="feat-tag">Instant translation</span>
               </div>
             </div>
+            <div className="feat-visual">
+              <div className="frame">
+                <div className="frame-chrome">
+                  <div className="frame-dots"><span /><span /><span /></div>
+                  <div className="frame-crumb"><span className="cur">New clip</span></div>
+                </div>
+                <div style={{ padding: "34px 30px", display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div style={{ border: "1.25px dashed var(--hairline)", borderRadius: "var(--radius-lg)", background: "var(--bg-elev)", padding: "34px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }}>
+                    <span style={{ width: 52, height: 52, borderRadius: 15, background: "var(--accent-soft)", color: "var(--accent-text)", display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid oklch(from var(--accent) 0.9 0.04 h)" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M8 8l4-4 4 4" /><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" /></svg>
+                    </span>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text)" }}>Drop a video, or paste a link</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>MP4 · MOV · YouTube URL</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", border: "1px solid var(--hairline)", borderRadius: "var(--radius)", background: "var(--surface)" }}>
+                    <span style={{ width: 26, height: 26, borderRadius: 7, background: "var(--accent-soft)", color: "var(--accent-text)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2.5v11l9-5.5z" /></svg>
+                    </span>
+                    <span className="mono" style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>youtube.com/watch?v=…nigel</span>
+                    <span className="pill focus"><span className="dot" />Aligning</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-            {selectMode && (shownVideos.length > 0 || selectedIds.size > 0) && (
-              <div className="bulk-bar">
-                <label className="bulk-check">
-                  <input
-                    type="checkbox"
-                    checked={allShownSelected}
-                    disabled={shownVideos.length === 0}
-                    ref={(el) => {
-                      if (el) el.indeterminate = someShownSelected && !allShownSelected;
-                    }}
-                    onChange={toggleSelectAll}
-                  />
-                  <span>Select all</span>
-                </label>
-                <span className="bulk-count">{selectedIds.size} selected</span>
-                <div className="bulk-actions" ref={bulkMenuRef}>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={selectedIds.size === 0}
-                    onClick={() => setBulkMoveOpen((o) => !o)}
-                  >
-                    Move to folder <ChevronDownIcon />
-                  </button>
-                  {bulkMoveOpen && (
-                    <div className="bulk-menu">
-                      <button type="button" onClick={() => bulkMove(null)}>
-                        Remove from folder
-                      </button>
-                      {folders.length > 0 && <div className="menu-sep" />}
-                      {folders.map((f) => (
-                        <button key={f.id} type="button" onClick={() => bulkMove(f.id)}>
-                          <span
-                            className="nav-folder-dot"
-                            style={{ color: folderColor(f) }}
-                          />
-                          {f.name}
-                        </button>
+          <div className="feat-row flip rv">
+            <div className="feat-copy">
+              <span className="kicker"><span className="bar" />Step 02 — Drill</span>
+              <h3>Sentence-level A–B loop</h3>
+              <p>Slow any line to 0.5×–1.5× and loop it until the rhythm sticks. Hide the translation and peek only when you actually need it — just ears and mouth.</p>
+              <div className="feat-tags">
+                <span className="feat-tag">0.5×–1.5× speed</span>
+                <span className="feat-tag">A–B loop</span>
+                <span className="feat-tag">Hide subtitle</span>
+                <span className="feat-tag">Shadow line</span>
+              </div>
+            </div>
+            <div className="feat-visual">
+              <div className="frame">
+                <div className="frame-chrome">
+                  <div className="frame-dots"><span /><span /><span /></div>
+                  <div className="frame-crumb"><b>The Devil Wears Prada</b><span className="sep">›</span><span className="cur">Practice</span></div>
+                </div>
+                <div className="pmock">
+                  <span className="pm-src"><span className="t"><svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5L8 5L2 8.5z" /></svg></span><b>Nigel&rsquo;s pep talk</b><span className="tm">1:18</span></span>
+                  <p className="pm-en">You are not <span className="hl">trying</span>. You are whining.</p>
+                  <p className="pm-ko">넌 노력하는 게 아니야. 그냥 징징대는 거지.</p>
+                  <span className="pm-note"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M7 1v2M7 11v2M1 7h2M11 7h2" /><circle cx="7" cy="7" r="2.5" /></svg>Watch the cadence on &ldquo;whining&rdquo;</span>
+                  <div className="pm-player">
+                    <button className="pm-play" aria-label="Pause"><svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor"><rect x="3" y="2.5" width="2" height="7" rx=".5" /><rect x="7" y="2.5" width="2" height="7" rx=".5" /></svg></button>
+                    <span className="pm-time">0:47</span>
+                    <div className="pm-wave">
+                      {WAVE.map((w, i) => (
+                        <span key={i} className={w.on ? "on" : undefined} style={{ height: w.h }} />
                       ))}
-                      {folders.length === 0 && (
-                        <p className="menu-empty">No folders yet</p>
-                      )}
                     </div>
-                  )}
+                    <span className="pm-time" style={{ textAlign: "right" }}>0:55</span>
+                    <span className="pm-speed">0.85×</span>
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
+          </div>
 
-            {loading ? (
-              <p className="empty">Loading…</p>
-            ) : visibleVideos.length === 0 ? (
-              <div className="empty">
-                <div className="empty-title">No clips here yet</div>
-                <div>Drop a file above to start shadowing.</div>
+          <div className="feat-row rv">
+            <div className="feat-copy">
+              <span className="kicker"><span className="bar" />Step 03 — Retain</span>
+              <h3>Bookmarks become flashcards</h3>
+              <p>The awkward lines come back tomorrow. Rate each one <em>Again · Good · Easy</em> and Shadowing+ schedules the next review — spaced repetition, built right into practice.</p>
+              <div className="feat-tags">
+                <span className="feat-tag">Spaced repetition</span>
+                <span className="feat-tag">Daily review queue</span>
+                <span className="feat-tag">Progress tracking</span>
               </div>
-            ) : shownVideos.length === 0 ? (
-              <div className="filter-empty">
-                <div className="fe-title">
-                  {statusFilter === "focusing"
-                    ? "Nothing in focus right now"
-                    : "No completed clips yet"}
+            </div>
+            <div className="feat-visual">
+              <div className="frame">
+                <div className="frame-chrome">
+                  <div className="frame-dots"><span /><span /><span /></div>
+                  <div className="frame-crumb"><b>Bookmarks</b><span className="sep">›</span><span className="cur">Practice all · 3/24</span></div>
                 </div>
-                <div className="fe-sub">
-                  Open a clip&apos;s status badge to change it.
+                <div className="pmock">
+                  <span className="pm-src"><span className="t"><svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5L8 5L2 8.5z" /></svg></span><b>TED · Brené Brown</b><span className="tm">6:02</span></span>
+                  <p className="pm-en">Vulnerability is the <span className="hl">birthplace</span> of innovation.</p>
+                  <p className="pm-ko">취약성은 혁신이 태어나는 곳입니다.</p>
+                  <div className="pm-srs">
+                    <div className="pm-btn again"><span className="l">Again</span><span className="s">&lt; 1 min</span></div>
+                    <div className="pm-btn good"><span className="l">Good</span><span className="s">2 days</span></div>
+                    <div className="pm-btn easy"><span className="l">Easy</span><span className="s">1 week</span></div>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <ul className="list">
-                {shownVideos.map((video) => {
-                  const isMenuOpen = menuOpenFor === video.id;
-                  const itemFolder =
-                    video.folder_id &&
-                    !(active.kind === "folder" && active.id === video.folder_id)
-                      ? folders.find((f) => f.id === video.folder_id)
-                      : null;
-                  const card = (
-                    <>
-                      <div className="item-thumb" data-kind={video.media_type}>
-                        <PlayIcon />
-                      </div>
-                      <div className="item-body">
-                        {editingVideoId === video.id ? (
-                          <span className="item-title">
-                            <input
-                              ref={videoInputRef}
-                              value={editVideoTitle}
-                              onChange={(e) => setEditVideoTitle(e.target.value)}
-                              onBlur={saveVideoTitle}
-                              onKeyDown={handleVideoKey}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              autoFocus
-                            />
-                          </span>
-                        ) : (
-                          <span
-                            className="item-title"
-                            onClick={(e) => startEditVideo(e, video)}
-                            title={video.title}
-                          >
-                            <span className="item-title-text" data-lines="2">
-                              {video.title}
-                              <span className="item-tag">{clipKind(video)}</span>
-                            </span>
-                          </span>
-                        )}
-                        {itemFolder && (
-                          <div
-                            className="item-folder-sub"
-                            style={{ color: folderColor(itemFolder) }}
-                          >
-                            <span className="item-folder-dot" aria-hidden="true" />
-                            <span className="item-folder-sub-name">
-                              {itemFolder.name}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="item-meta">
-                        <StatusControl
-                          status={statusOf(video)}
-                          onSet={(next) => setVideoStatus(video.id, next)}
-                        />
-                        <div className="item-duration">
-                          {formatDuration(video.duration)}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className={"item-menu" + (isMenuOpen ? " is-open" : "")}
-                        aria-label="More"
-                        onClick={(e) => openMenu(e, video.id)}
-                      >
-                        <DotsIcon />
-                      </button>
-                    </>
-                  );
-                  const isSelected = selectedIds.has(video.id);
-                  return (
-                    <li key={video.id} style={{ position: "relative" }}>
-                      <Link
-                        href={`/player/${video.id}`}
-                        className={
-                          "item" +
-                          (selectMode ? " is-selectmode" : "") +
-                          (selectMode && isSelected ? " is-selected" : "")
-                        }
-                        onClick={(e) => {
-                          if (selectMode) {
-                            e.preventDefault();
-                            toggleSelected(video.id);
-                            return;
-                          }
-                          if (
-                            editingVideoId === video.id ||
-                            menuOpenFor === video.id
-                          ) {
-                            e.preventDefault();
-                          }
-                        }}
-                      >
-                        {selectMode && (
-                          <span
-                            className={"item-check" + (isSelected ? " checked" : "")}
-                            aria-hidden="true"
-                          >
-                            {isSelected && <CheckIcon />}
-                          </span>
-                        )}
-                        {card}
-                      </Link>
-                      {isMenuOpen && (
-                        <div ref={menuRef} className="item-menu-dropdown">
-                          {menuView === "main" ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setMenuView("move");
-                                }}
-                              >
-                                Move to folder →
-                              </button>
-                              <button
-                                type="button"
-                                className="danger"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  deleteVideo(video);
-                                }}
-                              >
-                                Delete clip
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setMenuView("main");
-                                }}
-                              >
-                                ← Back
-                              </button>
-                              <div className="menu-sep" />
-                              {video.folder_id && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    moveVideo(video.id, null);
-                                  }}
-                                >
-                                  Move to root
-                                </button>
-                              )}
-                              {folders
-                                .filter((f) => f.id !== video.folder_id)
-                                .map((f) => (
-                                  <button
-                                    key={f.id}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      moveVideo(video.id, f.id);
-                                    }}
-                                  >
-                                    <span
-                                      className="nav-folder-dot"
-                                      style={{ color: folderColor(f) }}
-                                    />
-                                    {f.name}
-                                  </button>
-                                ))}
-                              {folders.length === 0 && (
-                                <p className="menu-empty">No folders yet</p>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+            </div>
+          </div>
         </div>
-      </main>
-      )}
-      <ConfirmDeleteClipModal
-        open={!!pendingDelete}
-        video={pendingDelete}
-        folder={
-          pendingDelete && pendingDelete.folder_id
-            ? folders.find((f) => f.id === pendingDelete.folder_id) ?? null
-            : null
-        }
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={confirmDeleteVideo}
-      />
+      </section>
+
+      {/* FEATURE GRID */}
+      <section className="sec" id="features" style={{ background: "var(--bg-elev)", borderBlock: "1px solid var(--hairline-soft)" }}>
+        <div className="wrap">
+          <div className="sec-head center rv">
+            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />Built for practice</span>
+            <h2 className="serif">Everything a serious shadower needs</h2>
+            <p>Small, sharp tools that stay out of your way — so you can spend your time speaking, not fiddling.</p>
+          </div>
+          <div className="grid">
+            <div className="card rv">
+              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h13a4 4 0 010 8H8" /><path d="M8 5L4 8l4 3" /></svg></span>
+              <h4>Precise A–B loop</h4>
+              <p>Set in and out points to the exact word and repeat a phrase as many times as it takes.</p>
+            </div>
+            <div className="card rv">
+              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></span>
+              <h4>Speed without pitch shift</h4>
+              <p>Slow a fast talker to 0.5× and the voice still sounds natural — no chipmunk artifacts.</p>
+            </div>
+            <div className="card rv">
+              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12c2.5-5 6-7.5 9-7.5S18.5 7 21 12c-2.5 5-6 7.5-9 7.5S5.5 17 3 12z" /><circle cx="12" cy="12" r="2.5" /></svg></span>
+              <h4>Shadow line</h4>
+              <p>Strip everything but the current sentence. No timeline, no folders — just the line in front of you.</p>
+            </div>
+            <div className="card rv">
+              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l2.5 5.5 6 .5-4.5 4 1.4 6L12 15.8 6.6 19l1.4-6-4.5-4 6-.5z" /></svg></span>
+              <h4>One-tap bookmarks</h4>
+              <p>Star a line mid-play and it lands in your daily review queue automatically.</p>
+            </div>
+            <div className="card rv">
+              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /></svg></span>
+              <h4>Folders &amp; status</h4>
+              <p>Group clips by show or theme and mark each as <em>Focusing</em> or <em>Done</em> at a glance.</p>
+            </div>
+            <div className="card rv">
+              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a9 9 0 000 18 5 5 0 010-10 4 4 0 004-4c0-2.2-1.8-4-4-4z" /></svg></span>
+              <h4>Light &amp; dark, your fonts</h4>
+              <p>Warm light or focused dark, with type and density tuned to how you like to read.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* TESTIMONIAL */}
+      <section className="quote">
+        <div className="wrap rv">
+          <blockquote>&ldquo;I stopped just <span className="em">watching</span> English and started <span className="em">saying</span> it. Three lines a day, and after a month my accent finally moved.&rdquo;</blockquote>
+          <div className="quote-by">
+            <span className="quote-av">M</span>
+            <div style={{ textAlign: "left" }}>
+              <div className="n">Mia Alvarez</div>
+              <div className="r">Product designer · 4-month streak</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PRICING */}
+      <section className="sec" id="pricing" style={{ background: "var(--bg-elev)", borderBlock: "1px solid var(--hairline-soft)" }}>
+        <div className="wrap">
+          <div className="sec-head center rv">
+            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />Pricing</span>
+            <h2 className="serif">Simple plans for serious practice</h2>
+            <p>Start free and stay free for solo practice. Upgrade only when you want more clips and review power.</p>
+          </div>
+          <div className="price-grid">
+            <div className="plan rv">
+              <div className="plan-name">Solo</div>
+              <div className="plan-desc">For daily personal shadowing.</div>
+              <div className="plan-price">Free</div>
+              <Link href={primaryHref} className="btn">{primaryLabel}</Link>
+              <ul className="plan-feats">
+                <li><Check />Up to 20 clips</li>
+                <li><Check />Sentence A–B loop &amp; speed</li>
+                <li><Check />Bookmarks &amp; daily review</li>
+                <li><Check />Light &amp; dark themes</li>
+              </ul>
+            </div>
+            <div className="plan feat-plan rv">
+              <span className="plan-badge">Most popular</span>
+              <div className="plan-name">Plus</div>
+              <div className="plan-desc">For committed learners going deep.</div>
+              <div className="plan-price">$8<span className="per">/mo</span></div>
+              <Link href={primaryHref} className="btn primary">Get Plus</Link>
+              <ul className="plan-feats">
+                <li><Check />Unlimited clips &amp; folders</li>
+                <li><Check />Advanced spaced repetition</li>
+                <li><Check />Progress &amp; streak stats</li>
+                <li><Check />Offline practice</li>
+              </ul>
+            </div>
+            <div className="plan rv">
+              <div className="plan-name">Teams</div>
+              <div className="plan-desc">For tutors &amp; study groups.</div>
+              <div className="plan-price">$20<span className="per">/mo</span></div>
+              <Link href={LOGIN} className="btn">Contact us</Link>
+              <ul className="plan-feats">
+                <li><Check />Everything in Plus</li>
+                <li><Check />Shared clip libraries</li>
+                <li><Check />Assign drills to learners</li>
+                <li><Check />Learner progress dashboard</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="cta">
+        <div className="wrap">
+          <div className="cta-card rv">
+            <div className="in">
+              <h2 className="serif">Say it out loud.<br /><span className="em">Starting today.+</span></h2>
+              <p>Drop your first clip and shadow three lines before your coffee&rsquo;s cold. Free forever for solo practice.</p>
+              <div className="hero-cta">
+                <Link href={primaryHref} className="btn primary lg">{primaryLabel}</Link>
+                <a href="#how" className="btn lg">See how it works</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer>
+        <div className="wrap">
+          <div className="foot-grid">
+            <div className="foot-brand">
+              <span className="brand">Shadowing<span className="plus">+</span></span>
+              <p>Shadow any video until you own it. A calmer way to practice the language you&rsquo;re actually watching.</p>
+            </div>
+            <div className="foot-col">
+              <h5>Product</h5>
+              <a href="#features">Features</a>
+              <a href="#how">How it works</a>
+              <a href="#pricing">Pricing</a>
+              <Link href={APP}>Library</Link>
+            </div>
+            <div className="foot-col">
+              <h5>Resources</h5>
+              <a href="#">Shadowing guide</a>
+              <a href="#">Blog</a>
+              <a href="#">Changelog</a>
+              <a href="#">Help center</a>
+            </div>
+            <div className="foot-col">
+              <h5>Company</h5>
+              <a href="#">About</a>
+              <a href="#">Contact</a>
+              <a href="#">Privacy</a>
+              <a href="#">Terms</a>
+            </div>
+          </div>
+          <div className="foot-bot">
+            <span>© 2026 Shadowing+ · A personal project</span>
+            <span className="mono">Built with care, one sentence at a time</span>
+          </div>
+        </div>
+      </footer>
     </div>
-    <MobileLibrary
-      active={active}
-      setSection={setSection}
-      folders={folders}
-      videos={videos}
-      jobs={jobs}
-      visibleVideos={visibleVideos}
-      recentCount={recentVideos.length}
-      bookmarksCount={bookmarksCount}
-      sectionHeader={sectionHeader}
-      totalDurationLabel={totalDurationLabel}
-      loading={loading}
-      youtubeUrl={youtubeUrl}
-      importing={importing}
-      importError={importError}
-      recentlyDeletedId={recentlyDeleted?.id ?? null}
-      onYoutubeUrlChange={setYoutubeUrl}
-      onYoutubeImport={handleYoutubeImport}
-      onCreateFolder={openNewFolder}
-      onJobChanged={refreshAll}
-      onSetVideoStatus={setVideoStatus}
-      onRenameVideo={renameVideo}
-      onDeleteVideo={scheduleDelete}
-    />
-    <UndoToast
-      key={recentlyDeleted?.id ?? "none"}
-      open={!!recentlyDeleted}
-      label="Clip deleted"
-      onUndo={undoDelete}
-      onDismiss={dismissUndo}
-    />
-    </>
   );
 }
-

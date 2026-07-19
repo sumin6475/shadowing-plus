@@ -380,7 +380,7 @@ export default function BookmarksPage() {
       } catch {
         /* ignore */
       }
-      router.push("/");
+      router.push("/app");
     },
     [router],
   );

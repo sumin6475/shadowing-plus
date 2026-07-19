@@ -31,12 +31,12 @@ export default function ClipHeader({
   return (
     <header className="clip-head">
       <div className="clip-head-inner">
-        <Link href="/" className="back-btn" aria-label="Back to library">
+        <Link href="/app" className="back-btn" aria-label="Back to library">
           <BackIcon />
         </Link>
         <div className="clip-meta-col">
           <div className="clip-crumb">
-            <Link href="/">Library</Link>
+            <Link href="/app">Library</Link>
             {folderName ? <> · <span>{folderName}</span></> : null}
           </div>
           <div className="clip-title-row">
