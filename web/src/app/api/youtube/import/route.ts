@@ -9,6 +9,7 @@ import {
   regroupSentences,
 } from "@/lib/pipeline/postprocess";
 import { TRANSLATION_LANGUAGE_OPTIONS } from "@/lib/pipeline/languages";
+import { canImportYoutube } from "@/lib/youtubeImport";
 import type { PipelineSegment } from "@/lib/types";
 
 const TARGET_NAMES = new Set<string>(TRANSLATION_LANGUAGE_OPTIONS);
@@ -315,6 +316,11 @@ export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Personal-use tool, gated to the owner allowlist (see lib/youtubeImport.ts).
+  // 404 rather than 403 so the endpoint doesn't advertise itself to non-owners.
+  if (!canImportYoutube(userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   try {
     const { url, targetLang } = await req.json();

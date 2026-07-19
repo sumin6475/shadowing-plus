@@ -32,6 +32,7 @@ import {
 import { folderColor } from "@/lib/folder-color";
 import { clipKind } from "@/lib/clip-kind";
 import { TRANSLATION_LANG_PREF_KEY } from "@/lib/pipeline/languages";
+import { canImportYoutube } from "@/lib/youtubeImport";
 
 import "./home.css";
 
@@ -87,6 +88,8 @@ export default function HomePage() {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  // Signed-in user id — gates the owner-only YouTube import (personal-use tool).
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
 
@@ -199,6 +202,7 @@ export default function HomePage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (cancelled || !user) return;
+      setUserId(user.id);
 
       channel = supabase
         .channel(`jobs-feed-${user.id}`)
@@ -718,6 +722,8 @@ export default function HomePage() {
 
           <UploadDropzone ref={dropzoneRef} onJobQueued={refreshAll} />
 
+          {/* Owner-only, hidden from the public product. See lib/youtubeImport.ts. */}
+          {canImportYoutube(userId) && (
           <div className="youtube-import-card">
             <div className="youtube-import-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -751,6 +757,7 @@ export default function HomePage() {
               {importError && <div className="youtube-import-error">{importError}</div>}
             </div>
           </div>
+          )}
 
           {activeJobs.length > 0 && (
             <section className="jobs-queue" aria-label="Processing">
