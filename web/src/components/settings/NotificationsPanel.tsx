@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { BellIcon, CheckIcon } from "@/components/home/Icons";
 
 // "Connect Telegram" — replaces the v0 setup runbook's manual SQL insert.
 // Flow: POST mints a one-time token + t.me deep link, we open it in a new tab,
@@ -94,7 +95,8 @@ export default function NotificationsPanel() {
         {status === "loading" && <p className="set-note">Loading…</p>}
 
         {status === "disconnected" && (
-          <button type="button" className="set-btn" onClick={connect}>
+          <button type="button" className="set-primary-btn" onClick={connect}>
+            <BellIcon />
             Connect Telegram
           </button>
         )}
@@ -105,7 +107,7 @@ export default function NotificationsPanel() {
               Opened Telegram — tap <strong>Start</strong> in the chat to finish
               connecting. This updates automatically.
             </p>
-            <button type="button" className="set-btn" disabled>
+            <button type="button" className="set-primary-btn" disabled>
               Waiting for Telegram…
             </button>
           </>
@@ -113,7 +115,9 @@ export default function NotificationsPanel() {
 
         {status === "connected" && (
           <>
-            <p className="set-saved">✓ Connected</p>
+            <div className="set-tg-status">
+              <CheckIcon /> Connected
+            </div>
             <button type="button" className="set-danger-btn" onClick={disconnect}>
               Disconnect
             </button>
@@ -121,7 +125,7 @@ export default function NotificationsPanel() {
         )}
 
         {status === "error" && (
-          <button type="button" className="set-btn" onClick={connect}>
+          <button type="button" className="set-primary-btn" onClick={connect}>
             Try again
           </button>
         )}

@@ -158,3 +158,48 @@ export function UndoIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function UserIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <circle cx="8" cy="5.5" r="2.5" />
+      <path d="M3.5 13c0-2.2 2-3.5 4.5-3.5s4.5 1.3 4.5 3.5" />
+    </svg>
+  );
+}
+
+export function ChartIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <path d="M2.5 2.5v11h11" />
+      <path d="M5 10.5V8M8 10.5V5.5M11 10.5V7" />
+    </svg>
+  );
+}
+
+export function GlobeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M2.5 8h11M8 2.5c1.6 1.5 2.4 3.4 2.4 5.5S9.6 12 8 13.5C6.4 12 5.6 10.1 5.6 8S6.4 4 8 2.5z" />
+    </svg>
+  );
+}
+
+export function BellIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <path d="M8 2.2c-2 0-3.3 1.5-3.3 3.4 0 2.7-1 3.7-1.4 4.1-.2.2-.1.6.2.6h9c.3 0 .4-.4.2-.6-.4-.4-1.4-1.4-1.4-4.1 0-1.9-1.3-3.4-3.3-3.4z" />
+      <path d="M6.6 12.4a1.5 1.5 0 002.8 0" />
+    </svg>
+  );
+}
+
+export function SignOutIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <path d="M6 3.5H4a1 1 0 00-1 1v7a1 1 0 001 1h2" />
+      <path d="M9.5 5.5L12 8l-2.5 2.5M12 8H6" />
+    </svg>
+  );
+}

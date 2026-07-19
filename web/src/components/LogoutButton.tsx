@@ -1,19 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 /**
  * Signs the user out (clears the @supabase/ssr session cookie) and sends them
- * to /login. `className` lets each placement match its surrounding chrome.
+ * to /login. `className` lets each placement match its surrounding chrome;
+ * `label` accepts a node so placements can include an icon.
  */
 export default function LogoutButton({
   className = "btn ghost",
   label = "Sign out",
 }: {
   className?: string;
-  label?: string;
+  label?: ReactNode;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

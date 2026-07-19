@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { CheckIcon } from "@/components/home/Icons";
 import {
   AUDIO_LANGUAGE,
   AUDIO_LANGUAGE_OPTIONS,
@@ -14,6 +15,8 @@ import {
 // the DEFAULT in the upload form, which sends it per clip to the pipeline
 // (migration 011 → jobs.source_lang/target_lang). A clip's pair is fixed at
 // upload time; changing this preference only affects clips uploaded afterward.
+// Design: explicit "Save changes" button (enabled only when dirty) + an
+// animated "Saved" check, per the settings-modal design handoff.
 
 const AUDIO_OPTIONS = AUDIO_LANGUAGE_OPTIONS;
 const TRANSLATION_OPTIONS = TRANSLATION_LANGUAGE_OPTIONS;
@@ -30,24 +33,32 @@ function readPref(key: string, fallback: string): string {
 
 export default function LanguagePanel() {
   // This panel only renders inside the (client-only) modal, so reading
-  // localStorage in the lazy initializer is safe and avoids a set-state effect.
+  // localStorage in the lazy initializers is safe and avoids a set-state effect.
   const [audio, setAudio] = useState<string>(() =>
     readPref(AUDIO_KEY, AUDIO_LANGUAGE.code),
   );
   const [translation, setTranslation] = useState<string>(() =>
     readPref(TRANSLATION_KEY, TRANSLATION_LANGUAGE),
   );
+  const [base, setBase] = useState(() => ({ audio, translation }));
   const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<number | undefined>(undefined);
 
-  function persist(nextAudio: string, nextTranslation: string) {
+  useEffect(() => () => window.clearTimeout(savedTimer.current), []);
+
+  const dirty = audio !== base.audio || translation !== base.translation;
+
+  function save() {
     try {
-      localStorage.setItem(AUDIO_KEY, nextAudio);
-      localStorage.setItem(TRANSLATION_KEY, nextTranslation);
-      setSaved(true);
-      window.setTimeout(() => setSaved(false), 1500);
+      localStorage.setItem(AUDIO_KEY, audio);
+      localStorage.setItem(TRANSLATION_KEY, translation);
     } catch {
       /* ignore */
     }
+    setBase({ audio, translation });
+    setSaved(true);
+    window.clearTimeout(savedTimer.current);
+    savedTimer.current = window.setTimeout(() => setSaved(false), 2200);
   }
 
   return (
@@ -65,7 +76,7 @@ export default function LanguagePanel() {
           value={audio}
           onChange={(e) => {
             setAudio(e.target.value);
-            persist(e.target.value, translation);
+            setSaved(false);
           }}
         >
           {AUDIO_OPTIONS.map((o) => (
@@ -89,7 +100,7 @@ export default function LanguagePanel() {
           value={translation}
           onChange={(e) => {
             setTranslation(e.target.value);
-            persist(audio, e.target.value);
+            setSaved(false);
           }}
         >
           {TRANSLATION_OPTIONS.map((o) => (
@@ -100,7 +111,19 @@ export default function LanguagePanel() {
         </select>
       </div>
 
-      {saved && <p className="set-saved">Saved</p>}
+      <div className="set-save-row">
+        <button
+          type="button"
+          className="set-primary-btn"
+          onClick={save}
+          disabled={!dirty}
+        >
+          Save changes
+        </button>
+        <div className={"set-saved" + (saved ? " show" : "")}>
+          <CheckIcon /> Saved
+        </div>
+      </div>
 
       <p className="set-note">
         Saved as your default. New clips you upload use this pair; you can still

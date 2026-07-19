@@ -1,4 +1,13 @@
-/* ── Sidebar-foot profile menu ── */
+/* ── Sidebar-foot profile menu ──
+   Ported from the design handoff (profile-menu.jsx + styles.css). Renders
+   inside `.home-app`, so it reads the home token set directly; dark mode
+   follows [data-theme="dark"] automatically except the hardcoded danger
+   oklch values, which get explicit overrides below. */
+
+.home-app .sidebar-foot.pm-foot {
+  display: block;
+  padding: 8px 6px 6px;
+}
 
 .pm-root {
   position: relative;
@@ -12,43 +21,50 @@
   padding: 7px 8px;
   border: none;
   background: none;
-  border-radius: 8px;
   cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
   text-align: left;
+  transition: background 0.12s;
 }
 
-.pm-trigger:hover {
-  background: var(--surface-2, #f3efe6);
+.pm-trigger:hover,
+.pm-trigger.open {
+  background: var(--surface-2);
 }
 
 .pm-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #2a2622;
-  color: #fff;
+  display: grid;
+  place-items: center;
+  background: var(--text);
+  color: var(--bg-elev);
   font-size: 12px;
   font-weight: 600;
-  flex-shrink: 0;
+  letter-spacing: 0;
 }
 
 .pm-email {
   flex: 1;
   min-width: 0;
   font-size: 13px;
-  color: var(--text-2, #4a453d);
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pm-chevron {
-  font-size: 12px;
-  color: var(--text-4, #9a927f);
   flex-shrink: 0;
+  color: var(--text-4);
+  display: flex;
+  transition: transform 0.15s ease;
+}
+
+.pm-chevron.up {
+  transform: rotate(180deg);
 }
 
 /* Dropdown opens UPWARD from the foot. */
@@ -57,18 +73,38 @@
   bottom: calc(100% + 6px);
   left: 0;
   right: 0;
-  background: #fff;
-  border: 1px solid #ece7dd;
-  border-radius: 12px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.14);
-  padding: 6px;
   z-index: 40;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius, 12px);
+  box-shadow:
+    0 12px 30px -8px oklch(0 0 0 / 0.2),
+    0 2px 8px -4px oklch(0 0 0 / 0.12);
+  padding: 6px;
+  animation: pm-rise 0.14s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+[data-theme="dark"] .pm-menu {
+  box-shadow:
+    0 14px 36px -8px oklch(0 0 0 / 0.55),
+    0 3px 10px -4px oklch(0 0 0 / 0.4);
+}
+
+@keyframes pm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .pm-menu-email {
-  padding: 8px 10px 6px;
+  padding: 5px 10px 6px;
   font-size: 12.5px;
-  color: #9a927f;
+  color: var(--text-4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -76,33 +112,57 @@
 
 .pm-menu-sep {
   height: 1px;
-  background: #f0ece3;
-  margin: 4px 0;
+  background: var(--hairline-soft);
+  margin: 2px 0 4px;
 }
 
 .pm-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   width: 100%;
-  text-align: left;
   padding: 8px 10px;
   border: none;
   background: none;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #2a2622;
   cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
 }
 
 .pm-menu-item:hover {
-  background: #f3efe6;
+  background: var(--surface-2);
+}
+
+.pm-menu-ic {
+  display: flex;
+  color: var(--text-3);
 }
 
 .pm-menu-danger {
-  color: #b4462f;
+  color: oklch(0.55 0.18 28);
+}
+
+.pm-menu-danger .pm-menu-ic {
+  color: oklch(0.55 0.18 28);
 }
 
 .pm-menu-danger:hover {
-  background: #fbf1ee;
+  background: oklch(0.955 0.03 28);
+}
+
+[data-theme="dark"] .pm-menu-danger {
+  color: oklch(0.72 0.16 28);
+}
+
+[data-theme="dark"] .pm-menu-danger .pm-menu-ic {
+  color: oklch(0.72 0.16 28);
+}
+
+[data-theme="dark"] .pm-menu-danger:hover {
+  background: oklch(0.3 0.06 28);
 }
 
 .pm-menu-item:disabled {

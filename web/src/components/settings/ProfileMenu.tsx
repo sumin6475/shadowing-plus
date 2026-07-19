@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import {
+  ChevronDownIcon,
+  GearIcon,
+  SignOutIcon,
+} from "@/components/home/Icons";
 import SettingsModal from "./SettingsModal";
 import "./profile-menu.css";
 
@@ -23,7 +28,7 @@ export default function ProfileMenu() {
     });
   }, []);
 
-  // Close the dropdown on outside click.
+  // Close the dropdown on outside click or Escape.
   useEffect(() => {
     if (!menuOpen) return;
     function onClick(e: MouseEvent) {
@@ -31,8 +36,15 @@ export default function ProfileMenu() {
         setMenuOpen(false);
       }
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [menuOpen]);
 
   const initial = (email?.trim()?.[0] ?? "?").toUpperCase();
@@ -48,19 +60,28 @@ export default function ProfileMenu() {
     <div className="pm-root" ref={rootRef}>
       <button
         type="button"
-        className="pm-trigger"
+        className={"pm-trigger" + (menuOpen ? " open" : "")}
         onClick={() => setMenuOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
       >
-        <span className="pm-avatar">{initial}</span>
-        <span className="pm-email">{email ?? "Account"}</span>
-        <span className="pm-chevron">⌄</span>
+        <span className="pm-avatar" aria-hidden="true">{initial}</span>
+        <span className="pm-email" title={email ?? undefined}>
+          {email ?? "Account"}
+        </span>
+        <span
+          className={"pm-chevron" + (menuOpen ? " up" : "")}
+          aria-hidden="true"
+        >
+          <ChevronDownIcon />
+        </span>
       </button>
 
       {menuOpen && (
         <div className="pm-menu" role="menu">
-          <div className="pm-menu-email">{email ?? "Signed in"}</div>
+          <div className="pm-menu-email" title={email ?? undefined}>
+            {email ?? "Signed in"}
+          </div>
           <div className="pm-menu-sep" />
           <button
             type="button"
@@ -71,6 +92,9 @@ export default function ProfileMenu() {
               setModalOpen(true);
             }}
           >
+            <span className="pm-menu-ic">
+              <GearIcon />
+            </span>
             Settings
           </button>
           <button
@@ -80,6 +104,9 @@ export default function ProfileMenu() {
             onClick={signOut}
             disabled={signingOut}
           >
+            <span className="pm-menu-ic">
+              <SignOutIcon />
+            </span>
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>

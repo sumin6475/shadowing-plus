@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
+import {
+  BellIcon,
+  ChartIcon,
+  GlobeIcon,
+  UserIcon,
+} from "@/components/home/Icons";
 import ProfilePanel from "./ProfilePanel";
 import UsagePanel from "./UsagePanel";
 import LanguagePanel from "./LanguagePanel";
@@ -11,11 +17,11 @@ import "./settings-modal.css";
 
 type Tab = "profile" | "usage" | "language" | "notifications";
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "profile", label: "Profile" },
-  { key: "usage", label: "Usage" },
-  { key: "language", label: "Language" },
-  { key: "notifications", label: "Notifications" },
+const TABS: { key: Tab; label: string; Icon: typeof UserIcon }[] = [
+  { key: "profile", label: "Profile", Icon: UserIcon },
+  { key: "usage", label: "Usage", Icon: ChartIcon },
+  { key: "language", label: "Language", Icon: GlobeIcon },
+  { key: "notifications", label: "Notifications", Icon: BellIcon },
 ];
 
 export default function SettingsModal({
@@ -73,6 +79,9 @@ export default function SettingsModal({
               className={"set-nav-item" + (tab === t.key ? " active" : "")}
               onClick={() => setTab(t.key)}
             >
+              <span className="set-nav-ic">
+                <t.Icon />
+              </span>
               {t.label}
             </button>
           ))}
@@ -88,8 +97,19 @@ export default function SettingsModal({
               className="set-close"
               onClick={onClose}
               aria-label="Close settings"
+              title="Close"
             >
-              ✕
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              >
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
             </button>
           </header>
           <div className="set-body-scroll">

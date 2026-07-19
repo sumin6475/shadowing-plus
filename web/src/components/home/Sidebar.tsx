@@ -251,7 +251,7 @@ export default function Sidebar({
         )}
       </nav>
 
-      <div className="sidebar-foot">
+      <div className="sidebar-foot pm-foot">
         <ProfileMenu />
       </div>
     </aside>
