@@ -9,12 +9,14 @@ import { FOLDER_COLOR_OPTIONS, folderColor } from "@/lib/folder-color";
 import {
   BookmarkIcon,
   DotsIcon,
+  HomeIcon,
   InboxIcon,
   LibraryIcon,
   SearchIcon,
 } from "./Icons";
 
 export type ActiveSection =
+  | { kind: "home" }
   | { kind: "all" }
   | { kind: "recent" }
   | { kind: "folder"; id: string };
@@ -88,6 +90,7 @@ export default function Sidebar({
     }
   }
 
+  const isHomeActive = active.kind === "home" && !onBookmarksRoute;
   const isAllActive = active.kind === "all" && !onBookmarksRoute;
   const isRecentActive = active.kind === "recent" && !onBookmarksRoute;
 
@@ -109,6 +112,14 @@ export default function Sidebar({
 
       <nav className="nav-section" aria-label="Library">
         <div className="nav-head"><span>Library</span></div>
+        <button
+          type="button"
+          className={"nav-item" + (isHomeActive ? " active" : "")}
+          onClick={() => onSelect({ kind: "home" })}
+        >
+          <span className="nav-icon"><HomeIcon /></span>
+          <span className="nav-label">Home</span>
+        </button>
         <button
           type="button"
           className={"nav-item" + (isAllActive ? " active" : "")}

@@ -33,8 +33,10 @@ import { folderColor } from "@/lib/folder-color";
 import { clipKind } from "@/lib/clip-kind";
 import { TRANSLATION_LANG_PREF_KEY } from "@/lib/pipeline/languages";
 import { canImportYoutube } from "@/lib/youtubeImport";
+import Dashboard from "@/components/home/Dashboard";
 
 import "./home.css";
+import "./dashboard.css";
 
 const ACTIVE_SECTION_KEY = "sp:home:section";
 const RECENT_DAYS = 14;
@@ -47,12 +49,13 @@ function formatDuration(seconds: number | null): string {
 }
 
 function loadActiveSection(): ActiveSection {
-  if (typeof window === "undefined") return { kind: "all" };
+  if (typeof window === "undefined") return { kind: "home" };
   try {
     const raw = localStorage.getItem(ACTIVE_SECTION_KEY);
-    if (!raw) return { kind: "all" };
+    if (!raw) return { kind: "home" };
     const parsed = JSON.parse(raw) as ActiveSection;
     if (
+      parsed?.kind === "home" ||
       parsed?.kind === "all" ||
       parsed?.kind === "recent" ||
       (parsed?.kind === "folder" && typeof parsed.id === "string")
@@ -62,7 +65,7 @@ function loadActiveSection(): ActiveSection {
   } catch {
     /* ignore */
   }
-  return { kind: "all" };
+  return { kind: "home" };
 }
 
 function saveActiveSection(s: ActiveSection) {
@@ -90,6 +93,8 @@ export default function HomePage() {
   const [importError, setImportError] = useState<string | null>(null);
   // Signed-in user id — gates the owner-only YouTube import (personal-use tool).
   const [userId, setUserId] = useState<string | null>(null);
+  // Signed-in email — used for the dashboard greeting.
+  const [email, setEmail] = useState<string | null>(null);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
 
@@ -203,6 +208,7 @@ export default function HomePage() {
       } = await supabase.auth.getUser();
       if (cancelled || !user) return;
       setUserId(user.id);
+      setEmail(user.email ?? null);
 
       channel = supabase
         .channel(`jobs-feed-${user.id}`)
@@ -578,7 +584,10 @@ export default function HomePage() {
   const visibleVideos = useMemo(() => {
     if (active.kind === "all") return videos;
     if (active.kind === "recent") return recentVideos;
-    return videos.filter((v) => v.folder_id === active.id);
+    if (active.kind === "folder") {
+      return videos.filter((v) => v.folder_id === active.id);
+    }
+    return [];
   }, [active, videos, recentVideos]);
 
   const activeFolder =
@@ -678,6 +687,18 @@ export default function HomePage() {
         existingNames={folders.map((f) => f.name)}
       />
 
+      {active.kind === "home" ? (
+        <Dashboard
+          email={email}
+          videos={videos}
+          folders={folders}
+          bookmarksCount={bookmarksCount}
+          onAddClip={() => dropzoneRef.current?.pick()}
+          onOpenLibrary={() => setSection({ kind: "all" })}
+          onSelectFolder={(id) => setSection({ kind: "folder", id })}
+          onNewFolder={openNewFolder}
+        />
+      ) : (
       <main className="main">
         <div className="main-inner">
           <header className="page-head">
@@ -1069,6 +1090,7 @@ export default function HomePage() {
           </section>
         </div>
       </main>
+      )}
       <ConfirmDeleteClipModal
         open={!!pendingDelete}
         video={pendingDelete}

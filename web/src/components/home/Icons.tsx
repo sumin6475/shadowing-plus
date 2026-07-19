@@ -159,6 +159,15 @@ export function UndoIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function HomeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <path d="M2.5 7.4L8 3l5.5 4.4" />
+      <path d="M3.9 6.8V13h8.2V6.8" />
+    </svg>
+  );
+}
+
 export function UserIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>

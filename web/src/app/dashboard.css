@@ -1,0 +1,576 @@
+/* ─────────────────────────────────────────────────────────────
+   Shadowing+ — Home / Dashboard (ported from design dashboard.css)
+   Scoped under .home-app so it can't leak into /bookmarks or /player.
+   Reuses the home token set (--surface, --hairline, --accent, fonts…).
+   ───────────────────────────────────────────────────────────── */
+
+.home-app .dash { padding: 28px 40px 90px; }
+.home-app .dash-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+/* ─── Hero greeting ────────────────────────────────────── */
+.home-app .dash-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 12px;
+}
+.home-app .dash-eyebrow {
+  font-family: var(--home-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-4);
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+.home-app .dash-title {
+  font-family: var(--home-font-serif);
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1.02;
+  letter-spacing: -0.018em;
+  margin: 0;
+  color: var(--text);
+}
+.home-app .dash-title .accent { color: var(--accent); font-style: italic; }
+.home-app .dash-sub {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  color: var(--text-3);
+  letter-spacing: -0.004em;
+}
+.home-app .dash-sub .streak {
+  color: var(--accent-text);
+  font-weight: 500;
+}
+.home-app .dash-hero-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.home-app .btn-glyph { font-size: 15px; line-height: 1; display: inline-block; }
+
+/* ─── Stat tiles ───────────────────────────────────────── */
+.home-app .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.home-app .stat-tile {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.home-app .stat-top { display: flex; align-items: center; justify-content: space-between; }
+.home-app .stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+.home-app .stat-ic {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  flex-shrink: 0;
+}
+.home-app .stat-ic.moss { background: oklch(0.955 0.035 155); color: oklch(0.46 0.10 155); }
+[data-theme="dark"] .home-app .stat-ic.moss { background: oklch(0.31 0.05 155); color: oklch(0.82 0.10 155); }
+.home-app .stat-ic.iris { background: oklch(0.955 0.03 290); color: oklch(0.55 0.14 290); }
+[data-theme="dark"] .home-app .stat-ic.iris { background: oklch(0.31 0.05 290); color: oklch(0.80 0.13 290); }
+.home-app .stat-ic.amber { background: oklch(0.965 0.04 70); color: oklch(0.52 0.11 65); }
+[data-theme="dark"] .home-app .stat-ic.amber { background: oklch(0.30 0.04 70); color: oklch(0.84 0.11 75); }
+
+.home-app .stat-value {
+  font-family: var(--home-font-serif);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.home-app .stat-value .unit {
+  font-family: var(--home-font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: -0.005em;
+}
+.home-app .stat-value.muted { color: var(--text-4); }
+.home-app .stat-foot {
+  font-size: 12px;
+  color: var(--text-3);
+  letter-spacing: -0.004em;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.home-app .stat-foot .up { color: oklch(0.50 0.11 155); font-weight: 500; }
+[data-theme="dark"] .home-app .stat-foot .up { color: oklch(0.74 0.11 155); }
+.home-app .stat-foot .down { color: oklch(0.55 0.15 28); font-weight: 500; }
+
+/* ─── Two-column panel grid ────────────────────────────── */
+.home-app .dash-grid {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.home-app .panel {
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px 22px 22px;
+  display: flex;
+  flex-direction: column;
+}
+.home-app .panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.home-app .panel-title {
+  font-family: var(--home-font-serif);
+  font-weight: 400;
+  font-size: 21px;
+  line-height: 1.1;
+  letter-spacing: -0.012em;
+  margin: 0;
+  color: var(--text);
+}
+.home-app .panel-sub {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+  letter-spacing: -0.004em;
+}
+.home-app .panel-total {
+  text-align: right;
+  flex-shrink: 0;
+}
+.home-app .panel-total .pt-value {
+  font-family: var(--home-font-mono);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.home-app .panel-total .pt-label {
+  font-size: 10.5px;
+  color: var(--text-4);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Honest empty state inside a panel (e.g. practice-minutes not tracked yet). */
+.home-app .panel-empty {
+  margin-top: auto;
+  min-height: 172px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--text-4);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.home-app .panel-empty .pe-title { font-size: 13.5px; font-weight: 500; color: var(--text-3); }
+.home-app .panel-empty .pe-sub { font-size: 12px; max-width: 320px; line-height: 1.5; }
+
+/* ─── Weekly practice bar chart ────────────────────────── */
+.home-app .chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 172px;
+  margin-top: auto;
+}
+.home-app .chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  height: 100%;
+  justify-content: flex-end;
+}
+.home-app .chart-barwrap {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 0;
+}
+.home-app .chart-bar {
+  width: 100%;
+  max-width: 30px;
+  border-radius: 6px 6px 4px 4px;
+  background: var(--accent-soft);
+  position: relative;
+  transition: filter .12s;
+  cursor: default;
+}
+.home-app .chart-bar::before {
+  content: attr(data-min);
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--home-font-mono);
+  font-size: 10.5px;
+  color: var(--text-4);
+  opacity: 0;
+  transition: opacity .12s;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.home-app .chart-bar:hover::before { opacity: 1; }
+.home-app .chart-bar.today {
+  background: var(--accent);
+  box-shadow: 0 6px 16px -8px oklch(from var(--accent) l c h / 0.7);
+}
+.home-app .chart-bar.today::before { opacity: 1; color: var(--accent-text); font-weight: 500; }
+.home-app .chart-bar:hover { filter: brightness(0.97); }
+[data-theme="dark"] .home-app .chart-bar:hover { filter: brightness(1.1); }
+.home-app .chart-day {
+  font-size: 11px;
+  color: var(--text-4);
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+.home-app .chart-col.is-today .chart-day { color: var(--accent-text); }
+
+/* ─── Status ring (donut) ──────────────────────────────── */
+.home-app .ring-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  margin-top: auto;
+}
+.home-app .ring {
+  position: relative;
+  width: 158px;
+  height: 158px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.home-app .ring-hole {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.home-app .ring-hole .rh-value {
+  font-family: var(--home-font-serif);
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.home-app .ring-hole .rh-label {
+  font-size: 10.5px;
+  color: var(--text-4);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.home-app .ring-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: 100%;
+}
+.home-app .ring-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.home-app .ring-legend-row .rl-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.home-app .ring-legend-row .rl-name { flex: 1; letter-spacing: -0.004em; }
+.home-app .ring-legend-row .rl-count {
+  font-family: var(--home-font-mono);
+  font-size: 12.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Continue practicing ──────────────────────────────── */
+.home-app .dash-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.home-app .dash-section-title {
+  font-family: var(--home-font-serif);
+  font-weight: 400;
+  font-size: 22px;
+  letter-spacing: -0.012em;
+  color: var(--text);
+  margin: 0;
+}
+.home-app .dash-section-link {
+  font-size: 12.5px;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color .12s;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.home-app .dash-section-link:hover { color: var(--accent-text); }
+
+.home-app .continue-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.home-app .cont-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: transform .18s cubic-bezier(.2,.7,.2,1), box-shadow .18s, border-color .18s;
+  cursor: pointer;
+}
+.home-app .cont-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--hairline);
+}
+.home-app .cont-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background:
+    radial-gradient(120% 90% at 30% 18%, oklch(0.30 0.01 60) 0%, oklch(0.15 0.005 60) 62%, oklch(0.10 0.003 60) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-app .cont-thumb .cont-play {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: oklch(1 0 0 / 0.14);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  border: 1px solid oklch(1 0 0 / 0.25);
+  color: oklch(0.99 0 0);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s, transform .12s;
+}
+.home-app .cont-card:hover .cont-play { background: var(--accent); border-color: var(--accent); transform: scale(1.06); }
+.home-app .cont-thumb .cont-dur {
+  position: absolute;
+  right: 8px; bottom: 8px;
+  font-family: var(--home-font-mono);
+  font-size: 11px;
+  color: oklch(0.98 0 0);
+  background: oklch(0 0 0 / 0.55);
+  padding: 2px 6px;
+  border-radius: 5px;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.home-app .cont-thumb .cont-status {
+  position: absolute;
+  left: 8px; top: 8px;
+}
+.home-app .cont-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.home-app .cont-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  letter-spacing: -0.003em;
+}
+.home-app .cont-folder .cf-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.8; flex-shrink: 0; }
+.home-app .cont-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.34;
+  color: var(--text);
+  letter-spacing: -0.006em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.home-app .cont-meta {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-4);
+}
+
+/* status pill on dark thumbnail */
+.home-app .cont-status .status-pill.focusing {
+  background: oklch(0 0 0 / 0.5);
+  color: oklch(0.99 0 0);
+  border-color: oklch(1 0 0 / 0.2);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.home-app .cont-status .status-pill.done {
+  background: oklch(0 0 0 / 0.5);
+  color: oklch(0.85 0.14 155);
+  border-color: oklch(1 0 0 / 0.2);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+/* ─── Folders overview ─────────────────────────────────── */
+.home-app .folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.home-app .folder-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 16px 15px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  transition: transform .16s cubic-bezier(.2,.7,.2,1), box-shadow .16s, border-color .16s;
+  cursor: pointer;
+  text-align: left;
+}
+.home-app .folder-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--hairline);
+}
+.home-app .folder-card-top { display: flex; align-items: center; gap: 10px; }
+.home-app .folder-card-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; opacity: 0.85; flex-shrink: 0; box-shadow: 0 0 0 3px oklch(from currentColor l c h / 0.14); }
+.home-app .folder-card-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.006em;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-app .folder-card-count {
+  font-family: var(--home-font-mono);
+  font-size: 11.5px;
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+}
+.home-app .folder-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.home-app .folder-bar .fb-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.85;
+}
+.home-app .folder-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--text-3);
+  letter-spacing: -0.003em;
+}
+.home-app .folder-card-foot .fcf-pct { font-family: var(--home-font-mono); color: var(--text-4); font-variant-numeric: tabular-nums; }
+
+/* new-folder card (dashed, matches dropzone tone) */
+.home-app .folder-card.add {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-style: dashed;
+  border-color: var(--hairline);
+  background: var(--bg-elev);
+  box-shadow: none;
+  color: var(--text-3);
+  min-height: 108px;
+  flex-direction: row;
+  font-size: 13px;
+  font-weight: 500;
+}
+.home-app .folder-card.add:hover { border-color: var(--accent); color: var(--accent-text); background: var(--surface); transform: none; }
+.home-app .folder-card.add .fca-ic {
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.home-app .folder-card.add:hover .fca-ic { background: var(--accent-soft); color: var(--accent-text); }
+
+/* ─── Responsive ───────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .home-app .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .home-app .dash-grid { grid-template-columns: 1fr; }
+  .home-app .continue-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 720px) {
+  .home-app .dash { padding: 22px 22px 70px; }
+  .home-app .continue-grid { grid-template-columns: 1fr; }
+  .home-app .dash-hero { flex-direction: column; align-items: flex-start; }
+}
