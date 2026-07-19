@@ -1,7 +1,28 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import {
+  AUDIO_LANG_PREF_KEY,
+  TRANSLATION_LANG_PREF_KEY,
+} from "@/lib/pipeline/languages";
 import type { MediaType } from "@/lib/types";
+
+/**
+ * The user's preferred language pair, set in Settings → Language. Read at
+ * upload time so file uploads (a batch, no per-file UI) inherit the preference
+ * without an extra picker. Missing values are omitted, and the upload route
+ * falls back to the DB default (eng → Korean).
+ */
+function readLanguagePref(): { sourceLang?: string; targetLang?: string } {
+  try {
+    return {
+      sourceLang: localStorage.getItem(AUDIO_LANG_PREF_KEY) ?? undefined,
+      targetLang: localStorage.getItem(TRANSLATION_LANG_PREF_KEY) ?? undefined,
+    };
+  } catch {
+    return {};
+  }
+}
 
 const VIDEO_EXTS = new Set([".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v"]);
 const AUDIO_EXTS = new Set([".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"]);
@@ -48,6 +69,8 @@ export function useUpload(onJobQueued: () => void): UseUpload {
       setError(null);
       setUploading(true);
 
+      const languagePref = readLanguagePref();
+
       try {
         for (const file of list) {
           const mediaType = detectMediaType(file.name, file.type);
@@ -66,6 +89,7 @@ export function useUpload(onJobQueued: () => void): UseUpload {
               contentType:
                 file.type || (mediaType === "video" ? "video/mp4" : "audio/mpeg"),
               mediaType,
+              ...languagePref,
             }),
           });
           if (!presignRes.ok) {

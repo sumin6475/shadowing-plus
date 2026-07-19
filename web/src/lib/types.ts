@@ -96,6 +96,12 @@ export interface Job {
   error: string | null;
   // Owner (migration 008_auth_rls.sql). Set at createJob time from the session.
   user_id: string;
+  // Per-clip language pair (migration 011_jobs_language_pair.sql). source_lang is
+  // an ISO 639-3 code for the ASR provider; target_lang is the plain English
+  // label interpolated into the translation prompt. Older DB copies / rows
+  // created before 011 return null — callers coalesce via languagePairForJob().
+  source_lang: string | null;
+  target_lang: string | null;
   created_at: string;
   updated_at: string;
 }

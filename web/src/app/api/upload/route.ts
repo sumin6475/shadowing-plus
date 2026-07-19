@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createJob } from "@/lib/pipeline/jobs";
+import {
+  AUDIO_LANGUAGE_OPTIONS,
+  TRANSLATION_LANGUAGE_OPTIONS,
+} from "@/lib/pipeline/languages";
 import { getSignedUploadUrl, jobKey } from "@/lib/r2";
 import { getSessionUserId } from "@/lib/supabase-server";
 import type { MediaType } from "@/lib/types";
@@ -9,7 +13,15 @@ interface UploadRequest {
   filename: string;
   contentType: string;
   mediaType: MediaType;
+  // Per-clip language pair (migration 011). Optional — omitted uploads accept
+  // the DB default (eng → Korean). Validated against the option lists below so
+  // a client can't inject an arbitrary language code into the pipeline.
+  sourceLang?: string;
+  targetLang?: string;
 }
+
+const AUDIO_CODES = new Set<string>(AUDIO_LANGUAGE_OPTIONS.map((o) => o.code));
+const TARGET_NAMES = new Set<string>(TRANSLATION_LANGUAGE_OPTIONS);
 
 function safeFilename(name: string): string {
   const trimmed = name.replace(/[/\\]/g, "_").trim();
@@ -42,12 +54,25 @@ export async function POST(req: NextRequest) {
 
   const filename = safeFilename(body.filename);
 
+  // Accept the language pair only if it's a known option; otherwise leave it
+  // unset so the DB default (eng → Korean) applies.
+  const sourceLang =
+    body.sourceLang && AUDIO_CODES.has(body.sourceLang)
+      ? body.sourceLang
+      : undefined;
+  const targetLang =
+    body.targetLang && TARGET_NAMES.has(body.targetLang)
+      ? body.targetLang
+      : undefined;
+
   // Create job first so the source_key is well-formed.
   const tempJob = await createJob({
     title: body.title.trim(),
     media_type: body.mediaType,
     source_key: "pending",
     user_id: userId,
+    source_lang: sourceLang,
+    target_lang: targetLang,
   });
   const sourceKey = jobKey(tempJob.id, `source-${filename}`);
 

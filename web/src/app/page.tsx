@@ -31,6 +31,7 @@ import {
 } from "@/components/home/Icons";
 import { folderColor } from "@/lib/folder-color";
 import { clipKind } from "@/lib/clip-kind";
+import { TRANSLATION_LANG_PREF_KEY } from "@/lib/pipeline/languages";
 
 import "./home.css";
 
@@ -146,10 +147,20 @@ export default function HomePage() {
     setImportError(null);
 
     try {
+      // YouTube import pulls the English caption track, so only the translation
+      // target is user-selectable — carry the Settings → Language preference.
+      let targetLang: string | undefined;
+      try {
+        targetLang =
+          localStorage.getItem(TRANSLATION_LANG_PREF_KEY) ?? undefined;
+      } catch {
+        targetLang = undefined;
+      }
+
       const resp = await fetch("/api/youtube/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: trimmedUrl }),
+        body: JSON.stringify({ url: trimmedUrl, targetLang }),
       });
 
       const data = await resp.json();

@@ -1,36 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { AUDIO_LANGUAGE, TRANSLATION_LANGUAGE } from "@/lib/pipeline/languages";
+import {
+  AUDIO_LANGUAGE,
+  AUDIO_LANGUAGE_OPTIONS,
+  AUDIO_LANG_PREF_KEY,
+  TRANSLATION_LANGUAGE,
+  TRANSLATION_LANGUAGE_OPTIONS,
+  TRANSLATION_LANG_PREF_KEY,
+} from "@/lib/pipeline/languages";
 
-// Language preference UI. NOTE: the pipeline currently reads a fixed pair from
-// languages.ts (eng → Korean), server-side. This tab lets the user pick and
-// SAVES the choice (localStorage for now); wiring it into the pipeline is
-// Phase 3 work (per-video source_lang/target_lang, per the ver2.0 phase-0
-// plan). Until then this records intent and shows the current default.
+// Language preference UI. The chosen pair is saved to localStorage and read as
+// the DEFAULT in the upload form, which sends it per clip to the pipeline
+// (migration 011 → jobs.source_lang/target_lang). A clip's pair is fixed at
+// upload time; changing this preference only affects clips uploaded afterward.
 
-const AUDIO_OPTIONS: { code: string; name: string }[] = [
-  { code: "eng", name: "English" },
-  { code: "spa", name: "Spanish" },
-  { code: "fra", name: "French" },
-  { code: "deu", name: "German" },
-  { code: "jpn", name: "Japanese" },
-  { code: "kor", name: "Korean" },
-  { code: "cmn", name: "Chinese (Mandarin)" },
-];
-
-const TRANSLATION_OPTIONS: string[] = [
-  "Korean",
-  "English",
-  "Japanese",
-  "Spanish",
-  "French",
-  "German",
-  "Chinese",
-];
-
-const AUDIO_KEY = "sp:pref:audioLang";
-const TRANSLATION_KEY = "sp:pref:translationLang";
+const AUDIO_OPTIONS = AUDIO_LANGUAGE_OPTIONS;
+const TRANSLATION_OPTIONS = TRANSLATION_LANGUAGE_OPTIONS;
+const AUDIO_KEY = AUDIO_LANG_PREF_KEY;
+const TRANSLATION_KEY = TRANSLATION_LANG_PREF_KEY;
 
 function readPref(key: string, fallback: string): string {
   try {
@@ -115,8 +103,8 @@ export default function LanguagePanel() {
       {saved && <p className="set-saved">Saved</p>}
 
       <p className="set-note">
-        Saved as your preference. New clips use the default pair (English →
-        Korean) until per-clip language support ships.
+        Saved as your default. New clips you upload use this pair; you can still
+        change it per upload. Existing clips keep the pair they were made with.
       </p>
     </div>
   );

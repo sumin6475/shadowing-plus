@@ -8,7 +8,10 @@ import {
   fixTiming,
   regroupSentences,
 } from "@/lib/pipeline/postprocess";
+import { TRANSLATION_LANGUAGE_OPTIONS } from "@/lib/pipeline/languages";
 import type { PipelineSegment } from "@/lib/types";
+
+const TARGET_NAMES = new Set<string>(TRANSLATION_LANGUAGE_OPTIONS);
 
 export const maxDuration = 60;
 
@@ -314,10 +317,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const { url } = await req.json();
+    const { url, targetLang } = await req.json();
     if (!url) {
       return NextResponse.json({ error: "Missing YouTube URL" }, { status: 400 });
     }
+    // YouTube import always pulls the English caption track (see track
+    // selection below), so source stays English; only the translation target
+    // is user-selectable. Validate against the option list, else DB default.
+    const target =
+      typeof targetLang === "string" && TARGET_NAMES.has(targetLang)
+        ? targetLang
+        : undefined;
 
     const videoId = getYoutubeVideoId(url);
     if (!videoId) {
@@ -387,6 +397,9 @@ export async function POST(req: NextRequest) {
       media_type: "video",
       source_key: `youtube://${videoId}`,
       user_id: userId,
+      // source stays at the DB default (eng); only the translation target is
+      // user-selectable for YouTube imports.
+      target_lang: target,
     });
 
     // Write segments.json to R2

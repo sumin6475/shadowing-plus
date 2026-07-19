@@ -3,7 +3,7 @@ import { getJson, jobKey, putJson } from "@/lib/r2";
 import { getJob, updateJobProgress } from "./jobs";
 import { recordUsage } from "@/lib/usage";
 import type { PipelineSegment } from "@/lib/types";
-import { AUDIO_LANGUAGE, TRANSLATION_LANGUAGE } from "./languages";
+import { languagePairForJob, type LanguagePair } from "./languages";
 
 const MODEL = "gpt-4o-mini";
 /**
@@ -113,8 +113,10 @@ interface UsageCtx {
 async function profileVideo(
   openai: OpenAI,
   segments: PipelineSegment[],
+  pair: LanguagePair,
   ctx: UsageCtx,
 ): Promise<VideoProfile> {
+  const { sourceName, targetName } = pair;
   const sample =
     segments.length <= 60
       ? segments.map((s) => s.text).join(" ")
@@ -124,17 +126,26 @@ async function profileVideo(
           ...segments.slice(-30).map((s) => s.text),
         ].join(" ");
 
-  const prompt = `You will profile a video transcript so that a translator can render it naturally into ${TRANSLATION_LANGUAGE}. Read the transcript and infer the following.
+  // Korean has explicit speech levels (해요체/합쇼체/반말) with no clean
+  // equivalent in most other target languages, so the register guidance is
+  // Korean-specific. For any other target we give language-neutral guidance
+  // and let the model pick the natural register — never leak Korean terms.
+  const registerHint =
+    targetName === "Korean"
+      ? `For Korean output, name the speech level explicitly (해요체 / 합쇼체 / 반말 / 혼합) and the overall tone (conversational, formal, lecturing, intimate, journalistic, etc.). Do NOT default to polite Korean — match what fits the genre and audience. E.g. friends chatting in a sitcom → 반말; a news anchor → 합쇼체; a TED speaker → 해요체 with formal-lecture tone.`
+      : `Name the register/formality level natural for ${targetName} (e.g. formal vs. casual, and the equivalent politeness distinctions ${targetName} makes) and the overall tone (conversational, formal, lecturing, intimate, journalistic, etc.). Match what fits the genre and audience rather than defaulting to a polite register.`;
 
-Transcript (${AUDIO_LANGUAGE.name}):
+  const prompt = `You will profile a video transcript so that a translator can render it naturally into ${targetName}. Read the transcript and infer the following.
+
+Transcript (${sourceName}):
 ${sample}
 
 Return JSON with these fields:
 - "context": one or two sentences describing the setting, situation, and who is speaking to whom.
 - "genre": a short label for the video type (e.g. "talk show interview", "TED talk", "scripted drama dialogue", "documentary narration", "news report", "vlog monologue", "podcast conversation"). Be specific.
-- "register": one sentence telling the translator what default register/tone to use in ${TRANSLATION_LANGUAGE}, based on the speaker's relationship to the audience. For Korean output, name the speech level explicitly (해요체 / 합쇼체 / 반말 / 혼합) and the overall tone (conversational, formal, lecturing, intimate, journalistic, etc.). Do NOT default to polite Korean — match what fits the genre and audience. E.g. friends chatting in a sitcom → 반말; a news anchor → 합쇼체; a TED speaker → 해요체 with formal-lecture tone.
+- "register": one sentence telling the translator what default register/tone to use in ${targetName}, based on the speaker's relationship to the audience. ${registerHint}
 - "named_entities": array of proper nouns to preserve verbatim (people, brands, places, fictional names, song titles). Include nicknames or placeholder names if the speaker flags them as such (e.g. "Brandon, which is not his name").
-- "domain_terms": array of domain-specific words or idioms where a literal translation would mislead, paired with the contextual gloss in ${TRANSLATION_LANGUAGE}. Format each entry as "english_term → ${TRANSLATION_LANGUAGE}_gloss". Include only terms that actually appear in the transcript. Examples: "work in (gym) → (기구) 같이 쓰다", "hit on (someone) → ~한테 수작 걸다", "the floor (legislature) → 본회의장".
+- "domain_terms": array of domain-specific words or idioms where a literal translation would mislead, paired with the contextual gloss in ${targetName}. Format each entry as "source_term → ${targetName}_gloss". Include only terms that actually appear in the transcript. Examples: "work in (gym) → (기구) 같이 쓰다", "hit on (someone) → ~한테 수작 걸다", "the floor (legislature) → 본회의장".
 
 Output JSON only, no commentary.`;
 
@@ -194,7 +205,8 @@ Output JSON only, no commentary.`;
  * automatic prompt caching discounts these tokens on calls 2..N. Only the
  * per-batch context + segment list (the user message) varies.
  */
-function buildSystemPrompt(profile: VideoProfile): string {
+function buildSystemPrompt(profile: VideoProfile, pair: LanguagePair): string {
+  const { sourceName, targetName } = pair;
   const entities = profile.named_entities.length
     ? profile.named_entities.join(", ")
     : "(none identified)";
@@ -202,22 +214,31 @@ function buildSystemPrompt(profile: VideoProfile): string {
     ? profile.domain_terms.map((t) => `  - ${t}`).join("\n")
     : "  (none identified)";
 
-  return `You are translating ${AUDIO_LANGUAGE.name} into ${TRANSLATION_LANGUAGE} for language learners. Produce translations that sound like a native ${TRANSLATION_LANGUAGE} speaker naturally re-telling what was said — never a word-by-word conversion.
+  // Principle 5's inner-monologue example is written in Korean plain-form
+  // verbs, so it only helps a Korean target. For other targets, keep the
+  // general rule (mark quoted voice via the target language's conventions)
+  // without the Korean-specific illustration.
+  const voiceWithinVoice =
+    targetName === "Korean"
+      ? `**Voice within voice (quoted speech and inner monologue).** When the speaker quotes someone else, their past self, or a hypothetical voice, mark the quotation clearly using ${targetName}'s natural conventions (quotation marks, reporting verbs, or speech-level shifts). For Korean specifically: when narration is polite and the quoted inner-thought is casual, using a plain-form verb inside quotes (그래, ~지, ~다고) often reads more naturally than forcing polite form throughout — but only if the source clearly signals an inward shift.`
+      : `**Voice within voice (quoted speech and inner monologue).** When the speaker quotes someone else, their past self, or a hypothetical voice, mark the quotation clearly using ${targetName}'s natural conventions (quotation marks, reporting verbs, or register/formality shifts) — especially when a polite narration frames a casual inner thought.`;
+
+  return `You are translating ${sourceName} into ${targetName} for language learners. Produce translations that sound like a native ${targetName} speaker naturally re-telling what was said — never a word-by-word conversion.
 
 ## Video profile (applies to every line in this video)
 - Context: ${profile.context || "(no context inferred)"}
 - Genre: ${profile.genre || "(unspecified)"}
-- Register to use: ${profile.register || `default to natural conversational ${TRANSLATION_LANGUAGE}`}
+- Register to use: ${profile.register || `default to natural conversational ${targetName}`}
 - Named entities to preserve: ${entities}
 - Domain terms (use the gloss, not the literal meaning):
 ${terms}
 
 ## General translation principles
-1. **Natural target-language word order.** Restructure freely. Do not preserve source sentence structure if it sounds unnatural in ${TRANSLATION_LANGUAGE}.
-2. **Register consistency.** Follow the "Register to use" above throughout the batch. Do not drift between speech levels mid-segment unless the source clearly switches voice (see principle 5).
+1. **Natural target-language word order.** Restructure freely. Do not preserve source sentence structure if it sounds unnatural in ${targetName}.
+2. **Register consistency.** Follow the "Register to use" above throughout the batch. Do not drift between registers mid-segment unless the source clearly switches voice (see principle 5).
 3. **Discourse markers.** Convert filler words idiomatically rather than dropping them. They carry tone. Choose target-language equivalents that fit the genre and register from the profile.
 4. **Self-corrections and stutters.** Render the speaker's intended meaning smoothly. Do not transcribe stutter marks like "th-" or "m-" into the translation.
-5. **Voice within voice (quoted speech and inner monologue).** When the speaker quotes someone else, their past self, or a hypothetical voice, mark the quotation clearly using ${TRANSLATION_LANGUAGE}'s natural conventions (quotation marks, reporting verbs, or speech-level shifts). For Korean specifically: when narration is polite and the quoted inner-thought is casual, using a plain-form verb inside quotes (그래, ~지, ~다고) often reads more naturally than forcing polite form throughout — but only if the source clearly signals an inward shift.
+5. ${voiceWithinVoice}
 6. **Cultural and idiomatic references.** Translate the meaning, not the surface form. Keep culturally specific names (Thor's trainer, The Avengers) but add a connector if needed so the target-language sentence flows.
 7. **Disambiguation via context.** Use the surrounding sentences and the video profile to pick the right sense of polysemous words. Always prefer the domain-appropriate reading over the most common dictionary meaning.
 8. **Audience interjections.** If the transcript embeds an off-speaker interjection (e.g. "(Right.)" from a host), keep it in parentheses in the translation.
@@ -226,7 +247,7 @@ ${terms}
 Return one object per input segment, each tagged with its source number "n" (the number shown before the segment). Every input number must appear EXACTLY once — do not reorder, skip, or merge segments. Even if two adjacent segments form one sentence, translate each on its own line by splitting the sentence across them. If a segment is a single filler word, translate that filler word — do not return an empty string.
 {
   "segments": [
-    { "n": 1, "translation": "natural ${TRANSLATION_LANGUAGE} translation here" }
+    { "n": 1, "translation": "natural ${targetName} translation here" }
   ]
 }`;
 }
@@ -373,11 +394,15 @@ export async function stage4Translate(jobId: string): Promise<void> {
     userId: job?.user_id ?? null,
     label: job?.title ?? null,
   };
+  // Per-clip language pair (migration 011); falls back to eng → Korean for
+  // pre-011 jobs. This is what makes the prompts translate into the chosen
+  // target instead of the old hard-coded Korean.
+  const pair = languagePairForJob(job ?? {});
 
   // ── Step A: one-shot video profile ──────────────────────────
-  const profile = await profileVideo(openai, segments, usageCtx);
+  const profile = await profileVideo(openai, segments, pair, usageCtx);
   await updateJobProgress(jobId, "translate", 5);
-  const systemPrompt = buildSystemPrompt(profile);
+  const systemPrompt = buildSystemPrompt(profile, pair);
 
   // ── Step B: build batches, then translate them concurrently ──
   const batches: Batch[] = [];

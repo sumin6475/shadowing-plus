@@ -47,6 +47,11 @@ export async function stage5Persist(jobId: string): Promise<string> {
       // be set explicitly (DEFAULT auth.uid() won't fire without a session).
       // Segments inherit ownership via a traversal RLS policy over videos.
       user_id: job.user_id,
+      // Carry the per-clip language pair (migration 011) onto the finished clip
+      // so the library/player know how it was processed. Null on pre-011 jobs;
+      // the videos columns default to eng → Korean in that case.
+      source_lang: job.source_lang,
+      target_lang: job.target_lang,
     })
     .select()
     .single();

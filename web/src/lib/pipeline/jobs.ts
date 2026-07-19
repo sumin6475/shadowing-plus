@@ -32,6 +32,10 @@ export async function createJob(input: {
   // Owner. Required post-auth: the service key can't rely on DEFAULT auth.uid(),
   // so the creating route passes the verified session user id explicitly.
   user_id: string;
+  // Per-clip language pair (migration 011). Omit to accept the DB default
+  // (eng → Korean), which keeps older callers and un-specified uploads working.
+  source_lang?: string;
+  target_lang?: string;
 }): Promise<Job> {
   const { data, error } = await supabaseAdmin()
     .from(TABLE)
@@ -40,6 +44,9 @@ export async function createJob(input: {
       media_type: input.media_type,
       source_key: input.source_key,
       user_id: input.user_id,
+      // Only set when provided so the column DEFAULT covers the omitted case.
+      ...(input.source_lang ? { source_lang: input.source_lang } : {}),
+      ...(input.target_lang ? { target_lang: input.target_lang } : {}),
       status: "pending",
       progress: 0,
     })

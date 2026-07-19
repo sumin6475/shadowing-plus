@@ -5,30 +5,15 @@ import {
   putJson,
 } from "@/lib/r2";
 import type { PipelineSegment, PipelineWord } from "@/lib/types";
-import { AUDIO_LANGUAGE } from "./languages";
+import { languagePairForJob } from "./languages";
+import { pickAsrProvider } from "@/lib/asr/provider";
+import type { AsrWord } from "@/lib/asr/types";
 import { recordUsage } from "@/lib/usage";
-
-const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/speech-to-text";
-const ELEVENLABS_MODEL_ID = "scribe_v2";
 
 const GAP_SPLIT_SEC = 1.0;
 const MAX_SEGMENT_DURATION_SEC = 30.0;
 const SENTENCE_END_PUNCT = new Set([".", "!", "?", "…"]);
 const TRAILING_QUOTES = "\"')]}»”’";
-
-interface ElevenLabsWord {
-  text: string;
-  start: number | null;
-  end: number | null;
-  type?: "word" | "spacing" | "audio_event";
-}
-
-interface ElevenLabsResponse {
-  text: string;
-  language_code: string;
-  words: ElevenLabsWord[];
-  audio_duration_secs?: number;
-}
 
 interface RawTranscript {
   audio_duration_secs: number | null;
@@ -50,7 +35,7 @@ function endsSentence(word: string): boolean {
   return SENTENCE_END_PUNCT.has(stripped.slice(-1));
 }
 
-function groupWordsIntoSegments(raw: ElevenLabsWord[]): PipelineSegment[] {
+function groupWordsIntoSegments(raw: AsrWord[]): PipelineSegment[] {
   // Filter + attach punctuation-only entries to previous word.
   const clean: PipelineWord[] = [];
   for (const w of raw) {
@@ -126,39 +111,14 @@ function groupWordsIntoSegments(raw: ElevenLabsWord[]): PipelineSegment[] {
   return segments;
 }
 
-async function callElevenLabs(
-  audioUrl: string,
-  apiKey: string,
-): Promise<ElevenLabsResponse> {
-  const body = new FormData();
-  body.set("model_id", ELEVENLABS_MODEL_ID);
-  body.set("timestamps_granularity", "word");
-  body.set("language_code", AUDIO_LANGUAGE.code);
-  body.set("tag_audio_events", "false");
-  body.set("diarize", "false");
-  body.set("cloud_storage_url", audioUrl);
-
-  const resp = await fetch(ELEVENLABS_API_URL, {
-    method: "POST",
-    headers: { "xi-api-key": apiKey },
-    body,
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`ElevenLabs ${resp.status}: ${errText.slice(0, 500)}`);
-  }
-  return resp.json() as Promise<ElevenLabsResponse>;
-}
-
 /**
- * Stage 2: Cloud transcription via ElevenLabs Scribe v2.
- * Reads audio from R2 (via signed URL fed to ElevenLabs' cloud_storage_url),
- * groups the returned word stream into segments, and writes raw_transcript.json.
+ * Stage 2: Cloud transcription. The source language (migration 011) selects the
+ * provider — zh/ja → ElevenLabs Scribe, everything else → Groq Whisper (see
+ * pickAsrProvider). Reads audio from R2 via a signed URL, groups the returned
+ * word stream into segments, and writes raw_transcript.json. Grouping is shared
+ * across providers so segmentation behaves identically regardless of backend.
  */
 export async function stage2Transcribe(jobId: string): Promise<void> {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not set");
-
   const job = await getJob(jobId);
   if (!job) throw new Error(`Job ${jobId} not found`);
   await updateJobProgress(jobId, "transcribe", 0);
@@ -166,22 +126,26 @@ export async function stage2Transcribe(jobId: string): Promise<void> {
   const audioUrl = await getSignedDownloadUrl(audioKeyFor(job), 3600);
   await updateJobProgress(jobId, "transcribe", 10);
 
-  const data = await callElevenLabs(audioUrl, apiKey);
+  const { sourceCode } = languagePairForJob(job);
+  const provider = pickAsrProvider(sourceCode);
+  const data = await provider.transcribe(audioUrl, sourceCode);
   await updateJobProgress(jobId, "transcribe", 80);
 
   await recordUsage({
     jobId,
     userId: job.user_id,
     label: job.title,
-    provider: "elevenlabs",
-    model: ELEVENLABS_MODEL_ID,
+    // Record which backend actually ran so the cost report attributes spend
+    // correctly (Scribe and Groq have very different unit prices).
+    provider: provider.name === "scribe" ? "elevenlabs" : "groq",
+    model: provider.name === "scribe" ? "scribe_v2" : "whisper-large-v3",
     kind: "transcribe",
-    audioSeconds: data.audio_duration_secs ?? 0,
+    audioSeconds: data.audioDurationSecs ?? 0,
   });
 
   const segments = groupWordsIntoSegments(data.words ?? []);
   const out: RawTranscript = {
-    audio_duration_secs: data.audio_duration_secs ?? null,
+    audio_duration_secs: data.audioDurationSecs ?? null,
     segments,
   };
   await putJson(jobKey(jobId, "raw_transcript.json"), out);

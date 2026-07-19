@@ -18,6 +18,11 @@ export const OPENAI_PRICING: Record<
 /** Estimated ElevenLabs Scribe cost per minute of audio (USD). */
 export const ELEVENLABS_USD_PER_MINUTE = 0.4 / 60; // ~$0.40/hour estimate
 
+/** Estimated Groq Whisper large-v3 cost per minute of audio (USD).
+ *  Groq bills whisper-large-v3 at ~$0.111/hour of audio — an order of
+ *  magnitude under Scribe, which is the whole point of routing to it. */
+export const GROQ_USD_PER_MINUTE = 0.111 / 60;
+
 export function openaiCostUsd(
   model: string,
   inputTokens: number,
@@ -35,6 +40,10 @@ export function elevenlabsCostUsd(audioSeconds: number): number {
   return (audioSeconds / 60) * ELEVENLABS_USD_PER_MINUTE;
 }
 
+export function groqCostUsd(audioSeconds: number): number {
+  return (audioSeconds / 60) * GROQ_USD_PER_MINUTE;
+}
+
 export interface RecordUsageInput {
   jobId?: string | null;
   // Owner (migration 008). Denormalized onto usage_events so per-user spend
@@ -42,7 +51,7 @@ export interface RecordUsageInput {
   // callers don't break, but the pipeline always passes it.
   userId?: string | null;
   label?: string | null;
-  provider: "openai" | "elevenlabs";
+  provider: "openai" | "elevenlabs" | "groq";
   model: string;
   kind: string;
   inputTokens?: number;
@@ -63,7 +72,9 @@ export async function recordUsage(input: RecordUsageInput): Promise<void> {
     const cost =
       input.provider === "openai"
         ? openaiCostUsd(input.model, inputTokens, outputTokens)
-        : elevenlabsCostUsd(audioSeconds);
+        : input.provider === "groq"
+          ? groqCostUsd(audioSeconds)
+          : elevenlabsCostUsd(audioSeconds);
 
     const { error } = await supabaseAdmin()
       .from("usage_events")
