@@ -39,7 +39,12 @@ interface UsageSummary {
   monthCost: number;
   eventCount: number;
   tokens: { input: number; output: number; total: number };
-  providers: { openai: ProviderOpenAI; elevenlabs: ProviderEleven };
+  // Groq shares ElevenLabs' shape (audio-duration billed, no tokens).
+  providers: {
+    openai: ProviderOpenAI;
+    elevenlabs: ProviderEleven;
+    groq: ProviderEleven;
+  };
   byMonth: { month: string; cost: number }[];
   recent: RecentEvent[];
 }
@@ -91,7 +96,15 @@ function relTime(iso: string): string {
 const PROVIDER_LABEL: Record<string, string> = {
   openai: "OpenAI",
   elevenlabs: "ElevenLabs",
+  groq: "Groq",
 };
+
+// Colored dot per provider in the recent-activity table.
+function providerDot(provider: string): string {
+  if (provider === "openai") return "openai";
+  if (provider === "groq") return "groq";
+  return "eleven";
+}
 const KIND_LABEL: Record<string, string> = {
   translate: "Translate",
   profile: "Profile",
@@ -247,17 +260,35 @@ export default function UsagePanel() {
             <span>gpt-4o-mini</span>
           </div>
         </div>
-        <div className="usage-prov">
-          <div className="usage-prov-head">
-            <span className="usage-dot eleven" /> ElevenLabs · Transcription
+        {/* Transcription is routed per language: Groq (whisper-large-v3) for
+            most, ElevenLabs Scribe for zh/ja. Show each card only when it has
+            spend so a dormant provider isn't a permanent $0.00 row. */}
+        {providers.groq.calls > 0 && (
+          <div className="usage-prov">
+            <div className="usage-prov-head">
+              <span className="usage-dot groq" /> Groq · Transcription
+            </div>
+            <div className="usage-prov-cost">{usd(providers.groq.cost)}</div>
+            <div className="usage-prov-meta">
+              <span>{duration(providers.groq.audioSeconds)} audio</span>
+              <span>{num(providers.groq.calls)} calls</span>
+              <span>whisper-large-v3 (est.)</span>
+            </div>
           </div>
-          <div className="usage-prov-cost">{usd(providers.elevenlabs.cost)}</div>
-          <div className="usage-prov-meta">
-            <span>{duration(providers.elevenlabs.audioSeconds)} audio</span>
-            <span>{num(providers.elevenlabs.calls)} calls</span>
-            <span>scribe_v2 (est.)</span>
+        )}
+        {providers.elevenlabs.calls > 0 && (
+          <div className="usage-prov">
+            <div className="usage-prov-head">
+              <span className="usage-dot eleven" /> ElevenLabs · Transcription
+            </div>
+            <div className="usage-prov-cost">{usd(providers.elevenlabs.cost)}</div>
+            <div className="usage-prov-meta">
+              <span>{duration(providers.elevenlabs.audioSeconds)} audio</span>
+              <span>{num(providers.elevenlabs.calls)} calls</span>
+              <span>scribe_v2 (est.)</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {data.byMonth.length > 0 && (
@@ -325,8 +356,8 @@ export default function UsagePanel() {
                   {r.label ?? "(deleted clip)"}
                 </span>
                 <span className="usage-td-kind">
-                  <span className={"usage-dot " + (r.provider === "openai" ? "openai" : "eleven")} />
-                  {PROVIDER_LABEL[r.provider]} · {KIND_LABEL[r.kind] ?? r.kind}
+                  <span className={"usage-dot " + providerDot(r.provider)} />
+                  {PROVIDER_LABEL[r.provider] ?? r.provider} · {KIND_LABEL[r.kind] ?? r.kind}
                 </span>
                 <span className="ta-r usage-mono">
                   {r.provider === "openai" ? `${num(r.totalTokens)} tok` : duration(r.audioSeconds)}

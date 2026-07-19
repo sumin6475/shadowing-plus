@@ -10,7 +10,7 @@ interface UsageRow {
   id: string;
   job_id: string | null;
   label: string | null;
-  provider: "openai" | "elevenlabs";
+  provider: "openai" | "elevenlabs" | "groq";
   model: string;
   kind: string;
   input_tokens: number;
@@ -62,6 +62,7 @@ export async function GET() {
     const providers = {
       openai: { cost: 0, inputTokens: 0, outputTokens: 0, calls: 0 },
       elevenlabs: { cost: 0, audioSeconds: 0, calls: 0 },
+      groq: { cost: 0, audioSeconds: 0, calls: 0 },
     };
 
     const byMonthMap = new Map<string, number>();
@@ -91,6 +92,10 @@ export async function GET() {
         providers.openai.calls += 1;
         inputTokens += inTok;
         outputTokens += outTok;
+      } else if (r.provider === "groq") {
+        providers.groq.cost += cost;
+        providers.groq.audioSeconds += audio;
+        providers.groq.calls += 1;
       } else {
         providers.elevenlabs.cost += cost;
         providers.elevenlabs.audioSeconds += audio;
