@@ -92,3 +92,27 @@ describe("removeHallucinations: combined", () => {
     expect(removeHallucinations(input)).toEqual(input);
   });
 });
+
+describe("removeHallucinations: non-Latin source", () => {
+  it("keeps non-Latin segments when dropNonLatin is false", () => {
+    const input: PipelineSegment[] = [
+      { text: "私は学生です。", start: 0, end: 1 },
+      { text: "今日は暑いです。", start: 1, end: 2 },
+    ];
+    const out = removeHallucinations(input, { dropNonLatin: false });
+    expect(out.map((s) => s.text)).toEqual([
+      "私は学生です。",
+      "今日は暑いです。",
+    ]);
+  });
+
+  it("still drops non-Latin by default (Latin source)", () => {
+    const input: PipelineSegment[] = [
+      { text: "안녕하세요", start: 0, end: 1 },
+      { text: "Hello there", start: 1, end: 2 },
+    ];
+    expect(removeHallucinations(input).map((s) => s.text)).toEqual([
+      "Hello there",
+    ]);
+  });
+});

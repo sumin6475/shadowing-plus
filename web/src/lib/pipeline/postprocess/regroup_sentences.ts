@@ -1,6 +1,6 @@
 import type { PipelineSegment, PipelineWord } from "@/lib/types";
+import { SENTENCE_END_PUNCT, joinWords } from "../text";
 
-const SENTENCE_END_PUNCT = new Set([".", "!", "?", "…"]);
 const ABBREVIATIONS = new Set([
   "mr", "mrs", "ms", "dr", "st", "jr", "sr",
   "vs", "etc", "i.e", "e.g", "u.s", "u.k",
@@ -148,10 +148,7 @@ export function regroupSentences(
 
   const flush = () => {
     if (current.length === 0) return;
-    const text = current
-      .map((w) => w.word.trim())
-      .filter(Boolean)
-      .join(" ");
+    const text = joinWords(current.map((w) => w.word));
     if (!text) {
       current = [];
       return;

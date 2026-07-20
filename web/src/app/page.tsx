@@ -108,7 +108,6 @@ export default function LandingPage() {
           <div className="nav-links">
             <a href="#features">Features</a>
             <a href="#how">How it works</a>
-            <a href="#pricing">Pricing</a>
             <Link href={APP}>Library</Link>
           </div>
           <div className="nav-right">
@@ -130,7 +129,10 @@ export default function LandingPage() {
       {/* HERO */}
       <header className="hero" id="top">
         <div className="wrap">
-          <span className="kicker"><span className="bar" />Shadowing, anytime</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span className="kicker"><span className="bar" />Shadowing, anytime</span>
+            <span className="beta-tag">Beta</span>
+          </div>
           <h1 className="serif">
             Shadow it.<br />
             <span className="em">Until you own it.</span>
@@ -398,48 +400,14 @@ export default function LandingPage() {
       <section className="sec" id="pricing" style={{ background: "var(--bg-elev)", borderBlock: "1px solid var(--hairline-soft)" }}>
         <div className="wrap">
           <div className="sec-head center rv">
-            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />Pricing</span>
-            <h2 className="serif">Simple plans for serious practice</h2>
-            <p>Start free and stay free for solo practice. Upgrade only when you want more clips and review power.</p>
-          </div>
-          <div className="price-grid">
-            <div className="plan rv">
-              <div className="plan-name">Solo</div>
-              <div className="plan-desc">For daily personal shadowing.</div>
-              <div className="plan-price">Free</div>
-              <Link href={primaryHref} className="btn">{primaryLabel}</Link>
-              <ul className="plan-feats">
-                <li><Check />Up to 20 clips</li>
-                <li><Check />Sentence A–B loop &amp; speed</li>
-                <li><Check />Bookmarks &amp; daily review</li>
-                <li><Check />Light &amp; dark themes</li>
-              </ul>
+            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />Open beta</span>
+            <h2 className="serif">Free while in beta</h2>
+            <p>Shadowing+ is in open beta, so every feature is free while it&rsquo;s being built out. No plans, no card — just practice. Paid tiers may come later.</p>
+            <div className="hero-cta" style={{ justifyContent: "center", marginTop: 24 }}>
+              <Link href={primaryHref} className="btn primary lg">{primaryLabel}</Link>
+              <a href="#how" className="btn lg">See how it works</a>
             </div>
-            <div className="plan feat-plan rv">
-              <span className="plan-badge">Most popular</span>
-              <div className="plan-name">Plus</div>
-              <div className="plan-desc">For committed learners going deep.</div>
-              <div className="plan-price">$8<span className="per">/mo</span></div>
-              <Link href={primaryHref} className="btn primary">Get Plus</Link>
-              <ul className="plan-feats">
-                <li><Check />Unlimited clips &amp; folders</li>
-                <li><Check />Advanced spaced repetition</li>
-                <li><Check />Progress &amp; streak stats</li>
-                <li><Check />Offline practice</li>
-              </ul>
-            </div>
-            <div className="plan rv">
-              <div className="plan-name">Teams</div>
-              <div className="plan-desc">For tutors &amp; study groups.</div>
-              <div className="plan-price">$20<span className="per">/mo</span></div>
-              <Link href={LOGIN} className="btn">Contact us</Link>
-              <ul className="plan-feats">
-                <li><Check />Everything in Plus</li>
-                <li><Check />Shared clip libraries</li>
-                <li><Check />Assign drills to learners</li>
-                <li><Check />Learner progress dashboard</li>
-              </ul>
-            </div>
+            <p className="hero-note">No card required</p>
           </div>
         </div>
       </section>
@@ -472,7 +440,6 @@ export default function LandingPage() {
               <h5>Product</h5>
               <a href="#features">Features</a>
               <a href="#how">How it works</a>
-              <a href="#pricing">Pricing</a>
               <Link href={APP}>Library</Link>
             </div>
             <div className="foot-col">
@@ -486,8 +453,8 @@ export default function LandingPage() {
               <h5>Company</h5>
               <a href="#">About</a>
               <a href="#">Contact</a>
-              <a href="#">Privacy</a>
-              <a href="#">Terms</a>
+              <Link href="/privacy">Privacy</Link>
+              <Link href="/terms">Terms</Link>
             </div>
           </div>
           <div className="foot-bot">

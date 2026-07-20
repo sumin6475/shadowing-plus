@@ -1251,6 +1251,63 @@
   margin-bottom: 4px;
 }
 
+/* First-run onboarding — shown in the library only when the account has no
+   clips at all (a truly new user), not for empty folders or filters. */
+.home-app .onboard { text-align: center; padding: 32px 0 8px; }
+.home-app .onboard-title {
+  font-family: var(--home-font-serif);
+  font-size: 24px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+.home-app .onboard-sub {
+  font-size: 13.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+  max-width: 30rem;
+  margin: 0 auto 26px;
+}
+.home-app .onboard-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto 26px;
+  display: grid;
+  gap: 12px;
+  max-width: 30rem;
+  text-align: left;
+}
+.home-app .onboard-steps li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+}
+.home-app .onboard-num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-family: var(--home-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-app .onboard-step b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 2px;
+}
+.home-app .onboard-step span { font-size: 13px; color: var(--text-3); line-height: 1.55; }
+
 /* ─── New folder modal ─────────────────────────────────── */
 
 .home-app .nf-backdrop {

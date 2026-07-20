@@ -130,13 +130,21 @@ function removeNonEnglish(segments: PipelineSegment[]): PipelineSegment[] {
 }
 
 /**
- * Combined hallucination filter: non-English drop followed by
- * repetition-loop detection. Runs as a single post-processing step.
+ * Combined hallucination filter: non-Latin drop followed by repetition-loop
+ * detection. Runs as a single post-processing step.
+ *
+ * `dropNonLatin` (default true) removes mostly-non-Latin segments — correct
+ * when the source language is Latin-script (they're hallucinated foreign-script
+ * noise). It MUST be false when the source itself is non-Latin (Japanese,
+ * Korean, Chinese), or this would delete the entire legitimate transcript.
  */
 export function removeHallucinations(
   segments: PipelineSegment[],
+  opts: { dropNonLatin?: boolean } = {},
 ): PipelineSegment[] {
-  return detectHallucinations(removeNonEnglish(segments));
+  const { dropNonLatin = true } = opts;
+  const scoped = dropNonLatin ? removeNonEnglish(segments) : segments;
+  return detectHallucinations(scoped);
 }
 
 // Exposed for tests and debugging.

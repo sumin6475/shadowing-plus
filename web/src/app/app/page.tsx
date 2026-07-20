@@ -883,10 +883,61 @@ export default function HomePage() {
             {loading ? (
               <p className="empty">Loading…</p>
             ) : visibleVideos.length === 0 ? (
-              <div className="empty">
-                <div className="empty-title">No clips here yet</div>
-                <div>Drop a file above to start shadowing.</div>
-              </div>
+              videos.length === 0 ? (
+                <div className="onboard">
+                  <div className="onboard-title">
+                    Welcome — let&rsquo;s shadow your first clip
+                  </div>
+                  <p className="onboard-sub">
+                    Drop a video or audio file above, or press &ldquo;Add
+                    clip.&rdquo; Here&rsquo;s the loop you&rsquo;ll fall into:
+                  </p>
+                  <ol className="onboard-steps">
+                    <li>
+                      <span className="onboard-num">1</span>
+                      <div className="onboard-step">
+                        <b>Capture</b>
+                        <span>
+                          Add a clip — we auto-align the subtitles and add a
+                          translation.
+                        </span>
+                      </div>
+                    </li>
+                    <li>
+                      <span className="onboard-num">2</span>
+                      <div className="onboard-step">
+                        <b>Drill</b>
+                        <span>
+                          Loop a line, slow it down, hide the subtitle, and say
+                          it out loud.
+                        </span>
+                      </div>
+                    </li>
+                    <li>
+                      <span className="onboard-num">3</span>
+                      <div className="onboard-step">
+                        <b>Retain</b>
+                        <span>
+                          Bookmark the tricky lines — they come back in your
+                          daily review.
+                        </span>
+                      </div>
+                    </li>
+                  </ol>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => dropzoneRef.current?.pick()}
+                  >
+                    Add your first clip
+                  </button>
+                </div>
+              ) : (
+                <div className="empty">
+                  <div className="empty-title">No clips here yet</div>
+                  <div>Drop a file above to start shadowing.</div>
+                </div>
+              )
             ) : shownVideos.length === 0 ? (
               <div className="filter-empty">
                 <div className="fe-title">

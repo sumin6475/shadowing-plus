@@ -9,10 +9,10 @@ import { languagePairForJob } from "./languages";
 import { pickAsrProvider } from "@/lib/asr/provider";
 import type { AsrWord } from "@/lib/asr/types";
 import { recordUsage } from "@/lib/usage";
+import { SENTENCE_END_PUNCT, joinWords } from "./text";
 
 const GAP_SPLIT_SEC = 1.0;
 const MAX_SEGMENT_DURATION_SEC = 30.0;
-const SENTENCE_END_PUNCT = new Set([".", "!", "?", "…"]);
 const TRAILING_QUOTES = "\"')]}»”’";
 
 interface RawTranscript {
@@ -57,7 +57,7 @@ function groupWordsIntoSegments(raw: AsrWord[]): PipelineSegment[] {
 
   const flush = () => {
     if (cur.length === 0) return;
-    const text = cur.map((w) => w.word).join(" ").trim();
+    const text = joinWords(cur.map((w) => w.word));
     if (!text) {
       cur = [];
       return;

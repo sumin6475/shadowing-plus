@@ -4,6 +4,7 @@ import {
   AUDIO_LANGUAGE_OPTIONS,
   TRANSLATION_LANGUAGE_OPTIONS,
 } from "@/lib/pipeline/languages";
+import { checkClipQuota } from "@/lib/quota";
 import { getSignedUploadUrl, jobKey } from "@/lib/r2";
 import { getSessionUserId } from "@/lib/supabase-server";
 import type { MediaType } from "@/lib/types";
@@ -33,6 +34,22 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Cost guardrail: cap clips per account before any job (= paid pipeline run)
+  // is created. Owners are exempt. See lib/quota.ts.
+  const quota = await checkClipQuota(userId);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        error: `You've reached the beta limit of ${quota.limit} clips. Delete one to add another.`,
+        code: "clip_limit",
+        count: quota.count,
+        limit: quota.limit,
+      },
+      { status: 429 },
+    );
+  }
+
   let body: UploadRequest;
   try {
     body = (await req.json()) as UploadRequest;

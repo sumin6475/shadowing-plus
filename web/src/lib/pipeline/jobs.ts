@@ -25,6 +25,22 @@ export async function listJobs(userId: string): Promise<Job[]> {
   return (data ?? []) as Job[];
 }
 
+// Count the clips that count against a user's quota: every job except failed
+// ones (a failed job produced no usable clip). Each of these represents a paid
+// pipeline run the user initiated, so this is the cost-guardrail input. Uses a
+// HEAD count so it doesn't pull rows. Pending jobs are included on purpose —
+// they're a potential pipeline run, so counting them errs toward protecting
+// cost (an abandoned pending row the reaper won't touch is the trade-off).
+export async function countActiveClips(userId: string): Promise<number> {
+  const { count, error } = await supabaseAdmin()
+    .from(TABLE)
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .neq("status", "failed");
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function createJob(input: {
   title: string;
   media_type: "video" | "audio";

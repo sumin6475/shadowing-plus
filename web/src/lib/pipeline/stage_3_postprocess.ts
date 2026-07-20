@@ -1,5 +1,6 @@
 import { getJson, jobKey, putJson } from "@/lib/r2";
-import { updateJobProgress } from "./jobs";
+import { getJob, updateJobProgress } from "./jobs";
+import { isLatinScriptLanguage, languagePairForJob } from "./languages";
 import {
   mergeDuplicates,
   dropEmpty,
@@ -28,6 +29,14 @@ export async function stage3Postprocess(jobId: string): Promise<void> {
   await updateJobProgress(jobId, "postprocess", 0);
   const raw = await getJson<RawTranscript>(jobKey(jobId, "raw_transcript.json"));
 
+  // Only drop non-Latin segments as hallucinations when the SOURCE is a
+  // Latin-script language. For a non-Latin source (Japanese/Korean/Chinese)
+  // that filter would delete the whole legitimate transcript.
+  const job = await getJob(jobId);
+  const dropNonLatin = job
+    ? isLatinScriptLanguage(languagePairForJob(job).sourceCode)
+    : true;
+
   const audioDuration = raw.audio_duration_secs ?? Number.POSITIVE_INFINITY;
   let segments = raw.segments;
 
@@ -43,7 +52,7 @@ export async function stage3Postprocess(jobId: string): Promise<void> {
   segments = regroupSentences(segments);
   await updateJobProgress(jobId, "postprocess", 75);
 
-  segments = removeHallucinations(segments);
+  segments = removeHallucinations(segments, { dropNonLatin });
   await updateJobProgress(jobId, "postprocess", 95);
 
   const out: PostprocessedTranscript = {

@@ -94,6 +94,11 @@ export function useUpload(onJobQueued: () => void): UseUpload {
           });
           if (!presignRes.ok) {
             const body = await presignRes.json().catch(() => ({}));
+            // The clip-limit 429 carries a user-ready message — show it as-is
+            // rather than wrapping it in the generic "Upload init failed" prefix.
+            if (presignRes.status === 429 && body.error) {
+              throw new Error(body.error);
+            }
             throw new Error(`Upload init failed: ${body.error ?? presignRes.status}`);
           }
           const { jobId, uploadUrl } = (await presignRes.json()) as {

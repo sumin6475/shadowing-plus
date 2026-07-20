@@ -73,6 +73,20 @@ export function audioLanguageName(code: string): string {
   return AUDIO_LANGUAGE_OPTIONS.find((o) => o.code === code)?.name ?? code;
 }
 
+// Source languages whose transcripts are NOT written in the Latin alphabet.
+// The English-era "drop non-Latin segments" hallucination rule
+// (removeNonEnglish) must be skipped for these — for a Japanese/Korean/Chinese
+// source it would delete the entire legitimate transcript.
+const NON_LATIN_SCRIPT_LANGS = new Set<string>([
+  "jpn", "kor", "cmn", "zho", "chi", "yue",
+]);
+
+/** Whether a source language is written in the Latin alphabet. Unknown codes
+ *  default to true (Latin), matching the app's Latin-first history. */
+export function isLatinScriptLanguage(code: string): boolean {
+  return !NON_LATIN_SCRIPT_LANGS.has(code);
+}
+
 /**
  * Resolve the language pair for a job/video row. Rows created before migration
  * 011 (or any upload that omitted the pair) have null columns and fall back to

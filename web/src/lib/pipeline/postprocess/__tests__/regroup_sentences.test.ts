@@ -112,6 +112,33 @@ describe("regroupSentences", () => {
     expect(out[0].end).toBeLessThanOrEqual(out[1].start);
   });
 
+  it("splits CJK sentences on 。 and joins tokens without spaces", () => {
+    const input: PipelineSegment[] = [
+      {
+        text: "私は学生です。今日は暑いです。",
+        start: 0,
+        end: 4,
+        words: [
+          { word: "私", start: 0, end: 0.3 },
+          { word: "は", start: 0.3, end: 0.6 },
+          { word: "学生", start: 0.6, end: 1.2 },
+          { word: "です", start: 1.2, end: 1.8 },
+          { word: "。", start: 1.8, end: 1.9 },
+          { word: "今日", start: 2.0, end: 2.6 },
+          { word: "は", start: 2.6, end: 2.9 },
+          { word: "暑い", start: 2.9, end: 3.5 },
+          { word: "です", start: 3.5, end: 3.9 },
+          { word: "。", start: 3.9, end: 4 },
+        ],
+      },
+    ];
+    const out = regroupSentences(input);
+    expect(out.map((s) => s.text)).toEqual([
+      "私は学生です。",
+      "今日は暑いです。",
+    ]);
+  });
+
   it("returns empty input unchanged", () => {
     expect(regroupSentences([])).toEqual([]);
   });

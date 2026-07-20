@@ -87,6 +87,7 @@
 .landing .mono { font-family: var(--lp-font-mono); }
 .landing .kicker { display: inline-flex; align-items: center; gap: 12px; font-family: var(--lp-font-mono); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-text); }
 .landing .kicker .bar { width: 26px; height: 1.5px; background: var(--accent); border-radius: 2px; opacity: .9; }
+.landing .beta-tag { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--hairline); font-family: var(--lp-font-mono); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
 
 /* buttons */
 .landing .btn { display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 20px; border-radius: var(--radius-pill); font-size: 15px; font-weight: 500; border: 1px solid var(--hairline); background: var(--surface); color: var(--text-2); transition: all .15s; cursor: pointer; white-space: nowrap; }

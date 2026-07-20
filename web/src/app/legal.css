@@ -1,0 +1,50 @@
+/* Shared styles for the standalone legal pages (/privacy, /terms). Public
+   routes (not gated by proxy.ts). Theme-aware via prefers-color-scheme so they
+   read well without depending on the app's manual theme toggle. */
+.legal {
+  min-height: 100vh;
+  background: #fbf9f4;
+  color: #2b2b2b;
+  padding: 64px 20px 96px;
+  font-family: var(--font-sans, "Inter", system-ui, sans-serif);
+}
+.legal-wrap { max-width: 720px; margin: 0 auto; }
+.legal-back {
+  display: inline-block;
+  margin-bottom: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #3a5da6;
+  text-decoration: none;
+}
+.legal-back:hover { text-decoration: underline; }
+.legal h1 {
+  font-family: var(--font-serif, "Source Serif 4", serif);
+  font-size: 2.25rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+}
+.legal-updated { color: #8a8a86; font-size: 13px; margin: 0 0 40px; }
+.legal h2 { font-size: 1.15rem; margin: 40px 0 12px; letter-spacing: -0.01em; }
+.legal p, .legal li { font-size: 15px; line-height: 1.7; color: #3d3d3a; }
+.legal ul { padding-left: 20px; margin: 12px 0; }
+.legal li { margin: 6px 0; }
+.legal a { color: #3a5da6; }
+.legal strong { color: #2b2b2b; }
+.legal-note {
+  margin-top: 48px;
+  padding: 16px 18px;
+  border: 1px solid #e6e2d8;
+  border-radius: 12px;
+  background: #f5f2ea;
+  font-size: 13px;
+  color: #6b6b66;
+}
+@media (prefers-color-scheme: dark) {
+  .legal { background: #16181d; color: #e6e6e3; }
+  .legal-updated { color: #8a8f99; }
+  .legal p, .legal li { color: #c7c9cf; }
+  .legal strong { color: #f0f0ee; }
+  .legal-back, .legal a { color: #8fa6d4; }
+  .legal-note { background: #1d2027; border-color: #2b2f38; color: #9aa0ab; }
+}
