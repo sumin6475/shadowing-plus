@@ -116,6 +116,10 @@ export default function PlayerPage({
   // the current state is meaningful and worth saving.
   const hasInteractedRef = useRef(false);
 
+  // Unflushed active-practice seconds (practice_sessions, migration 013).
+  // Persists across play/pause cycles so sub-threshold blips accumulate.
+  const practiceAccumRef = useRef(0);
+
   // Keep refs in sync
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -414,6 +418,32 @@ export default function PlayerPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
+
+  // Practice-time tracking → practice_sessions (migration 013). Accumulates
+  // wall-clock seconds while audio is playing and flushes them to the DB, so the
+  // Home dashboard can show real daily minutes + streak. Runs only while
+  // `playing`; the cleanup (pause / unmount / clip change) does a final flush.
+  // user_id is filled by the DB DEFAULT auth.uid() under RLS (same as bookmarks).
+  useEffect(() => {
+    if (!playing) return;
+    let windowStart = Date.now();
+    const flush = () => {
+      practiceAccumRef.current += (Date.now() - windowStart) / 1000;
+      windowStart = Date.now();
+      const secs = Math.round(practiceAccumRef.current);
+      if (secs < 5) return; // ignore trivial blips; they accumulate
+      practiceAccumRef.current -= secs;
+      supabase
+        .from("practice_sessions")
+        .insert({ video_id: videoId, seconds: secs })
+        .then();
+    };
+    const iv = setInterval(flush, 60_000); // survive long sessions / crashes
+    return () => {
+      clearInterval(iv);
+      flush();
+    };
+  }, [playing, videoId]);
 
   // Time update handler — AB enforcement + segment tracking + karaoke
   const handleTimeUpdate = useCallback((time: number) => {

@@ -152,11 +152,6 @@ function LoginForm() {
                 className="login-input"
                 required
               />
-              {emailTouched && email.trim().length > 0 && !emailValid && (
-                <p className="login-field-error">
-                  Enter a valid email address.
-                </p>
-              )}
               <input
                 id="password"
                 type="password"
@@ -182,6 +177,12 @@ function LoginForm() {
                   </li>
                 </ul>
               )}
+              {(error ||
+                (emailTouched && email.trim().length > 0 && !emailValid)) && (
+                <p className="login-error">
+                  {error ?? "Please enter a valid email address."}
+                </p>
+              )}
               <button type="submit" className="login-btn" disabled={!canSubmit}>
                 {busy
                   ? "…"
@@ -189,7 +190,6 @@ function LoginForm() {
                     ? "Sign in"
                     : "Create account"}
               </button>
-              {error && <p className="login-error">{error}</p>}
             </form>
 
             <p className="login-switch">

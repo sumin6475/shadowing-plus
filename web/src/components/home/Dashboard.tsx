@@ -5,6 +5,11 @@ import type { ReactNode } from "react";
 import type { Folder, Video } from "@/lib/types";
 import { folderColor } from "@/lib/folder-color";
 import {
+  dailyMinutes,
+  currentStreak,
+  type PracticeSession,
+} from "@/lib/practice-stats";
+import {
   BookmarkIcon,
   ChartIcon,
   CheckIcon,
@@ -55,6 +60,14 @@ function ChevronRight() {
   return (
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+function FlameIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 1.5s3.5 2.7 3.5 6.2A3.5 3.5 0 0 1 8 11.2a1.9 1.9 0 0 0 .6-1.5c0-1.2-1.1-1.9-1.1-3 0 0-1.5.9-1.5 3.1A3.5 3.5 0 0 0 9.5 13 4.6 4.6 0 0 1 8 14.5 4.5 4.5 0 0 1 3.5 10c0-3 2.2-4.4 2.2-6.1 0 0 .9.6 1 1.9.6-1.4 1.3-4.3 1.3-4.3z" />
     </svg>
   );
 }
@@ -207,6 +220,7 @@ export interface DashboardProps {
   videos: Video[];
   folders: Folder[];
   bookmarksCount: number;
+  practiceSessions: PracticeSession[];
   onAddClip: () => void;
   onOpenLibrary: () => void;
   onSelectFolder: (id: string) => void;
@@ -218,11 +232,16 @@ export default function Dashboard({
   videos,
   folders,
   bookmarksCount,
+  practiceSessions,
   onAddClip,
   onOpenLibrary,
   onSelectFolder,
   onNewFolder,
 }: DashboardProps) {
+  const week = dailyMinutes(practiceSessions, 7);
+  const weekTotal = week.reduce((a, d) => a + d.minutes, 0);
+  const maxMin = Math.max(...week.map((d) => d.minutes), 1);
+  const streak = currentStreak(practiceSessions);
   const status = (v: Video) => v.practice_status ?? "none";
   const focusing = videos.filter((v) => status(v) === "focusing");
   const done = videos.filter((v) => status(v) === "done").length;
@@ -317,18 +336,51 @@ export default function Dashboard({
             <div className="panel-head">
               <div>
                 <h2 className="panel-title">This week&rsquo;s practice</h2>
-                <p className="panel-sub">Minutes shadowed per day · last 7 days</p>
+                <p className="panel-sub">
+                  Minutes shadowed per day · last 7 days
+                </p>
               </div>
+              {streak > 0 && (
+                <span className="streak-badge" title="Consecutive days practiced">
+                  <FlameIcon />
+                  {streak}-day streak
+                </span>
+              )}
             </div>
-            {/* Honest placeholder: practice-session tracking isn't built yet. */}
-            <div className="panel-empty">
-              <ChartIcon width={20} height={20} />
-              <div className="pe-title">Practice tracking is coming soon</div>
-              <div className="pe-sub">
-                Once shadowing sessions are logged, your daily minutes and streak
-                will show up here.
+            {weekTotal > 0 ? (
+              <div className="chart">
+                {week.map((d) => {
+                  const pct =
+                    d.minutes > 0
+                      ? Math.max(Math.round((d.minutes / maxMin) * 100), 6)
+                      : 0;
+                  return (
+                    <div
+                      key={d.key}
+                      className={"chart-col" + (d.isToday ? " is-today" : "")}
+                    >
+                      <div className="chart-barwrap">
+                        <div
+                          className={"chart-bar" + (d.isToday ? " today" : "")}
+                          style={{ height: `${pct}%` }}
+                          data-min={`${d.minutes} min`}
+                        />
+                      </div>
+                      <span className="chart-day">{d.label.charAt(0)}</span>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            ) : (
+              <div className="panel-empty">
+                <ChartIcon width={20} height={20} />
+                <div className="pe-title">No practice logged yet this week</div>
+                <div className="pe-sub">
+                  Open a clip and start shadowing — your daily minutes and streak
+                  show up here.
+                </div>
+              </div>
+            )}
           </div>
           <StatusRing focusing={focusing.length} done={done} fresh={fresh} />
         </div>

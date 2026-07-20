@@ -267,6 +267,23 @@
 }
 .home-app .chart-col.is-today .chart-day { color: var(--accent-text); }
 
+.home-app .streak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: oklch(0.965 0.04 70);
+  color: oklch(0.52 0.11 65);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+[data-theme="dark"] .home-app .streak-badge {
+  background: oklch(0.30 0.04 70);
+  color: oklch(0.84 0.11 75);
+}
+
 /* ─── Status ring (donut) ──────────────────────────────── */
 .home-app .ring-wrap {
   display: flex;

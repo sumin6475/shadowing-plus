@@ -34,6 +34,7 @@ import { clipKind } from "@/lib/clip-kind";
 import { TRANSLATION_LANG_PREF_KEY } from "@/lib/pipeline/languages";
 import { canImportYoutube } from "@/lib/youtubeImport";
 import Dashboard from "@/components/home/Dashboard";
+import type { PracticeSession } from "@/lib/practice-stats";
 
 import "../home.css";
 import "../dashboard.css";
@@ -81,6 +82,7 @@ export default function HomePage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [bookmarksCount, setBookmarksCount] = useState(0);
+  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<ActiveSection>({ kind: "all" });
 
@@ -129,22 +131,33 @@ export default function HomePage() {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    const [foldersRes, videosRes, jobsRes, bookmarksRes] = await Promise.all([
-      supabase.from("folders").select("*").order("created_at"),
-      supabase
-        .from("videos")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("jobs")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase.from("bookmarks").select("id", { count: "exact", head: true }),
-    ]);
+    // Practice sessions for the dashboard's daily-minutes + streak. Bounded
+    // window keeps the query small; 90 days covers any realistic streak.
+    const sinceIso = new Date(Date.now() - 90 * 86_400_000).toISOString();
+    const [foldersRes, videosRes, jobsRes, bookmarksRes, sessionsRes] =
+      await Promise.all([
+        supabase.from("folders").select("*").order("created_at"),
+        supabase
+          .from("videos")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("jobs")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase.from("bookmarks").select("id", { count: "exact", head: true }),
+        supabase
+          .from("practice_sessions")
+          .select("seconds, occurred_at")
+          .gte("occurred_at", sinceIso)
+          .order("occurred_at", { ascending: false })
+          .limit(5000),
+      ]);
     setFolders(foldersRes.data ?? []);
     setVideos(videosRes.data ?? []);
     setJobs(jobsRes.data ?? []);
     setBookmarksCount(bookmarksRes.count ?? 0);
+    setPracticeSessions((sessionsRes.data ?? []) as PracticeSession[]);
   }, []);
 
   const handleYoutubeImport = useCallback(async () => {
@@ -693,6 +706,7 @@ export default function HomePage() {
           videos={videos}
           folders={folders}
           bookmarksCount={bookmarksCount}
+          practiceSessions={practiceSessions}
           onAddClip={() => dropzoneRef.current?.pick()}
           onOpenLibrary={() => setSection({ kind: "all" })}
           onSelectFolder={(id) => setSection({ kind: "folder", id })}
