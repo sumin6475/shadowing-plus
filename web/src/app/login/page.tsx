@@ -1,11 +1,23 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import "./login.css";
 
 type Mode = "signin" | "signup";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Password policy for new accounts, shown as a live checklist on signup. */
+function passwordChecks(pw: string) {
+  return {
+    length: pw.length >= 8,
+    case: /[a-z]/.test(pw) && /[A-Z]/.test(pw),
+    number: /\d/.test(pw),
+  };
+}
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -23,13 +35,24 @@ function LoginForm() {
     () => searchParams.get("error"),
   );
   const [confirmSent, setConfirmSent] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
 
   const safeNext = next.startsWith("/") ? next : "/app";
+
+  const emailValid = EMAIL_RE.test(email.trim());
+  const pw = passwordChecks(password);
+  const pwValid = pw.length && pw.case && pw.number;
+  const canSubmit = !busy && emailValid && (mode === "signin" || pwValid);
 
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
     const mail = email.trim();
     if (!mail || !password) return;
+    if (!emailValid) {
+      setEmailTouched(true);
+      return;
+    }
+    if (mode === "signup" && !pwValid) return;
     setBusy(true);
     setError(null);
 
@@ -89,7 +112,9 @@ function LoginForm() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1 className="login-title">Shadowing Plus</h1>
+        <Link href="/" className="login-title" aria-label="Shadowing+ home">
+          Shadowing<span className="login-plus">+</span>
+        </Link>
 
         {confirmSent ? (
           <p className="login-sent">
@@ -120,9 +145,18 @@ function LoginForm() {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setEmailTouched(true)}
+                aria-invalid={
+                  emailTouched && email.trim().length > 0 && !emailValid
+                }
                 className="login-input"
                 required
               />
+              {emailTouched && email.trim().length > 0 && !emailValid && (
+                <p className="login-field-error">
+                  Enter a valid email address.
+                </p>
+              )}
               <input
                 id="password"
                 type="password"
@@ -133,10 +167,22 @@ function LoginForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="login-input"
-                minLength={6}
                 required
               />
-              <button type="submit" className="login-btn" disabled={busy}>
+              {mode === "signup" && (
+                <ul className="login-reqs" aria-label="Password requirements">
+                  <li className={pw.length ? "met" : ""}>
+                    At least 8 characters
+                  </li>
+                  <li className={pw.case ? "met" : ""}>
+                    Upper &amp; lowercase letters
+                  </li>
+                  <li className={pw.number ? "met" : ""}>
+                    At least one number
+                  </li>
+                </ul>
+              )}
+              <button type="submit" className="login-btn" disabled={!canSubmit}>
                 {busy
                   ? "…"
                   : mode === "signin"
