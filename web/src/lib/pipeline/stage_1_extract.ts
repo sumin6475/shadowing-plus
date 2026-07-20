@@ -5,6 +5,37 @@ import { spawn } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
 import { audioKeyFor, getJob, updateJobProgress } from "./jobs";
 import { getSignedDownloadUrl, putBuffer } from "@/lib/r2";
+import { isOwner, maxClipMinutes } from "@/lib/quota";
+
+/**
+ * Read a media file's duration (seconds) from its header via ffmpeg, without
+ * decoding it. ffmpeg with `-i` and no output prints "Duration: HH:MM:SS.xx"
+ * to stderr then exits non-zero ("no output file") — we parse stderr and ignore
+ * the exit code. Returns null if the header has no duration (fail open).
+ */
+function probeDurationSeconds(inputUrl: string): Promise<number | null> {
+  if (!ffmpegPath) {
+    throw new Error("ffmpeg-static did not provide a binary for this platform");
+  }
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath as unknown as string, [
+      "-reconnect", "1",
+      "-reconnect_streamed", "1",
+      "-reconnect_delay_max", "5",
+      "-i", inputUrl,
+    ]);
+    let stderr = "";
+    proc.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+    proc.on("error", reject);
+    proc.on("close", () => {
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (!m) return resolve(null);
+      resolve(Number(m[1]) * 3600 + Number(m[2]) * 60 + parseFloat(m[3]));
+    });
+  });
+}
 
 function runFfmpegExtract(inputUrl: string, outputPath: string): Promise<void> {
   if (!ffmpegPath) {
@@ -58,6 +89,21 @@ export async function stage1Extract(jobId: string): Promise<void> {
   if (!job) throw new Error(`Job ${jobId} not found`);
   await updateJobProgress(jobId, "extract", 0);
 
+  const sourceUrl = await getSignedDownloadUrl(job.source_key, 3600);
+
+  // Cost guard: reject over-long clips before any paid work (extraction, ASR,
+  // translation). Owners are exempt; fails open if the header has no duration.
+  if (!isOwner(job.user_id ?? "")) {
+    const durationSecs = await probeDurationSeconds(sourceUrl);
+    const limitMin = maxClipMinutes();
+    if (durationSecs !== null && durationSecs > limitMin * 60) {
+      throw new Error(
+        `This clip is about ${Math.round(durationSecs / 60)} minutes. ` +
+          `The beta limit is ${limitMin} minutes per clip — please trim it and re-upload.`,
+      );
+    }
+  }
+
   if (job.media_type === "audio") {
     await updateJobProgress(jobId, "extract", 100);
     return;
@@ -66,7 +112,6 @@ export async function stage1Extract(jobId: string): Promise<void> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `sp-${jobId}-`));
   const audioFile = path.join(tmpDir, "audio.mp3");
   try {
-    const sourceUrl = await getSignedDownloadUrl(job.source_key, 3600);
     await updateJobProgress(jobId, "extract", 20);
 
     await runFfmpegExtract(sourceUrl, audioFile);

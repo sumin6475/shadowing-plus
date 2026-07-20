@@ -12,11 +12,25 @@ import { countActiveClips } from "@/lib/pipeline/jobs";
 // and owners are exempt so the solo dev's own study use isn't throttled.
 
 const DEFAULT_CLIP_LIMIT = 20;
+const DEFAULT_MAX_CLIP_MINUTES = 60;
 
 /** Max clips a non-owner account may hold. `CLIP_LIMIT_PER_USER` overrides. */
 export function clipLimit(): number {
   const raw = Number(process.env.CLIP_LIMIT_PER_USER);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_CLIP_LIMIT;
+}
+
+/**
+ * Max length of a single clip, in minutes, for non-owner accounts.
+ * `MAX_CLIP_MINUTES` overrides. Pairs with the clip-count cap: count alone
+ * doesn't bound cost (20 huge files ≈ 20 small ones in count but not in $), so
+ * this caps per-clip duration too. Enforced in stage 1 before any paid work.
+ */
+export function maxClipMinutes(): number {
+  const raw = Number(process.env.MAX_CLIP_MINUTES);
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_MAX_CLIP_MINUTES;
 }
 
 // Owners are exempt from the cap. Prefer a dedicated `NEXT_PUBLIC_OWNER_IDS`
