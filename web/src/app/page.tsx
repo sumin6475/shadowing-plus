@@ -214,7 +214,7 @@ export default function LandingPage() {
             <span className="src-chip"><span className="g" style={{ background: "oklch(0.58 0.16 258)" }} />The Newsroom</span>
             <span className="src-chip"><span className="g" style={{ background: "oklch(0.65 0.13 75)" }} />Friends</span>
             <span className="src-chip"><span className="g" style={{ background: "var(--moss)" }} />TED Talks</span>
-            <span className="src-chip"><span className="g" style={{ background: "var(--accent)" }} />YouTube</span>
+            <span className="src-chip"><span className="g" style={{ background: "var(--accent)" }} />Interviews</span>
             <span className="src-chip"><span className="g" style={{ background: "oklch(0.58 0.18 290)" }} />Podcasts</span>
             <span className="src-chip"><span className="g" style={{ background: "oklch(0.55 0.14 20)" }} />Films</span>
           </div>
@@ -226,7 +226,7 @@ export default function LandingPage() {
         <div className="wrap">
           <div className="sec-head center rv">
             <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />How it works</span>
-            <h2 className="serif">From a link to fluent, one line at a time</h2>
+            <h2 className="serif">From a clip to fluent, one line at a time</h2>
             <p>No editing, no timelines. Drop a source and Shadowing+ breaks it into loopable sentences you can drill until they&rsquo;re yours.</p>
           </div>
 
@@ -234,10 +234,10 @@ export default function LandingPage() {
             <div className="feat-copy">
               <span className="kicker"><span className="bar" />Step 01 — Capture</span>
               <h3>Any video, one drop</h3>
-              <p>Paste a YouTube link or drag in a file. Shadowing+ auto-aligns the captions and adds a translation, so a raw clip becomes a structured drill in seconds.</p>
+              <p>Drop in a video or audio file. Shadowing+ transcribes it, aligns the subtitles, and adds a translation, so a raw clip becomes a structured drill in seconds.</p>
               <div className="feat-tags">
-                <span className="feat-tag">YouTube &amp; local files</span>
-                <span className="feat-tag">Auto-aligned captions</span>
+                <span className="feat-tag">Video &amp; audio files</span>
+                <span className="feat-tag">Auto-aligned subtitles</span>
                 <span className="feat-tag">Instant translation</span>
               </div>
             </div>
@@ -252,14 +252,14 @@ export default function LandingPage() {
                     <span style={{ width: 52, height: 52, borderRadius: 15, background: "var(--accent-soft)", color: "var(--accent-text)", display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid oklch(from var(--accent) 0.9 0.04 h)" }}>
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M8 8l4-4 4 4" /><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" /></svg>
                     </span>
-                    <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text)" }}>Drop a video, or paste a link</div>
-                    <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>MP4 · MOV · YouTube URL</div>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text)" }}>Drop a video or audio file</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>MP4 · MOV · MP3 · WAV</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", border: "1px solid var(--hairline)", borderRadius: "var(--radius)", background: "var(--surface)" }}>
                     <span style={{ width: 26, height: 26, borderRadius: 7, background: "var(--accent-soft)", color: "var(--accent-text)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2.5v11l9-5.5z" /></svg>
                     </span>
-                    <span className="mono" style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>youtube.com/watch?v=…nigel</span>
+                    <span className="mono" style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>nigel-pep-talk.mp4</span>
                     <span className="pill focus"><span className="dot" />Aligning</span>
                   </div>
                 </div>
