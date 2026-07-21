@@ -1,0 +1,74 @@
+/* Coming-soon page for Language island. Wrapped in .landing so it reuses the
+   landing design system (kicker, serif, btn); these are the layout extras. */
+.landing .island-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 72px 24px 96px;
+  text-align: center;
+}
+.landing .island-back {
+  display: inline-block;
+  margin-bottom: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent-text);
+  text-decoration: none;
+}
+.landing .island-back:hover { text-decoration: underline; }
+.landing .island-page .kicker { justify-content: center; }
+.landing .island-title { font-size: clamp(2.4rem, 6vw, 3.4rem); margin: 14px 0 18px; }
+.landing .island-lede {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text-3);
+  max-width: 34rem;
+  margin: 0 auto 40px;
+}
+.landing .island-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto 44px;
+  display: grid;
+  gap: 14px;
+  max-width: 34rem;
+  text-align: left;
+}
+.landing .island-steps li {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 18px 20px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+}
+.landing .island-num {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-family: var(--lp-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.landing .island-step b { display: block; font-size: 15px; color: var(--text); margin-bottom: 3px; }
+.landing .island-step span { font-size: 13.5px; color: var(--text-3); line-height: 1.55; }
+.landing .island-cta { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.landing .island-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+.landing .island-error { font-size: 13px; color: #b4462f; margin: 0; }
+.landing .island-note { font-size: 13px; color: var(--text-4); margin-top: 4px; }

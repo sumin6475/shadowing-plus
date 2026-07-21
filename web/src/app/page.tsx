@@ -441,6 +441,7 @@ export default function LandingPage() {
               <a href="#features">Features</a>
               <a href="#how">How it works</a>
               <Link href={APP}>Library</Link>
+              <Link href="/island">Language island</Link>
             </div>
             <div className="foot-col">
               <h5>Resources</h5>
