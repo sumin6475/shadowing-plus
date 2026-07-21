@@ -223,6 +223,19 @@ export default function HomePage() {
       setUserId(user.id);
       setEmail(user.email ?? null);
 
+      // Authorize the Realtime socket with the user's JWT. With RLS on
+      // (migration 008), Supabase Realtime only delivers postgres_changes rows
+      // the socket can SELECT — without setAuth, RLS silently drops EVERY job
+      // event and the library never sees a status change (jobs look stuck at
+      // "Queued"). Must run before subscribe().
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) {
+        await supabase.realtime.setAuth(session.access_token);
+      }
+
       channel = supabase
         .channel(`jobs-feed-${user.id}`)
         .on(
@@ -261,6 +274,20 @@ export default function HomePage() {
       if (channel) supabase.removeChannel(channel);
     };
   }, [refreshAll]);
+
+  // Fallback poll while a job is in flight, so the library still advances even
+  // if Realtime drops the status update (e.g. after an access-token refresh).
+  // Stops as soon as nothing is processing, so it's idle in steady state.
+  const hasInflightJob = jobs.some(
+    (j) => j.status !== "ready" && j.status !== "failed",
+  );
+  useEffect(() => {
+    if (!hasInflightJob) return;
+    const iv = setInterval(() => {
+      refreshAll();
+    }, 4000);
+    return () => clearInterval(iv);
+  }, [hasInflightJob, refreshAll]);
 
   // Close item menu on outside click
   useEffect(() => {
