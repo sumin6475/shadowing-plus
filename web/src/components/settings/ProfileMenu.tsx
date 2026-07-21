@@ -9,7 +9,16 @@ import {
   SignOutIcon,
 } from "@/components/home/Icons";
 import SettingsModal from "./SettingsModal";
+import FeedbackModal from "./FeedbackModal";
 import "./profile-menu.css";
+
+function MessageIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 9.5a2 2 0 0 1-2 2H5l-3 2.5v-9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
 
 // Sidebar-foot identity: an avatar+email button that opens a dropdown (email,
 // Settings, Sign out). "Settings" opens the modal; "Sign out" clears the
@@ -19,6 +28,7 @@ export default function ProfileMenu() {
   const [email, setEmail] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +109,20 @@ export default function ProfileMenu() {
           </button>
           <button
             type="button"
+            className="pm-menu-item"
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              setFeedbackOpen(true);
+            }}
+          >
+            <span className="pm-menu-ic">
+              <MessageIcon />
+            </span>
+            Send feedback
+          </button>
+          <button
+            type="button"
             className="pm-menu-item pm-menu-danger"
             role="menuitem"
             onClick={signOut}
@@ -113,6 +137,9 @@ export default function ProfileMenu() {
       )}
 
       <SettingsModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      {feedbackOpen && (
+        <FeedbackModal onClose={() => setFeedbackOpen(false)} />
+      )}
     </div>
   );
 }

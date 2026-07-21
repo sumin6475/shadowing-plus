@@ -1,0 +1,116 @@
+.fb-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: oklch(0 0 0 / 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.fb-modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--hairline-soft, #eee);
+  border-radius: var(--radius-lg, 16px);
+  padding: 24px;
+  box-shadow: 0 12px 40px -12px oklch(0 0 0 / 0.35);
+}
+
+.fb-title {
+  font-family: var(--home-font-serif, "Instrument Serif", serif);
+  font-size: 22px;
+  color: var(--text-2, #2a2622);
+  margin-bottom: 4px;
+}
+
+.fb-sub {
+  font-size: 13.5px;
+  color: var(--text-3, #6b6459);
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.fb-text {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline, #ded8cc);
+  border-radius: var(--radius, 12px);
+  font-size: 14.5px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  background: var(--bg-elev, #fff);
+  color: var(--text-2, #2a2622);
+}
+
+.fb-text:focus {
+  border-color: var(--accent, oklch(0.58 0.165 258));
+  box-shadow: 0 0 0 3px oklch(0.58 0.165 258 / 0.15);
+}
+
+.fb-error {
+  font-size: 12.5px;
+  color: #b4462f;
+  margin: 8px 0 0;
+}
+
+.fb-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.fb-cancel,
+.fb-send {
+  padding: 9px 16px;
+  border-radius: var(--radius, 10px);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.fb-cancel {
+  background: transparent;
+  border-color: var(--hairline, #ded8cc);
+  color: var(--text-3, #6b6459);
+}
+
+.fb-cancel:hover {
+  background: var(--bg-elev, #faf8f3);
+}
+
+.fb-send {
+  background: var(--accent, oklch(0.58 0.165 258));
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.fb-send:hover:not(:disabled) {
+  background: var(--accent-hover, oklch(0.52 0.165 258));
+}
+
+.fb-send:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.fb-done {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.fb-done .fb-sub {
+  margin-bottom: 20px;
+}
+
+.fb-done .fb-actions {
+  justify-content: center;
+}
