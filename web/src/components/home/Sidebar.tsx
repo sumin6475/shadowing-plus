@@ -48,6 +48,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const onBookmarksRoute = pathname?.startsWith("/bookmarks");
+  const onPhrasesRoute = pathname?.startsWith("/phrases");
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -90,9 +91,9 @@ export default function Sidebar({
     }
   }
 
-  const isHomeActive = active.kind === "home" && !onBookmarksRoute;
-  const isAllActive = active.kind === "all" && !onBookmarksRoute;
-  const isRecentActive = active.kind === "recent" && !onBookmarksRoute;
+  const isHomeActive = active.kind === "home" && !onBookmarksRoute && !onPhrasesRoute;
+  const isAllActive = active.kind === "all" && !onBookmarksRoute && !onPhrasesRoute;
+  const isRecentActive = active.kind === "recent" && !onBookmarksRoute && !onPhrasesRoute;
 
   return (
     <aside className="sidebar">
@@ -144,6 +145,13 @@ export default function Sidebar({
         >
           <span className="nav-icon"><BookmarkIcon /></span>
           <span className="nav-label">Bookmarks</span>
+        </Link>
+        <Link
+          href="/phrases"
+          className={"nav-item" + (onPhrasesRoute ? " active" : "")}
+        >
+          <span className="nav-icon"><LibraryIcon /></span>
+          <span className="nav-label">Phrase Bank</span>
         </Link>
       </nav>
 

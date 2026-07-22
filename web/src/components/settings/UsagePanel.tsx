@@ -108,6 +108,7 @@ function providerDot(provider: string): string {
 const KIND_LABEL: Record<string, string> = {
   translate: "Translate",
   profile: "Profile",
+  phrase_explain: "Phrase explanation",
   transcribe: "Transcribe",
 };
 
