@@ -97,7 +97,10 @@ function LoginForm() {
   async function handleGoogle() {
     setBusy(true);
     setError(null);
-    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNext)}`;
+    // OAuth's PKCE verifier lives in this browser context. Complete the code
+    // exchange in the client callback rather than the server-only callback so
+    // it also works inside Chrome Identity's authentication window.
+    const redirectTo = `${window.location.origin}/auth/google-callback?next=${encodeURIComponent(safeNext)}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

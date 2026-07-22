@@ -19,6 +19,7 @@ import { createServerClient } from "@supabase/ssr";
 const PROTECTED_PREFIXES = [
   "/app",
   "/bookmarks",
+  "/phrases",
   "/practice",
   "/player",
 ];
@@ -38,7 +39,11 @@ export async function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const hasAuthParams =
     searchParams.has("code") || searchParams.has("token_hash");
-  if (hasAuthParams && pathname !== "/auth/callback") {
+  if (
+    hasAuthParams &&
+    pathname !== "/auth/callback" &&
+    pathname !== "/auth/google-callback"
+  ) {
     const callback = new URL("/auth/callback", request.url);
     for (const key of ["code", "token_hash", "type", "next"]) {
       const v = searchParams.get(key);

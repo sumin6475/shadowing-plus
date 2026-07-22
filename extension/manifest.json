@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Shadowing Plus — YouTube Panel",
+  "version": "0.1.0",
+  "description": "A private YouTube shadowing panel for Shadowing Plus.",
+  "permissions": ["identity", "storage", "tabs"],
+  "host_permissions": ["https://www.youtube.com/*", "https://youtu.be/*"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": { "default_title": "Toggle Shadowing Plus" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

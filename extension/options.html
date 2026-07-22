@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>Shadowing Plus settings</title>
+<style>body{margin:48px auto;max-width:560px;font:15px/1.5 system-ui,sans-serif;color:#17181c}label{display:block;font-weight:650;margin:24px 0 7px}input{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid #d8d8dd;border-radius:8px;font:inherit}button{margin-top:16px;border:0;border-radius:8px;padding:10px 14px;background:#e04b31;color:white;font-weight:700;cursor:pointer}button+button{margin-left:8px;background:#24252a}.hint{color:#666;font-size:13px}.status{min-height:20px;margin-top:14px}</style></head>
+<body><h1>Shadowing Plus</h1><p>개인 YouTube 실험용 확장 프로그램입니다.</p>
+<label for="app-url">Shadowing Plus 앱 주소</label><input id="app-url" type="url" placeholder="http://localhost:3000">
+<p class="hint">프로덕션에서는 배포된 앱 주소를 넣으세요. 앱 서버의 <code>EXTENSION_ALLOWED_ORIGIN</code>은 이 확장 프로그램의 Chrome ID로 설정해야 합니다.</p>
+<button id="save">주소 저장</button><button id="connect">기존 계정 연결</button><p class="status" id="status"></p>
+<script src="options.js"></script></body></html>
