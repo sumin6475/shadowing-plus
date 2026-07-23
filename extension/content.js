@@ -3,6 +3,7 @@
   const PANEL_WIDTH_KEY = "spPanelWidth";
   const PANEL_MODE_KEY = "spPanelMode";
   const CLOSED_KEY = "spPanelClosed";
+  const BRIDGE_ID = "shadowing-plus-caption-bridge-script";
   let host, root, panel, list, status, selectedWord, wordEntry = null, wordLoading = false, wordError = "", phraseSelection = null, phrases = [], mode = "side";
   let width = 360, closed = false, activeTab = "subtitles", currentIndex = -1;
   let cues = [], saved = [], prepared = false, preparing = false, prepareError = "", prepareProgress = 0, prepareStage = "", prepareJobId = null, preparePoll = null, lastCaption = "", pendingCue = null, captionTimer = null, abLoop = null, observer, timeListener;
@@ -20,7 +21,12 @@
     root = host.attachShadow({ mode: "open" });
     root.innerHTML = `<style>${styles}</style><section class="sp-panel" aria-label="Shadowing Plus learning panel"></section>`;
     panel = $(".sp-panel");
-    panel.addEventListener("click", onClick); panel.addEventListener("pointerdown", startResize); panel.addEventListener("mouseup", capturePhraseSelection);
+    panel.addEventListener("click", onClick); panel.addEventListener("pointerdown", startResize);
+    // Native selections inside a ShadowRoot are not consistently exposed via
+    // window.getSelection() in Chrome. Capture before YouTube/button handlers
+    // run, then read the ShadowRoot selection first.
+    root.addEventListener("mouseup", capturePhraseSelection, true);
+    root.addEventListener("keyup", capturePhraseSelection, true);
     render(); position();
     window.addEventListener("resize", position); window.addEventListener("yt-navigate-finish", resetForNavigation);
     timeListener = () => { updateCurrentCue(); enforceAbLoop(); };
@@ -95,7 +101,7 @@
   function capturePhraseSelection() {
     window.setTimeout(() => {
       if (activeTab !== "subtitles") return;
-      const selection = window.getSelection(); const text = selection?.toString().replace(/\s+/g, " ").trim() || "";
+      const selection = root.getSelection?.() || window.getSelection(); const text = selection?.toString().replace(/\s+/g, " ").trim() || "";
       if (!text || text.length > 240) return;
       const toElement = (node) => node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
       const startCue = toElement(selection.anchorNode)?.closest?.(".cue");
@@ -104,6 +110,7 @@
       const cueIndex = Number(startCue.dataset.index);
       const cue = cues[cueIndex];
       if (!cue?.id || !cue.text.toLowerCase().includes(text.toLowerCase())) return;
+      if (phraseSelection?.text === text && phraseSelection.cueIndex === cueIndex) return;
       phraseSelection = { text, cueIndex }; render(); selection.removeAllRanges();
     }, 0);
   }
@@ -199,10 +206,54 @@
       updateCurrentCue(); render();
     });
   }
-  function prepareVideo() {
+  async function browserCaptionBody() {
+    const tracks = await new Promise((resolve) => {
+      const nonce = crypto.randomUUID(); let settled = false;
+      const finish = (value) => { if (settled) return; settled = true; window.removeEventListener("message", receive); resolve(value); };
+      const receive = (event) => {
+        if (event.source !== window || event.data?.source !== "shadowing-plus-caption-bridge" || event.data?.type !== "response" || event.data?.nonce !== nonce) return;
+        finish(event.data.tracks || []);
+      };
+      window.addEventListener("message", receive);
+      const request = () => window.postMessage({ source: "shadowing-plus-caption-bridge", type: "request", nonce }, location.origin);
+      const bridge = document.getElementById(BRIDGE_ID);
+      if (bridge) request();
+      else {
+        const script = document.createElement("script"); script.id = BRIDGE_ID; script.src = chrome.runtime.getURL("page-bridge.js");
+        script.onload = request; script.onerror = () => finish([]); document.documentElement.append(script);
+      }
+      window.setTimeout(() => finish([]), 1600);
+    });
+    const track = tracks.find((item) => item?.languageCode === "en" && item.kind !== "asr")
+      || tracks.find((item) => item?.languageCode === "en")
+      || tracks.find((item) => item?.languageCode?.startsWith("en"))
+      || tracks[0];
+    if (!track?.baseUrl) return null;
+    const url = new URL(track.baseUrl); url.searchParams.set("fmt", "json3");
+    // A signed timedtext URL can occasionally keep a fetch pending forever.
+    // Never let that freeze the panel before its server request is even sent.
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 7_000);
+    try {
+      // Keep the abort signal alive until the response *body* has been read.
+      // A response can deliver headers while its json3 stream then stalls.
+      const response = await fetch(url.toString(), { credentials: "include", signal: controller.signal });
+      if (!response.ok) return null;
+      const body = await response.text();
+      return body.length > 10 && body.length <= 2_000_000 ? body : null;
+    } catch {
+      return null;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  async function prepareVideo() {
     if (preparing) return;
     preparing = true; prepareError = ""; render();
-    chrome.runtime.sendMessage({ type: "sp:prepare", url: location.href }, (result) => {
+    // Prefer the caption track that the learner's own YouTube page exposes.
+    // Vercel can be bot-blocked even while captions play perfectly in Chrome.
+    const captionBody = await browserCaptionBody().catch(() => null);
+    chrome.runtime.sendMessage({ type: "sp:prepare", url: location.href, captionBody }, (result) => {
       if (chrome.runtime.lastError || !result?.ok) {
         preparing = false; prepareError = result?.error || "Unable to prepare this video."; render(); return;
       }

@@ -132,30 +132,9 @@ interface YtPlayerData {
  * the legacy XML `timedtext` format depending on the baseUrl it handed back,
  * so we detect the shape from the response body rather than trusting `fmt`.
  */
-async function fetchSubtitleSegments(
-  baseUrl: string,
-): Promise<RawSubtitleSegment[]> {
-  // Force json3. The InnerTube ANDROID client hands back baseUrls that already
-  // pin `fmt=srv3` (XML); `fmt` isn't part of the signed `sparams`, so swapping
-  // it is safe and gives us the cleaner JSON shape.
-  const url = /[?&]fmt=/.test(baseUrl)
-    ? baseUrl.replace(/([?&])fmt=[^&]*/, "$1fmt=json3")
-    : `${baseUrl}&fmt=json3`;
-  const res = await fetchWithTimeout(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-  });
-  if (!res.ok) {
-    throw new Error("Failed to fetch subtitle details from YouTube");
-  }
-
-  const body = (await res.text()).trim();
-  if (!body) {
-    throw new Error("Subtitle response from YouTube was empty.");
-  }
+function parseSubtitleSegments(bodyInput: string): RawSubtitleSegment[] {
+  const body = bodyInput.trim();
+  if (!body) throw new Error("Subtitle response from YouTube was empty.");
 
   const segments: RawSubtitleSegment[] = [];
   let idx = 0;
@@ -181,46 +160,46 @@ async function fetchSubtitleSegments(
         .replace(/\s+/g, " ")
         .trim();
 
-    // Legacy format: <text start="1.5" dur="3.2">caption text</text> (seconds)
-    const textMatches = [
-      ...body.matchAll(
-        /<text[^>]*\bstart="([\d.]+)"(?:[^>]*\bdur="([\d.]+)")?[^>]*>([\s\S]*?)<\/text>/g,
-      ),
-    ];
+    const textMatches = [...body.matchAll(/<text[^>]*\bstart="([\d.]+)"(?:[^>]*\bdur="([\d.]+)")?[^>]*>([\s\S]*?)<\/text>/g)];
     if (textMatches.length > 0) {
       for (const m of textMatches) {
-        const start = parseFloat(m[1]);
-        const duration = m[2] ? parseFloat(m[2]) : 0;
-        const text = cleanText(m[3]);
-        if (!text) continue;
-        segments.push({ index: idx++, text, start, end: start + duration, words: null });
+        const start = parseFloat(m[1]); const duration = m[2] ? parseFloat(m[2]) : 0; const text = cleanText(m[3]);
+        if (text) segments.push({ index: idx++, text, start, end: start + duration, words: null });
       }
     } else {
-      // timedtext v3 format: <p t="1500" d="3200"><s>word</s>...</p> (ms)
-      const pMatches = [
-        ...body.matchAll(
-          /<p[^>]*\bt="(\d+)"(?:[^>]*\bd="(\d+)")?[^>]*>([\s\S]*?)<\/p>/g,
-        ),
-      ];
-      for (const m of pMatches) {
-        const start = parseInt(m[1], 10) / 1000;
-        const duration = m[2] ? parseInt(m[2], 10) / 1000 : 0;
-        const text = cleanText(m[3]);
-        if (!text) continue;
-        segments.push({ index: idx++, text, start, end: start + duration, words: null });
+      for (const m of body.matchAll(/<p[^>]*\bt="(\d+)"(?:[^>]*\bd="(\d+)")?[^>]*>([\s\S]*?)<\/p>/g)) {
+        const start = parseInt(m[1], 10) / 1000; const duration = m[2] ? parseInt(m[2], 10) / 1000 : 0; const text = cleanText(m[3]);
+        if (text) segments.push({ index: idx++, text, start, end: start + duration, words: null });
       }
     }
   }
 
-  // Backfill any missing/zero end times from the next cue's start so AB-repeat
-  // and karaoke highlighting have a sane window to work with.
   for (let i = 0; i < segments.length; i++) {
     if (segments[i].end > segments[i].start) continue;
-    const next = segments[i + 1];
-    segments[i].end = next ? next.start : segments[i].start + 2;
+    const next = segments[i + 1]; segments[i].end = next ? next.start : segments[i].start + 2;
+  }
+  return segments;
+}
+
+async function fetchSubtitleSegments(baseUrl: string): Promise<RawSubtitleSegment[]> {
+  // Force json3. The InnerTube ANDROID client hands back baseUrls that already
+  // pin `fmt=srv3` (XML); `fmt` isn't part of the signed `sparams`, so swapping
+  // it is safe and gives us the cleaner JSON shape.
+  const url = /[?&]fmt=/.test(baseUrl)
+    ? baseUrl.replace(/([?&])fmt=[^&]*/, "$1fmt=json3")
+    : `${baseUrl}&fmt=json3`;
+  const res = await fetchWithTimeout(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch subtitle details from YouTube");
   }
 
-  return segments;
+  return parseSubtitleSegments(await res.text());
 }
 
 async function getYoutubeCaptionsTracklist(videoId: string) {
@@ -323,7 +302,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   try {
-    const { url, targetLang } = await req.json();
+    const { url, targetLang, captionBody } = await req.json();
     if (!url) {
       return NextResponse.json({ error: "Missing YouTube URL" }, { status: 400 });
     }
@@ -340,45 +319,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
     }
 
-    let tracks: CaptionTrack[];
-    let title: string;
-    let duration: number | null;
-    try {
-      const res = await getYoutubeCaptionsTracklist(videoId);
-      tracks = res.tracks;
-      title = res.title;
-      duration = res.duration;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: msg }, { status: 400 });
-    }
-
-    // Try to find English captions
-    let track = tracks.find((t) => t.languageCode === "en" && t.kind !== "asr");
-    if (!track) {
-      track = tracks.find((t) => t.languageCode === "en");
-    }
-    if (!track) {
-      track = tracks.find((t) => t.languageCode?.startsWith("en"));
-    }
-    if (!track) {
-      track = tracks[0]; // Fallback to first track
-    }
-
-    if (!track || !track.baseUrl) {
-      return NextResponse.json({ error: "No usable captions found for this video." }, { status: 400 });
-    }
-
-    // Fetch + parse the transcript (handles both json3 and legacy XML).
     let segments: RawSubtitleSegment[];
-    try {
-      segments = await fetchSubtitleSegments(track.baseUrl);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      return NextResponse.json(
-        { error: msg || "Failed to fetch subtitle details from YouTube" },
-        { status: 400 },
-      );
+    let title = "YouTube Video";
+    let duration: number | null = null;
+    // A signed caption response obtained in the learner's browser is the most
+    // reliable source: YouTube increasingly withholds caption tracks from
+    // Vercel/datacenter IPs even while CC is visibly available to the learner.
+    if (typeof captionBody === "string" && captionBody.length <= 2_000_000) {
+      try { segments = parseSubtitleSegments(captionBody); }
+      catch { segments = []; }
+      title = "YouTube Video";
+    } else {
+      let tracks: CaptionTrack[];
+      try {
+        const res = await getYoutubeCaptionsTracklist(videoId);
+        tracks = res.tracks; title = res.title; duration = res.duration;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+      const track = tracks.find((t) => t.languageCode === "en" && t.kind !== "asr")
+        || tracks.find((t) => t.languageCode === "en")
+        || tracks.find((t) => t.languageCode?.startsWith("en"))
+        || tracks[0];
+      if (!track?.baseUrl) return NextResponse.json({ error: "No usable captions found for this video." }, { status: 400 });
+      try { segments = await fetchSubtitleSegments(track.baseUrl); }
+      catch (err) {
+        const msg = err instanceof Error ? err.message : "";
+        return NextResponse.json({ error: msg || "Failed to fetch subtitle details from YouTube" }, { status: 400 });
+      }
     }
 
     if (segments.length === 0) {

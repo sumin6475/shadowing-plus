@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getVerifiedSessionAccessToken } from "@/lib/supabase-server";
+import { getVerifiedSessionTokens } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
@@ -41,13 +41,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unapproved extension callback." }, { status: 400 });
   }
 
-  const token = await getVerifiedSessionAccessToken();
-  if (!token) {
+  const session = await getVerifiedSessionTokens();
+  if (!session) {
     const login = new URL("/login", req.url);
     login.searchParams.set("next", `${req.nextUrl.pathname}?return_to=${encodeURIComponent(returnTo)}`);
     return NextResponse.redirect(login);
   }
 
-  callback.hash = new URLSearchParams({ access_token: token }).toString();
+  // The redirect fragment is received only by Chrome Identity. Supplying the
+  // refresh token lets the extension renew an expired access token without
+  // making the learner repeat the browser sign-in every hour.
+  callback.hash = new URLSearchParams({
+    access_token: session.accessToken,
+    refresh_token: session.refreshToken,
+    ...(session.email ? { email: session.email } : {}),
+  }).toString();
   return NextResponse.redirect(callback);
 }

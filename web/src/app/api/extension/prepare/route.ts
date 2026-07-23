@@ -18,7 +18,11 @@ export function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const userId = await getExtensionUserId(req);
   if (!userId) return extensionJson(req, { error: "Unauthorized" }, { status: 401 });
-  const body = (await req.json().catch(() => null)) as { url?: unknown; targetLang?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as {
+    url?: unknown;
+    targetLang?: unknown;
+    captionBody?: unknown;
+  } | null;
   if (typeof body?.url !== "string") {
     return extensionJson(req, { error: "A YouTube URL is required." }, { status: 400 });
   }
@@ -47,7 +51,14 @@ export async function POST(req: NextRequest) {
       "content-type": "application/json",
       authorization: req.headers.get("authorization") ?? "",
     },
-    body: JSON.stringify({ url: body.url, targetLang: body.targetLang }),
+    body: JSON.stringify({
+      url: body.url,
+      targetLang: body.targetLang,
+      // The extension obtains this from the learner's authenticated YouTube
+      // tab. Forward it unchanged so the import route does not need to re-fetch
+      // a caption track from Vercel, where YouTube often withholds it.
+      captionBody: typeof body.captionBody === "string" ? body.captionBody : undefined,
+    }),
   });
   const imported = await importYoutube(importRequest);
   const importBody = (await imported.json().catch(() => ({}))) as { jobId?: string; error?: string };

@@ -73,7 +73,11 @@ export async function getSessionUserId(request?: Request): Promise<string | null
  * This is deliberately only used by the one-time Chrome-extension hand-off
  * route; normal API routes should continue to resolve a user id instead.
  */
-export async function getVerifiedSessionAccessToken(): Promise<string | null> {
+export async function getVerifiedSessionTokens(): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  email: string | null;
+} | null> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -83,5 +87,10 @@ export async function getVerifiedSessionAccessToken(): Promise<string | null> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
+  if (!session?.access_token || !session.refresh_token) return null;
+  return {
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    email: user.email ?? null,
+  };
 }
