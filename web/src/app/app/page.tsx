@@ -81,6 +81,7 @@ export default function HomePage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobsSyncError, setJobsSyncError] = useState<string | null>(null);
   const [bookmarksCount, setBookmarksCount] = useState(0);
   const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,19 +131,31 @@ export default function HomePage() {
     setActive(loadActiveSection());
   }, []);
 
+  const refreshJobs = useCallback(async () => {
+    // Jobs drive processing feedback, so fetch them through the authenticated
+    // route rather than letting a failed client-side RLS query silently render
+    // an empty queue. The route still scopes the service-role query by user id.
+    const response = await fetch("/api/jobs", { cache: "no-store" });
+    const payload = (await response.json().catch(() => ({}))) as {
+      jobs?: Job[];
+      error?: string;
+    };
+    if (!response.ok) {
+      throw new Error(payload.error ?? `Job refresh failed (${response.status})`);
+    }
+    setJobs(payload.jobs ?? []);
+    setJobsSyncError(null);
+  }, []);
+
   const refreshAll = useCallback(async () => {
     // Practice sessions for the dashboard's daily-minutes + streak. Bounded
     // window keeps the query small; 90 days covers any realistic streak.
     const sinceIso = new Date(Date.now() - 90 * 86_400_000).toISOString();
-    const [foldersRes, videosRes, jobsRes, bookmarksRes, sessionsRes] =
+    const [foldersRes, videosRes, bookmarksRes, sessionsRes] =
       await Promise.all([
         supabase.from("folders").select("*").order("created_at"),
         supabase
           .from("videos")
-          .select("*")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("jobs")
           .select("*")
           .order("created_at", { ascending: false }),
         supabase.from("bookmarks").select("id", { count: "exact", head: true }),
@@ -155,10 +168,15 @@ export default function HomePage() {
       ]);
     setFolders(foldersRes.data ?? []);
     setVideos(videosRes.data ?? []);
-    setJobs(jobsRes.data ?? []);
     setBookmarksCount(bookmarksRes.count ?? 0);
     setPracticeSessions((sessionsRes.data ?? []) as PracticeSession[]);
-  }, []);
+    try {
+      await refreshJobs();
+    } catch (error) {
+      console.error("Could not refresh processing jobs:", error);
+      setJobsSyncError("Processing status could not refresh. Retrying automatically…");
+    }
+  }, [refreshJobs]);
 
   const handleYoutubeImport = useCallback(async () => {
     const trimmedUrl = youtubeUrl.trim();
@@ -259,6 +277,7 @@ export default function HomePage() {
               ) {
                 refreshAll();
               }
+              setJobsSyncError(null);
               if (idx === -1) return [next, ...prev];
               const copy = prev.slice();
               copy[idx] = next;
@@ -266,7 +285,12 @@ export default function HomePage() {
             });
           },
         )
-        .subscribe();
+        .subscribe((status, error) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            console.warn("Jobs realtime subscription is unavailable:", status, error);
+            setJobsSyncError("Live processing updates disconnected. Retrying automatically…");
+          }
+        });
     })();
 
     return () => {
@@ -277,17 +301,18 @@ export default function HomePage() {
 
   // Fallback poll while a job is in flight, so the library still advances even
   // if Realtime drops the status update (e.g. after an access-token refresh).
-  // Stops as soon as nothing is processing, so it's idle in steady state.
+  // A failed job refresh also keeps polling: otherwise the visible “retrying”
+  // message would be false when the local job list is empty or stale.
   const hasInflightJob = jobs.some(
     (j) => j.status !== "ready" && j.status !== "failed",
   );
   useEffect(() => {
-    if (!hasInflightJob) return;
+    if (!hasInflightJob && !jobsSyncError) return;
     const iv = setInterval(() => {
       refreshAll();
     }, 4000);
     return () => clearInterval(iv);
-  }, [hasInflightJob, refreshAll]);
+  }, [hasInflightJob, jobsSyncError, refreshAll]);
 
   // Close item menu on outside click
   useEffect(() => {
@@ -783,6 +808,11 @@ export default function HomePage() {
           </header>
 
           <UploadDropzone ref={dropzoneRef} onJobQueued={refreshAll} />
+          {jobsSyncError && (
+            <p className="jobs-sync-warning" role="status">
+              {jobsSyncError}
+            </p>
+          )}
 
           {/* Owner-only, hidden from the public product. See lib/youtubeImport.ts. */}
           {canImportYoutube(userId) && (
@@ -1201,6 +1231,7 @@ export default function HomePage() {
       folders={folders}
       videos={videos}
       jobs={jobs}
+      jobsSyncError={jobsSyncError}
       visibleVideos={visibleVideos}
       recentCount={recentVideos.length}
       bookmarksCount={bookmarksCount}
@@ -1229,4 +1260,3 @@ export default function HomePage() {
     </>
   );
 }
-

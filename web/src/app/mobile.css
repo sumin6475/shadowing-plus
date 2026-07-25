@@ -585,6 +585,13 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   gap: 8px;
 }
 
+.m-jobs-sync-warning {
+  margin: 2px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 /* ─── UPLOAD — in-progress processing card ────────────────── */
 
 .m-upload {

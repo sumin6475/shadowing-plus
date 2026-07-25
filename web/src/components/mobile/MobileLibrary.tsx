@@ -28,6 +28,7 @@ interface Props {
   folders: Folder[];
   videos: Video[];
   jobs: Job[];
+  jobsSyncError: string | null;
   visibleVideos: Video[];
   recentCount: number;
   bookmarksCount: number;
@@ -60,6 +61,7 @@ export default function MobileLibrary({
   folders,
   videos,
   jobs,
+  jobsSyncError,
   visibleVideos,
   recentCount,
   bookmarksCount,
@@ -302,6 +304,11 @@ export default function MobileLibrary({
               <MobileJobCard key={j.id} job={j} onChanged={onJobChanged} />
             ))}
           </section>
+        )}
+        {jobsSyncError && (
+          <p className="m-jobs-sync-warning" role="status">
+            {jobsSyncError}
+          </p>
         )}
 
         {/* Clips list */}

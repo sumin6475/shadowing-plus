@@ -582,6 +582,12 @@
 .home-app .job-progress-fill.is-ready { background: var(--success); }
 .home-app .job-progress-fill.is-running { animation: home-pulse 1.8s ease-in-out infinite; }
 
+.home-app .jobs-sync-warning {
+  margin: 10px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
 @keyframes home-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.65; }
