@@ -4,6 +4,7 @@ import {
   Source_Serif_4,
   JetBrains_Mono,
   Instrument_Serif,
+  Newsreader,
 } from "next/font/google";
 import "./globals.css";
 import "./mobile.css";
@@ -30,6 +31,14 @@ const instrumentSerif = Instrument_Serif({
   weight: "400",
   style: ["normal", "italic"],
   variable: "--font-instrument-serif",
+});
+
+// Phrase Bank display serif (per the design's --pb-phrase-font). Variable
+// weight + optical size; italic used for saved context quotes.
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  variable: "--font-newsreader",
 });
 
 export const metadata: Metadata = {
@@ -65,7 +74,7 @@ export default function RootLayout({
   return (
     <html
       lang="ko"
-      className={`${inter.variable} ${sourceSerif.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} h-full antialiased`}
+      className={`${inter.variable} ${sourceSerif.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} ${newsreader.variable} h-full antialiased`}
       style={{
         // Pretendard variable comes from a CDN; home.css falls back to this
         // string when --font-pretendard isn't explicitly set elsewhere.
