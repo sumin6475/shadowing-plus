@@ -25,7 +25,7 @@ type SegmentRow = {
   translation: string | null;
   start_time: number;
   end_time: number;
-  video: { id: string; title: string; user_id: string } | null;
+  video: { id: string; title: string; user_id: string; target_lang: string | null } | null;
 };
 
 /** Case/space-fold a phrase so containment and dedup ignore incidental spacing. */
@@ -54,11 +54,15 @@ async function explainPhrase(input: {
   phrase: string;
   context: Pick<SegmentRow, "text" | "translation">[];
   userId: string;
+  /** The learner's language, from the source clip's translation target
+   *  (videos.target_lang). Global product: never hardcode Korean. */
+  targetName: string;
 }) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OpenAI is not configured.");
+  const lang = input.targetName || "the learner's language";
   const transcript = input.context
-    .map((segment, index) => `${index + 1}. ${segment.text}${segment.translation ? `\n   Korean: ${segment.translation}` : ""}`)
+    .map((segment, index) => `${index + 1}. ${segment.text}${segment.translation ? `\n   ${lang}: ${segment.translation}` : ""}`)
     .join("\n");
   const response = await new OpenAI({ apiKey }).chat.completions.create({
     model: MODEL,
@@ -66,7 +70,7 @@ async function explainPhrase(input: {
     response_format: { type: "json_object" },
     messages: [{
       role: "user",
-      content: `Explain one English expression for a Korean learner. The learner selected: "${input.phrase}"\n\nIt appears in this local video transcript:\n${transcript}\n\nReturn JSON only:\n{"kind":"word|phrasal_verb|pattern|idiom|phrase","meaning_ko":"natural Korean meaning in this context (one short sentence)","usage_note":"brief English explanation of the nuance or grammar in this context (max 24 words)"}\nDo not give a generic dictionary entry. Use the supplied surrounding context.`,
+      content: `Explain one English expression for a learner whose first language is ${lang}. The learner selected: "${input.phrase}"\n\nIt appears in this local video transcript:\n${transcript}\n\nReturn JSON only:\n{"kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"natural ${lang} meaning in this context (one short sentence)","usage_note":"brief English explanation of the nuance or grammar in this context (max 24 words)"}\nDo not give a generic dictionary entry. Use the supplied surrounding context.`,
     }],
   });
   await recordUsage({
@@ -82,7 +86,8 @@ async function explainPhrase(input: {
   const kind = asPhraseText(parsed.kind, 32);
   return {
     kind: (PHRASE_KINDS as readonly string[]).includes(kind) ? kind : "phrase",
-    meaning: asPhraseText(parsed.meaning_ko, 500),
+    // `meaning` is the current JSON key; `meaning_ko` tolerates an older reply.
+    meaning: asPhraseText(parsed.meaning ?? parsed.meaning_ko, 500),
     note: asPhraseText(parsed.usage_note, 500),
   };
 }
@@ -93,7 +98,8 @@ export type SavePhraseOutcome =
 
 /**
  * Validate a selection against the user's own subtitle, persist it as a
- * `phrase_items` row, and attach a context-aware Korean explanation.
+ * `phrase_items` row, and attach a context-aware explanation in the learner's
+ * language (the clip's translation target — global, not Korean-only).
  *
  * `db` MUST be a service-key client (RLS-bypassing): ownership is enforced here
  * by checking `segment.video.user_id === userId`, not by RLS. A failed
@@ -114,7 +120,7 @@ export async function savePhrase(
 
   const { data: rawSegment, error: segmentError } = await db
     .from("segments")
-    .select("id, index, text, translation, start_time, end_time, video:videos!inner(id, title, user_id)")
+    .select("id, index, text, translation, start_time, end_time, video:videos!inner(id, title, user_id, target_lang)")
     .eq("id", segmentId)
     .maybeSingle();
   const segment = rawSegment as SegmentRow | null;
@@ -168,6 +174,8 @@ export async function savePhrase(
       phrase: text,
       context: (nearby ?? []) as Pick<SegmentRow, "text" | "translation">[],
       userId,
+      // Explain in the learner's language — the clip's translation target.
+      targetName: segment.video.target_lang ?? "Korean",
     });
     const { data: ready, error: updateError } = await db
       .from("phrase_items")

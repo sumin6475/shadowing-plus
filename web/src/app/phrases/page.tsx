@@ -368,11 +368,11 @@ export default function PhrasesPage() {
                 </label>
                 <label>
                   Meaning <span>(optional)</span>
-                  <input value={meaning} onChange={(e) => setMeaning(e.target.value)} placeholder="이 표현이 나에게 뜻하는 것" maxLength={500} />
+                  <input value={meaning} onChange={(e) => setMeaning(e.target.value)} placeholder="What this phrase means to you" maxLength={500} />
                 </label>
                 <label>
                   Note <span>(optional)</span>
-                  <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="언제 쓰고 싶은지, 뉘앙스" maxLength={500} />
+                  <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="When you’d use it, or its nuance" maxLength={500} />
                 </label>
                 {formError && <p className="pb-add-error">{formError}</p>}
                 <button type="submit" className="btn primary" disabled={!text.trim() || saving} style={{ justifySelf: "start" }}>

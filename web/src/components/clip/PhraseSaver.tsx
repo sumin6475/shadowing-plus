@@ -7,7 +7,7 @@ import "./phrase-saver.css";
 // In-player Phrase Bank capture. The learner drags to select a short chunk
 // *inside one subtitle*; a popover opens right at the selection with a clearly
 // visible "Save" button, and after saving the same popover shows the
-// context-aware Korean explanation in place (no separate bottom sheet).
+// context-aware explanation (in the learner's language) in place.
 //
 // This overlay is rendered as a body-level sibling of `.clip-page`, i.e. OUTSIDE
 // the scope where the app's cobalt design tokens (--accent-text, --surface, …)
