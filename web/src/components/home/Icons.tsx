@@ -168,6 +168,16 @@ export function HomeIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function MicIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <rect x="6" y="2" width="4" height="7.5" rx="2" />
+      <path d="M4 7.8a4 4 0 0 0 8 0" />
+      <path d="M8 11.8V14M6 14h4" />
+    </svg>
+  );
+}
+
 export function UserIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>

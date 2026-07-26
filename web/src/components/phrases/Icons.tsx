@@ -53,3 +53,9 @@ export const LibraryIcon = ({ width, height }: P) => (
 export const CloseIcon = ({ width, height }: P) => (
   <svg {...base(width, height)}><path d="M18 6 6 18M6 6l12 12" /></svg>
 );
+export const ChevronDownIcon = ({ width, height }: P) => (
+  <svg {...base(width ?? 14, height ?? 14)}><path d="m6 9 6 6 6-6" /></svg>
+);
+export const MicIcon = ({ width, height }: P) => (
+  <svg {...base(width, height)}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M6 11a6 6 0 0 0 12 0" /><path d="M12 17v4M9 21h6" /></svg>
+);

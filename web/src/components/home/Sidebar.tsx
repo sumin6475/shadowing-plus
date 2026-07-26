@@ -12,6 +12,7 @@ import {
   HomeIcon,
   InboxIcon,
   LibraryIcon,
+  MicIcon,
   SearchIcon,
 } from "./Icons";
 
@@ -49,6 +50,7 @@ export default function Sidebar({
   const pathname = usePathname();
   const onBookmarksRoute = pathname?.startsWith("/bookmarks");
   const onPhrasesRoute = pathname?.startsWith("/phrases");
+  const onIslandRoute = pathname?.startsWith("/app/island");
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -91,9 +93,9 @@ export default function Sidebar({
     }
   }
 
-  const isHomeActive = active.kind === "home" && !onBookmarksRoute && !onPhrasesRoute;
-  const isAllActive = active.kind === "all" && !onBookmarksRoute && !onPhrasesRoute;
-  const isRecentActive = active.kind === "recent" && !onBookmarksRoute && !onPhrasesRoute;
+  const isHomeActive = active.kind === "home" && !onBookmarksRoute && !onPhrasesRoute && !onIslandRoute;
+  const isAllActive = active.kind === "all" && !onBookmarksRoute && !onPhrasesRoute && !onIslandRoute;
+  const isRecentActive = active.kind === "recent" && !onBookmarksRoute && !onPhrasesRoute && !onIslandRoute;
 
   return (
     <aside className="sidebar">
@@ -152,6 +154,13 @@ export default function Sidebar({
         >
           <span className="nav-icon"><LibraryIcon /></span>
           <span className="nav-label">Phrase Bank</span>
+        </Link>
+        <Link
+          href="/app/island"
+          className={"nav-item" + (onIslandRoute ? " active" : "")}
+        >
+          <span className="nav-icon"><MicIcon /></span>
+          <span className="nav-label">Language Island</span>
         </Link>
       </nav>
 
