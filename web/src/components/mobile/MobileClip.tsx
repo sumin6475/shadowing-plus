@@ -258,7 +258,7 @@ export default function MobileClip({
                 >
                   <div className="m-line-time">{formatTime(seg.start_time)}</div>
                   <div style={{ minWidth: 0 }}>
-                    <div className="m-line-en">{seg.text}</div>
+                    <div className="m-line-en" data-seg-id={seg.id}>{seg.text}</div>
                     {showTranslation && seg.translation && (
                       <div className="m-line-ko">{seg.translation}</div>
                     )}

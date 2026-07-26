@@ -91,7 +91,7 @@ export default function Transcript({
             >
               <div className="line-time">{formatTime(seg.start_time)}</div>
               <div>
-                <div className="line-en">{seg.text}</div>
+                <div className="line-en" data-seg-id={seg.id}>{seg.text}</div>
                 {seg.translation ? (
                   <div
                     className={

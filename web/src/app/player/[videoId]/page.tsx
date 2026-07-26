@@ -19,6 +19,7 @@ import ClipPlayer from "@/components/clip/ClipPlayer";
 import FocusLine from "@/components/clip/FocusLine";
 import ClipControls from "@/components/clip/ClipControls";
 import Transcript from "@/components/clip/Transcript";
+import PhraseSaver from "@/components/clip/PhraseSaver";
 import MobileClip from "@/components/mobile/MobileClip";
 import { LoopIcon } from "@/components/mobile/Icons";
 import { useIsMobile } from "@/lib/use-is-mobile";
@@ -977,6 +978,10 @@ export default function PlayerPage({
         onSelectSegment={goToSegment}
         onToggleSegmentBookmark={toggleBookmark}
       />
+
+      {/* In-player Phrase Bank capture — one instance covers both shells via
+          the [data-seg-id] tags each transcript line carries. */}
+      <PhraseSaver />
 
       {/* Hoisted <video>: lives in a hidden pool until the useLayoutEffect
           above moves it into the active shell's slot via appendChild. */}

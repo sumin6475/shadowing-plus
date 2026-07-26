@@ -1,0 +1,148 @@
+/* In-player Phrase Bank capture popover. Self-contained styling: this overlay
+   renders OUTSIDE the .clip-page / .home-app token scope, so it must not rely
+   on --accent-text / --surface (they resolve to nothing here — that's what made
+   the old pill invisible). Explicit colors + a [data-theme="dark"] override
+   (data-theme lives on <html>). */
+
+.phrase-pop {
+  position: fixed;
+  z-index: 2147483000;
+  width: max-content;
+  max-width: 320px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.2), 0 2px 8px rgba(15, 23, 42, 0.08);
+  color: #1f2937;
+  font-family: inherit;
+  animation: phrase-pop-in 130ms ease-out;
+}
+
+@keyframes phrase-pop-in {
+  from { opacity: 0; transform: translate(-50%, 0) scale(0.97); }
+}
+
+/* ── prompt: the visible Save button ─────────────────── */
+.phrase-pop-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 12px;
+  min-width: 210px;
+}
+.phrase-pop-sel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phrase-pop-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background: #3b6ee1;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.phrase-pop-save:hover { background: #2f5fd0; }
+.phrase-pop-save:active { background: #2a55bd; }
+.phrase-pop-plus { font-size: 15px; line-height: 1; }
+
+/* ── body: saving / ready / error ────────────────────── */
+.phrase-pop-body {
+  padding: 14px 16px;
+  max-height: min(46vh, 320px);
+  overflow-y: auto;
+}
+.phrase-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+}
+.phrase-pop-term {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.3;
+}
+.phrase-pop-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: #3b6ee1;
+  background: rgba(59, 110, 225, 0.1);
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.phrase-pop-x {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.phrase-pop-x:hover { background: rgba(15, 23, 42, 0.06); color: #334155; }
+
+.phrase-pop-meaning { font-size: 14.5px; color: #1f2937; line-height: 1.55; margin: 6px 0 0; }
+.phrase-pop-note { font-size: 12.5px; color: #64748b; line-height: 1.5; margin: 8px 0 0; }
+.phrase-pop-status { font-size: 13px; color: #64748b; margin: 4px 0 0; }
+.phrase-pop-status.is-error { color: #dc2626; }
+.phrase-pop-flag { font-size: 12px; color: #3b6ee1; margin: 0 0 6px; }
+
+.phrase-pop-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+.phrase-pop-saved { font-size: 12.5px; font-weight: 600; color: #16a34a; }
+.phrase-pop-link { font-size: 13px; font-weight: 600; color: #3b6ee1; text-decoration: none; }
+.phrase-pop-link:hover { text-decoration: underline; }
+
+/* ── dark theme (html[data-theme="dark"]) ────────────── */
+[data-theme="dark"] .phrase-pop {
+  background: #232a36;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #e5e7eb;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+[data-theme="dark"] .phrase-pop-sel,
+[data-theme="dark"] .phrase-pop-term { color: #f1f5f9; }
+[data-theme="dark"] .phrase-pop-meaning { color: #e5e7eb; }
+[data-theme="dark"] .phrase-pop-note,
+[data-theme="dark"] .phrase-pop-status { color: #9aa6b6; }
+[data-theme="dark"] .phrase-pop-x:hover { background: rgba(255, 255, 255, 0.08); color: #e5e7eb; }
+[data-theme="dark"] .phrase-pop-foot { border-top-color: rgba(255, 255, 255, 0.1); }
+[data-theme="dark"] .phrase-pop-save { background: #4b83f0; }
+[data-theme="dark"] .phrase-pop-save:hover { background: #5a8ef5; }
+[data-theme="dark"] .phrase-pop-kind { color: #93b4f5; background: rgba(75, 131, 240, 0.18); }
+
+@media (max-width: 640px) {
+  .phrase-pop { max-width: min(320px, calc(100vw - 20px)); }
+}
