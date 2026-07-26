@@ -1,47 +1,51 @@
 /* ── Sidebar-foot profile menu ──
-   Ported from the design handoff (profile-menu.jsx + styles.css). Renders
-   inside `.home-app`, so it reads the home token set directly; dark mode
-   follows [data-theme="dark"] automatically except the hardcoded danger
-   oklch values, which get explicit overrides below. */
+   Ported from the design handoff. Renders inside `.home-app`, so it reads the
+   home token set directly; dark mode follows [data-theme="dark"].
+
+   IMPORTANT: the trigger and menu items are <button>s, and home.css's
+   `.home-app button { padding:0; border:0; background:transparent }` reset is
+   MORE specific than a bare `.pm-*` class — it silently zeroed their padding
+   and made the menu look cramped. Every button rule here is therefore scoped
+   under `.home-app` so it out-specifies that reset. */
 
 .home-app .sidebar-foot.pm-foot {
   display: block;
-  padding: 8px 6px 6px;
+  padding: 10px 6px 8px;
 }
 
 .pm-root {
   position: relative;
 }
 
-.pm-trigger {
+.home-app .pm-trigger {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 10px 10px;
   border: none;
   background: none;
   cursor: pointer;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: 10px;
   text-align: left;
   transition: background 0.12s;
 }
 
-.pm-trigger:hover,
-.pm-trigger.open {
+.home-app .pm-trigger:hover,
+.home-app .pm-trigger.open {
   background: var(--surface-2);
 }
 
 .pm-avatar {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background: var(--text);
   color: var(--bg-elev);
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -49,7 +53,7 @@
 .pm-email {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -70,17 +74,18 @@
 /* Dropdown opens UPWARD from the foot. */
 .pm-menu {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 8px);
   left: 0;
   right: 0;
   z-index: 40;
+  min-width: 236px;
   background: var(--bg-elev);
   border: 1px solid var(--hairline);
   border-radius: var(--radius, 12px);
   box-shadow:
     0 12px 30px -8px oklch(0 0 0 / 0.2),
     0 2px 8px -4px oklch(0 0 0 / 0.12);
-  padding: 6px;
+  padding: 8px;
   animation: pm-rise 0.14s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
@@ -102,8 +107,8 @@
 }
 
 .pm-menu-email {
-  padding: 5px 10px 6px;
-  font-size: 12.5px;
+  padding: 9px 12px 10px;
+  font-size: 13px;
   color: var(--text-4);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -113,35 +118,41 @@
 .pm-menu-sep {
   height: 1px;
   background: var(--hairline-soft);
-  margin: 2px 0 4px;
+  margin: 5px 0 6px;
 }
 
-.pm-menu-item {
+.home-app .pm-menu-item {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 12px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 11px 12px;
   border: none;
   background: none;
   cursor: pointer;
-  border-radius: var(--radius-sm, 8px);
-  font-size: 14px;
+  border-radius: 9px;
+  font-size: 14.5px;
   color: var(--text);
   text-align: left;
   transition: background 0.1s, color 0.1s;
 }
 
-.pm-menu-item:hover {
+.home-app .pm-menu-item:hover {
   background: var(--surface-2);
 }
 
 .pm-menu-ic {
   display: flex;
+  flex-shrink: 0;
   color: var(--text-3);
 }
 
-.pm-menu-danger {
+.pm-menu-ic svg {
+  width: 17px;
+  height: 17px;
+}
+
+.home-app .pm-menu-danger {
   color: oklch(0.55 0.18 28);
 }
 
@@ -149,7 +160,7 @@
   color: oklch(0.55 0.18 28);
 }
 
-.pm-menu-danger:hover {
+.home-app .pm-menu-danger:hover {
   background: oklch(0.955 0.03 28);
 }
 
@@ -161,11 +172,11 @@
   color: oklch(0.72 0.16 28);
 }
 
-[data-theme="dark"] .pm-menu-danger:hover {
+[data-theme="dark"] .home-app .pm-menu-danger:hover {
   background: oklch(0.3 0.06 28);
 }
 
-.pm-menu-item:disabled {
+.home-app .pm-menu-item:disabled {
   opacity: 0.6;
   cursor: default;
 }
