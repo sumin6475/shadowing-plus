@@ -207,6 +207,33 @@
 .landing .pm-btn.good .l { color: var(--moss-text); }
 .landing .pm-btn.easy .l { color: var(--accent-text); }
 
+/* ── LANGUAGE ISLAND section ── */
+.landing .island-sec { position: relative; overflow: hidden; }
+.landing .island-sec::before { content: ""; position: absolute; inset: 0; background: radial-gradient(52% 46% at 50% 0%, var(--accent-soft) 0%, transparent 62%); pointer-events: none; }
+.landing .island-sec .wrap { position: relative; }
+/* passive/active mini-diagram (the corrected nested model) */
+.landing .isl-venn { display: flex; align-items: center; gap: 16px; margin-top: 28px; padding: 15px 17px; border: 1px solid var(--hairline-soft); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-card); }
+.landing .isl-venn svg { width: 104px; height: 72px; flex-shrink: 0; }
+.landing .isl-venn-cap { font-size: 13px; color: var(--text-3); line-height: 1.5; text-wrap: pretty; }
+.landing .isl-venn-cap b { color: var(--text-2); font-weight: 600; }
+.landing .isl-venn-cap .moss { color: var(--moss-text); font-weight: 500; }
+/* speak-loop "one gap" mock */
+.landing .isl-mock { padding: 26px 30px 28px; }
+.landing .isl-eyebrow { font-family: var(--lp-font-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-text); }
+.landing .isl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.landing .isl-chip { font-family: var(--lp-font-mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--hairline-soft); border-radius: var(--radius-pill); padding: 4px 10px; color: var(--text-4); background: var(--surface-2); }
+.landing .isl-chip.on { color: var(--accent-text); background: var(--accent-soft); border-color: oklch(from var(--accent) 0.88 0.05 h); }
+.landing .isl-gap-h { font-family: var(--lp-font-serif); font-size: 30px; color: var(--text); letter-spacing: -.012em; margin-top: 16px; line-height: 1.1; }
+.landing .isl-quote { margin-top: 12px; padding-left: 14px; border-left: 2.5px solid var(--accent); font-size: 14px; line-height: 1.6; color: var(--text-2); }
+.landing .isl-quote q { font-family: var(--lp-font-serif); font-size: 15.5px; color: var(--text); quotes: none; }
+.landing .isl-bank { margin-top: 18px; border: 1px solid oklch(from var(--accent) 0.88 0.05 h); border-radius: var(--radius); background: var(--accent-soft); padding: 14px 16px; }
+.landing .isl-bank-lbl { display: inline-flex; align-items: center; gap: 7px; font-family: var(--lp-font-mono); font-size: 10px; letter-spacing: .10em; text-transform: uppercase; color: var(--accent-text); }
+.landing .isl-bank-phrase { margin-top: 8px; font-family: var(--lp-font-serif); font-size: 20px; color: var(--text); letter-spacing: -.008em; line-height: 1.25; }
+.landing .isl-ev { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.landing .isl-ev-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: var(--radius-pill); border: 1px solid var(--hairline); background: var(--surface); color: var(--text-3); font-size: 12.5px; }
+.landing .isl-ev-btn.used { color: var(--accent-text); border-color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+.landing .isl-ev-btn.used svg { width: 12px; height: 12px; }
+
 /* feature grid */
 .landing .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 64px; }
 .landing .card { padding: 26px; background: var(--surface); border: 1px solid var(--hairline-soft); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); transition: transform .18s, box-shadow .18s, border-color .18s; }

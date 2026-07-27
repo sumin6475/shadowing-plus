@@ -44,7 +44,7 @@
 .sl-gap-type.on { color: var(--accent-text); background: var(--accent-soft); border-color: oklch(from var(--accent) 0.85 calc(c * 0.4) h); }
 [data-theme="dark"] .sl-gap-type.on { border-color: oklch(from var(--accent) 0.42 calc(c * 0.45) h); }
 .sl-quote { margin: 18px 0 0; padding: 2px 0 2px 16px; border-left: 2.5px solid var(--accent); font-size: 14.5px; line-height: 1.65; color: var(--text-2); }
-.sl-quote q { font-family: var(--pb-phrase-font, var(--font-serif)); font-size: 16px; color: var(--text); }
+.sl-quote q { font-family: var(--pb-phrase-font, var(--font-serif)); font-size: 16px; color: var(--text); quotes: none; }
 .sl-bank { margin-top: 20px; border: 1px solid oklch(from var(--accent) 0.88 calc(c * 0.35) h); border-radius: var(--radius); background: var(--accent-soft); padding: 16px 18px; }
 [data-theme="dark"] .sl-bank { border-color: oklch(from var(--accent) 0.40 calc(c * 0.45) h); }
 .sl-bank .eyebrow { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .10em; text-transform: uppercase; color: var(--accent-text); }

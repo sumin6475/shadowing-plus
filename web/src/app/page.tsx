@@ -12,6 +12,7 @@ import "./landing.css";
 
 const APP = "/app";
 const LOGIN = "/login";
+const ISLAND = "/app/island";
 
 // Deterministic waveform bars for the practice mock (peak near the middle).
 const WAVE = Array.from({ length: 44 }, (_, i) => {
@@ -96,6 +97,8 @@ export default function LandingPage() {
 
   const primaryHref = authed ? APP : LOGIN;
   const primaryLabel = authed ? "Open app" : "Start free";
+  // Language Island lives behind auth (/app/island); logged-out visitors sign in first.
+  const islandHref = authed ? ISLAND : LOGIN;
 
   return (
     <div className="landing">
@@ -108,6 +111,7 @@ export default function LandingPage() {
           <div className="nav-links">
             <a href="#features">Features</a>
             <a href="#how">How it works</a>
+            <a href="#island">Language Island</a>
             <Link href={APP}>Library</Link>
           </div>
           <div className="nav-right">
@@ -382,17 +386,100 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* TESTIMONIAL */}
+      {/* LANGUAGE ISLAND */}
+      <section className="sec island-sec" id="island">
+        <div className="wrap">
+          <div className="sec-head center rv">
+            <span className="kicker" style={{ justifyContent: "center" }}>
+              <span className="bar" />Language Island
+              <span className="beta-tag">New</span>
+            </span>
+            <h2 className="serif">Collecting English is easy.<br />Saying it is the hard part.</h2>
+            <p>
+              Shadowing trains your ear. Language Island trains the moment you actually have to
+              speak — an interview, a meeting, a first hello. Bring a rough version of what you
+              want to say, and leave with a message you can own.
+            </p>
+          </div>
+
+          <div className="feat-row rv" style={{ marginTop: 64 }}>
+            <div className="feat-copy">
+              <span className="kicker"><span className="bar" />The speak loop</span>
+              <h3>One try, one gap, one fix —<br />then say it again.</h3>
+              <p>
+                No report card of every mistake. You say your message once, Language Island names
+                the single thing that got in the way, and you repair just that — often by reaching
+                for a phrase you already saved. Then you say it again. The win is quiet: a phrase
+                that comes back on its own.
+              </p>
+              <div className="feat-tags">
+                <span className="feat-tag">Say it → one gap → repair → again</span>
+                <span className="feat-tag">Retrieval, not memorization</span>
+                <span className="feat-tag">Honest evidence — no streaks</span>
+                <span className="feat-tag">Your saved phrases, coming back</span>
+              </div>
+              <div className="isl-venn">
+                <svg viewBox="0 0 132 92" aria-hidden="true">
+                  <circle cx="66" cy="46" r="40" fill="oklch(0.72 0.008 70 / .16)" stroke="var(--text-4)" strokeWidth="1" />
+                  <circle cx="66" cy="55" r="20" fill="oklch(from var(--accent) l c h / .16)" stroke="var(--accent)" strokeWidth="1" />
+                  <text x="66" y="17" textAnchor="middle" fontSize="7.5" fontFamily="var(--lp-font-mono)" fill="var(--text-3)">PASSIVE</text>
+                  <text x="66" y="54" textAnchor="middle" fontSize="7.5" fontFamily="var(--lp-font-mono)" fill="var(--accent-text)">ACTIVE</text>
+                  <text x="66" y="63" textAnchor="middle" fontSize="6.5" fontFamily="var(--lp-font-mono)" fill="var(--accent-text)" opacity="0.75">= READY</text>
+                </svg>
+                <span className="isl-venn-cap">
+                  <b>Passive</b> is the English you recognize. <b>Active</b> is the part inside it you
+                  can actually reach for — <span className="moss">that&rsquo;s what&rsquo;s ready</span>,
+                  and what this island grows.
+                </span>
+              </div>
+            </div>
+            <div className="feat-visual">
+              <div className="frame">
+                <div className="frame-chrome">
+                  <div className="frame-dots"><span /><span /><span /></div>
+                  <div className="frame-crumb"><b>Explain what I do</b><span className="sep">›</span><span className="cur">Practice</span></div>
+                </div>
+                <div className="isl-mock">
+                  <span className="isl-eyebrow">One gap</span>
+                  <div className="isl-chips">
+                    <span className="isl-chip on">retrieval</span>
+                    <span className="isl-chip">new language</span>
+                    <span className="isl-chip">meaning</span>
+                    <span className="isl-chip">pressure</span>
+                  </div>
+                  <p className="isl-gap-h">Retrieval gap</p>
+                  <p className="isl-quote">
+                    You stalled around <q>&ldquo;my app is, um, different — it makes you use it.&rdquo;</q> You
+                    already saved a phrase for exactly this.
+                  </p>
+                  <div className="isl-bank">
+                    <span className="isl-bank-lbl">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5v14M9 5v14M14 6l4 13" /><rect x="2" y="5" width="2" height="14" /></svg>
+                      From your Phrase Bank
+                    </span>
+                    <p className="isl-bank-phrase">&ldquo;actually use what you already saved&rdquo;</p>
+                  </div>
+                  <div className="isl-ev">
+                    <span className="isl-ev-btn">Not yet</span>
+                    <span className="isl-ev-btn">I recognized it</span>
+                    <span className="isl-ev-btn">It came back</span>
+                    <span className="isl-ev-btn used"><Check /> Used</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="hero-cta" style={{ justifyContent: "center", marginTop: 56 }}>
+            <Link href={islandHref} className="btn primary lg">Try Language Island</Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ASPIRATION — the reader's own line, not a fake testimonial */}
       <section className="quote">
         <div className="wrap rv">
           <blockquote>&ldquo;I stopped just <span className="em">watching</span> English and started <span className="em">saying</span> it. Three lines a day, and after a month my accent finally moved.&rdquo;</blockquote>
-          <div className="quote-by">
-            <span className="quote-av">M</span>
-            <div style={{ textAlign: "left" }}>
-              <div className="n">Mia Alvarez</div>
-              <div className="r">Product designer · 4-month streak</div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -440,8 +527,8 @@ export default function LandingPage() {
               <h5>Product</h5>
               <a href="#features">Features</a>
               <a href="#how">How it works</a>
+              <a href="#island">Language Island</a>
               <Link href={APP}>Library</Link>
-              <Link href="/island">Language island</Link>
             </div>
             <div className="foot-col">
               <h5>Resources</h5>
