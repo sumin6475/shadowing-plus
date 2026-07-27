@@ -1,0 +1,128 @@
+/* ─────────────────────────────────────────────────────────────
+   Shadowing Plus — Cobalt Editorial design tokens for Tailwind 4.
+   Generated from design-system/tokens.json (2026-07-20).
+
+   Usage: @import this AFTER `@import "tailwindcss";` in a global
+   stylesheet, or paste the blocks into globals.css. Then use
+   utilities like bg-bg, bg-surface, text-text-2, text-accent,
+   border-hairline, rounded-md, shadow-card, font-serif, etc.
+
+   This intentionally does NOT touch the legacy orange tokens in
+   globals.css. It is the source-of-truth theme for new surfaces.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* backgrounds */
+  --bg:            oklch(0.985 0.004 70);
+  --bg-elev:       oklch(0.995 0.003 70);
+  --surface:       oklch(1 0 0);
+  --surface-2:     oklch(0.975 0.004 70);
+  --hairline:      oklch(0.91 0.006 70);
+  --hairline-soft: oklch(0.945 0.005 70);
+  /* text */
+  --text:   oklch(0.24 0.012 60);
+  --text-2: oklch(0.42 0.011 60);
+  --text-3: oklch(0.58 0.010 60);
+  --text-4: oklch(0.72 0.008 70);
+  /* accent — cobalt */
+  --accent:       oklch(0.58 0.165 258);
+  --accent-hover: oklch(0.52 0.165 258);
+  --accent-soft:  oklch(0.955 0.0264 258);
+  --accent-text:  oklch(0.48 0.165 258);
+  /* status */
+  --danger:      oklch(0.58 0.18 25);
+  --danger-soft: oklch(0.95 0.04 25);
+  --success:     oklch(0.62 0.13 155);
+  --success-soft:oklch(0.95 0.04 155);
+  --moss:        oklch(0.55 0.10 155);
+  --moss-soft:   oklch(0.955 0.035 155);
+  /* radius */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   24px;
+  --radius-pill: 999px;
+  /* shadow */
+  --shadow-card:
+    0 1px 0 oklch(1 0 0 / 0.6) inset,
+    0 1px 1.5px oklch(0 0 0 / 0.04),
+    0 4px 14px -8px oklch(0 0 0 / 0.10);
+  --shadow-card-hover:
+    0 1px 0 oklch(1 0 0 / 0.6) inset,
+    0 2px 4px oklch(0 0 0 / 0.05),
+    0 12px 28px -14px oklch(0 0 0 / 0.18);
+  --shadow-float:
+    0 1px 0 oklch(1 0 0 / 0.7) inset,
+    0 40px 90px -34px oklch(0 0 0 / 0.32),
+    0 12px 30px -16px oklch(0 0 0 / 0.18);
+  /* fonts (variables are provided by next/font in layout.tsx) */
+  --font-sans:  var(--font-pretendard, "Pretendard Variable", Pretendard, ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif);
+  --font-serif: var(--font-instrument-serif, "Instrument Serif", "Iowan Old Style", "Apple Garamond", Baskerville, "Times New Roman", serif);
+  --font-mono:  var(--font-mono-jb, "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace);
+}
+
+[data-theme="dark"], .dark {
+  --bg:            oklch(0.16 0.006 65);
+  --bg-elev:       oklch(0.185 0.006 65);
+  --surface:       oklch(0.215 0.007 65);
+  --surface-2:     oklch(0.245 0.007 65);
+  --hairline:      oklch(0.295 0.008 65);
+  --hairline-soft: oklch(0.255 0.007 65);
+  --text:   oklch(0.96 0.005 70);
+  --text-2: oklch(0.78 0.008 70);
+  --text-3: oklch(0.62 0.008 70);
+  --text-4: oklch(0.46 0.008 70);
+  --accent:       oklch(0.70 0.16 258);
+  --accent-hover: oklch(0.76 0.16 258);
+  --accent-soft:  oklch(0.32 0.06 258);
+  --accent-text:  oklch(0.78 0.16 258);
+  --shadow-card:
+    0 1px 0 oklch(1 0 0 / 0.04) inset,
+    0 1px 2px oklch(0 0 0 / 0.30),
+    0 6px 18px -10px oklch(0 0 0 / 0.45);
+  --shadow-card-hover:
+    0 1px 0 oklch(1 0 0 / 0.05) inset,
+    0 2px 6px oklch(0 0 0 / 0.35),
+    0 14px 32px -16px oklch(0 0 0 / 0.55);
+}
+
+/* Expose the tokens as Tailwind utilities (Tailwind 4 @theme inline). */
+@theme inline {
+  --color-bg:            var(--bg);
+  --color-bg-elev:       var(--bg-elev);
+  --color-surface:       var(--surface);
+  --color-surface-2:     var(--surface-2);
+  --color-hairline:      var(--hairline);
+  --color-hairline-soft: var(--hairline-soft);
+
+  --color-text:   var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-text-4: var(--text-4);
+
+  --color-accent:       var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft:  var(--accent-soft);
+  --color-accent-text:  var(--accent-text);
+
+  --color-danger:       var(--danger);
+  --color-danger-soft:  var(--danger-soft);
+  --color-success:      var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-moss:         var(--moss);
+  --color-moss-soft:    var(--moss-soft);
+
+  --font-sans:  var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono:  var(--font-mono);
+
+  --radius-sm:   var(--radius-sm);
+  --radius-md:   var(--radius-md);
+  --radius-lg:   var(--radius-lg);
+  --radius-xl:   var(--radius-xl);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-card:       var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+  --shadow-float:      var(--shadow-float);
+}
