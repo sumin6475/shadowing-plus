@@ -5,6 +5,10 @@
 /media
 /model
 /supabase
+# The Expo mobile app (apps/mobile) is a separate project; it must never be
+# swept into the web deploy upload. Anchored so it only matches the top-level
+# apps/ dir, not e.g. web/src/.../apps.
+/apps
 *.md
 .DS_Store
 web/node_modules

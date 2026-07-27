@@ -45,3 +45,14 @@ e2e-screenshots/
 .claude/claude-md-review.md
 .claude/.claude-md-review-state
 .env*
+
+# Build Journal hook transients
+# Build Journal is local evidence and must never be committed.
+docs/journal/
+docs/journal/.pending.md
+.claude/.journal-gate-state
+
+# Unreferenced design drafts (~11 MB). Kept locally, never committed:
+# logo/icon explorations that no code imports. Ship only the chosen asset.
+apps/mobile/assets/icon-concepts/
+web/public/icons/saylo-*.png
