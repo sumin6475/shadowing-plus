@@ -35,8 +35,8 @@ interface VideoRow {
  * audio clip stores only the upload (audio_url). We HEAD whichever keys exist
  * and sum their ContentLength.
  */
-export async function GET() {
-  const userId = await getSessionUserId();
+export async function GET(req: Request) {
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -40,12 +40,12 @@ async function resolve(ref: string | null): Promise<string | null> {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ videoId: string }> },
 ) {
   const { videoId } = await params;
 
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

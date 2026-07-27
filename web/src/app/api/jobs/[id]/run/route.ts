@@ -6,11 +6,11 @@ import { getSessionUserId } from "@/lib/supabase-server";
 export const maxDuration = 300; // Vercel Pro; ignored on Hobby (capped at 60s)
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }

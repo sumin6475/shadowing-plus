@@ -4,11 +4,11 @@ import { getSessionUserId } from "@/lib/supabase-server";
 import { deleteKey, jobKey } from "@/lib/r2";
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { listJobs } from "@/lib/pipeline/jobs";
 import { getSessionUserId } from "@/lib/supabase-server";
 
-export async function GET() {
-  const userId = await getSessionUserId();
+export async function GET(req: Request) {
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
