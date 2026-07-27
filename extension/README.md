@@ -1,6 +1,6 @@
-# Shadowing Plus — private YouTube extension
+# Shadowing Plus — private founder phrase-capture extension
 
-This is an unpacked, desktop-Chrome experiment. It does not download media or support Netflix.
+This is an unpacked, desktop-Chrome experiment for the founder's own learning workflow. It does not download media or support Netflix. It is **not** a public product feature, Chrome Web Store commitment, or dependency of the mobile MVP.
 
 ## Load it locally
 

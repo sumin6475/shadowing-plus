@@ -3,10 +3,9 @@
   const PANEL_WIDTH_KEY = "spPanelWidth";
   const PANEL_MODE_KEY = "spPanelMode";
   const CLOSED_KEY = "spPanelClosed";
-  const BRIDGE_ID = "shadowing-plus-caption-bridge-script";
   let host, root, panel, list, status, selectedWord, wordEntry = null, wordLoading = false, wordError = "", phraseSelection = null, phrases = [], mode = "side";
   let width = 360, closed = false, activeTab = "subtitles", currentIndex = -1;
-  let cues = [], saved = [], prepared = false, preparing = false, prepareError = "", prepareProgress = 0, prepareStage = "", prepareJobId = null, preparePoll = null, lastCaption = "", pendingCue = null, captionTimer = null, abLoop = null, observer, timeListener;
+  let cues = [], saved = [], prepared = false, preparing = false, prepareError = "", prepareProgress = 0, prepareStage = "", prepareJobId = null, preparePoll = null, asrFallbackAvailable = false, asrConfirming = false, lastCaption = "", pendingCue = null, captionTimer = null, abLoop = null, observer, timeListener;
 
   const $ = (selector, parent = root) => parent.querySelector(selector);
   const escapeHtml = (value) => value.replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" })[c]);
@@ -59,7 +58,8 @@
     if (activeTab === "words") return wordBody();
     if (activeTab === "phrases") return phraseBody();
     if (activeTab === "saved") return `<div class="cue-list">${saved.filter((item) => item.youtubeId === videoId()).length ? saved.filter((item) => item.youtubeId === videoId()).map((item) => `<button class="cue saved-cue" data-seek="${item.startTime}"><span>${escapeHtml(item.text)}</span><small>${escapeHtml(item.translation || "번역 없음")}</small></button>`).join("") : `<p class="empty">저장한 문장이 없습니다.</p>`}</div>`;
-    if (preparing) return `<div class="empty"><b>Preparing this video…</b><br>${escapeHtml(prepareStage || "Starting")}${prepareProgress ? ` · ${prepareProgress}%` : ""}<div class="progress"><i style="width:${prepareProgress}%"></i></div><small>You can keep watching while this finishes.</small></div>`;
+    if (preparing) return `<div class="empty"><b>Preparing this video…</b><br>${escapeHtml(prepareStageLabel(prepareStage || "Starting"))}${prepareProgress ? ` · ${prepareProgress}%` : ""}<div class="progress"><i style="width:${prepareProgress}%"></i></div><small>You can keep watching while this finishes.</small></div>`;
+    if (!prepared && asrFallbackAvailable) return asrFallbackBody();
     if (!prepared) return `<div class="empty"><b>Prepare this video</b><br>Build complete subtitles and natural Korean translations using the full video context.<small class="estimate">Estimated translation cost: ${estimateCost()}</small><button class="prepare" data-action="prepare">Prepare video</button>${prepareError ? `<small class="prepare-error">${escapeHtml(prepareError)}</small>` : ""}</div>`;
     if (!cues.length) return `<div class="empty"><b>No captions found.</b><br>This video does not have usable subtitles.</div>`;
     const selection = phraseSelection ? `<div class="phrase-picker"><span>Selected: <b>${escapeHtml(phraseSelection.text)}</b></span><button data-action="save-phrase">Save phrase</button><button data-action="clear-phrase" title="Clear selection">×</button></div>` : "";
@@ -72,6 +72,10 @@
     if (!wordEntry) return `<div class="words"><b>${escapeHtml(selectedWord)}</b></div>`;
     const meanings = (wordEntry.meanings || []).map((meaning) => `<section class="word-meaning"><strong>${escapeHtml(meaning.partOfSpeech || "Definition")}</strong>${meaning.definitions.map((definition) => `<p>${escapeHtml(definition.definition)}${definition.example ? `<small>“${escapeHtml(definition.example)}”</small>` : ""}</p>`).join("")}</section>`).join("");
     return `<div class="words"><b>${escapeHtml(wordEntry.word || selectedWord)}</b>${wordEntry.phonetic ? `<span class="word-phonetic">/${escapeHtml(wordEntry.phonetic).replace(/^\/+|\/+$/g, "")}/</span>` : ""}${meanings || `<p class="word-muted">No definition was found.</p>`}</div>`;
+  }
+  function asrFallbackBody() {
+    const estimate = estimateAsrCost();
+    return `<div class="empty asr"><b>No usable YouTube captions were found.</b><br>Use your private ASR worker to create subtitles from this video's audio, then translate them with full-video context.<small class="estimate">Estimated ASR cost: ${estimate.asr}<br>Estimated translation cost: ${estimate.translation}<br><b>Estimated total: ${estimate.total}</b></small>${asrConfirming ? `<p class="asr-warning">This sends this video's audio to your private worker for transcription.</p><button class="prepare" data-action="asr-confirm">Confirm and generate with ASR</button><button class="asr-cancel" data-action="asr-cancel">Cancel</button>` : `<button class="prepare" data-action="asr-start">Generate with private ASR</button>`}${prepareError ? `<small class="prepare-error">${escapeHtml(prepareError)}</small>` : ""}</div>`;
   }
   function phraseBody() {
     if (!phrases.length) return `<div class="empty"><b>Your Phrase Bank is empty.</b><br>Select a phrase in one subtitle, then choose <em>Save phrase</em>. We will explain what it means in this video context.</div>`;
@@ -91,6 +95,9 @@
     if (action === "prev") selectRelative(-1); if (action === "next") selectRelative(1); if (action === "repeat") seek(cues[currentIndex]?.start);
     if (action === "ab") toggleAb(); if (action === "mode") { mode = mode === "side" ? "dock" : "side"; chrome.storage.local.set({ [PANEL_MODE_KEY]: mode }); position(); }
     if (action === "prepare") prepareVideo();
+    if (action === "asr-start") { asrConfirming = true; prepareError = ""; render(); }
+    if (action === "asr-cancel") { asrConfirming = false; render(); }
+    if (action === "asr-confirm") prepareWithAsr();
     if (action === "save-phrase") savePhrase();
     if (action === "clear-phrase") { phraseSelection = null; render(); }
     if (action === "close") { closed = true; chrome.storage.local.set({ [CLOSED_KEY]: true }); host.style.display = "none"; }
@@ -207,22 +214,13 @@
     });
   }
   async function browserCaptionBody() {
+    // YouTube's Trusted Types policy can reject a <script> element added by a
+    // content script. Ask the worker to run this read-only extractor in the
+    // page's MAIN world instead, which is the Chrome-supported route.
     const tracks = await new Promise((resolve) => {
-      const nonce = crypto.randomUUID(); let settled = false;
-      const finish = (value) => { if (settled) return; settled = true; window.removeEventListener("message", receive); resolve(value); };
-      const receive = (event) => {
-        if (event.source !== window || event.data?.source !== "shadowing-plus-caption-bridge" || event.data?.type !== "response" || event.data?.nonce !== nonce) return;
-        finish(event.data.tracks || []);
-      };
-      window.addEventListener("message", receive);
-      const request = () => window.postMessage({ source: "shadowing-plus-caption-bridge", type: "request", nonce }, location.origin);
-      const bridge = document.getElementById(BRIDGE_ID);
-      if (bridge) request();
-      else {
-        const script = document.createElement("script"); script.id = BRIDGE_ID; script.src = chrome.runtime.getURL("page-bridge.js");
-        script.onload = request; script.onerror = () => finish([]); document.documentElement.append(script);
-      }
-      window.setTimeout(() => finish([]), 1600);
+      chrome.runtime.sendMessage({ type: "sp:caption-tracks" }, (result) => {
+        resolve(chrome.runtime.lastError || !result?.ok ? [] : result.tracks || []);
+      });
     });
     const track = tracks.find((item) => item?.languageCode === "en" && item.kind !== "asr")
       || tracks.find((item) => item?.languageCode === "en")
@@ -258,6 +256,23 @@
         preparing = false; prepareError = result?.error || "Unable to prepare this video."; render(); return;
       }
       if (result.cached) { loadPreparedVideo(); return; }
+      if (result.asrFallbackAvailable) {
+        preparing = false; asrFallbackAvailable = true; asrConfirming = false;
+        prepareError = result.error || "No usable YouTube captions were found."; render(); return;
+      }
+      prepareJobId = result.jobId; pollPreparation();
+    });
+  }
+  function prepareWithAsr() {
+    if (preparing) return;
+    const durationSeconds = video()?.duration || 0;
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) { prepareError = "Wait for the video duration to load, then try again."; render(); return; }
+    preparing = true; asrConfirming = false; prepareError = ""; prepareStage = "Getting audio"; prepareProgress = 3; render();
+    chrome.runtime.sendMessage({ type: "sp:asr-fallback", payload: { url: location.href, title: videoTitle(), durationSeconds, confirmed: true } }, (result) => {
+      if (chrome.runtime.lastError || !result?.ok) {
+        preparing = false; prepareError = result?.error || "Unable to start private ASR."; render(); return;
+      }
+      if (result.cached) { loadPreparedVideo(); return; }
       prepareJobId = result.jobId; pollPreparation();
     });
   }
@@ -272,20 +287,37 @@
     });
   }
   function estimateCost() {
-    const minutes = Math.max(1, Math.ceil((video()?.duration || 0) / 60));
+    const usd = estimateTranslationUsd();
     // gpt-4o-mini estimate: transcript/context input + Korean output. The
     // final invoice is tracked from actual token usage in Settings.
-    const inputTokens = minutes * 420 + 1_500, outputTokens = minutes * 230 + 250;
-    const usd = inputTokens * 0.15 / 1e6 + outputTokens * 0.60 / 1e6;
     return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
+  }
+  function estimateTranslationUsd() {
+    const minutes = Math.max(1, Math.ceil((video()?.duration || 0) / 60));
+    const inputTokens = minutes * 420 + 1_500, outputTokens = minutes * 230 + 250;
+    return inputTokens * 0.15 / 1e6 + outputTokens * 0.60 / 1e6;
+  }
+  function estimateAsrCost() {
+    const minutes = Math.max(1, Math.ceil((video()?.duration || 0) / 60));
+    const translation = estimateCost();
+    // Groq Whisper price is intentionally mirrored from the server estimator.
+    // This is only a pre-flight estimate; actual costs remain in app Settings.
+    const asrUsd = minutes * 0.111 / 60;
+    const translationUsd = estimateTranslationUsd();
+    const totalUsd = asrUsd + translationUsd;
+    const money = (usd) => usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
+    return { asr: money(asrUsd), translation, total: money(totalUsd) };
+  }
+  function prepareStageLabel(stage) {
+    return ({ acquire: "Getting audio", acquiring: "Getting audio", transcribe: "Transcribing audio", postprocess: "Cleaning subtitles", translate: "Translating with context", persist: "Saving subtitles" })[stage] || stage;
   }
   function scrollCurrentIntoView() { $(".cue.current")?.scrollIntoView({ block: "center" }); }
   async function saveCue(index) { const cue = cues[index]; if (!cue) return; const payload = { youtubeId: videoId(), title: videoTitle(), text: cue.text, translation: cue.translation, startTime: cue.start, endTime: cue.end };
     chrome.runtime.sendMessage({ type: "sp:save", payload }, async (result) => { if (chrome.runtime.lastError || !result?.ok) { setStatus(result?.error || "저장하려면 계정을 연결하세요."); return; } cue.saved = true; saved = [...saved.filter((item) => !(item.youtubeId === payload.youtubeId && item.startTime === payload.startTime)), payload]; await chrome.storage.local.set({ spSaved: saved }); render(); }); }
   function startResize(event) { if (!event.target.classList.contains("resize")) return; event.preventDefault(); const startX = event.clientX, startWidth = width; const move = (e) => { width = Math.max(280, Math.min(520, startWidth + (startX - e.clientX))); position(); }; const end = () => { chrome.storage.local.set({ [PANEL_WIDTH_KEY]: width }); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); }; window.addEventListener("pointermove", move); window.addEventListener("pointerup", end); }
-  function resetForNavigation() { if (captionTimer) window.clearTimeout(captionTimer); if (preparePoll) window.clearTimeout(preparePoll); cues = []; saved = []; phrases = []; phraseSelection = null; prepared = false; preparing = false; prepareError = ""; prepareProgress = 0; prepareStage = ""; prepareJobId = null; lastCaption = ""; pendingCue = null; currentIndex = -1; setTimeout(() => { position(); render(); loadPreparedVideo(); }, 700); }
+  function resetForNavigation() { if (captionTimer) window.clearTimeout(captionTimer); if (preparePoll) window.clearTimeout(preparePoll); cues = []; saved = []; phrases = []; phraseSelection = null; prepared = false; preparing = false; prepareError = ""; prepareProgress = 0; prepareStage = ""; prepareJobId = null; asrFallbackAvailable = false; asrConfirming = false; lastCaption = ""; pendingCue = null; currentIndex = -1; setTimeout(() => { position(); render(); loadPreparedVideo(); }, 700); }
   chrome.runtime.onMessage.addListener((message) => { if (message.type === "sp:toggle") { closed = !closed; host.style.display = closed ? "none" : "block"; chrome.storage.local.set({ [CLOSED_KEY]: closed }); if (!closed) position(); } });
 
-  const styles = `:host{all:initial}.sp-panel{position:fixed;z-index:2147483647;box-sizing:border-box;height:min(720px,calc(100vh - 96px));display:flex;flex-direction:column;background:#101114;color:#f5f5f7;border:1px solid #36373d;border-radius:12px;box-shadow:0 18px 52px #0008;font:13px/1.45 Arial,sans-serif;overflow:hidden}.sp-panel.sp-dock{height:calc(100vh - 96px)}*{box-sizing:border-box}header{height:46px;display:flex;align-items:center;gap:7px;padding:0 10px;border-bottom:1px solid #303137;background:#18191d}header strong{letter-spacing:-.2px;white-space:nowrap}header i{color:#eb604a;font-style:normal}nav{display:flex;gap:1px;flex:1;margin-left:8px;overflow:hidden}button{font:inherit;color:inherit;border:0;background:transparent;cursor:pointer}header>button{font-size:17px;opacity:.8;padding:4px}header>button:hover{opacity:1}.tab{height:46px;padding:0 6px;color:#b5b6bd;font-weight:700;border-bottom:2px solid transparent;white-space:nowrap}.tab.active{color:#fff;border-color:#e95740}main{min-height:0;flex:1;overflow:auto;background:#111216}.cue-list{padding:8px}.cue{position:relative;width:100%;display:block;text-align:left;padding:10px 34px 9px 10px;margin-bottom:5px;border-radius:7px;background:#1a1b20;color:#dedfe5;transition:.12s}.cue:hover{background:#25262d}.cue.current{background:#2e2430;box-shadow:inset 3px 0 #e95740}.cue span{display:block;font-weight:650;user-select:text}.cue small{display:block;margin-top:4px;color:#abaeb8;font-size:12px}.cue em{position:absolute;right:9px;top:10px;color:#e9a092;font-size:11px;font-style:normal;opacity:.75}.cue:hover em{opacity:1}mark{color:#fff;background:none;text-decoration:underline dotted #85858c;text-underline-offset:3px;cursor:pointer}.empty,.words{padding:22px 16px;color:#b0b2ba}.prepare{display:block;margin-top:16px;padding:9px 11px;border-radius:7px;background:#e95740;color:#fff;font-weight:700}.estimate,.prepare-error{display:block;margin-top:12px;color:#f3a394}.progress{height:7px;margin:14px 0;border-radius:99px;background:#303137;overflow:hidden}.progress i{display:block;height:100%;border-radius:99px;background:#e95740;transition:width .25s}.words b{display:block;font-size:22px;color:#fff;margin-bottom:3px}.word-phonetic,.word-muted{display:block;margin:0 0 16px;color:#aeb2bd}.word-meaning{padding:13px 0;border-top:1px solid #2b2d33}.word-meaning strong{color:#f2a293;text-transform:capitalize}.word-meaning p{margin:7px 0 0;color:#e2e3e8;line-height:1.5}.word-meaning small{display:block;margin-top:4px;color:#9296a1;font-style:italic}.word-error{color:#f19a88}.phrase-picker{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:7px;padding:8px 10px;background:#2e2430;border-bottom:1px solid #5d3c45}.phrase-picker span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6e1e4}.phrase-picker b{color:#fff}.phrase-picker button,.phrase-open{padding:5px 7px;border-radius:5px;background:#e95740;color:#fff;font-size:11px;font-weight:700;white-space:nowrap}.phrase-picker button:last-child{background:transparent;color:#c9c5cc;font-size:15px}.phrase-list{padding:9px}.phrase-open{display:block;margin:3px 0 10px;background:#292a30;text-align:left}.phrase-card{padding:11px;margin-bottom:6px;border-radius:7px;background:#1a1b20}.phrase-card>b{display:block;font-size:14px;color:#fff}.phrase-kind{display:inline-block;margin-top:5px;padding:2px 5px;border-radius:99px;background:#332936;color:#e9a092;font-size:10px;text-transform:capitalize}.phrase-card p{margin:9px 0 3px;color:#eeeef2;font-size:13px}.phrase-card small{display:block;color:#aeb2ba;font-size:11px;line-height:1.45}.status{padding:0 12px 8px;color:#f1a497;font-size:11px}footer{height:44px;display:flex;gap:4px;align-items:center;padding:6px 9px;border-top:1px solid #303137;background:#18191d}footer button{min-width:31px;border-radius:6px;padding:5px 7px;background:#292a30;font-weight:700}footer button:hover,footer button.active{background:#884237}.resize{position:absolute;top:0;left:0;width:7px;height:100%;cursor:ew-resize}.saved-cue small{color:#df9c90}`;
+  const styles = `:host{all:initial}.sp-panel{position:fixed;z-index:2147483647;box-sizing:border-box;height:min(720px,calc(100vh - 96px));display:flex;flex-direction:column;background:#101114;color:#f5f5f7;border:1px solid #36373d;border-radius:12px;box-shadow:0 18px 52px #0008;font:13px/1.45 Arial,sans-serif;overflow:hidden}.sp-panel.sp-dock{height:calc(100vh - 96px)}*{box-sizing:border-box}header{height:46px;display:flex;align-items:center;gap:7px;padding:0 10px;border-bottom:1px solid #303137;background:#18191d}header strong{letter-spacing:-.2px;white-space:nowrap}header i{color:#eb604a;font-style:normal}nav{display:flex;gap:1px;flex:1;margin-left:8px;overflow:hidden}button{font:inherit;color:inherit;border:0;background:transparent;cursor:pointer}header>button{font-size:17px;opacity:.8;padding:4px}header>button:hover{opacity:1}.tab{height:46px;padding:0 6px;color:#b5b6bd;font-weight:700;border-bottom:2px solid transparent;white-space:nowrap}.tab.active{color:#fff;border-color:#e95740}main{min-height:0;flex:1;overflow:auto;background:#111216}.cue-list{padding:8px}.cue{position:relative;width:100%;display:block;text-align:left;padding:10px 34px 9px 10px;margin-bottom:5px;border-radius:7px;background:#1a1b20;color:#dedfe5;transition:.12s}.cue:hover{background:#25262d}.cue.current{background:#2e2430;box-shadow:inset 3px 0 #e95740}.cue span{display:block;font-weight:650;user-select:text}.cue small{display:block;margin-top:4px;color:#abaeb8;font-size:12px}.cue em{position:absolute;right:9px;top:10px;color:#e9a092;font-size:11px;font-style:normal;opacity:.75}.cue:hover em{opacity:1}mark{color:#fff;background:none;text-decoration:underline dotted #85858c;text-underline-offset:3px;cursor:pointer}.empty,.words{padding:22px 16px;color:#b0b2ba}.prepare{display:block;margin-top:16px;padding:9px 11px;border-radius:7px;background:#e95740;color:#fff;font-weight:700}.estimate,.prepare-error{display:block;margin-top:12px;color:#f3a394}.asr-warning{margin:16px 0 0;color:#d9bec4;line-height:1.45}.asr-cancel{display:block;margin-top:9px;color:#b8bbc5;text-decoration:underline}.progress{height:7px;margin:14px 0;border-radius:99px;background:#303137;overflow:hidden}.progress i{display:block;height:100%;border-radius:99px;background:#e95740;transition:width .25s}.words b{display:block;font-size:22px;color:#fff;margin-bottom:3px}.word-phonetic,.word-muted{display:block;margin:0 0 16px;color:#aeb2bd}.word-meaning{padding:13px 0;border-top:1px solid #2b2d33}.word-meaning strong{color:#f2a293;text-transform:capitalize}.word-meaning p{margin:7px 0 0;color:#e2e3e8;line-height:1.5}.word-meaning small{display:block;margin-top:4px;color:#9296a1;font-style:italic}.word-error{color:#f19a88}.phrase-picker{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:7px;padding:8px 10px;background:#2e2430;border-bottom:1px solid #5d3c45}.phrase-picker span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6e1e4}.phrase-picker b{color:#fff}.phrase-picker button,.phrase-open{padding:5px 7px;border-radius:5px;background:#e95740;color:#fff;font-size:11px;font-weight:700;white-space:nowrap}.phrase-picker button:last-child{background:transparent;color:#c9c5cc;font-size:15px}.phrase-list{padding:9px}.phrase-open{display:block;margin:3px 0 10px;background:#292a30;text-align:left}.phrase-card{padding:11px;margin-bottom:6px;border-radius:7px;background:#1a1b20}.phrase-card>b{display:block;font-size:14px;color:#fff}.phrase-kind{display:inline-block;margin-top:5px;padding:2px 5px;border-radius:99px;background:#332936;color:#e9a092;font-size:10px;text-transform:capitalize}.phrase-card p{margin:9px 0 3px;color:#eeeef2;font-size:13px}.phrase-card small{display:block;color:#aeb2ba;font-size:11px;line-height:1.45}.status{padding:0 12px 8px;color:#f1a497;font-size:11px}footer{height:44px;display:flex;gap:4px;align-items:center;padding:6px 9px;border-top:1px solid #303137;background:#18191d}footer button{min-width:31px;border-radius:6px;padding:5px 7px;background:#292a30;font-weight:700}footer button:hover,footer button.active{background:#884237}.resize{position:absolute;top:0;left:0;width:7px;height:100%;cursor:ew-resize}.saved-cue small{color:#df9c90}`;
   hydrate();
 })();

@@ -26,6 +26,26 @@ async function refreshAccessToken(appUrl, refreshToken) {
   return json.accessToken;
 }
 
+async function getCaptionTracks(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    // This function is serialized into YouTube's page world. Keep it
+    // self-contained and return only the signed track metadata we need.
+    func: () => {
+      const player = document.getElementById("movie_player");
+      const response = player?.getPlayerResponse?.() || globalThis.ytInitialPlayerResponse;
+      const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+      return tracks.map((track) => ({
+        baseUrl: track.baseUrl,
+        languageCode: track.languageCode,
+        kind: track.kind,
+      }));
+    },
+  });
+  return results[0]?.result || [];
+}
+
 async function api(path, body, method = "POST", retried = false) {
   const { appUrl, accessToken, refreshToken } = await config();
   if (!accessToken) throw new Error("Shadowing Plus 계정을 연결해 주세요.");
@@ -49,7 +69,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id) chrome.tabs.sendMessage(tab.id, { type: "sp:toggle" }).catch(() => {});
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "sp:connect") {
     (async () => {
       try {
@@ -104,6 +124,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true, ...result });
       })
       .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (message.type === "sp:asr-fallback") {
+    api("/api/extension/asr-fallback", message.payload)
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (message.type === "sp:caption-tracks") {
+    if (!sender.tab?.id) { sendResponse({ ok: false, error: "No YouTube tab was available." }); return; }
+    getCaptionTracks(sender.tab.id)
+      .then((tracks) => sendResponse({ ok: true, tracks }))
+      .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unable to read caption tracks." }));
     return true;
   }
   if (message.type === "sp:job") {
