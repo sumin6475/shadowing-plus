@@ -4,6 +4,8 @@
 **Decision:** Keep the YouTube import feature, but **gate it to an owner allowlist** so it is invisible and unusable to everyone except Sumin. It stays available as a personal ingestion tool; it does **not** ship as a public product feature.
 **Status:** Implemented (code gate + UI hide). Owner still needs to set the env var to use it — see "How to enable for yourself" below.
 
+> **2026-07-24 launch update:** this remains an owner-only experiment. A future server on Dokploy, OVHcloud, Oracle Cloud, or another VPS would not make scraping or storing arbitrary public-video captions compliant. The public MVP instead launches with private user uploads and a learner-owned Phrase Bank. The official YouTube IFrame Player API may be evaluated separately for playback-only embeds; it does not change the caption-ingestion rule. See `.agents/PRDs/speaking-memory-mvp.md`.
+
 ---
 
 ## Why it can't be a public feature

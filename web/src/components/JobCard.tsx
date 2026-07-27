@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Job, StageName } from "@/lib/types";
 
 const STAGE_LABELS: Record<StageName, string> = {
+  acquire: "Getting audio",
   extract: "Extracting audio",
   transcribe: "Transcribing",
   postprocess: "Cleaning up segments",

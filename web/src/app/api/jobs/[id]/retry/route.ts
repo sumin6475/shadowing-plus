@@ -11,7 +11,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -25,13 +25,21 @@ export async function POST(
     const body = (await req.json()) as { stage?: StageName };
     if (body.stage && STAGE_SEQUENCE.includes(body.stage)) {
       stage = body.stage;
-    } else if (job.current_stage) {
+    } else if (job.current_stage && STAGE_SEQUENCE.includes(job.current_stage)) {
       stage = job.current_stage;
+    } else if (job.ingestion_mode === "youtube_asr") {
+      // A completed worker upload can be resumed from transcription. If the
+      // worker never uploaded audio, stage 2 returns a clear, retryable error.
+      stage = "transcribe";
     } else {
       stage = "extract";
     }
   } catch {
-    stage = job.current_stage ?? "extract";
+    stage = job.current_stage && STAGE_SEQUENCE.includes(job.current_stage)
+      ? job.current_stage
+      : job.ingestion_mode === "youtube_asr"
+        ? "transcribe"
+        : "extract";
   }
 
   try {

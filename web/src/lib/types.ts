@@ -69,6 +69,7 @@ export interface Bookmark {
 
 export type JobStatus =
   | "pending"
+  | "acquiring"
   | "extracting"
   | "transcribing"
   | "postprocessing"
@@ -78,6 +79,7 @@ export type JobStatus =
   | "failed";
 
 export type StageName =
+  | "acquire"
   | "extract"
   | "transcribe"
   | "postprocess"
@@ -90,6 +92,8 @@ export interface Job {
   title: string;
   media_type: MediaType;
   source_key: string;
+  ingestion_mode: "upload" | "youtube_captions" | "youtube_asr";
+  asr_nonce: string | null;
   status: JobStatus;
   current_stage: StageName | null;
   progress: number;

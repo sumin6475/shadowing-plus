@@ -372,6 +372,7 @@ export async function POST(req: NextRequest) {
       media_type: "video",
       source_key: `youtube://${videoId}`,
       user_id: userId,
+      ingestion_mode: "youtube_captions",
       // source stays at the DB default (eng); only the translation target is
       // user-selectable for YouTube imports.
       target_lang: target,

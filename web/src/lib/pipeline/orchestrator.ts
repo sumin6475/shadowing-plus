@@ -15,6 +15,7 @@ const STAGE_SEQUENCE: StageName[] = [
 ];
 
 const STAGE_STATUS_MAP = {
+  acquire: "acquiring",
   extract: "extracting",
   transcribe: "transcribing",
   postprocess: "postprocessing",
@@ -25,6 +26,10 @@ const STAGE_STATUS_MAP = {
 async function runStage(stage: StageName, jobId: string): Promise<void> {
   await setJobStage(jobId, stage, STAGE_STATUS_MAP[stage]);
   switch (stage) {
+    case "acquire":
+      // Private YouTube ASR acquisition is completed by the worker callback.
+      // The orchestrator deliberately begins at `transcribe` for that flow.
+      throw new Error("Waiting for the private ASR worker to upload audio.");
     case "extract":
       await stage1Extract(jobId);
       return;

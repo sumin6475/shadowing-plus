@@ -52,6 +52,8 @@ export async function createJob(input: {
   // (eng → Korean), which keeps older callers and un-specified uploads working.
   source_lang?: string;
   target_lang?: string;
+  ingestion_mode?: Job["ingestion_mode"];
+  asr_nonce?: string;
 }): Promise<Job> {
   const { data, error } = await supabaseAdmin()
     .from(TABLE)
@@ -63,6 +65,8 @@ export async function createJob(input: {
       // Only set when provided so the column DEFAULT covers the omitted case.
       ...(input.source_lang ? { source_lang: input.source_lang } : {}),
       ...(input.target_lang ? { target_lang: input.target_lang } : {}),
+      ...(input.ingestion_mode ? { ingestion_mode: input.ingestion_mode } : {}),
+      ...(input.asr_nonce ? { asr_nonce: input.asr_nonce } : {}),
       status: "pending",
       progress: 0,
     })
@@ -86,6 +90,34 @@ export async function setJobStage(
   status: JobStatus,
 ): Promise<void> {
   await updateJob(jobId, { current_stage: stage, status, error: null });
+}
+
+/** Mark an owner-approved YouTube ASR job as waiting for the private worker. */
+export async function markAsrAcquiring(jobId: string): Promise<void> {
+  await updateJob(jobId, {
+    current_stage: "acquire",
+    status: "acquiring",
+    progress: 3,
+    error: null,
+  });
+}
+
+/**
+ * Consume the one-time worker nonce atomically. A callback is accepted once
+ * only while the job is in its acquisition state.
+ */
+export async function consumeAsrNonce(jobId: string, nonce: string): Promise<Job | null> {
+  const { data, error } = await supabaseAdmin()
+    .from(TABLE)
+    .update({ asr_nonce: null, updated_at: new Date().toISOString() })
+    .eq("id", jobId)
+    .eq("ingestion_mode", "youtube_asr")
+    .eq("status", "acquiring")
+    .eq("asr_nonce", nonce)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return (data ?? null) as Job | null;
 }
 
 export async function updateJobProgress(
@@ -133,6 +165,7 @@ export async function deleteJob(jobId: string): Promise<void> {
 // excluded on purpose: a pending job hasn't entered the pipeline yet (its
 // upload may still be streaming to R2), so it must not be reaped.
 const IN_PROGRESS_STATUSES: JobStatus[] = [
+  "acquiring",
   "extracting",
   "transcribing",
   "postprocessing",

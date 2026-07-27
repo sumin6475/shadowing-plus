@@ -15,6 +15,7 @@ const STAGES: StageName[] = [
 // Friendly mobile labels — short label under the step dot, long "doing" line
 // shown as the active-stage status text.
 const STAGE_LABEL: Record<StageName, string> = {
+  acquire: "Get audio",
   extract: "Extract",
   transcribe: "Transcribe",
   postprocess: "Refine",
@@ -23,10 +24,11 @@ const STAGE_LABEL: Record<StageName, string> = {
 };
 
 const STAGE_DOING: Record<StageName, string> = {
+  acquire: "Getting audio",
   extract: "Extracting audio",
   transcribe: "Transcribing speech",
   postprocess: "Cleaning up transcript",
-  translate: "Translating to Korean",
+  translate: "Translating",
   persist: "Saving to library",
 };
 

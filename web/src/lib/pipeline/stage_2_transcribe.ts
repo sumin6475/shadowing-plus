@@ -3,6 +3,7 @@ import {
   getSignedDownloadUrl,
   jobKey,
   putJson,
+  deleteKey,
 } from "@/lib/r2";
 import type { PipelineSegment, PipelineWord } from "@/lib/types";
 import { languagePairForJob } from "./languages";
@@ -149,5 +150,11 @@ export async function stage2Transcribe(jobId: string): Promise<void> {
     segments,
   };
   await putJson(jobKey(jobId, "raw_transcript.json"), out);
+  // A YouTube ASR job keeps its YouTube reference for playback; the temporary
+  // audio exists only long enough to create this durable transcript checkpoint.
+  if (job.ingestion_mode === "youtube_asr") {
+    try { await deleteKey(audioKeyFor(job)); }
+    catch (error) { console.error("Temporary YouTube ASR audio cleanup failed:", error); }
+  }
   await updateJobProgress(jobId, "transcribe", 100);
 }
