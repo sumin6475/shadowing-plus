@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { POST as importYoutube } from "@/app/api/youtube/import/route";
 import { extensionCors, extensionJson, getExtensionUserId } from "@/lib/extension-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { youtubeAsrConfigured } from "@/lib/youtube-asr";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -63,6 +64,13 @@ export async function POST(req: NextRequest) {
   const imported = await importYoutube(importRequest);
   const importBody = (await imported.json().catch(() => ({}))) as { jobId?: string; error?: string };
   if (!imported.ok || !importBody.jobId) {
+    const captionUnavailable = /(?:no captions|no usable captions|no text segments|subtitle)/i.test(importBody.error ?? "");
+    if (captionUnavailable) {
+      return extensionJson(req, {
+        asrFallbackAvailable: youtubeAsrConfigured(),
+        error: importBody.error ?? "No YouTube captions were found.",
+      });
+    }
     return extensionJson(req, { error: importBody.error ?? "Unable to prepare this video." }, { status: imported.status });
   }
 
