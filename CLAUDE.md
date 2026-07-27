@@ -31,5 +31,39 @@ Follow Code HQ's CLAUDE.md and Sumin's voice principles in 00_Resources (voice-p
 - **A failure that spans desktop + mobile + PWA at once is a shared server/deploy cause, not a client-specific policy** — verify the API/route responds in production before writing client-side workarounds.
 - **Translation matches by batch position (k), not the GPT-returned index** (drop/reorder defense); the fixed prompt is a `system` message for caching.
 - Language pair is centralized in `web/src/lib/pipeline/languages.ts` (currently `eng` → Korean); changing it also means swapping the font in `layout.tsx`.
+- **Design system lives in `design-system/`.** For any UI work, follow `design-system/DESIGN.md` and pull values from `design-system/tokens.json` (Cobalt Editorial). Design files win over conflicting visual instructions. The orange `#e05d38` tokens in `globals.css` are deprecated starter code.
 
 *Full reference lives in README.md + ARCHITECTURE.md (and AGENTS.md, imported above); this CLAUDE.md is the senior-dev-partner layer on top.*
+
+
+---
+
+<!-- build-journal:block v1 — installed by Code HQ/03_Build Journal. Edit freely after install. -->
+
+## Auto-Journal (자동 기록)
+
+> **As I build, you write evidence into `docs/journal/` automatically. I never have to say "log this."** Full folder guide: `docs/journal/README.md`.
+
+The journal records one improvement loop (build → measure → fail → diagnose → fix) as it happens, so that later I can see where I failed and how I fixed it, which design principles I learned and applied, and which skills I used. It doubles as interview evidence.
+
+**Triggers, and what to draft without being asked:**
+
+| When | Draft | Where |
+|---|---|---|
+| A step is confirmed working, right before moving to the next | one short entry: what I built, principle learned/applied, skill used | `docs/journal/JOURNAL.md` |
+| I resolve a decision that is costly to reverse | an ADR: context, options, decision, rejected alternatives, revisit trigger | `docs/journal/decisions/NNNN-*.md` |
+| A failure that needed diagnosis gets fixed | a postmortem: symptom verbatim, hypotheses, root cause, fix, before/after, regression case added | `docs/journal/postmortems/YYYY-MM-DD-*.md` |
+| Tests/eval run, or a quality gate passes or fails | a score snapshot; update `quality-bar.md` if the criteria changed | `docs/journal/quality/` |
+
+Every ADR, postmortem, or score snapshot also gets a one-line pointer in `JOURNAL.md`, so the log stays the single index.
+
+**Rules for auto-journaling (draft + notify, never decide):**
+- Draft the entry, then tell me in one line (e.g. "journaled step 3 → JOURNAL.md"). Do not wait for me to ask.
+- Never write or overwrite implementation code as part of journaling. Never decide a reserved decision for me: draft the ADR only after I have chosen.
+- Keep entries short. Paste real error messages verbatim. Leave thin sections blank rather than padding them.
+- When a bug is fixed, the same fix adds a case to the project's regression suite (tests/eval). That link between postmortem and suite is the point.
+- Only journal what crossed a real bar: a step transition, a genuine decision, a diagnosed failure, a measured result. Not every message.
+
+**How it fires:** step-transition and decision triggers are semantic, so the primary engine is this contract, and it works in any tool that reads `CLAUDE.md` (including Cursor). Claude Code sessions also get a turn-end hook (`.claude/hooks/journal_gate.py`) that notifies me if I built something this session but nothing was journaled. The hook only reminds. It never writes, blocks, or decides.
+
+<!-- /build-journal:block v1 -->

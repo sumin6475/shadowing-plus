@@ -1,6 +1,10 @@
 # Shadowing Plus
 
-An English shadowing webapp + installable PWA. Drop in a video or audio file, get word-level transcripts with Korean translations, and shadow sentence-by-sentence. Bookmarks fuel a spaced-repetition practice mode that surfaces sentences when they're due.
+Shadowing Plus is becoming a **personal speaking-memory tool** for non-native English speakers. It helps a learner turn their own ideas—and the English they have already saved and practiced—into words they can retrieve under pressure.
+
+The current app is a private-media shadowing web app + installable PWA: drop in a video or audio file, receive a word-level transcript with Korean translations, and shadow sentence by sentence. Bookmarks fuel a spaced-repetition practice mode that resurfaces sentences when they are due.
+
+> **Product direction (2026-07-24):** the public MVP begins with one Language Island, **“Explain what I do.”** A learner organizes a real idea, retrieves relevant phrases from their own learning history, speaks an attempt, and practices the exact gaps exposed by that attempt. The feature is specified in [the MVP PRD](.agents/PRDs/speaking-memory-mvp.md). Roadmap items below are not represented as already shipped.
 
 <p align="center">
   <img src="docs/screenshots/Slide.png" alt="Shadowing Plus — library, clip player, bookmarks" width="100%" />
@@ -11,6 +15,47 @@ An English shadowing webapp + installable PWA. Drop in a video or audio file, ge
 - **Bookmarks** — saved sentences grouped per clip, in-page playback with `endTime` snap.
 - **Practice (SM-2 lite SRS)** — Again / Good / Easy verdicts schedule the next review. Mobile and desktop have separate optimized shells.
 - **PWA** — installable on iOS / Android home screen with a placeholder "S+" icon (swap via [`web/scripts/generate-icons.mjs`](web/scripts/generate-icons.mjs)).
+
+## Product direction: from saved clips to speaking memory
+
+### The problem
+
+Learners often understand and save useful English, but cannot retrieve it while explaining their own work under pressure. Generic AI tutors can provide a role-play or a polished answer, but neither connects a learner's personal ideas to the phrases they have already learned.
+
+### The core loop
+
+```text
+raw idea → structured personal message → retrieve saved phrases → speak an attempt
+    → identify the exact failure → targeted shadow / variation drill → retry → SRS follow-up
+```
+
+The coach must preserve the learner's facts and voice. It does not replace them with a generic “native” script. It classifies a failure instead:
+
+| Failure | Next action |
+| --- | --- |
+| The learner has not decided what they mean | Ask one Boiling-style thinking question and return to message structure. |
+| The learner knows the meaning but lacks language | Offer one clearly labeled new phrase to learn. |
+| The learner has learned the phrase but cannot retrieve it | Surface a relevant, already-saved chunk and drill it in a new variation. |
+| The learner can say the line alone but loses it under pressure | Retry with a time limit, follow-up question, or changed context. |
+
+### Language Islands
+
+A Language Island is a recurring, speakable domain in the learner's life—not a generic topic such as “business English.” The first island is **Explain what I do**; future examples include a career story, a project pitch, a research explanation, or a client objection.
+
+Each island joins three user-owned assets:
+
+1. **Meaning:** personal story cards, claims, evidence, and talking points shaped through a Boiling-style conversation.
+2. **Language:** uploaded media, saved bookmarks, and manually saved chunks from any learning source.
+3. **Performance evidence:** attempts, freeze points, successful retrievals, and targeted SRS reviews.
+
+Phrase retrieval is user-facing as “Use something you already learned,” never as “RAG.” Speaking Memory Search begins with “What are you trying to say?” and searches only the learner's saved/practiced material by phrase, meaning, or intended message. Every result carries source context and its earned evidence: **Recognize** (can understand it in context), **Retrieve** (can say it from an intention), or **Use** (it appeared in the learner's own attempt). If none fits, a new phrase is visibly labeled as new and only becomes part of the island after the learner chooses to save it.
+
+### Product boundaries for the first public MVP
+
+- **Private uploads are the public ingestion path.** Users may upload media they have the right to use; the app processes it privately.
+- **Chrome extension is a private founder tool, not a public product feature.** It may help the founder collect phrases, but it is not a launch dependency or a Web Store commitment.
+- **Telegram is a temporary notification adapter.** The domain logic remains channel-agnostic. A native mobile client with platform notifications is the intended launch path; TestFlight validates that path before an App Store release.
+- **Do not make public YouTube transcript ingestion a launch dependency.** The official IFrame Player API can embed an eligible video, but it does not authorize us to collect arbitrary public-video captions into the learner's bank. The existing owner-only experiment remains gated. See [the YouTube decision](docs/ver2.0%20plan/2026-07-19-youtube-import-personal-use-decision.md).
 
 ### Default language pair
 
@@ -29,7 +74,7 @@ To switch the language pair, edit [`web/src/lib/pipeline/languages.ts`](web/src/
 ## Tech stack
 
 - **Frontend** — Next.js 16 (App Router, Turbopack), React 19, Tailwind CSS 4, TypeScript 5.
-- **Database** — Supabase Postgres. RLS is **disabled**; the anon key reads/writes directly. Realtime subscription on `jobs` drives live upload progress.
+- **Database** — Supabase Postgres with per-user RLS policies in the codebase. Verify the real production migration/RLS state before inviting external users; Realtime subscription on `jobs` drives live upload progress.
 - **Media storage** — Cloudflare R2 (S3-compatible) for uploads, audio extracts, and pipeline JSON checkpoints. Free egress.
 - **Processing** — 5-stage TypeScript pipeline that runs on Vercel API routes: `extract → transcribe → postprocess → translate → persist`. ElevenLabs Scribe v2 for ASR, GPT-4o-mini for translation.
 - **Testing** — Vitest. Postprocess stages (5 modules) and the SRS algorithm are pure functions with table-driven tests.
