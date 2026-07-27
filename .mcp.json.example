@@ -1,0 +1,9 @@
+{
+  "_readme": "Rename to .mcp.json and keep ONLY the servers this project actually needs — every connected server costs context. Shape from coleam00/ai-transformation-workshop .mcp.json. The example below wires Playwright browser automation (an alternative to the agent-browser CLI the e2e-test skill uses by default).",
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}

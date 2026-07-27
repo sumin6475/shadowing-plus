@@ -1,0 +1,51 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write|MultiEdit|NotebookEdit|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 '/Users/jadekim/Documents/Code HQ/Shadowing Plus/.codex/hooks/security_guard.py'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 '/Users/jadekim/Documents/Code HQ/Shadowing Plus/.codex/hooks/post_tool_use_check.py'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 '/Users/jadekim/Documents/Code HQ/Shadowing Plus/.codex/hooks/session_start_context.py'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 '/Users/jadekim/Documents/Code HQ/Shadowing Plus/.codex/hooks/stop_validate.py'",
+            "timeout": 900
+          },
+          {
+            "type": "command",
+            "command": "python3 '/Users/jadekim/Documents/Code HQ/Shadowing Plus/.codex/hooks/propose_claude_md.py'"
+          }
+        ]
+      }
+    ]
+  }
+}

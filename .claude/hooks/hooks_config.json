@@ -1,0 +1,26 @@
+{
+  "_readme": "Commands the hooks run per project. 'auto' detects from ROOT-LEVEL project files only (pyproject.toml -> ruff/pytest, package.json -> npm scripts/tsc/prettier) — monorepos need explicit commands with per-step 'cwd'. /create-rules replaces 'auto' with explicit commands during setup — keep them in sync with CLAUDE.md's Validation section. Set 'off' (or []) to disable a hook. Steps accept optional 'ok_returncodes' (e.g. [0, 5] for pytest's no-tests-collected). notify: 'fail' (macOS notification when the Stop gate blocks, plus when the auto-reflector finishes a draft) | 'all' (also on green turn-end) | 'off' (silence everything, reflector drafts included).",
+  "_project_note": "Shadowing Plus has NO root package.json — all app code and tooling live in web/. Commands are pinned explicitly with cwd:'web' because 'auto' only inspects root-level files and would silently disable these gates. lint=eslint (flat config), tests=vitest (postprocess + SRS pure fns). No prettier installed, so post_edit is lint-only. tsc is available but omitted from the Stop gate to keep it fast; run `npm run build` via /validate for the full type+build gauntlet.",
+  "_explicit_example": {
+    "stop_gate": [
+      { "name": "lint", "command": ["uv", "run", "ruff", "check", "."], "cwd": "." },
+      { "name": "tests", "command": ["uv", "run", "pytest", "-q", "--tb=short"], "cwd": "." }
+    ],
+    "post_edit": {
+      "format": { ".py": ["uv", "run", "ruff", "format", "{file}"] },
+      "lint": { ".py": ["uv", "run", "ruff", "check", "{file}"] }
+    }
+  },
+  "stop_gate": [
+    { "name": "lint", "command": ["npm", "run", "lint"], "cwd": "web" },
+    { "name": "tests", "command": ["npm", "test"], "cwd": "web" }
+  ],
+  "post_edit": {
+    "_lint_note": "--no-install pins to the project's eslint (v9). Bare `npx eslint` fetches the latest (v10), which crashes on eslint-plugin-react's version detection (react/display-name: getFilename is not a function) and false-alarms every .ts/.tsx edit. Keep --no-install so the hook uses web/node_modules and fails loudly if eslint is missing instead of silently pulling v10.",
+    "lint": {
+      ".ts": ["npx", "--no-install", "eslint", "{file}"],
+      ".tsx": ["npx", "--no-install", "eslint", "{file}"]
+    }
+  },
+  "notify": "fail"
+}
