@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
-  DrillIcon,
   CheckIcon,
+  CloseIcon,
+  HelpIcon,
   PencilIcon,
   ChevronDownIcon,
   TrashIcon,
@@ -11,7 +13,6 @@ import {
   ReplayIcon,
   NoteIcon,
   MicIcon,
-  LibraryIcon,
 } from "@/components/phrases/Icons";
 
 // Language Island page pieces — ported from the Claude Design mockup
@@ -21,14 +22,82 @@ import {
 
 export type Beat = { id?: string; text: string; evidence: string | null; source: "learner" | "ai_structured" };
 
-export function LIVenn({ onDismiss }: { onDismiss?: () => void }) {
-  const legend = (
+// Corrected model: Active English is the part of Passive English you can
+// actually retrieve — a subset drawn INSIDE the passive circle, not an overlap
+// of two equal circles. The inner circle is what's "ready" for real
+// conversations, and what this island grows. (The old two-overlapping-circles
+// version implied active English could live outside what you recognize, which
+// is wrong — you can only actively use what you passively hold.)
+function LIVennLegend() {
+  return (
     <div className="li-venn-legend">
-      <p><span className="k" style={{ background: "oklch(0.72 0.008 70)" }} /><b>Passive English</b> — I recognize it when I hear or read it.</p>
-      <p><span className="k" style={{ background: "var(--accent)" }} /><b>Active English</b> — I can retrieve it when I have something to say.</p>
-      <p><span className="k" style={{ background: "oklch(0.55 0.10 155)" }} /><b>The overlap</b> — English that&rsquo;s ready for my real conversations. That&rsquo;s what this island grows.</p>
+      <p>
+        <span className="k" style={{ background: "oklch(0.72 0.008 70)" }} />
+        <b>Passive English</b> — everything I recognize when I hear or read it.
+      </p>
+      <p>
+        <span className="k" style={{ background: "var(--accent)" }} />
+        <b>Active English</b> — the part inside it I can actually retrieve when I have something to say. That&rsquo;s the English that&rsquo;s <b>ready</b> for real conversations — and what this island grows.
+      </p>
     </div>
   );
+}
+
+function LIVennDiagram() {
+  return (
+    <svg className="li-venn-svg" viewBox="0 0 200 132" aria-hidden="true">
+      <circle cx="100" cy="66" r="60" fill="oklch(0.72 0.008 70 / .14)" stroke="oklch(0.72 0.008 70)" strokeWidth="1.25" />
+      <circle cx="100" cy="78" r="30" fill="oklch(from var(--accent) l c h / .14)" stroke="var(--accent)" strokeWidth="1.25" />
+      <text x="100" y="22" textAnchor="middle" fontSize="10" fill="var(--text-3)" fontFamily="var(--font-mono)">PASSIVE</text>
+      <text x="100" y="76" textAnchor="middle" fontSize="10" fill="var(--accent-text)" fontFamily="var(--font-mono)">ACTIVE</text>
+      <text x="100" y="89" textAnchor="middle" fontSize="9.5" fill="var(--accent-text)" fontFamily="var(--font-mono)" opacity="0.7">= READY</text>
+    </svg>
+  );
+}
+
+export function LIVenn({
+  mini,
+  modal,
+  onClose,
+  onNeverShow,
+  onDismiss,
+}: {
+  mini?: boolean;
+  modal?: boolean;
+  onClose?: () => void;
+  onNeverShow?: () => void;
+  onDismiss?: () => void;
+}) {
+  // Compact legend strip shown above a saved message (the "always" legend).
+  if (mini) {
+    return (
+      <div className="li-venn legend-mini">
+        <div className="li-venn-body"><LIVennLegend /></div>
+      </div>
+    );
+  }
+
+  // Onboarding / on-demand explainer popover.
+  if (modal) {
+    return (
+      <div className="li-modal-overlay" onClick={onClose}>
+        <div className="li-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Why this island exists">
+          <div className="li-modal-head">
+            <div className="li-venn-eyebrow">Why this island exists</div>
+            <button type="button" className="li-modal-x" onClick={onClose} aria-label="Close"><CloseIcon width={13} height={13} /></button>
+          </div>
+          <div className="li-venn-body modal"><LIVennDiagram /><LIVennLegend /></div>
+          <div className="li-modal-foot">
+            {onNeverShow && <button type="button" className="btn ghost" onClick={onNeverShow}>Don&rsquo;t show this again</button>}
+            <span className="spacer" />
+            <button type="button" className="btn primary" onClick={onClose}><CheckIcon width={13} height={13} /> Got it</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Default inline card (first-run, before there are beats).
   return (
     <section className="li-venn">
       <div className="li-venn-eyebrow">Why this island exists</div>
@@ -37,18 +106,16 @@ export function LIVenn({ onDismiss }: { onDismiss?: () => void }) {
           <CheckIcon width={13} height={13} /> Got it
         </button>
       )}
-      <div className="li-venn-body">
-        <svg className="li-venn-svg" viewBox="0 0 200 132" aria-hidden="true">
-          <circle cx="72" cy="66" r="52" fill="oklch(0.72 0.008 70 / .16)" stroke="oklch(0.72 0.008 70)" strokeWidth="1.25" />
-          <circle cx="128" cy="66" r="52" fill="oklch(from var(--accent) l c h / .10)" stroke="var(--accent)" strokeWidth="1.25" />
-          <path d="M100 22.2A52 52 0 0 1 100 109.8A52 52 0 0 1 100 22.2z" fill="oklch(0.55 0.10 155 / .14)" stroke="oklch(0.55 0.10 155)" strokeWidth="1.25" />
-          <text x="48" y="70" textAnchor="middle" fontSize="10" fill="var(--text-3)" fontFamily="var(--font-mono)">PASSIVE</text>
-          <text x="152" y="70" textAnchor="middle" fontSize="10" fill="var(--accent-text)" fontFamily="var(--font-mono)">ACTIVE</text>
-          <text x="100" y="63" textAnchor="middle" fontSize="9.5" fill="oklch(0.46 0.095 155)" fontFamily="var(--font-mono)">READY</text>
-        </svg>
-        {legend}
-      </div>
+      <div className="li-venn-body"><LIVennDiagram /><LIVennLegend /></div>
     </section>
+  );
+}
+
+export function LIHelpButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className="li-help" onClick={onClick} title="Why this island exists">
+      <HelpIcon width={14} height={14} /> Why this island
+    </button>
   );
 }
 
@@ -67,7 +134,7 @@ export function LICapture({
     <section className="li-capture">
       <div className="li-label">
         <span>Your rough explanation</span>
-        <span className="hint">Your own language mixed in is fine</span>
+        <span className="hint">Your first language mixed in is fine</span>
       </div>
       <textarea
         className="li-textarea"
@@ -82,7 +149,7 @@ export function LICapture({
           {shaping ? (
             <><span className="spin" /> Shaping…</>
           ) : (
-            <><DrillIcon width={14} height={14} /> Shape into beats</>
+            <><ReplayIcon width={14} height={14} /> Shape into beats</>
           )}
         </button>
       </div>
@@ -222,45 +289,9 @@ export function LIPracticeCTA() {
         <h3>Speak it once, out loud.</h3>
         <p>One attempt, one gap, one repair — then say it again. About four minutes.</p>
       </div>
-      <span className="li-soon">Coming next</span>
-      <button type="button" className="btn primary" disabled style={{ opacity: 0.55, pointerEvents: "none" }}>
+      <Link className="btn primary" href="/app/island/speak">
         <MicIcon width={14} height={14} /> Practice this message
-      </button>
-    </section>
-  );
-}
-
-export function LISketch() {
-  return (
-    <section className="li-sketch">
-      <div className="li-sketch-eyebrow"><span>Coming next — the speak loop</span><span className="li-soon">Phase 3</span></div>
-      <div className="li-sketch-steps">
-        <div className="li-step"><span className="n">1</span><div>
-          <h4>Speak attempt 1</h4>
-          <p>Say your message from the beats. Text first; voice later.</p>
-        </div></div>
-        <div className="li-step"><span className="n">2</span><div>
-          <h4>One gap, diagnosed</h4>
-          <p>Not a report card — a single card naming one thing: meaning, new language, retrieval, or pressure.</p>
-          <div className="li-gap-card"><b>Retrieval gap</b> — you paused before &ldquo;make decisions under pressure.&rdquo; You already saved a phrase for this.
-            <div><span className="frombank"><LibraryIcon width={10} height={10} /> From your Phrase Bank · &ldquo;I&rsquo;m especially interested in…&rdquo;</span></div>
-          </div>
-        </div></div>
-        <div className="li-step"><span className="n">3</span><div>
-          <h4>One short repair</h4>
-          <p>Use the phrase once in your own sentence. That&rsquo;s the whole drill.</p>
-        </div></div>
-        <div className="li-step"><span className="n">4</span><div>
-          <h4>Speak attempt 2, then honest evidence</h4>
-          <p>No streaks, no scores — just what actually happened.</p>
-          <div className="demo">
-            <span className="li-evidence-btn">Not yet</span>
-            <span className="li-evidence-btn">I recognized it</span>
-            <span className="li-evidence-btn">It came back</span>
-            <span className="li-evidence-btn" style={{ color: "var(--accent-text)", borderColor: "var(--accent)", background: "var(--accent-soft)" }}><CheckIcon width={10} height={10} /> Used</span>
-          </div>
-        </div></div>
-      </div>
+      </Link>
     </section>
   );
 }

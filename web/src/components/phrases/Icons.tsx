@@ -59,3 +59,15 @@ export const ChevronDownIcon = ({ width, height }: P) => (
 export const MicIcon = ({ width, height }: P) => (
   <svg {...base(width, height)}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M6 11a6 6 0 0 0 12 0" /><path d="M12 17v4M9 21h6" /></svg>
 );
+export const HelpIcon = ({ width, height }: P) => (
+  <svg {...base(width, height)}><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2.5 2-2.5 3.5" /><path d="M12 17h.01" /></svg>
+);
+export const BackIcon = ({ width, height }: P) => (
+  <svg {...base(width ?? 14, height ?? 14)}><path d="M15 18l-6-6 6-6" /></svg>
+);
+export const PauseIcon = ({ width, height }: P) => (
+  <svg {...base(width ?? 12, height ?? 12)}><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" /><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" /></svg>
+);
+export const EyeOffIcon = ({ width, height }: P) => (
+  <svg {...base(width, height)}><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a18 18 0 0 1-2.16 3.19M6.6 6.6A18 18 0 0 0 2 12s3 8 10 8a9 9 0 0 0 5.4-1.6" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24M3 3l18 18" /></svg>
+);

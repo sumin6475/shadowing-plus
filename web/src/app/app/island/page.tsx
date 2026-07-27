@@ -9,11 +9,11 @@ import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
 import {
   LIVenn,
+  LIHelpButton,
   LICapture,
   LIBeats,
   LIRough,
   LIPracticeCTA,
-  LISketch,
   type Beat,
 } from "@/components/island/IslandPieces";
 
@@ -21,6 +21,8 @@ import "../../home.css";
 import "./island.css";
 
 const ACTIVE_SECTION_KEY = "sp:home:section";
+// Muting the first-run explainer modal. (Legacy value "sp:island:vennDismissed"
+// pre-dates the modal; treat any stored value as "muted".)
 const VENN_KEY = "sp:island:vennDismissed";
 
 export default function IslandPage() {
@@ -38,13 +40,14 @@ export default function IslandPage() {
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [vennDismissed, setVennDismissed] = useState(false);
+  const [vennMuted, setVennMuted] = useState(true); // assume muted until we've read localStorage
+  const [vennModalOpen, setVennModalOpen] = useState(false);
 
   useEffect(() => {
     try {
-      if (localStorage.getItem(VENN_KEY)) setVennDismissed(true);
+      setVennMuted(Boolean(localStorage.getItem(VENN_KEY)));
     } catch {
-      /* ignore */
+      setVennMuted(false);
     }
   }, []);
 
@@ -87,14 +90,24 @@ export default function IslandPage() {
     };
   }, []);
 
-  const dismissVenn = useCallback(() => {
-    setVennDismissed(true);
+  const muteVenn = useCallback(() => {
+    setVennMuted(true);
+    setVennModalOpen(false);
     try {
       localStorage.setItem(VENN_KEY, "1");
     } catch {
       /* ignore */
     }
   }, []);
+
+  // First-run explainer: auto-open the "why this island" modal once, for a
+  // learner who hasn't muted it and hasn't started a message yet.
+  const [vennAutoShown, setVennAutoShown] = useState(false);
+  useEffect(() => {
+    if (loading || vennAutoShown || vennMuted) return;
+    if (beats.length === 0) setVennModalOpen(true);
+    setVennAutoShown(true);
+  }, [loading, vennAutoShown, vennMuted, beats.length]);
 
   const ensureIsland = useCallback(async (): Promise<Island | null> => {
     if (island) {
@@ -259,7 +272,6 @@ export default function IslandPage() {
         : hasBeats && dirty
           ? { label: "Draft — unsaved beats", cls: "st-practicing" }
           : { label: "Draft", cls: "st-new" };
-  const showVenn = !vennDismissed && !hasBeats;
   const showPractice = hasBeats && !dirty && island?.status === "ready";
 
   return (
@@ -288,16 +300,21 @@ export default function IslandPage() {
                   <h1 className="li-title">Explain what I do</h1>
                   <p className="li-lede">Start from a rough explanation in your own words. We&rsquo;ll help you shape it into clear message beats — then you use the English you already have.</p>
                 </div>
-                {status && <span className={"li-status " + status.cls}><span className="dot" />{status.label}</span>}
+                <div className="li-head-aside">
+                  {status && <span className={"li-status " + status.cls}><span className="dot" />{status.label}</span>}
+                  <LIHelpButton onClick={() => setVennModalOpen(true)} />
+                </div>
               </div>
             </div>
+
+            {vennModalOpen && (
+              <LIVenn modal onClose={() => setVennModalOpen(false)} onNeverShow={muteVenn} />
+            )}
 
             {loading ? (
               <p className="li-loading">Loading your island…</p>
             ) : (
               <>
-                {showVenn && <LIVenn onDismiss={dismissVenn} />}
-
                 {!hasBeats && (
                   <LICapture value={rawAnswer} onChange={setRawAnswer} onShape={shape} shaping={shaping} />
                 )}
@@ -306,6 +323,7 @@ export default function IslandPage() {
 
                 {hasBeats && (
                   <>
+                    <LIVenn mini />
                     {showPractice && <LIPracticeCTA />}
                     <LIBeats
                       beats={beats}
@@ -319,7 +337,6 @@ export default function IslandPage() {
                       saved={saved}
                     />
                     {rawAnswer.trim() && <LIRough text={rawAnswer} />}
-                    <LISketch />
                   </>
                 )}
               </>
