@@ -79,7 +79,17 @@ export default function Transcript({
             <div
               key={seg.id}
               className={"line" + (isCurrent ? " is-current" : "")}
-              onClick={() => onSelect(i)}
+              onClick={(e) => {
+                onSelect(i);
+                // Drop focus after a mouse/touch selection. The row is a
+                // focusable role="button", so a pointer click otherwise leaves
+                // it as document.activeElement — then the next Space/Enter fires
+                // BOTH the global player shortcut and this row's own onKeyDown,
+                // re-seeking to the selected line (the "focus stuck / box fires
+                // twice" bug). Keyboard users who Tab here keep focus and the
+                // Enter/Space handler below, so a11y navigation is unaffected.
+                e.currentTarget.blur();
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
