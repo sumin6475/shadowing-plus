@@ -605,43 +605,51 @@ export default function PlayerPage({
         return;
       }
 
-      switch (e.key.toLowerCase()) {
-        case "a":
+      // Ignore keys emitted while an IME is composing (e.g. Korean 한글 input),
+      // otherwise the physical key leaks through as a composition keystroke.
+      if (e.isComposing) return;
+
+      // Match on e.code (physical key position), not e.key (the produced
+      // character). With a Korean IME active, the physical "A" key reports
+      // e.key === "ㅁ", which never matches "a" — so shortcuts silently break.
+      // e.code stays "KeyA" regardless of IME state or keyboard layout.
+      switch (e.code) {
+        case "KeyA":
           e.preventDefault();
           goToPrev();
           break;
-        case "d":
+        case "KeyD":
           e.preventDefault();
           goToNext();
           break;
-        case "s":
+        case "KeyS":
           e.preventDefault();
           repeatCurrent();
           break;
-        case "r":
+        case "KeyR":
           e.preventDefault();
           toggleAbRepeat();
           break;
-        case "l":
+        case "KeyL":
           e.preventDefault();
           toggleLoop();
           break;
-        case "t":
+        case "KeyT":
           e.preventDefault();
           setShowTranslation((v) => !v);
           break;
-        case " ":
+        case "Space":
           e.preventDefault();
           togglePlay();
           break;
-        case "arrowleft":
+        case "ArrowLeft":
           e.preventDefault();
           if (playerRef.current) {
             const t = playerRef.current.getCurrentTime();
             playerRef.current.seekTo(Math.max(0, t - 3));
           }
           break;
-        case "arrowright":
+        case "ArrowRight":
           e.preventDefault();
           if (playerRef.current) {
             const t = playerRef.current.getCurrentTime();
