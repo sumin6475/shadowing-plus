@@ -489,6 +489,13 @@ export default function PlayerPage({
 
   const goToSegment = useCallback((index: number) => {
     if (index < 0 || index >= segmentsRef.current.length) return;
+    // Update the ref eagerly, in lockstep with the jump. currentIndexRef is
+    // otherwise synced only in a post-commit effect, so the first timeupdate
+    // after a programmatic seek still reads the OLD index — and sentence-loop
+    // enforcement (handleTimeUpdate) would see time past the old line's end
+    // and snap playback back to it, so moving to the next line never loops
+    // the new line (TCK-16).
+    currentIndexRef.current = index;
     setCurrentIndex(index);
     playerRef.current?.seekTo(segmentsRef.current[index].start_time);
     playerRef.current?.play();
