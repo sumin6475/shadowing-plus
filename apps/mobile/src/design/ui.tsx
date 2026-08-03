@@ -1,6 +1,6 @@
 // ui.tsx — shared primitives ported from sp-theme.jsx: Card, Hero, Block, Pill,
 // Chip, Badge, Avatar, Header, BackBar, Sect, Screen, Wave, StatTile, TabBar.
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactElement, type ReactNode } from "react";
 import {
   Animated,
   Easing,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type RefreshControlProps,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -399,11 +400,14 @@ export function Screen({
   noPad,
   bottomPad = 120,
   style,
+  refreshControl,
 }: {
   children: ReactNode;
   noPad?: boolean;
   bottomPad?: number;
   style?: StyleProp<ViewStyle>;
+  /** Optional <RefreshControl> for pull-to-refresh (data-backed screens). */
+  refreshControl?: ReactElement<RefreshControlProps>;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -421,6 +425,7 @@ export function Screen({
       ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      refreshControl={refreshControl}
     >
       {children}
     </ScrollView>

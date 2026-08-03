@@ -113,7 +113,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "recs":
       return <RecsScreen nav={nav} />;
     case "libItem":
-      return <LibItem nav={nav} id={p.id as number} />;
+      return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "saveChunk":
       return <ChunkSave nav={nav} />;
     case "settings":

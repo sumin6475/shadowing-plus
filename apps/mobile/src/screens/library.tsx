@@ -1,14 +1,16 @@
 // library.tsx — Library tab: list + add sheet, clip focus reader, chunk save
 // (sp-library.jsx). Default clip layout is "focus".
-import { useMemo, useState } from "react";
-import { Animated, Dimensions, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { SP } from "@/design/data";
+import { fetchLibrary, formatDuration, type LibraryEntry } from "@/lib/library";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
+
+const CARD_TONES = ["butter", "sky", "sage", "blush"] as const;
 
 const ADD_OPTS: [IconName, string, string][] = [
   ["upload", "Upload video", "From your camera roll or files"],
@@ -21,45 +23,100 @@ const ADD_OPTS: [IconName, string, string][] = [
 export function LibraryScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
   const [add, setAdd] = useState(false);
+  const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setEntries(await fetchLibrary());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t load your library.");
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
   return (
     <>
-      <Screen>
+      <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
         <Header
           eyebrow="Your Library"
           title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Learn from your{"\n"}own material.</Serif>}
           sub="Save the parts you want to understand — then use yourself."
           right={<Avatar onPress={() => nav.push("settings")} />}
         />
-        {SP.lib.map((item) => (
-          <Card key={item.id} onPress={item.state === "Ready" ? () => nav.push("libItem", { id: item.id }) : undefined}>
-            <View style={{ flexDirection: "row", gap: 13, alignItems: "center" }}>
-              <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: t.colors[item.tone], alignItems: "center", justifyContent: "center" }}>
-                <Icon name={item.icon} s={21} c={t.colors.onB} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>{item.title}</Text>
-                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>{item.meta}</Text>
-              </View>
-              {item.state === "Ready" ? (
-                <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-              ) : (
-                <View style={{ backgroundColor: t.colors.accS, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "700", color: t.colors.accD }}>{item.state}</Text>
-                </View>
-              )}
-            </View>
-            {item.prog ? (
-              <>
-                <View style={{ height: 6, borderRadius: 9999, backgroundColor: t.colors.soft, marginTop: 13, overflow: "hidden" }}>
-                  <View style={{ width: `${item.prog * 100}%`, height: "100%", borderRadius: 9999, backgroundColor: t.colors.acc }} />
-                </View>
-                <Text style={{ fontSize: 12, color: t.colors.ink3, marginTop: 7, lineHeight: 18 }}>
-                  This can take a few minutes for longer files. You can leave — we’ll keep processing in the background.
-                </Text>
-              </>
-            ) : null}
+
+        {entries === null && !error ? (
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <ActivityIndicator color={t.colors.acc} />
+          </View>
+        ) : error ? (
+          <Card style={{ alignItems: "center", paddingVertical: 28 }}>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, textAlign: "center" }}>Couldn’t load your library</Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
+            <Pill tone="tint" small onPress={load} style={{ marginTop: 14 }}>
+              Retry
+            </Pill>
           </Card>
-        ))}
+        ) : !entries || entries.length === 0 ? (
+          <Card style={{ alignItems: "center", paddingVertical: 34 }}>
+            <Serif style={{ fontSize: 20, color: t.colors.ink }}>Nothing here yet</Serif>
+            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
+              Upload a clip from the web app — or make sure you’re signed in — and it’ll show up here.
+            </Text>
+          </Card>
+        ) : (
+          entries.map((item, i) => {
+            const tone = CARD_TONES[i % CARD_TONES.length];
+            const icon: IconName = item.mediaType === "audio" ? "wave2" : "clip";
+            const meta = item.ready
+              ? `${formatDuration(item.durationSec)} · ${item.mediaType}`
+              : "Processing your upload…";
+            return (
+              <Card key={item.id} onPress={item.ready ? () => nav.push("libItem", { id: item.id, title: item.title }) : undefined}>
+                <View style={{ flexDirection: "row", gap: 13, alignItems: "center" }}>
+                  <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: t.colors[tone], alignItems: "center", justifyContent: "center" }}>
+                    <Icon name={icon} s={21} c={t.colors.onB} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>{meta}</Text>
+                  </View>
+                  {item.ready ? (
+                    <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+                  ) : (
+                    <View style={{ backgroundColor: t.colors.accS, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: t.colors.accD }}>{item.statusLabel}</Text>
+                    </View>
+                  )}
+                </View>
+                {!item.ready ? (
+                  <>
+                    <View style={{ height: 6, borderRadius: 9999, backgroundColor: t.colors.soft, marginTop: 13, overflow: "hidden" }}>
+                      <View style={{ width: `${Math.round((item.progress ?? 0) * 100)}%`, height: "100%", borderRadius: 9999, backgroundColor: t.colors.acc }} />
+                    </View>
+                    <Text style={{ fontSize: 12, color: t.colors.ink3, marginTop: 7, lineHeight: 18 }}>
+                      This can take a few minutes for longer files. You can leave — we’ll keep processing in the background.
+                    </Text>
+                  </>
+                ) : null}
+              </Card>
+            );
+          })
+        )}
+
         <Pill full icon="plus" tone="dark" onPress={() => setAdd(true)}>
           Add something to learn from
         </Pill>
@@ -112,7 +169,10 @@ function LibLine({ l, size = 15, lh = 22 }: { l: (typeof LIB_LINES)[number]; siz
   return <Text style={{ fontSize: size, lineHeight: lh, color: t.colors.ink }}>{l.x}</Text>;
 }
 
-export function LibItem({ nav }: { id: number; nav: Nav }) {
+// NOTE: the transcript/lines below are still sample content. The list (title,
+// which clip you tapped) is real; wiring the real transcript (segments table +
+// media playback) is the next data-connection step.
+export function LibItem({ nav, title }: { id?: string; title?: string; nav: Nav }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const [line, setLine] = useState(2);
@@ -132,7 +192,7 @@ export function LibItem({ nav }: { id: number; nav: Nav }) {
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 18, paddingBottom: 96, gap: t.gap }}
         showsVerticalScrollIndicator={false}
       >
-        <BackBar title="Sunglasses story" onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
+        <BackBar title={title ?? "Sunglasses story"} onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
         <Card lg style={{ padding: 0, overflow: "hidden" }}>
           <View style={{ height: 216, backgroundColor: t.colors.soft, alignItems: "center", justifyContent: "center" }}>
             <Text style={{ fontFamily: "Menlo", fontSize: 12, color: t.colors.ink3, position: "absolute", top: 12, left: 14 }}>your uploaded video</Text>
@@ -148,6 +208,9 @@ export function LibItem({ nav }: { id: number; nav: Nav }) {
             <Text style={{ fontSize: 13, color: t.colors.ink3 }}>4:12</Text>
           </View>
         </Card>
+        <Text style={{ fontSize: 12, color: t.colors.ink3, paddingHorizontal: 6, fontStyle: "italic" }}>
+          Sample transcript — your clip’s real lines connect next.
+        </Text>
         <View style={{ paddingHorizontal: 6, paddingTop: 8, gap: 16 }}>
           <View>
             <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, marginBottom: 10 }}>NOW PLAYING · {l.t}</Text>
