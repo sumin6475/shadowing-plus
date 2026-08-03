@@ -26,7 +26,11 @@ function RootNavigator() {
 
   if (loading) return null;
 
-  const signedIn = !!session;
+  // SKELETON PREVIEW: while the app is a design skeleton running on mock data,
+  // show the (app) group without a Supabase session so it opens straight into
+  // the designed UI. Flip to `false` to restore the real auth gate.
+  const SKELETON_PREVIEW = true;
+  const signedIn = SKELETON_PREVIEW || !!session;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
