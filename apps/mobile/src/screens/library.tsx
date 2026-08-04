@@ -6,8 +6,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
 import { fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
+import { saveBookmark } from "@/lib/phrases";
 import { useTheme } from "@/design/theme";
-import { Avatar, BackBar, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif } from "@/design/ui";
+import { Avatar, BackBar, Card, Header, Hero, Icon, Pill, Screen, Serif } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
 
@@ -296,7 +297,7 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
               {cur.translation ? <Text style={{ fontSize: 15, color: t.colors.ink3, marginTop: 8, lineHeight: 22 }}>{cur.translation}</Text> : null}
             </View>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-              <Pill small icon="bank" onPress={() => nav.push("saveChunk", { text: cur.text, translation: cur.translation, time: formatDuration(cur.start) })}>
+              <Pill small icon="bank" onPress={() => nav.push("saveChunk", { segmentId: cur.id, text: cur.text, translation: cur.translation, time: formatDuration(cur.start) })}>
                 Save phrase
               </Pill>
               <View style={{ flex: 1 }} />
@@ -364,14 +365,32 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
   );
 }
 
-// The header shows the real line passed from the reader. The actual bookmark
-// insert (into the bookmarks table) is not wired yet — the confirmation below
-// is still a placeholder for that next step.
-export function ChunkSave({ nav, text, translation, time }: { nav: Nav; text?: string; translation?: string | null; time?: string }) {
+// Saves the reader's current transcript line as a real bookmark (bookmarks
+// table, RLS-scoped). Idempotent — re-saving the same line reports "already".
+export function ChunkSave({ nav, segmentId, text, translation, time }: { nav: Nav; segmentId?: string; text?: string; translation?: string | null; time?: string }) {
   const t = useTheme();
-  const [island, setIsland] = useState("Daily life");
-  const [done, setDone] = useState(false);
+  const [memo, setMemo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<"saved" | "already" | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const phrase = text ?? "take the plunge";
+
+  const save = async () => {
+    if (!segmentId) {
+      setError("This line can’t be saved (missing reference).");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      setResult(await saveBookmark(segmentId, memo));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t save. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Screen bottomPad={40}>
       <BackBar title="Save this as a phrase?" onBack={nav.pop} />
@@ -383,36 +402,12 @@ export function ChunkSave({ nav, text, translation, time }: { nav: Nav; text?: s
           <Serif style={{ fontSize: 15, fontStyle: "italic", lineHeight: 22, marginTop: 5, color: t.colors.ink }}>“{phrase}”</Serif>
         </View>
       </Card>
-      <Card>
-        <Text style={{ fontSize: 15, fontWeight: "700", marginBottom: 9, color: t.colors.ink }}>Which island does it belong to?</Text>
-        <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
-          {["Daily life", "What I do", "Opinions", "New island…"].map((x) => (
-            <Chip key={x} active={island === x} onPress={() => setIsland(x)}>
-              {x}
-            </Chip>
-          ))}
-        </View>
-      </Card>
-      <Card style={{ padding: 8 }}>
-        <TextInput placeholder="Add a note for future-you (optional)" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, padding: 12, color: t.colors.ink }} />
-      </Card>
-      {!done ? (
-        <>
-          <Pill full icon="bank" onPress={() => setDone(true)}>
-            Save to Phrase Bank
-          </Pill>
-          <View style={{ flexDirection: "row", gap: t.gap }}>
-            <Pill tone="tint" full small onPress={() => setDone(true)}>
-              Save and practice
-            </Pill>
-            <Pill tone="ghost" full small onPress={nav.pop}>
-              Not now
-            </Pill>
-          </View>
-        </>
-      ) : (
+
+      {result ? (
         <Hero style={{ alignItems: "center" }}>
-          <Serif style={{ fontSize: 22, lineHeight: 30, color: "#fff", textAlign: "center" }}>Saved to your {island} island.</Serif>
+          <Serif style={{ fontSize: 22, lineHeight: 30, color: "#fff", textAlign: "center" }}>
+            {result === "already" ? "Already in your Phrase Bank." : "Saved to your Phrase Bank."}
+          </Serif>
           <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", marginTop: 7, textAlign: "center" }}>
             We’ll bring it back when it’s time to use it.
           </Text>
@@ -420,6 +415,26 @@ export function ChunkSave({ nav, text, translation, time }: { nav: Nav; text?: s
             Done
           </Pill>
         </Hero>
+      ) : (
+        <>
+          <Card style={{ padding: 8 }}>
+            <TextInput
+              value={memo}
+              onChangeText={setMemo}
+              placeholder="Add a note for future-you (optional)"
+              placeholderTextColor={t.colors.ink3}
+              style={{ fontSize: 15, padding: 12, color: t.colors.ink }}
+              editable={!saving}
+            />
+          </Card>
+          {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingHorizontal: 4 }}>{error}</Text> : null}
+          <Pill full icon="bank" onPress={save} style={{ opacity: saving ? 0.7 : 1 }}>
+            {saving ? <ActivityIndicator color="#fff" /> : "Save to Phrase Bank"}
+          </Pill>
+          <Pill tone="ghost" full small onPress={nav.pop}>
+            Not now
+          </Pill>
+        </>
       )}
     </Screen>
   );

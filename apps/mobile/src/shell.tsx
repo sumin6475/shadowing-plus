@@ -116,7 +116,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "libItem":
       return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "saveChunk":
-      return <ChunkSave nav={nav} text={p.text as string | undefined} translation={p.translation as string | null | undefined} time={p.time as string | undefined} />;
+      return <ChunkSave nav={nav} segmentId={p.segmentId as string | undefined} text={p.text as string | undefined} translation={p.translation as string | null | undefined} time={p.time as string | undefined} />;
     case "settings":
       return <SettingsScreen nav={nav} />;
   }

@@ -86,6 +86,26 @@ export function phraseIsDue(p: PhraseItem): boolean {
   return isDue(p.dueAt);
 }
 
+/**
+ * Save a transcript segment as a bookmark (RLS-scoped, owner filled in by the
+ * DB — same as the web player's client insert). Idempotent: if the segment is
+ * already bookmarked we report "already" instead of creating a duplicate.
+ */
+export async function saveBookmark(segmentId: string, memo?: string | null): Promise<"saved" | "already"> {
+  const { data: existing, error: selErr } = await supabase
+    .from("bookmarks")
+    .select("id")
+    .eq("segment_id", segmentId)
+    .maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+  if (existing) return "already";
+
+  const trimmed = memo?.trim();
+  const { error } = await supabase.from("bookmarks").insert({ segment_id: segmentId, memo: trimmed ? trimmed : null });
+  if (error) throw new Error(error.message);
+  return "saved";
+}
+
 /** ISO timestamp → "today" / "yesterday" / "N days ago" / "N weeks ago". */
 export function relativeTime(iso: string | null): string {
   if (!iso) return "—";
