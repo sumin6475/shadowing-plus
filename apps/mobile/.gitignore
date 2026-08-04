@@ -43,3 +43,11 @@ example
 # generated native folders
 /ios
 /android
+
+# Build Journal hook transients
+docs/journal/.pending.md
+.claude/.journal-gate-state
+
+# Python hook caches
+__pycache__/
+*.pyc
