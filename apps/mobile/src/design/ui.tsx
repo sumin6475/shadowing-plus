@@ -531,7 +531,9 @@ export function StatTile({
         </Text>
         <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.onB2 }}>{unit}</Text>
       </View>
-      <Text style={{ fontSize: 12, fontWeight: "600", color: t.colors.onB2, lineHeight: 17 }}>{foot}</Text>
+      <Text numberOfLines={2} style={{ fontSize: 12, fontWeight: "600", color: t.colors.onB2, lineHeight: 17 }}>
+        {foot}
+      </Text>
     </Block>
   );
 }

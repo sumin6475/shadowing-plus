@@ -1,42 +1,81 @@
-// today.tsx — Today tab (sp-today.jsx).
-import { Text, View } from "react-native";
+// today.tsx — Today tab. Stats are real (derived from the bookmarks table):
+// due-for-review, ready-to-use, collected, and saves-per-day this week. The
+// Hero "speaking moment" is a static CTA (Speak isn't data-backed yet).
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, RefreshControl, Text, View } from "react-native";
 
-import { SP } from "@/design/data";
 import { useTheme } from "@/design/theme";
-import { Avatar, Badge, Card, Header, Hero, Pill, Screen, Sect, Serif, StatTile } from "@/design/ui";
+import { Avatar, Badge, Card, Header, Hero, Icon, Pill, Screen, Sect, Serif, StatTile } from "@/design/ui";
+import { fetchBookmarks, phraseIsDue, weeklyCounts, type PhraseItem } from "@/lib/phrases";
 import type { Nav } from "./nav";
 
-const WEEK = [
-  { h: 96, on: true, d: "M" },
-  { h: 40, on: false, d: "T" },
-  { h: 72, on: true, d: "W" },
-  { h: 20, on: false, d: "T" },
-  { h: 112, on: true, d: "F" },
-  { h: 10, on: false, d: "S" },
-  { h: 10, on: false, d: "S" },
-];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function todayLabel(): string {
+  const d = new Date();
+  return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
 
 export function TodayScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
-  const ph = SP.phrases;
+  const [items, setItems] = useState<PhraseItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setItems(await fetchBookmarks());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t load your progress.");
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
+  const all = items ?? [];
+  const due = all.filter(phraseIsDue);
+  const ready = all.filter((p) => p.status === "Ready to use").length;
+  const collected = all.length;
+  const thisWeek = all.filter((p) => Date.now() - new Date(p.createdAt).getTime() < 7 * 86_400_000).length;
+  const bars = weeklyCounts(all.map((p) => p.createdAt));
+  const barMax = Math.max(1, ...bars.map((b) => b.count));
+  const bringBack = due.slice(0, 2);
+  const firstDue = due[0]?.text ?? "";
+  const dueNames = firstDue.length > 40 ? `${firstDue.slice(0, 40).trimEnd()}…` : firstDue;
+
   return (
-    <Screen>
+    <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
       <Header
-        eyebrow="Friday, July 25"
+        eyebrow={todayLabel()}
         title={
-          <Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Good evening,{"\n"}Sumin.</Serif>
+          <Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>
+            {greeting()},{"\n"}Sumin.
+          </Serif>
         }
         sub="Ready to make one phrase usable?"
         right={<Avatar onPress={() => nav.push("settings")} />}
       />
 
       <Hero style={{ marginTop: 4 }}>
-        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.8, color: "rgba(255,255,255,0.75)" }}>
-          TODAY’S SPEAKING MOMENT
-        </Text>
-        <Serif style={{ fontSize: 22, lineHeight: 27, color: "#fff", marginTop: 10, marginBottom: 8 }}>
-          Explain what you do in 30 seconds.
-        </Serif>
+        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.8, color: "rgba(255,255,255,0.75)" }}>TODAY’S SPEAKING MOMENT</Text>
+        <Serif style={{ fontSize: 22, lineHeight: 27, color: "#fff", marginTop: 10, marginBottom: 8 }}>Explain what you do in 30 seconds.</Serif>
         <Text style={{ fontSize: 15, lineHeight: 22, color: "rgba(255,255,255,0.85)" }}>
           You practiced this before. Let’s make it easier to say without thinking.
         </Text>
@@ -50,71 +89,93 @@ export function TodayScreen({ nav }: { nav: Nav }) {
         </View>
       </Hero>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: t.gap }}>
-        <StatTile
-          tone="sky"
-          label="Ready to refresh"
-          value="3"
-          unit="/ 8 phrases"
-          foot="take the plunge, come across as"
-          onPress={() => nav.push("review", { id: 1 })}
-        />
-        <StatTile
-          tone="blush"
-          label="A 5-minute reset"
-          value="5"
-          unit="min"
-          foot="1 warm-up · 2 speaking · 2 review"
-          onPress={() => nav.go("speak")}
-        />
-        <StatTile
-          tone="sage"
-          span
-          label="What I do topic"
-          value="2"
-          unit="of 8 ready to use"
-          foot="Your strongest topic right now"
-          onPress={() => nav.push("island", { id: "what" })}
-        />
-      </View>
-
-      <Sect title="Bring these back" action="See all" onAction={() => nav.go("phrases")} />
-      {[ph[0], ph[1]].map((p) => (
-        <Card key={p.id} onPress={() => nav.push("phrase", { id: p.id })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>{p.txt}</Text>
-            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>
-              {p.status === "Recognizing" ? "You recognized this, but haven’t used it yet" : "Last used " + p.last}
-            </Text>
-          </View>
-          <Badge s={p.status} />
+      {items === null && !error ? (
+        <View style={{ paddingVertical: 40, alignItems: "center" }}>
+          <ActivityIndicator color={t.colors.acc} />
+        </View>
+      ) : error ? (
+        <Card style={{ alignItems: "center", paddingVertical: 24 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Couldn’t load your progress</Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
+          <Pill tone="tint" small onPress={load} style={{ marginTop: 14 }}>
+            Retry
+          </Pill>
         </Card>
-      ))}
-
-      <Card>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>English you actually used</Text>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.accD }}>this week</Text>
-        </View>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 20, alignItems: "flex-end", height: 130 }}>
-          {WEEK.map((b, i) => (
-            <View key={i} style={{ flex: 1, alignItems: "center", gap: 4, justifyContent: "flex-end", height: "100%" }}>
-              <View
-                style={{
-                  width: "100%",
-                  height: b.h,
-                  borderRadius: 9999,
-                  backgroundColor: b.on ? t.colors.acc : t.colors.soft,
-                }}
+      ) : (
+        <>
+          <View style={{ gap: t.gap }}>
+            <View style={{ flexDirection: "row", gap: t.gap }}>
+              <StatTile
+                tone="sky"
+                label="Ready to refresh"
+                value={String(due.length)}
+                unit={`/ ${collected} phrases`}
+                foot={due.length ? dueNames : "You’re all caught up"}
+                onPress={() => (bringBack[0] ? nav.push("review", { item: bringBack[0] }) : nav.go("phrases"))}
               />
-              <Text style={{ fontSize: 11, color: t.colors.ink3, fontWeight: "600" }}>{b.d}</Text>
+              <StatTile tone="sage" label="Ready to use" value={String(ready)} unit="phrases" foot="Your active English" onPress={() => nav.go("phrases")} />
             </View>
-          ))}
-        </View>
-        <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 12, lineHeight: 20 }}>
-          3 phrases used on your own · 4 speaking attempts. Progress is your English showing up when you need it.
-        </Text>
-      </Card>
+            <StatTile
+              tone="blush"
+              span
+              label="Saved this week"
+              value={String(thisWeek)}
+              unit={`of ${collected} in your bank`}
+              foot="Every phrase you keep is future English"
+              onPress={() => nav.go("phrases")}
+            />
+          </View>
+
+          <Sect title="Bring these back" action="See all" onAction={() => nav.go("phrases")} />
+          {bringBack.length > 0 ? (
+            bringBack.map((p) => (
+              <Card key={p.id} onPress={() => nav.push("phrase", { item: p })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+                    {p.text}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>Saved from {p.source}</Text>
+                </View>
+                <Badge s={p.status} />
+              </Card>
+            ))
+          ) : (
+            <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                <Icon name="check" s={20} w={2.4} c={t.colors.accD} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 15, color: t.colors.ink2 }}>Nothing due right now — your English is fresh.</Text>
+            </Card>
+          )}
+
+          <Card>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Phrases you kept</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.accD }}>this week</Text>
+            </View>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 20, alignItems: "flex-end", height: 130 }}>
+              {bars.map((b, i) => (
+                <View key={i} style={{ flex: 1, alignItems: "center", gap: 4, justifyContent: "flex-end", height: "100%" }}>
+                  <View
+                    style={{
+                      width: "100%",
+                      height: b.count === 0 ? 8 : Math.max(20, Math.round((b.count / barMax) * 112)),
+                      borderRadius: 9999,
+                      backgroundColor: b.count > 0 ? t.colors.acc : t.colors.soft,
+                    }}
+                  />
+                  <Text style={{ fontSize: 11, color: t.colors.ink3, fontWeight: "600" }}>{b.label}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 12, lineHeight: 20 }}>
+              {thisWeek > 0
+                ? `${thisWeek} phrase${thisWeek === 1 ? "" : "s"} saved this week. Progress is your English showing up when you need it.`
+                : "No new phrases yet this week — save one from a clip in your Library."}
+            </Text>
+          </Card>
+        </>
+      )}
     </Screen>
   );
 }

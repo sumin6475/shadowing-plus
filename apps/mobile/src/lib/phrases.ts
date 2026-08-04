@@ -107,6 +107,23 @@ export function dueHint(iso: string): string {
   return `in ${days} days`;
 }
 
+/** Saves per day for the last 7 days (oldest→today), for the Today bar chart. */
+export function weeklyCounts(createdAts: string[]): { label: string; count: number }[] {
+  const DOW = ["S", "M", "T", "W", "T", "F", "S"];
+  const now = new Date();
+  const buckets = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (6 - i));
+    return { key: d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate(), label: DOW[d.getDay()], count: 0 };
+  });
+  for (const iso of createdAts) {
+    const d = new Date(iso);
+    const key = d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate();
+    const b = buckets.find((x) => x.key === key);
+    if (b) b.count += 1;
+  }
+  return buckets.map(({ label, count }) => ({ label, count }));
+}
+
 /** Real cumulative-over-time counts for the bank chart (N sample points). */
 export function cumulativeSeries(createdAts: string[], n = 15): { points: number[]; max: number } {
   const total = createdAts.length;
