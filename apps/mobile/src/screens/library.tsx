@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { fetchLibrary, formatDuration, type LibraryEntry } from "@/lib/library";
+import { fetchLibrary, fetchSegments, formatDuration, type LibraryEntry, type TranscriptLine } from "@/lib/library";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif } from "@/design/ui";
 import type { IconName } from "@/design/icon";
@@ -148,34 +148,12 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
   );
 }
 
-const LIB_LINES = [
-  { t: "0:41", x: "I always play it safe with cheap sunglasses.", saved: true, hot: false },
-  { t: "0:47", x: "But honestly? I lose every single pair.", saved: false, hot: false },
-  { t: "0:53", x: "So this year I’ll take the plunge and buy a nice pair of sunglasses.", saved: true, hot: true },
-  { t: "1:02", x: "Imagine me sporting some cool specs by the pool.", saved: false, hot: false },
-];
-
-function LibLine({ l, size = 15, lh = 22 }: { l: (typeof LIB_LINES)[number]; size?: number; lh?: number }) {
-  const t = useTheme();
-  if (l.hot) {
-    return (
-      <Text style={{ fontSize: size, lineHeight: lh, color: t.colors.ink }}>
-        So this year I’ll{" "}
-        <Text style={{ backgroundColor: t.colors.accS, color: t.colors.accD, fontWeight: "700", fontStyle: "italic" }}> take the plunge </Text> and buy a nice pair of
-        sunglasses.
-      </Text>
-    );
-  }
-  return <Text style={{ fontSize: size, lineHeight: lh, color: t.colors.ink }}>{l.x}</Text>;
-}
-
-// NOTE: the transcript/lines below are still sample content. The list (title,
-// which clip you tapped) is real; wiring the real transcript (segments table +
-// media playback) is the next data-connection step.
-export function LibItem({ nav, title }: { id?: string; title?: string; nav: Nav }) {
+export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: Nav }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const [line, setLine] = useState(2);
+  const [lines, setLines] = useState<TranscriptLine[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [line, setLine] = useState(0);
   const [open, setOpen] = useState(false);
   const sheetH = Math.round(Dimensions.get("window").height * 0.53);
   const trans = useMemo(() => new Animated.Value(1), []); // 1 = closed, 0 = open
@@ -183,7 +161,28 @@ export function LibItem({ nav, title }: { id?: string; title?: string; nav: Nav 
     setOpen(o);
     Animated.timing(trans, { toValue: o ? 0 : 1, duration: 320, useNativeDriver: true }).start();
   };
-  const l = LIB_LINES[line];
+
+  const load = useCallback(async () => {
+    if (!id) {
+      setLines([]);
+      return;
+    }
+    setError(null);
+    try {
+      const segs = await fetchSegments(id);
+      setLines(segs);
+      setLine(0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t load the transcript.");
+    }
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const total = lines && lines.length ? lines[lines.length - 1].end : null;
+  const cur = lines && lines.length ? lines[Math.min(line, lines.length - 1)] : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
@@ -192,116 +191,135 @@ export function LibItem({ nav, title }: { id?: string; title?: string; nav: Nav 
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 18, paddingBottom: 96, gap: t.gap }}
         showsVerticalScrollIndicator={false}
       >
-        <BackBar title={title ?? "Sunglasses story"} onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
+        <BackBar title={title ?? "Clip"} onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
         <Card lg style={{ padding: 0, overflow: "hidden" }}>
           <View style={{ height: 216, backgroundColor: t.colors.soft, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontFamily: "Menlo", fontSize: 12, color: t.colors.ink3, position: "absolute", top: 12, left: 14 }}>your uploaded video</Text>
+            <Text style={{ fontFamily: "Menlo", fontSize: 12, color: t.colors.ink3, position: "absolute", top: 12, left: 14 }}>playback coming soon</Text>
             <Pressable style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
               <Icon name="play" s={24} c="#fff" />
             </Pressable>
           </View>
           <View style={{ padding: 12, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>{l.t}</Text>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>{cur ? formatDuration(cur.start) : "0:00"}</Text>
             <View style={{ flex: 1, height: 5, borderRadius: 9999, backgroundColor: t.colors.soft, overflow: "hidden" }}>
-              <View style={{ width: `${18 + line * 16}%`, height: "100%", backgroundColor: t.colors.acc, borderRadius: 3 }} />
+              <View style={{ width: `${lines && lines.length ? Math.round(((line + 1) / lines.length) * 100) : 0}%`, height: "100%", backgroundColor: t.colors.acc, borderRadius: 3 }} />
             </View>
-            <Text style={{ fontSize: 13, color: t.colors.ink3 }}>4:12</Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3 }}>{formatDuration(total)}</Text>
           </View>
         </Card>
-        <Text style={{ fontSize: 12, color: t.colors.ink3, paddingHorizontal: 6, fontStyle: "italic" }}>
-          Sample transcript — your clip’s real lines connect next.
-        </Text>
-        <View style={{ paddingHorizontal: 6, paddingTop: 8, gap: 16 }}>
-          <View>
-            <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, marginBottom: 10 }}>NOW PLAYING · {l.t}</Text>
-            <Serif style={{ fontSize: 25, lineHeight: 36, color: t.colors.ink }}>
-              <LibLine l={l} size={25} lh={36} />
-            </Serif>
+
+        {lines === null && !error ? (
+          <View style={{ paddingVertical: 40, alignItems: "center" }}>
+            <ActivityIndicator color={t.colors.acc} />
           </View>
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-            <Pill small icon="bank" onPress={() => nav.push("saveChunk")}>
-              Save phrase
+        ) : error ? (
+          <Card style={{ alignItems: "center", paddingVertical: 24 }}>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Couldn’t load the transcript</Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
+            <Pill tone="tint" small onPress={load} style={{ marginTop: 14 }}>
+              Retry
             </Pill>
-            <Pill tone="tint" small icon="speaker">
-              Hear
-            </Pill>
-            <View style={{ flex: 1 }} />
-            <Pressable
-              onPress={() => setLine((i) => Math.max(0, i - 1))}
-              style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: t.ring }, t.shadowCard]}
-            >
-              <Icon name="back" s={15} w={2.2} c={t.colors.ink2} />
-            </Pressable>
-            <Pressable
-              onPress={() => setLine((i) => Math.min(LIB_LINES.length - 1, i + 1))}
-              style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: t.ring }, t.shadowCard]}
-            >
-              <Icon name="chev" s={15} w={2.2} c={t.colors.ink2} />
-            </Pressable>
+          </Card>
+        ) : cur == null ? (
+          <Card style={{ alignItems: "center", paddingVertical: 28 }}>
+            <Serif style={{ fontSize: 20, color: t.colors.ink }}>No transcript yet</Serif>
+            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
+              This clip doesn’t have transcript lines yet.
+            </Text>
+          </Card>
+        ) : (
+          <View style={{ paddingHorizontal: 6, paddingTop: 8, gap: 16 }}>
+            <View>
+              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, marginBottom: 10 }}>NOW PLAYING · {formatDuration(cur.start)}</Text>
+              <Serif style={{ fontSize: 25, lineHeight: 36, color: t.colors.ink }}>{cur.text}</Serif>
+              {cur.translation ? <Text style={{ fontSize: 15, color: t.colors.ink3, marginTop: 8, lineHeight: 22 }}>{cur.translation}</Text> : null}
+            </View>
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <Pill small icon="bank" onPress={() => nav.push("saveChunk", { text: cur.text, translation: cur.translation, time: formatDuration(cur.start) })}>
+                Save phrase
+              </Pill>
+              <View style={{ flex: 1 }} />
+              <Pressable
+                onPress={() => setLine((i) => Math.max(0, i - 1))}
+                style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: t.ring }, t.shadowCard]}
+              >
+                <Icon name="back" s={15} w={2.2} c={t.colors.ink2} />
+              </Pressable>
+              <Pressable
+                onPress={() => lines && setLine((i) => Math.min(lines.length - 1, i + 1))}
+                style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: t.ring }, t.shadowCard]}
+              >
+                <Icon name="chev" s={15} w={2.2} c={t.colors.ink2} />
+              </Pressable>
+            </View>
           </View>
-        </View>
+        )}
       </ScrollView>
 
-      {/* transcript sheet */}
-      <Animated.View
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: sheetH,
-          backgroundColor: t.colors.bg,
-          borderTopLeftRadius: 30,
-          borderTopRightRadius: 30,
-          borderWidth: 0.5,
-          borderColor: t.colors.sep,
-          transform: [{ translateY: trans.interpolate({ inputRange: [0, 1], outputRange: [0, sheetH - 76] }) }],
-        }}
-      >
-        <Pressable onPress={() => toggle(!open)} style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12 }}>
-          <View style={{ width: 40, height: 5, borderRadius: 9999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 12 }} />
-          <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
-            <Serif style={{ fontSize: 20, color: t.colors.ink }}>Transcript</Serif>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3 }}>{open ? "12 useful moments found" : "Tap to see all lines"}</Text>
-          </View>
-        </Pressable>
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24, gap: t.gap }} showsVerticalScrollIndicator={false}>
-          {LIB_LINES.map((l2, i) => (
-            <Card
-              key={i}
-              onPress={() => setLine(i)}
-              style={{ flexDirection: "row", gap: 12, alignItems: "flex-start", borderWidth: line === i ? 2 : 0.5, borderColor: line === i ? t.colors.acc : t.ring }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: "700", color: t.colors.ink3, marginTop: 2 }}>{l2.t}</Text>
-              <View style={{ flex: 1 }}>
-                <LibLine l={l2} />
-              </View>
-              {l2.saved ? <Icon name="bank" s={15} w={2} c={t.colors.accD} /> : null}
-            </Card>
-          ))}
-        </ScrollView>
-      </Animated.View>
+      {/* transcript sheet — real lines */}
+      {cur != null && lines ? (
+        <Animated.View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: sheetH,
+            backgroundColor: t.colors.bg,
+            borderTopLeftRadius: 30,
+            borderTopRightRadius: 30,
+            borderWidth: 0.5,
+            borderColor: t.colors.sep,
+            transform: [{ translateY: trans.interpolate({ inputRange: [0, 1], outputRange: [0, sheetH - 76] }) }],
+          }}
+        >
+          <Pressable onPress={() => toggle(!open)} style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12 }}>
+            <View style={{ width: 40, height: 5, borderRadius: 9999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 12 }} />
+            <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
+              <Serif style={{ fontSize: 20, color: t.colors.ink }}>Transcript</Serif>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3 }}>
+                {open ? `${lines.length} line${lines.length === 1 ? "" : "s"}` : "Tap to see all lines"}
+              </Text>
+            </View>
+          </Pressable>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24, gap: t.gap }} showsVerticalScrollIndicator={false}>
+            {lines.map((l2, i) => (
+              <Card
+                key={l2.id}
+                onPress={() => setLine(i)}
+                style={{ flexDirection: "row", gap: 12, alignItems: "flex-start", borderWidth: line === i ? 2 : 0.5, borderColor: line === i ? t.colors.acc : t.ring }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: t.colors.ink3, marginTop: 2 }}>{formatDuration(l2.start)}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink }}>{l2.text}</Text>
+                  {l2.translation ? <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3, lineHeight: 19 }}>{l2.translation}</Text> : null}
+                </View>
+              </Card>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
 
-export function ChunkSave({ nav }: { nav: Nav }) {
+// The header shows the real line passed from the reader. The actual bookmark
+// insert (into the bookmarks table) is not wired yet — the confirmation below
+// is still a placeholder for that next step.
+export function ChunkSave({ nav, text, translation, time }: { nav: Nav; text?: string; translation?: string | null; time?: string }) {
   const t = useTheme();
   const [island, setIsland] = useState("Daily life");
   const [done, setDone] = useState(false);
+  const phrase = text ?? "take the plunge";
   return (
     <Screen bottomPad={40}>
       <BackBar title="Save this as a phrase?" onBack={nav.pop} />
       <Card lg>
-        <Serif style={{ fontSize: 22, color: t.colors.ink }}>take the plunge</Serif>
-        <Text style={{ fontSize: 15, color: t.colors.ink2, marginTop: 6 }}>
-          망설이다가 큰맘 먹고 실행하다 — finally do the thing you’d been hesitating about
-        </Text>
+        <Serif style={{ fontSize: 22, lineHeight: 30, color: t.colors.ink }}>{phrase}</Serif>
+        {translation ? <Text style={{ fontSize: 15, color: t.colors.ink2, marginTop: 6, lineHeight: 22 }}>{translation}</Text> : null}
         <View style={{ backgroundColor: t.colors.soft, borderRadius: 16, padding: 12, marginTop: 13 }}>
-          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3 }}>CONTEXT · 0:53</Text>
-          <Serif style={{ fontSize: 15, fontStyle: "italic", lineHeight: 22, marginTop: 5, color: t.colors.ink }}>
-            “So this year I’ll take the plunge and buy a nice pair of sunglasses.”
-          </Serif>
+          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3 }}>FROM THIS CLIP{time ? ` · ${time}` : ""}</Text>
+          <Serif style={{ fontSize: 15, fontStyle: "italic", lineHeight: 22, marginTop: 5, color: t.colors.ink }}>“{phrase}”</Serif>
         </View>
       </Card>
       <Card>

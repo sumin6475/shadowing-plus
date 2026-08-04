@@ -86,6 +86,36 @@ export async function fetchLibrary(): Promise<LibraryEntry[]> {
   return [...processing, ...ready];
 }
 
+export interface TranscriptLine {
+  id: string;
+  index: number;
+  /** Seconds from clip start. */
+  start: number;
+  end: number;
+  text: string;
+  translation: string | null;
+}
+
+/** Transcript lines for one clip, in order (segments table, RLS-scoped). */
+export async function fetchSegments(videoId: string): Promise<TranscriptLine[]> {
+  const { data, error } = await supabase
+    .from("segments")
+    .select("id, index, start_time, end_time, text, translation")
+    .eq("video_id", videoId)
+    .order("index", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((s) => ({
+    id: s.id as string,
+    index: (s.index as number) ?? 0,
+    start: (s.start_time as number) ?? 0,
+    end: (s.end_time as number) ?? 0,
+    text: (s.text as string) ?? "",
+    translation: (s.translation as string | null) ?? null,
+  }));
+}
+
 /** Seconds → "m:ss" (or "h:mm:ss"), matching the clip-time style in the design. */
 export function formatDuration(sec: number | null): string {
   if (sec == null || !Number.isFinite(sec) || sec < 0) return "—";
