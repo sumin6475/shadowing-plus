@@ -4,6 +4,7 @@
 // jobs API is unreachable we still show the ready clips.
 import type { Job, MediaType } from "@/types/api";
 
+import { apiJson } from "./api";
 import { fetchJobs } from "./jobs";
 import { supabase } from "./supabase";
 
@@ -114,6 +115,24 @@ export async function fetchSegments(videoId: string): Promise<TranscriptLine[]> 
     text: (s.text as string) ?? "",
     translation: (s.translation as string | null) ?? null,
   }));
+}
+
+export interface ClipMedia {
+  /** Short-lived signed R2 URL, an external http(s) URL, or a "youtube://…"
+   *  reference (not directly playable). Null when the clip has no audio. */
+  audioUrl: string | null;
+  videoUrl: string | null;
+}
+
+/** Resolve a clip's playable media URLs via the web API (Bearer-authed,
+ *  owner-scoped; signs the private R2 keys). */
+export async function fetchClipMedia(videoId: string): Promise<ClipMedia> {
+  return apiJson<ClipMedia>(`/api/media/${videoId}`);
+}
+
+/** True when a media URL can be played directly by the audio player. */
+export function isPlayableUrl(url: string | null): url is string {
+  return !!url && (url.startsWith("http://") || url.startsWith("https://"));
 }
 
 /** Seconds → "m:ss" (or "h:mm:ss"), matching the clip-time style in the design. */

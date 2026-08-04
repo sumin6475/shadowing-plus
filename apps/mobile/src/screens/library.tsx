@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
-import { fetchLibrary, fetchSegments, formatDuration, type LibraryEntry, type TranscriptLine } from "@/lib/library";
+import { fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif } from "@/design/ui";
 import type { IconName } from "@/design/icon";
@@ -152,6 +153,7 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const [lines, setLines] = useState<TranscriptLine[] | null>(null);
+  const [media, setMedia] = useState<ClipMedia | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [line, setLine] = useState(0);
   const [open, setOpen] = useState(false);
@@ -162,15 +164,31 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
     Animated.timing(trans, { toValue: o ? 0 : 1, duration: 320, useNativeDriver: true }).start();
   };
 
+  // ── Audio playback (expo-audio) ──
+  const playSrc = media && isPlayableUrl(media.audioUrl) ? media.audioUrl : undefined;
+  const player = useAudioPlayer(playSrc);
+  const status = useAudioPlayerStatus(player);
+  const playable = !!playSrc;
+  const isYoutube = !!media?.audioUrl?.startsWith("youtube://");
+
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
+
   const load = useCallback(async () => {
     if (!id) {
       setLines([]);
+      setMedia({ audioUrl: null, videoUrl: null });
       return;
     }
     setError(null);
     try {
-      const segs = await fetchSegments(id);
+      const [segs, m] = await Promise.all([
+        fetchSegments(id),
+        fetchClipMedia(id).catch(() => ({ audioUrl: null, videoUrl: null }) as ClipMedia),
+      ]);
       setLines(segs);
+      setMedia(m);
       setLine(0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load the transcript.");
@@ -184,6 +202,35 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
   const total = lines && lines.length ? lines[lines.length - 1].end : null;
   const cur = lines && lines.length ? lines[Math.min(line, lines.length - 1)] : null;
 
+  // Follow playback: highlight the line whose start time we've passed.
+  useEffect(() => {
+    if (!playable || !status.playing || !lines || !lines.length) return;
+    const ct = status.currentTime;
+    let idx = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (ct >= lines[i].start) idx = i;
+      else break;
+    }
+    setLine((prev) => (prev === idx ? prev : idx));
+  }, [status.currentTime, status.playing, playable, lines]);
+
+  const togglePlay = () => {
+    if (!playable) return;
+    if (status.playing) player.pause();
+    else player.play();
+  };
+
+  // Select a line — jump audio there when playable, else just move the cursor.
+  const selectLine = (i: number) => {
+    setLine(i);
+    if (playable && lines && lines[i]) player.seekTo(lines[i].start).catch(() => {});
+  };
+
+  const mediaLoading = media === null;
+  const dur = playable && status.duration > 0 ? status.duration : (total ?? 0);
+  const pos = playable ? status.currentTime : cur ? cur.start : 0;
+  const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0;
+
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
       <ScrollView
@@ -194,17 +241,31 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
         <BackBar title={title ?? "Clip"} onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
         <Card lg style={{ padding: 0, overflow: "hidden" }}>
           <View style={{ height: 216, backgroundColor: t.colors.soft, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontFamily: "Menlo", fontSize: 12, color: t.colors.ink3, position: "absolute", top: 12, left: 14 }}>playback coming soon</Text>
-            <Pressable style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-              <Icon name="play" s={24} c="#fff" />
-            </Pressable>
+            {mediaLoading ? (
+              <ActivityIndicator color={t.colors.acc} />
+            ) : (
+              <>
+                {!playable ? (
+                  <Text style={{ fontSize: 13, color: t.colors.ink3, position: "absolute", top: 14, left: 0, right: 0, textAlign: "center", paddingHorizontal: 24 }}>
+                    {isYoutube ? "YouTube clip — open on the web to play" : "Audio unavailable for this clip"}
+                  </Text>
+                ) : null}
+                <Pressable
+                  onPress={togglePlay}
+                  disabled={!playable}
+                  style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center", opacity: playable ? 1 : 0.4 }}
+                >
+                  <Icon name={status.playing ? "pause" : "play"} s={24} c="#fff" />
+                </Pressable>
+              </>
+            )}
           </View>
           <View style={{ padding: 12, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>{cur ? formatDuration(cur.start) : "0:00"}</Text>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>{formatDuration(pos)}</Text>
             <View style={{ flex: 1, height: 5, borderRadius: 9999, backgroundColor: t.colors.soft, overflow: "hidden" }}>
-              <View style={{ width: `${lines && lines.length ? Math.round(((line + 1) / lines.length) * 100) : 0}%`, height: "100%", backgroundColor: t.colors.acc, borderRadius: 3 }} />
+              <View style={{ width: `${pct}%`, height: "100%", backgroundColor: t.colors.acc, borderRadius: 3 }} />
             </View>
-            <Text style={{ fontSize: 13, color: t.colors.ink3 }}>{formatDuration(total)}</Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3 }}>{formatDuration(dur || total)}</Text>
           </View>
         </Card>
 
@@ -240,13 +301,13 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
               </Pill>
               <View style={{ flex: 1 }} />
               <Pressable
-                onPress={() => setLine((i) => Math.max(0, i - 1))}
+                onPress={() => selectLine(Math.max(0, line - 1))}
                 style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: t.ring }, t.shadowCard]}
               >
                 <Icon name="back" s={15} w={2.2} c={t.colors.ink2} />
               </Pressable>
               <Pressable
-                onPress={() => lines && setLine((i) => Math.min(lines.length - 1, i + 1))}
+                onPress={() => lines && selectLine(Math.min(lines.length - 1, line + 1))}
                 style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: t.ring }, t.shadowCard]}
               >
                 <Icon name="chev" s={15} w={2.2} c={t.colors.ink2} />
@@ -286,7 +347,7 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
             {lines.map((l2, i) => (
               <Card
                 key={l2.id}
-                onPress={() => setLine(i)}
+                onPress={() => selectLine(i)}
                 style={{ flexDirection: "row", gap: 12, alignItems: "flex-start", borderWidth: line === i ? 2 : 0.5, borderColor: line === i ? t.colors.acc : t.ring }}
               >
                 <Text style={{ fontSize: 12, fontWeight: "700", color: t.colors.ink3, marginTop: 2 }}>{formatDuration(l2.start)}</Text>
