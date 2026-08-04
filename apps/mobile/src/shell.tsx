@@ -16,6 +16,7 @@ import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem, ChunkSave } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
+import type { PhraseItem } from "@/lib/phrases";
 
 interface StackEntry {
   name: ViewName;
@@ -97,9 +98,9 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
   const p = entry.props;
   switch (entry.name) {
     case "phrase":
-      return <PhraseDetail nav={nav} id={p.id as number} />;
+      return <PhraseDetail nav={nav} item={p.item as PhraseItem | undefined} />;
     case "review":
-      return <ReviewFlow nav={nav} id={p.id as number} />;
+      return <ReviewFlow nav={nav} item={p.item as PhraseItem | undefined} />;
     case "island":
       return <IslandDetail nav={nav} id={p.id as string} />;
     case "newIsland":
