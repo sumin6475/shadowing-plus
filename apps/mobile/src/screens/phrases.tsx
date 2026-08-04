@@ -8,7 +8,7 @@ import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Badge, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif, StatTile, Wave } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
-import { cumulativeSeries, dueHint, fetchBookmarks, phraseIsDue, relativeTime, type PhraseItem } from "@/lib/phrases";
+import { cumulativeSeries, dueHint, fetchBookmarks, phraseIsDue, relativeTime, submitVerdict, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
 import type { Nav } from "./nav";
 
 const FILTERS = ["All", "Due now", "New", "Recognizing", "Practicing", "Ready to use", "Needs refresh"];
@@ -304,10 +304,27 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
 export function ReviewFlow({ item, nav }: { item?: PhraseItem; nav: Nav }) {
   const t = useTheme();
   const p = item ?? SAMPLE_PHRASE;
-  const [st, setSt] = useState(0); // 0 listen 1 recall 2 say 3 done
+  const [st, setSt] = useState(0); // 0 listen 1 recall 2 say 3 grade 4 done
   const [reveal, setReveal] = useState(false);
   const [rec, setRec] = useState(false);
+  const [grading, setGrading] = useState(false);
+  const [newDue, setNewDue] = useState<string | null>(null);
+  const [gradeErr, setGradeErr] = useState<string | null>(null);
   const steps = ["Listen", "Recall", "Say it"];
+
+  const grade = async (verdict: SrsVerdict) => {
+    setGrading(true);
+    setGradeErr(null);
+    try {
+      const state = await submitVerdict(p.id, verdict);
+      setNewDue(state?.due_at ?? null);
+      setSt(4);
+    } catch (e) {
+      setGradeErr(e instanceof Error ? e.message : "Couldn’t save your review.");
+    } finally {
+      setGrading(false);
+    }
+  };
 
   return (
     <Screen>
@@ -388,6 +405,33 @@ export function ReviewFlow({ item, nav }: { item?: PhraseItem; nav: Nav }) {
 
       {st === 3 && (
         <>
+          <Card lg style={{ alignItems: "center", paddingVertical: 26 }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>HOW DID THAT FEEL?</Text>
+            <Serif style={{ fontSize: 22, lineHeight: 30, color: t.colors.ink, textAlign: "center", marginTop: 10 }}>{p.text}</Serif>
+            <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 10, textAlign: "center" }}>Your answer sets the next review.</Text>
+          </Card>
+          {gradeErr ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center" }}>{gradeErr}</Text> : null}
+          <View style={{ gap: t.gap, opacity: grading ? 0.6 : 1 }}>
+            <Pill full tone="tint" onPress={() => grade("again")}>
+              Again — I struggled
+            </Pill>
+            <Pill full tone="soft" onPress={() => grade("good")}>
+              Good — I got it
+            </Pill>
+            <Pill full onPress={() => grade("easy")}>
+              Easy — no hesitation
+            </Pill>
+          </View>
+          {grading ? (
+            <View style={{ alignItems: "center", paddingTop: 4 }}>
+              <ActivityIndicator color={t.colors.acc} />
+            </View>
+          ) : null}
+        </>
+      )}
+
+      {st === 4 && (
+        <>
           <Hero style={{ alignItems: "center", paddingVertical: 30 }}>
             <Serif style={{ fontSize: 22, lineHeight: 29, color: "#fff", textAlign: "center" }}>
               Nice. You brought one phrase closer to your active English.
@@ -398,7 +442,7 @@ export function ReviewFlow({ item, nav }: { item?: PhraseItem; nav: Nav }) {
               <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
                 {p.text}
               </Text>
-              <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>next review {dueHint(p.dueAt)}</Text>
+              <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>next review {dueHint(newDue ?? p.dueAt)}</Text>
             </View>
             <Badge s={p.status} />
           </Card>

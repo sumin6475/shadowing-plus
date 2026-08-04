@@ -4,7 +4,19 @@
 // interval / due-date / verdict so it maps onto the design's status badges.
 import type { Status } from "@/design/data";
 
+import { apiJson } from "./api";
 import { supabase } from "./supabase";
+
+export type SrsVerdict = "again" | "good" | "easy";
+
+export interface VerdictState {
+  due_at: string;
+  interval_days: number;
+  ease_factor: number;
+  last_verdict: SrsVerdict | null;
+  last_reviewed_at: string | null;
+  lapses: number;
+}
 
 export interface PhraseItem {
   /** bookmark id */
@@ -104,6 +116,19 @@ export async function saveBookmark(segmentId: string, memo?: string | null): Pro
   const { error } = await supabase.from("bookmarks").insert({ segment_id: segmentId, memo: trimmed ? trimmed : null });
   if (error) throw new Error(error.message);
   return "saved";
+}
+
+/**
+ * Submit an SM-2 review verdict for a bookmark via the web API (POST
+ * /api/bookmarks/[id]/verdict). The server applies the SRS update and returns
+ * the new state (due date, interval, …). Returns null if the state is absent.
+ */
+export async function submitVerdict(bookmarkId: string, verdict: SrsVerdict): Promise<VerdictState | null> {
+  const res = await apiJson<{ ok: boolean; state?: VerdictState }>(`/api/bookmarks/${bookmarkId}/verdict`, {
+    method: "POST",
+    body: JSON.stringify({ verdict }),
+  });
+  return res.state ?? null;
 }
 
 /** ISO timestamp → "today" / "yesterday" / "N days ago" / "N weeks ago". */
