@@ -2,12 +2,28 @@
 // Recommendations. Backed by the real tree (migration 020, @/lib/speaking-world).
 // Recording + AI recs are later phases; "Talk" opens the (still-mock) mirror.
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { useTheme, type Theme } from "@/design/theme";
-import { Avatar, BackBar, Card, Header, Icon, Pill, Screen, Sect, Serif, toneColor } from "@/design/ui";
-import { fetchBeats, fetchDomains, fetchMessages, fetchStories, type Beat, type Domain, type Story, type StoryMessage } from "@/lib/speaking-world";
+import { Avatar, BackBar, Card, Chip as InputChip, Header, Icon, Pill, Screen, Sect, Serif, toneColor } from "@/design/ui";
+import {
+  createBeat,
+  createMessage,
+  deleteBeat,
+  fetchBeats,
+  fetchDomains,
+  fetchMessages,
+  fetchStories,
+  fetchTalkSessions,
+  setBeatPositions,
+  updateBeat,
+  type Beat,
+  type Domain,
+  type Story,
+  type StoryMessage,
+  type TalkSession,
+} from "@/lib/speaking-world";
 import type { Nav } from "./nav";
 
 // Map slots (size + position) cycled across the user's domains.
@@ -142,6 +158,144 @@ export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
         </View>
         <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
       </Card>
+
+      <Card onPress={() => nav.push("sessions")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ width: 38, height: 38, borderRadius: 16, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+          <Icon name="mic" s={18} c={t.colors.accD} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Your sessions</Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 1 }}>Every time you talked — across all topics</Text>
+        </View>
+        <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+      </Card>
+    </Screen>
+  );
+}
+
+// Duration mm:ss and a compact relative time for the sessions list.
+function fmtDur(s: number | null): string {
+  const v = Math.max(0, Math.round(s ?? 0));
+  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`;
+}
+function relTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diff = Math.max(0, now - then);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+export function SessionsScreen({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const [sessions, setSessions] = useState<TalkSession[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setSessions(await fetchTalkSessions());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t load your sessions.");
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const total = sessions?.length ?? 0;
+
+  return (
+    <Screen>
+      <BackBar onBack={nav.pop} />
+      <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
+        <Serif style={{ fontSize: 30, lineHeight: 33, color: t.colors.ink }}>Your sessions</Serif>
+        <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 7 }}>
+          {total > 0 ? `${total} time${total === 1 ? "" : "s"} you sat down and talked.` : "Every self-talk session lands here."}
+        </Text>
+      </View>
+
+      {sessions === null && !error ? (
+        <Loading />
+      ) : error ? (
+        <ErrorCard msg={error} onRetry={load} />
+      ) : total === 0 ? (
+        <Card style={{ alignItems: "center", paddingVertical: 30 }}>
+          <View style={{ width: 44, height: 44, borderRadius: 16, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+            <Icon name="mic" s={20} c={t.colors.accD} />
+          </View>
+          <Serif style={{ fontSize: 20, color: t.colors.ink, marginTop: 14 }}>No sessions yet</Serif>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19, paddingHorizontal: 8 }}>
+            Tap the mic and just talk. What you say is turned to text and saved here.
+          </Text>
+          <Pill icon="mic" onPress={() => nav.startTalk({ ctx: "Free talk", from: "topics" })} style={{ marginTop: 16 }}>
+            Start a session
+          </Pill>
+        </Card>
+      ) : (
+        (sessions ?? []).map((s) => (
+          <Card key={s.id} onPress={() => nav.push("session", { session: s })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View style={{ alignItems: "center", gap: 3, width: 44 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                <Icon name="mic" s={17} c={t.colors.accD} />
+              </View>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: t.colors.accD }}>{fmtDur(s.durationSeconds)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+                  {s.storyTitle ?? "Free talk"}
+                </Text>
+                <Text style={{ fontSize: 12, color: t.colors.ink3 }}>{relTime(s.createdAt)}</Text>
+              </View>
+              <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3, lineHeight: 18 }} numberOfLines={2}>
+                {s.transcript?.trim() || "No words were captured."}
+              </Text>
+            </View>
+            <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+          </Card>
+        ))
+      )}
+    </Screen>
+  );
+}
+
+export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Nav }) {
+  const t = useTheme();
+  if (!session) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <ErrorCard msg="This session couldn’t be opened." onRetry={nav.pop} />
+      </Screen>
+    );
+  }
+  return (
+    <Screen>
+      <BackBar title={session.storyTitle ?? "Free talk"} onBack={nav.pop} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 2, paddingTop: 2 }}>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>{fmtDur(session.durationSeconds)}</Text>
+        <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: t.colors.ink3 }} />
+        <Text style={{ fontSize: 13, color: t.colors.ink3 }}>{relTime(session.createdAt)}</Text>
+      </View>
+      <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>WHAT YOU SAID</Text>
+      <Card>
+        {session.transcript?.trim() ? (
+          <Text style={{ fontSize: 16, lineHeight: 25, color: t.colors.ink }}>{session.transcript}</Text>
+        ) : (
+          <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, fontStyle: "italic" }}>No words were captured this time.</Text>
+        )}
+      </Card>
+      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: session.storyTitle ?? "Free talk", storyId: session.storyId, from: "topics" })} style={{ marginTop: 4 }}>
+        Talk again
+      </Pill>
     </Screen>
   );
 }
@@ -233,7 +387,7 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
       </Pill>
       <Text style={{ textAlign: "center", fontSize: 13, color: t.colors.ink3, marginTop: -4 }}>Start a self-talk session</Text>
 
-      <Sect title="Messages" />
+      <Sect title="Messages" action="+ New message" onAction={() => nav.push("newMessage", { storyId: id, storyTitle: title })} />
       {messages === null && !error ? (
         <Loading />
       ) : error ? (
@@ -242,6 +396,9 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
         <Card style={{ alignItems: "center", paddingVertical: 26 }}>
           <Serif style={{ fontSize: 20, color: t.colors.ink }}>No messages yet</Serif>
           <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>A message is one way to tell this story — a 30-second version, a version for a friend…</Text>
+          <Pill icon="plus" onPress={() => nav.push("newMessage", { storyId: id, storyTitle: title })} style={{ marginTop: 16 }}>
+            New message
+          </Pill>
         </Card>
       ) : (
         messages.map((m) => (
@@ -265,6 +422,8 @@ export function MessageScreen({ id, label, storyTitle, nav }: { id?: string; lab
   const t = useTheme();
   const [beats, setBeats] = useState<Beat[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [newText, setNewText] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -282,36 +441,177 @@ export function MessageScreen({ id, label, storyTitle, nav }: { id?: string; lab
     load();
   }, [load]);
 
+  const editLocal = (beatId: string, text: string) =>
+    setBeats((bs) => (bs ?? []).map((b) => (b.id === beatId ? { ...b, text } : b)));
+
+  const addBeat = async () => {
+    if (!id || !newText.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createBeat(id, newText, (beats ?? []).length);
+      setNewText("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t add that beat.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeBeat = async (beatId: string) => {
+    setBeats((bs) => (bs ?? []).filter((b) => b.id !== beatId));
+    try {
+      await deleteBeat(beatId);
+    } catch {
+      await load();
+    }
+  };
+
+  const move = async (index: number, dir: -1 | 1) => {
+    const bs = beats ?? [];
+    const j = index + dir;
+    if (j < 0 || j >= bs.length) return;
+    const a = bs[index];
+    const b = bs[j];
+    const next = [...bs];
+    next[index] = b;
+    next[j] = a;
+    setBeats(next);
+    try {
+      await setBeatPositions([
+        { id: a.id, position: b.position },
+        { id: b.id, position: a.position },
+      ]);
+      await load();
+    } catch {
+      await load();
+    }
+  };
+
+  const list = beats ?? [];
+
   return (
     <Screen>
       <BackBar title={label ?? "Message"} onBack={nav.pop} />
       <View style={{ paddingHorizontal: 2, paddingTop: 4 }}>
         <Serif style={{ fontSize: 22, color: t.colors.ink }}>Your message</Serif>
-        <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>The key points you want to communicate — your beats.</Text>
+        <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>The key points you want to communicate — your beats. Tap to edit.</Text>
       </View>
+
       {beats === null && !error ? (
         <Loading />
       ) : error ? (
         <ErrorCard msg={error} onRetry={load} />
-      ) : !beats || beats.length === 0 ? (
-        <Card style={{ alignItems: "center", paddingVertical: 26 }}>
+      ) : list.length === 0 ? (
+        <Card style={{ alignItems: "center", paddingVertical: 24 }}>
           <Serif style={{ fontSize: 20, color: t.colors.ink }}>No beats yet</Serif>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>Talk it through, then organize what you said into beats. (AI structuring comes next.)</Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>Add the key points below — one beat per idea. (AI structuring from your sessions comes next.)</Text>
         </Card>
       ) : (
-        <Card style={{ paddingVertical: 4 }}>
-          {beats.map((b, i) => (
-            <View key={b.id} style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 50, borderBottomWidth: i < beats.length - 1 ? 1 : 0, borderBottomColor: t.colors.sep }}>
+        <Card style={{ paddingVertical: 2 }}>
+          {list.map((b, i) => (
+            <View key={b.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 52, borderBottomWidth: i < list.length - 1 ? 1 : 0, borderBottomColor: t.colors.sep }}>
               <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>{i + 1}</Text>
               </View>
-              <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: t.colors.ink }}>{b.text}</Text>
+              <TextInput
+                value={b.text}
+                onChangeText={(v) => editLocal(b.id, v)}
+                onEndEditing={(e) => updateBeat(b.id, e.nativeEvent.text).catch(() => load())}
+                placeholder="Beat…"
+                placeholderTextColor={t.colors.ink3}
+                multiline
+                style={{ flex: 1, fontSize: 15, fontWeight: "600", color: t.colors.ink, paddingVertical: 8 }}
+              />
+              <View style={{ alignItems: "center", justifyContent: "center" }}>
+                <Pressable onPress={() => move(i, -1)} disabled={i === 0} hitSlop={6} style={{ paddingHorizontal: 4, opacity: i === 0 ? 0.25 : 1 }}>
+                  <Text style={{ fontSize: 15, color: t.colors.ink2 }}>↑</Text>
+                </Pressable>
+                <Pressable onPress={() => move(i, 1)} disabled={i === list.length - 1} hitSlop={6} style={{ paddingHorizontal: 4, opacity: i === list.length - 1 ? 0.25 : 1 }}>
+                  <Text style={{ fontSize: 15, color: t.colors.ink2 }}>↓</Text>
+                </Pressable>
+              </View>
+              <Pressable onPress={() => removeBeat(b.id)} hitSlop={6} style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" }}>
+                <Icon name="x" s={13} w={2.2} c={t.colors.ink3} />
+              </Pressable>
             </View>
           ))}
         </Card>
       )}
+
+      {/* Add a beat */}
+      {id ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={[{ flex: 1, backgroundColor: t.colors.card, borderRadius: t.r, paddingHorizontal: 14 }, t.shadowCard]}>
+            <TextInput
+              value={newText}
+              onChangeText={setNewText}
+              placeholder="Add a beat…"
+              placeholderTextColor={t.colors.ink3}
+              onSubmitEditing={addBeat}
+              returnKeyType="done"
+              style={{ fontSize: 15, color: t.colors.ink, paddingVertical: 13 }}
+            />
+          </View>
+          <Pill icon="plus" onPress={addBeat} style={{ opacity: newText.trim() && !busy ? 1 : 0.45, width: 52, height: 52, paddingHorizontal: 0 }} />
+        </View>
+      ) : null}
+
       <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: storyTitle ?? "This story", sub: label, from: "topics" })} style={{ marginTop: 4 }}>
         Talk with this message
+      </Pill>
+    </Screen>
+  );
+}
+
+export function MessageCreate({ storyId, storyTitle, nav }: { storyId?: string; storyTitle?: string; nav: Nav }) {
+  const t = useTheme();
+  const [label, setLabel] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ideas = ["The 30-second version", "For a friend", "In an interview", "The short version"];
+
+  const canSave = !!label.trim() && !!storyId && !saving;
+  const save = async () => {
+    if (!canSave || !storyId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createMessage(storyId, label);
+      nav.pop();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t create the message.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Screen>
+      <BackBar title="New message" onBack={nav.pop} />
+      <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
+        <Serif style={{ fontSize: 28, lineHeight: 32, color: t.colors.ink }}>One way to tell{"\n"}this story</Serif>
+        {storyTitle ? <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 8 }}>in “{storyTitle}”</Text> : null}
+      </View>
+      <Card lg style={{ padding: 8 }}>
+        <TextInput
+          value={label}
+          onChangeText={setLabel}
+          placeholder="e.g. The 30-second version"
+          placeholderTextColor={t.colors.ink3}
+          style={{ fontSize: 17, fontWeight: "600", padding: 12, color: t.colors.ink }}
+        />
+      </Card>
+      <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
+        {ideas.map((x) => (
+          <InputChip key={x} active={label === x} onPress={() => setLabel(x)}>
+            {x}
+          </InputChip>
+        ))}
+      </View>
+      {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingHorizontal: 4 }}>{error}</Text> : null}
+      <Pill full icon="plus" onPress={save} style={{ opacity: canSave ? 1 : 0.45, marginTop: 4 }}>
+        {saving ? <ActivityIndicator color="#fff" /> : "Create message"}
       </Pill>
     </Screen>
   );

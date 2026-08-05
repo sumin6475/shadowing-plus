@@ -11,12 +11,13 @@ import { Onboarding } from "@/screens/onboarding";
 import { TodayScreen } from "@/screens/today";
 import { PhrasesScreen, PhraseDetail, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
-import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, RecsScreen } from "@/screens/world";
+import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, MessageCreate, RecsScreen, SessionsScreen, SessionDetail } from "@/screens/world";
 import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem, ChunkSave } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
+import type { TalkSession } from "@/lib/speaking-world";
 
 interface StackEntry {
   name: ViewName;
@@ -111,8 +112,14 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <StoryScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "message":
       return <MessageScreen nav={nav} id={p.id as string | undefined} label={p.label as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
+    case "newMessage":
+      return <MessageCreate nav={nav} storyId={p.storyId as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
     case "recs":
       return <RecsScreen nav={nav} />;
+    case "sessions":
+      return <SessionsScreen nav={nav} />;
+    case "session":
+      return <SessionDetail nav={nav} session={p.session as TalkSession | undefined} />;
     case "libItem":
       return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "saveChunk":
