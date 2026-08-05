@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { VideoView, useVideoPlayer } from "expo-video";
+import { useEvent } from "expo";
 
 import { fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
 import { saveBookmark } from "@/lib/phrases";
@@ -165,12 +167,24 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
     Animated.timing(trans, { toValue: o ? 0 : 1, duration: 320, useNativeDriver: true }).start();
   };
 
-  // ── Audio playback (expo-audio) ──
-  const playSrc = media && isPlayableUrl(media.audioUrl) ? media.audioUrl : undefined;
-  const player = useAudioPlayer(playSrc);
-  const status = useAudioPlayerStatus(player);
-  const playable = !!playSrc;
-  const isYoutube = !!media?.audioUrl?.startsWith("youtube://");
+  // ── Media playback: video (expo-video) when the clip has a playable video
+  //    URL, else audio (expo-audio). Both hooks run; only one is active. ──
+  const videoSrc = media && isPlayableUrl(media.videoUrl) ? media.videoUrl : undefined;
+  const isVideo = !!videoSrc;
+  const audioSrc = !isVideo && media && isPlayableUrl(media.audioUrl) ? media.audioUrl : undefined;
+  const isYoutube = !!media?.audioUrl?.startsWith("youtube://") || !!media?.videoUrl?.startsWith("youtube://");
+
+  const audioPlayer = useAudioPlayer(audioSrc);
+  const audioStatus = useAudioPlayerStatus(audioPlayer);
+  const videoPlayer = useVideoPlayer(videoSrc ?? null, (p) => {
+    p.timeUpdateEventInterval = 0.5;
+  });
+  // Subscribe to force re-renders on tick / play-state change, then read the
+  // player's current values (avoids depending on exact event payload shapes).
+  useEvent(videoPlayer, "timeUpdate");
+  useEvent(videoPlayer, "playingChange");
+  const vTime = videoPlayer.currentTime;
+  const vPlaying = videoPlayer.playing;
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
@@ -203,33 +217,48 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
   const total = lines && lines.length ? lines[lines.length - 1].end : null;
   const cur = lines && lines.length ? lines[Math.min(line, lines.length - 1)] : null;
 
+  // Unified playback state across the active player.
+  const playable = isVideo || !!audioSrc;
+  const playing = isVideo ? vPlaying : audioStatus.playing;
+  const posRaw = isVideo ? vTime ?? 0 : audioStatus.currentTime;
+  const durRaw = isVideo ? videoPlayer.duration : audioStatus.duration;
+
+  const seekTo = (s: number) => {
+    if (isVideo) videoPlayer.currentTime = s;
+    else audioPlayer.seekTo(s).catch(() => {});
+  };
+
   // Follow playback: highlight the line whose start time we've passed.
   useEffect(() => {
-    if (!playable || !status.playing || !lines || !lines.length) return;
-    const ct = status.currentTime;
+    if (!playable || !playing || !lines || !lines.length) return;
     let idx = 0;
     for (let i = 0; i < lines.length; i++) {
-      if (ct >= lines[i].start) idx = i;
+      if (posRaw >= lines[i].start) idx = i;
       else break;
     }
     setLine((prev) => (prev === idx ? prev : idx));
-  }, [status.currentTime, status.playing, playable, lines]);
+  }, [posRaw, playing, playable, lines]);
 
   const togglePlay = () => {
     if (!playable) return;
-    if (status.playing) player.pause();
-    else player.play();
+    if (isVideo) {
+      if (vPlaying) videoPlayer.pause();
+      else videoPlayer.play();
+    } else {
+      if (audioStatus.playing) audioPlayer.pause();
+      else audioPlayer.play();
+    }
   };
 
-  // Select a line — jump audio there when playable, else just move the cursor.
+  // Select a line — jump the player there when playable, else just move the cursor.
   const selectLine = (i: number) => {
     setLine(i);
-    if (playable && lines && lines[i]) player.seekTo(lines[i].start).catch(() => {});
+    if (playable && lines && lines[i]) seekTo(lines[i].start);
   };
 
   const mediaLoading = media === null;
-  const dur = playable && status.duration > 0 ? status.duration : (total ?? 0);
-  const pos = playable ? status.currentTime : cur ? cur.start : 0;
+  const dur = playable && durRaw > 0 ? durRaw : (total ?? 0);
+  const pos = playable ? posRaw : cur ? cur.start : 0;
   const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0;
 
   return (
@@ -241,9 +270,11 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
       >
         <BackBar title={title ?? "Clip"} onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
         <Card lg style={{ padding: 0, overflow: "hidden" }}>
-          <View style={{ height: 216, backgroundColor: t.colors.soft, alignItems: "center", justifyContent: "center" }}>
+          <View style={{ height: 216, backgroundColor: isVideo ? "#000" : t.colors.soft, alignItems: "center", justifyContent: "center" }}>
             {mediaLoading ? (
               <ActivityIndicator color={t.colors.acc} />
+            ) : isVideo ? (
+              <VideoView player={videoPlayer} style={{ width: "100%", height: 216 }} contentFit="contain" nativeControls fullscreenOptions={{ enable: true }} />
             ) : (
               <>
                 {!playable ? (
@@ -256,7 +287,7 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
                   disabled={!playable}
                   style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center", opacity: playable ? 1 : 0.4 }}
                 >
-                  <Icon name={status.playing ? "pause" : "play"} s={24} c="#fff" />
+                  <Icon name={playing ? "pause" : "play"} s={24} c="#fff" />
                 </Pressable>
               </>
             )}
