@@ -104,13 +104,13 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "island":
       return <IslandDetail nav={nav} id={p.id as string} />;
     case "newIsland":
-      return <IslandCreate nav={nav} />;
+      return <IslandCreate nav={nav} domainId={p.domainId as string | undefined} domainName={p.domainName as string | undefined} />;
     case "domain":
-      return <DomainScreen nav={nav} id={p.id as string} />;
+      return <DomainScreen nav={nav} id={p.id as string} name={p.name as string | undefined} />;
     case "story":
-      return <StoryScreen nav={nav} did={p.did as string} sid={p.sid as string} />;
+      return <StoryScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "message":
-      return <MessageScreen nav={nav} did={p.did as string} sid={p.sid as string} mid={p.mid as string} />;
+      return <MessageScreen nav={nav} id={p.id as string | undefined} label={p.label as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
     case "recs":
       return <RecsScreen nav={nav} />;
     case "libItem":

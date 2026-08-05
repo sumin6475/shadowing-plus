@@ -1,11 +1,12 @@
 // islands.tsx — Island detail + create (sp-islands.jsx). The grid map variant
 // is a tweak-only alternate; the default Topics tab is the Speaking World.
-import { useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Text, TextInput, View } from "react-native";
 
 import { SP } from "@/design/data";
 import { useTheme } from "@/design/theme";
 import { BackBar, Badge, Block, Card, Chip, Header, Icon, Pill, Row, Screen, Sect, Serif } from "@/design/ui";
+import { createStory, fetchDomains, type Domain } from "@/lib/speaking-world";
 import type { Nav } from "./nav";
 
 export function IslandDetail({ id, nav }: { id: string; nav: Nav }) {
@@ -75,22 +76,44 @@ export function IslandDetail({ id, nav }: { id: string; nav: Nav }) {
   );
 }
 
-export function IslandCreate({ nav }: { nav: Nav }) {
+export function IslandCreate({ domainId, domainName, nav }: { domainId?: string; domainName?: string; nav: Nav }) {
   const t = useTheme();
-  const [v, setV] = useState("");
-  const [made, setMade] = useState(false);
+  const [title, setTitle] = useState("");
+  const [domains, setDomains] = useState<Domain[] | null>(domainId ? [] : null);
+  const [picked, setPicked] = useState<string | null>(domainId ?? null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const ideas = ["My design background", "My startup idea", "Moving to the U.S.", "A project I’m proud of"];
+
+  useEffect(() => {
+    if (domainId) return;
+    fetchDomains()
+      .then(setDomains)
+      .catch(() => setDomains([]));
+  }, [domainId]);
+
+  const canSave = !!title.trim() && !!picked && !saving;
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createStory(picked, title);
+      nav.pop();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t create the story.");
+      setSaving(false);
+    }
+  };
+
   return (
     <Screen>
-      <BackBar title="New topic" onBack={nav.pop} />
+      <BackBar title="New story" onBack={nav.pop} />
       <Header title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>What do you want to{"\n"}become able to talk about?</Serif>} />
       <Card lg style={{ padding: 8 }}>
         <TextInput
-          value={v}
-          onChangeText={(x) => {
-            setV(x);
-            setMade(false);
-          }}
+          value={title}
+          onChangeText={setTitle}
           placeholder="e.g. My design background"
           placeholderTextColor={t.colors.ink3}
           style={{ fontSize: 17, fontWeight: "600", padding: 12, color: t.colors.ink }}
@@ -98,45 +121,37 @@ export function IslandCreate({ nav }: { nav: Nav }) {
       </Card>
       <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
         {ideas.map((x) => (
-          <Chip
-            key={x}
-            active={v === x}
-            onPress={() => {
-              setV(x);
-              setMade(false);
-            }}
-          >
+          <Chip key={x} active={title === x} onPress={() => setTitle(x)}>
             {x}
           </Chip>
         ))}
       </View>
-      {!made ? (
-        <Pill full icon="sparkle" onPress={() => v && setMade(true)} style={{ opacity: v ? 1 : 0.45 }}>
-          Start this topic
-        </Pill>
+
+      {domainId ? (
+        <Text style={{ fontSize: 13, color: t.colors.ink3, paddingHorizontal: 2 }}>
+          In <Text style={{ fontWeight: "700", color: t.colors.ink }}>{domainName ?? "this domain"}</Text>
+        </Text>
       ) : (
         <>
-          <Sect title="Your first questions" />
-          {["What is this about?", "Why does it matter to you?", "What do you want people to understand?", "What’s hard to explain in English?"].map((q, i) => (
-            <Card key={i} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>{i + 1}</Text>
-              </View>
-              <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>{q}</Text>
-            </Card>
-          ))}
-          <Pill
-            full
-            icon="mic"
-            onPress={() => {
-              nav.pop();
-              nav.go("speak");
-            }}
-          >
-            Answer the first one
-          </Pill>
+          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.accD, paddingHorizontal: 2, paddingTop: 4 }}>WHICH PART OF YOUR LIFE?</Text>
+          {domains === null ? (
+            <ActivityIndicator color={t.colors.acc} />
+          ) : (
+            <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
+              {domains.map((d) => (
+                <Chip key={d.id} active={picked === d.id} onPress={() => setPicked(d.id)}>
+                  {d.name}
+                </Chip>
+              ))}
+            </View>
+          )}
         </>
       )}
+
+      {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingHorizontal: 4 }}>{error}</Text> : null}
+      <Pill full icon="sparkle" onPress={save} style={{ opacity: canSave ? 1 : 0.45, marginTop: 4 }}>
+        {saving ? <ActivityIndicator color="#fff" /> : "Start this story"}
+      </Pill>
     </Screen>
   );
 }
