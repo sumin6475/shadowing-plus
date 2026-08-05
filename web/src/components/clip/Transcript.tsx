@@ -118,6 +118,15 @@ export default function Transcript({
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleBookmark(seg.id);
+                  // Drop focus after a pointer click. stopPropagation above keeps
+                  // the row's own blur from firing, so without this the bookmark
+                  // button stays document.activeElement — then Space activates
+                  // the button (re-toggling the bookmark) instead of reaching the
+                  // global Play/Pause shortcut. a/s/d have no button default so
+                  // they kept working; Space didn't. e.detail === 0 means the
+                  // click came from a keyboard (Enter/Space), where we keep focus
+                  // so a11y navigation is unaffected — matching the row above.
+                  if (e.detail > 0) e.currentTarget.blur();
                 }}
                 aria-label={isBookmarked ? "Remove bookmark" : "Bookmark this line"}
               >

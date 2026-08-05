@@ -71,10 +71,13 @@ export function NextIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 export function ReplayIcon(props: SVGProps<SVGSVGElement>) {
+  // Clean clockwise refresh arrow (↻). The previous path drew a broken
+  // half-arc with a detached arrowhead; this is a proper ~3/4 circle with
+  // the head meeting the top of the ring.
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
-      <path d="M3.5 8a4.5 4.5 0 109-.3" />
-      <path d="M12.6 6V3.5M12.6 6h-2.5" />
+      <path d="M14 8a6 6 0 1 1-1.76-4.24" />
+      <path d="M14 2v3.3h-3.3" />
     </svg>
   );
 }
