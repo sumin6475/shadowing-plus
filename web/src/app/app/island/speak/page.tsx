@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { canSeeIsland } from "@/lib/islandAccess";
 import type { Folder } from "@/lib/types";
 import type { Island, IslandBeat } from "@/lib/island";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
@@ -57,6 +58,14 @@ export default function SpeakLoopPage() {
   const [newPhraseSaved, setNewPhraseSaved] = useState(false);
   const [savingPhrase, setSavingPhrase] = useState(false);
   const [savedPhrase, setSavedPhrase] = useState<{ id: string; text: string } | null>(null);
+
+  // Admin-only gate: bounce non-admins who reach the Speak Loop by URL while
+  // the flow is unfinished. Mirrors the hidden nav tab (islandAccess.ts).
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!canSeeIsland(data.user?.id)) router.replace("/app");
+    });
+  }, [router]);
 
   // ── load the learner's active island + beats (RLS-scoped) ──
   useEffect(() => {

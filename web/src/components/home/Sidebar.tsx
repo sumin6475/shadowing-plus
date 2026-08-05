@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import type { Folder } from "@/lib/types";
 import ProfileMenu from "@/components/settings/ProfileMenu";
 import { FOLDER_COLOR_OPTIONS, folderColor } from "@/lib/folder-color";
+import { supabase } from "@/lib/supabase";
+import { canSeeIsland } from "@/lib/islandAccess";
 import {
   BookmarkIcon,
   DotsIcon,
@@ -51,6 +53,19 @@ export default function Sidebar({
   const onBookmarksRoute = pathname?.startsWith("/bookmarks");
   const onPhrasesRoute = pathname?.startsWith("/phrases");
   const onIslandRoute = pathname?.startsWith("/app/island");
+
+  // Language Island is admin-only for now (flow unfinished). Resolve the signed-in
+  // user once and only render the tab for allowlisted admins — hidden by default.
+  const [showIsland, setShowIsland] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled) setShowIsland(canSeeIsland(data.user?.id));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -155,13 +170,15 @@ export default function Sidebar({
           <span className="nav-icon"><LibraryIcon /></span>
           <span className="nav-label">Phrase Bank</span>
         </Link>
-        <Link
-          href="/app/island"
-          className={"nav-item" + (onIslandRoute ? " active" : "")}
-        >
-          <span className="nav-icon"><MicIcon /></span>
-          <span className="nav-label">Language Island</span>
-        </Link>
+        {showIsland && (
+          <Link
+            href="/app/island"
+            className={"nav-item" + (onIslandRoute ? " active" : "")}
+          >
+            <span className="nav-icon"><MicIcon /></span>
+            <span className="nav-label">Language Island</span>
+          </Link>
+        )}
       </nav>
 
       <nav className="nav-section" aria-label="Folders">

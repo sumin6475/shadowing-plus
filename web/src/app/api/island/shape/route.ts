@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/supabase-server";
+import { canSeeIsland } from "@/lib/islandAccess";
 import { shapeBeats } from "@/lib/island";
 
 // AI shaping for the "Explain what I do" island: a rough answer in, editable
@@ -12,6 +13,8 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Admin-only while the flow is unfinished — 404 for everyone else.
+  if (!canSeeIsland(userId)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = (await req.json().catch(() => null)) as { rawAnswer?: unknown } | null;
   const rawAnswer = typeof body?.rawAnswer === "string" ? body.rawAnswer : "";

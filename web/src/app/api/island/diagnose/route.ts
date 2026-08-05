@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserId, createSupabaseServerClient } from "@/lib/supabase-server";
+import { canSeeIsland } from "@/lib/islandAccess";
 import { diagnoseGap } from "@/lib/island-speak-ai";
 import { type PhraseRef } from "@/lib/island-speak";
 
@@ -17,6 +18,8 @@ const MAX_PHRASES = 60;
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Admin-only while the flow is unfinished — 404 for everyone else.
+  if (!canSeeIsland(userId)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = (await req.json().catch(() => null)) as { islandId?: unknown; attempt?: unknown } | null;
   const islandId = typeof body?.islandId === "string" ? body.islandId : "";

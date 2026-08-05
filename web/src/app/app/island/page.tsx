@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { canSeeIsland } from "@/lib/islandAccess";
 import type { Folder } from "@/lib/types";
 import type { Island, IslandBeat } from "@/lib/island";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
@@ -42,6 +43,14 @@ export default function IslandPage() {
   const [error, setError] = useState<string | null>(null);
   const [vennMuted, setVennMuted] = useState(true); // assume muted until we've read localStorage
   const [vennModalOpen, setVennModalOpen] = useState(false);
+
+  // Admin-only gate: the flow isn't finished, so bounce non-admins who reach
+  // /app/island directly by URL. Mirrors the hidden nav tab (islandAccess.ts).
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!canSeeIsland(data.user?.id)) router.replace("/app");
+    });
+  }, [router]);
 
   useEffect(() => {
     try {
