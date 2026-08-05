@@ -1,12 +1,14 @@
 // talk.tsx — Speak tab default: the mirror self-talk session (sp-talk.jsx).
 // Phases: count → live → done → moment → retry. The web original uses radial
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SERIF, useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
+import { useSpeechSession } from "@/hooks/use-speech-session";
+import { createTalkSession } from "@/lib/speaking-world";
 import type { Nav, TalkCtx } from "./nav";
 
 const TALK_SAMPLES = [
@@ -61,6 +63,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const beats = p0.beats || TALK_BEATS;
   const prompt = p0.prompt || "What I’m trying to do is…";
 
+  // On-device speech recognition for the live session (ADR 0003).
+  const speech = useSpeechSession();
+  const startedRef = useRef(false);
+  const [transcript, setTranscript] = useState("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
   const pop = useMemo(() => new Animated.Value(1), []);
 
   // Countdown. State changes happen in the timer callback (not synchronously in
@@ -83,6 +92,17 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     return () => clearInterval(iv);
   }, [phase]);
 
+  // Begin on-device recognition once, when the live phase opens. Permission is
+  // requested here (first run shows the iOS mic + speech dialogs). The hook owns
+  // its own unmount cleanup, so no stop() effect lives here (one keyed on the
+  // hook object would fire every render and interrupt the audio session).
+  useEffect(() => {
+    if (phase !== "live" || startedRef.current) return;
+    startedRef.current = true;
+    void speech.start({ onDevice: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   const stuck = () => {
     const ts = fmt(sec);
     setMarks((m) => [...m, ts]);
@@ -90,10 +110,30 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setTimeout(() => setToast(null), 1300);
   };
   const finish = () => {
+    const text = speech.stop();
+    setTranscript(text);
     setDur(sec);
     setPhase("done");
+    setSaveState("saving");
+    setSaveErr(null);
+    createTalkSession({
+      storyId: p0.storyId ?? null,
+      messageId: p0.messageId ?? null,
+      transcript: text,
+      durationSeconds: sec,
+    })
+      .then(() => setSaveState("saved"))
+      .catch((e) => {
+        setSaveState("error");
+        setSaveErr(e instanceof Error ? e.message : "Couldn’t save this session.");
+      });
   };
   const restart = () => {
+    speech.stop();
+    startedRef.current = false;
+    setTranscript("");
+    setSaveState("idle");
+    setSaveErr(null);
     setPhase("count");
     setN(3);
     setSec(0);
@@ -101,7 +141,10 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setCue("phrase");
     setDd(false);
   };
-  const leave = () => nav.go(p0.from ?? "today");
+  const leave = () => {
+    speech.stop();
+    nav.go(p0.from ?? "today");
+  };
   const moments = marks.map((ts, i) => ({ ts, ...TALK_SAMPLES[i % TALK_SAMPLES.length] }));
   const mSel = moments[sel];
 
@@ -119,6 +162,22 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             {moments.length ? "Let’s look at the moments where you wanted help." : "You kept going the whole time — nice."}
           </Text>
         </View>
+
+        {/* Real transcript from on-device recognition. */}
+        <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3, paddingHorizontal: 2 }}>What you said</Text>
+        <Card>
+          {transcript ? (
+            <Text style={{ fontSize: 15, lineHeight: 23, color: t.colors.ink }}>{transcript}</Text>
+          ) : (
+            <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, fontStyle: "italic" }}>
+              No words were captured this time.
+            </Text>
+          )}
+          <Text style={{ fontSize: 11.5, fontWeight: "600", color: saveState === "error" ? "#E5484D" : t.colors.ink3, marginTop: 10 }}>
+            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved to your sessions" : saveState === "error" ? (saveErr ?? "Couldn’t save") : ""}
+          </Text>
+        </Card>
+
         {moments.map((m, i) => (
           <Card
             key={i}
@@ -294,12 +353,29 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             {n === 0 ? "Go" : n}
           </Animated.Text>
           <Text style={{ fontSize: 14.5, color: "rgba(255,255,255,0.72)", marginTop: 18 }}>Find your eyes. Then just talk.</Text>
-          <Text style={{ fontSize: 12.5, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Mirror only — audio is recorded, video is not.</Text>
+          <Text style={{ fontSize: 12.5, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Your speech becomes text on your device. Nothing is uploaded.</Text>
         </View>
       ) : null}
 
       {live ? (
         <>
+          {/* Live on-device caption — words appear as you speak. */}
+          <View style={{ position: "absolute", top: insets.top + 90, left: 22, right: 22, alignItems: "center", zIndex: 12 }}>
+            {speech.error ? (
+              <Text style={{ fontSize: 13, color: "#FFC9C9", fontWeight: "600", textAlign: "center" }}>
+                {speech.error}
+              </Text>
+            ) : speech.transcript ? (
+              <Text style={{ fontSize: 17, lineHeight: 25, color: "#fff", textAlign: "center", fontWeight: "500" }} numberOfLines={4}>
+                {speech.transcript}
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 13.5, color: "rgba(255,255,255,0.55)", textAlign: "center" }}>
+                {speech.recognizing ? "Listening… just talk." : "Getting the mic ready…"}
+              </Text>
+            )}
+          </View>
+
           {toast ? (
             <View style={{ position: "absolute", bottom: 268, left: 0, right: 0, alignItems: "center", zIndex: 25 }}>
               <View style={{ backgroundColor: FROST, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 7 }}>

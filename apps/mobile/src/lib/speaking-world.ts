@@ -34,6 +34,14 @@ export interface Beat {
   text: string;
   source: string;
 }
+export interface TalkSession {
+  id: string;
+  storyId: string | null;
+  storyTitle: string | null;
+  transcript: string | null;
+  durationSeconds: number | null;
+  createdAt: string;
+}
 
 // Design tones (map to Cobalt tokens) cycled across seeded domains.
 const SEED = [
@@ -71,6 +79,27 @@ export async function fetchDomains(): Promise<Domain[]> {
     color: (d.color as string | null) ?? null,
     position: (d.position as number) ?? 0,
     storyCount: (one(d.stories as { count: number }[]) as { count: number } | null)?.count ?? 0,
+  }));
+}
+
+/**
+ * All Speak sessions, newest first, with the linked story title (null = a
+ * free-talk session not tied to a story). RLS scopes to the owner.
+ */
+export async function fetchTalkSessions(limit = 100): Promise<TalkSession[]> {
+  const { data, error } = await supabase
+    .from("talk_sessions")
+    .select("id, story_id, transcript, duration_seconds, created_at, stories(title)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((s) => ({
+    id: s.id as string,
+    storyId: (s.story_id as string | null) ?? null,
+    storyTitle: (one(s.stories as { title: string }[]) as { title: string } | null)?.title ?? null,
+    transcript: (s.transcript as string | null) ?? null,
+    durationSeconds: (s.duration_seconds as number | null) ?? null,
+    createdAt: s.created_at as string,
   }));
 }
 
@@ -154,6 +183,60 @@ export async function createStory(domainId: string | null, title: string): Promi
 
 export async function createMessage(storyId: string, label: string): Promise<string | null> {
   const { data, error } = await supabase.from("messages").insert({ story_id: storyId, label: label.trim() }).select("id").single();
+  if (error) throw new Error(error.message);
+  return (data?.id as string) ?? null;
+}
+
+/** Append a beat to a message. `source` defaults to learner-authored. */
+export async function createBeat(messageId: string, text: string, position: number): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("message_beats")
+    .insert({ message_id: messageId, text: text.trim(), position, source: "learner" })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return (data?.id as string) ?? null;
+}
+
+export async function updateBeat(id: string, text: string): Promise<void> {
+  const { error } = await supabase.from("message_beats").update({ text: text.trim() }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteBeat(id: string): Promise<void> {
+  const { error } = await supabase.from("message_beats").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Persist new positions for a set of beats (used by reorder). */
+export async function setBeatPositions(updates: { id: string; position: number }[]): Promise<void> {
+  for (const u of updates) {
+    const { error } = await supabase.from("message_beats").update({ position: u.position }).eq("id", u.id);
+    if (error) throw new Error(error.message);
+  }
+}
+
+/**
+ * Persist one Speak session. Transcript comes from on-device recognition, so no
+ * server/R2 round-trip; audio is not uploaded (audio_key stays null for now).
+ * user_id is filled by the DB default (auth.uid()) under RLS.
+ */
+export async function createTalkSession(input: {
+  storyId?: string | null;
+  messageId?: string | null;
+  transcript: string;
+  durationSeconds: number;
+}): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("talk_sessions")
+    .insert({
+      story_id: input.storyId ?? null,
+      message_id: input.messageId ?? null,
+      transcript: input.transcript.trim() || null,
+      duration_seconds: Math.max(0, Math.round(input.durationSeconds)),
+    })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
   return (data?.id as string) ?? null;
 }

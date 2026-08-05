@@ -11,7 +11,10 @@ export type ViewName =
   | "domain"
   | "story"
   | "message"
+  | "newMessage"
   | "recs"
+  | "sessions"
+  | "session"
   | "libItem"
   | "saveChunk"
   | "settings";
@@ -22,6 +25,9 @@ export interface TalkCtx {
   prompt?: string | null;
   beats?: string[] | null;
   from?: TabId;
+  /** Link the saved talk_session to a Speaking World story/message, if any. */
+  storyId?: string | null;
+  messageId?: string | null;
 }
 
 export interface Nav {
