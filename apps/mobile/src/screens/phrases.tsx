@@ -8,7 +8,8 @@ import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Badge, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif, StatTile, Wave } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
-import { cumulativeSeries, dueHint, fetchBookmarks, phraseIsDue, relativeTime, submitVerdict, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
+import { cumulativeSeries, dueHint, fetchBookmarks, phraseIsDue, relativeTime, submitVerdict, updateMemo, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
+import { useSegmentPlayer } from "@/hooks/use-segment-player";
 import type { Nav } from "./nav";
 
 const FILTERS = ["All", "Due now", "New", "Recognizing", "Practicing", "Ready to use", "Needs refresh"];
@@ -21,6 +22,7 @@ const SAMPLE_PHRASE: PhraseItem = {
   status: "Practicing",
   source: "Sample clip",
   startSec: 53,
+  endSec: 56,
   videoId: null,
   memo: null,
   createdAt: "2026-07-25T00:00:00.000Z",
@@ -67,6 +69,7 @@ function BankChart({ points, max }: { points: number[]; max: number }) {
 
 export function PhrasesScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const player = useSegmentPlayer();
   const [items, setItems] = useState<PhraseItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -215,10 +218,18 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
                 </View>
                 <Badge s={p.status} />
               </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 12 }}>
                 <Text style={{ fontSize: 12, color: t.colors.ink3, flex: 1 }} numberOfLines={1}>
                   {p.source} · {relativeTime(p.createdAt)}
                 </Text>
+                <Pill
+                  tone="tint"
+                  small
+                  icon={player.currentId === p.id ? "pause" : "speaker"}
+                  onPress={() => player.toggle({ id: p.id, videoId: p.videoId, start: p.startSec, end: p.endSec })}
+                >
+                  {player.loadingId === p.id ? "…" : player.currentId === p.id ? "Stop" : "Hear"}
+                </Pill>
                 <Pill tone="soft" small onPress={() => nav.push("review", { item: p })}>
                   Practice
                 </Pill>
@@ -235,8 +246,29 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
 export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
   const t = useTheme();
   const p = item ?? SAMPLE_PHRASE;
+  const player = useSegmentPlayer();
   // Local self-rating only — persisting the verdict to the bookmark is a next step.
   const [use, setUse] = useState<string>(p.status);
+  const [memo, setMemo] = useState(p.memo ?? "");
+  const [savedMemo, setSavedMemo] = useState(p.memo ?? "");
+  const [savingMemo, setSavingMemo] = useState(false);
+  const [memoErr, setMemoErr] = useState(false);
+  const memoDirty = memo !== savedMemo;
+  const canEdit = p.id !== "sample";
+
+  const saveMemo = async () => {
+    if (!canEdit || !memoDirty) return;
+    setSavingMemo(true);
+    setMemoErr(false);
+    try {
+      await updateMemo(p.id, memo);
+      setSavedMemo(memo);
+    } catch {
+      setMemoErr(true);
+    } finally {
+      setSavingMemo(false);
+    }
+  };
 
   const opt = (label: string, desc: string, val: string) => (
     <Pressable
@@ -257,8 +289,19 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
     <Screen>
       <BackBar title="Phrase" onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
       <Card lg>
-        <Serif style={{ fontSize: 26, lineHeight: 34, color: t.colors.ink }}>{p.text}</Serif>
-        {p.translation ? <Text style={{ fontSize: 15, color: t.colors.ink2, marginTop: 8 }}>{p.translation}</Text> : null}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Serif style={{ fontSize: 26, lineHeight: 34, color: t.colors.ink }}>{p.text}</Serif>
+            {p.translation ? <Text style={{ fontSize: 15, color: t.colors.ink2, marginTop: 8 }}>{p.translation}</Text> : null}
+          </View>
+          <Pressable
+            onPress={() => player.toggle({ id: p.id, videoId: p.videoId, start: p.startSec, end: p.endSec })}
+            disabled={!p.videoId}
+            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center", opacity: p.videoId ? 1 : 0.4 }}
+          >
+            {player.loadingId === p.id ? <ActivityIndicator color="#fff" /> : <Icon name={player.currentId === p.id ? "pause" : "speaker"} s={20} c="#fff" />}
+          </Pressable>
+        </View>
         <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
           <Badge s={p.status} />
         </View>
@@ -278,9 +321,21 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
 
       <Card>
         <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>YOUR NOTE</Text>
-        <Text style={{ fontSize: 15, lineHeight: 24, marginTop: 8, color: p.memo ? t.colors.ink : t.colors.ink3 }}>
-          {p.memo ?? "No note yet — add one to remind future-you why this matters."}
-        </Text>
+        <TextInput
+          value={memo}
+          onChangeText={setMemo}
+          multiline
+          editable={canEdit && !savingMemo}
+          placeholder="Add a note for future-you — why this matters, when to use it…"
+          placeholderTextColor={t.colors.ink3}
+          style={{ fontSize: 15, lineHeight: 22, marginTop: 8, color: t.colors.ink, minHeight: 24, padding: 0 }}
+        />
+        {memoErr ? <Text style={{ fontSize: 12, color: "#E5484D", marginTop: 6 }}>Couldn’t save. Try again.</Text> : null}
+        {memoDirty ? (
+          <Pill tone="soft" small onPress={saveMemo} style={{ marginTop: 10 }}>
+            {savingMemo ? <ActivityIndicator color={t.colors.accD} /> : "Save note"}
+          </Pill>
+        ) : null}
       </Card>
 
       <Card>

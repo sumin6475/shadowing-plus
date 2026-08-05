@@ -27,6 +27,7 @@ export interface PhraseItem {
   /** clip title the phrase was saved from */
   source: string;
   startSec: number;
+  endSec: number;
   videoId: string | null;
   memo: string | null;
   createdAt: string;
@@ -64,7 +65,7 @@ export async function fetchBookmarks(): Promise<PhraseItem[]> {
   const { data, error } = await supabase
     .from("bookmarks")
     .select(
-      "id, memo, created_at, due_at, interval_days, last_verdict, last_reviewed_at, segment:segments!inner(id, text, translation, start_time, video:videos!inner(id, title))",
+      "id, memo, created_at, due_at, interval_days, last_verdict, last_reviewed_at, segment:segments!inner(id, text, translation, start_time, end_time, video:videos!inner(id, title))",
     )
     .order("created_at", { ascending: false });
 
@@ -84,6 +85,7 @@ export async function fetchBookmarks(): Promise<PhraseItem[]> {
       }),
       source: (vid?.title as string) ?? "Saved clip",
       startSec: (seg?.start_time as number) ?? 0,
+      endSec: (seg?.end_time as number) ?? (seg?.start_time as number) ?? 0,
       videoId: (vid?.id as string) ?? null,
       memo: (b.memo as string | null) ?? null,
       createdAt: b.created_at as string,
@@ -116,6 +118,13 @@ export async function saveBookmark(segmentId: string, memo?: string | null): Pro
   const { error } = await supabase.from("bookmarks").insert({ segment_id: segmentId, memo: trimmed ? trimmed : null });
   if (error) throw new Error(error.message);
   return "saved";
+}
+
+/** Update a bookmark's note (RLS-scoped). Empty string clears it. */
+export async function updateMemo(bookmarkId: string, memo: string): Promise<void> {
+  const trimmed = memo.trim();
+  const { error } = await supabase.from("bookmarks").update({ memo: trimmed ? trimmed : null }).eq("id", bookmarkId);
+  if (error) throw new Error(error.message);
 }
 
 /**
