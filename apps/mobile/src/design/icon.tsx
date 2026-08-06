@@ -28,6 +28,7 @@ export type IconName =
   | "text"
   | "clip"
   | "star"
+  | "life"
   | "wave2";
 
 interface IconProps {
@@ -184,6 +185,16 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
     case "star":
       // Filled star — the favorite indicator. Fills with the passed colour.
       body = <Path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill={c} stroke="none" />;
+      break;
+    case "life":
+      // Lifebuoy — the "Stuck / I need help" control.
+      body = (
+        <G {...common}>
+          <Circle cx="12" cy="12" r="9" />
+          <Circle cx="12" cy="12" r="3.4" />
+          <Path d="M5.6 5.6l3.6 3.6M18.4 5.6l-3.6 3.6M18.4 18.4l-3.6-3.6M5.6 18.4l3.6-3.6" />
+        </G>
+      );
       break;
     case "wave2":
       body = <Path {...common} d="M3 12h2.5M8 8v8M12 5v14M16 8v8M20.5 12H23" />;

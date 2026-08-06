@@ -81,7 +81,8 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [phase, setPhase] = useState<"count" | "live" | "done" | "moment" | "retry">("count");
   const [n, setN] = useState(3);
   const [sec, setSec] = useState(0);
-  const [cue, setCue] = useState<"phrase" | "beats" | "hidden">("phrase");
+  const [tab, setTab] = useState<"phrase" | "beats">("phrase");
+  const [beatIdx, setBeatIdx] = useState(0); // current story beat in the checklist
   const [ctx, setCtx] = useState(p0.ctx || "Free talk");
   const [dd, setDd] = useState(false);
   const [marks, setMarks] = useState<string[]>([]);
@@ -200,7 +201,8 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setN(3);
     setSec(0);
     setMarks([]);
-    setCue("phrase");
+    setTab("phrase");
+    setBeatIdx(0);
     setDd(false);
   };
   const leave = () => {
@@ -409,28 +411,37 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
 
   // ── mirror: countdown + live ──
   const live = phase === "live";
-  const title = [ctx, p0.sub].filter(Boolean).join(" · ");
+  const subPill = p0.sub || (ctx !== "Free talk" ? ctx : null);
   return (
     <View style={{ position: "absolute", inset: 0 }}>
       <CameraMirror />
       {phase === "count" ? <View style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.32)" }} /> : null}
 
-      {/* top bar */}
+      {/* top bar — "Free talk" heading + topic pill, timer on the right */}
       <View style={{ position: "absolute", top: insets.top + 6, left: 14, right: 14, flexDirection: "row", alignItems: "center", gap: 8, zIndex: 20 }}>
         <Pressable onPress={leave} style={{ backgroundColor: FROST, borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
           <Icon name="back" s={17} w={2.2} c="#fff" />
         </Pressable>
-        <Pressable onPress={() => setDd(!dd)} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
-          <Text style={{ color: "#fff", fontSize: 14.5, fontWeight: "600" }} numberOfLines={1}>
-            {title}
-          </Text>
-          <Icon name="chev" s={12} w={2.4} c="#fff" />
-        </Pressable>
+        <View style={{ flex: 1, alignItems: "center", gap: 6 }}>
+          <Pressable onPress={() => setDd(!dd)} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", letterSpacing: -0.2 }} numberOfLines={1}>
+              {ctx}
+            </Text>
+            <Icon name="chev" s={12} w={2.6} c="rgba(255,255,255,0.85)" />
+          </Pressable>
+          {subPill ? (
+            <View style={{ backgroundColor: FROST, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 12 }}>
+              <Text style={{ color: "rgba(255,255,255,0.92)", fontSize: 13, fontWeight: "600" }} numberOfLines={1}>
+                {subPill}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={{ fontSize: 14.5, fontWeight: "600", color: "#fff", width: 44, textAlign: "right" }}>{live ? fmt2(sec) : "00:00"}</Text>
       </View>
 
       {dd ? (
-        <View style={{ position: "absolute", top: insets.top + 52, alignSelf: "center", zIndex: 30, backgroundColor: FROST, borderRadius: 20, padding: 8, minWidth: 200 }}>
+        <View style={{ position: "absolute", top: insets.top + 56, alignSelf: "center", zIndex: 30, backgroundColor: FROST, borderRadius: 20, padding: 8, minWidth: 200 }}>
           {["Free talk", "My startup", "Current project", "About me", "Daily life"].map((name) => (
             <Pressable
               key={name}
@@ -459,29 +470,31 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
 
       {live ? (
         <>
-          {/* Live on-device caption — words appear as you speak. */}
-          <View style={{ position: "absolute", top: insets.top + 90, left: 22, right: 22, alignItems: "center", zIndex: 12 }}>
+          {/* Recording status pill */}
+          <View style={{ position: "absolute", top: insets.top + (subPill ? 84 : 56), left: 0, right: 0, alignItems: "center", zIndex: 12 }}>
             {speech.error ? (
-              <Text style={{ fontSize: 13, color: "#FFC9C9", fontWeight: "600", textAlign: "center" }}>
-                {speech.error}
-              </Text>
-            ) : speech.transcript ? (
-              <Text
-                style={{ fontSize: 17, lineHeight: 25, color: "#fff", textAlign: "center", fontWeight: "500" }}
-                numberOfLines={5}
-                ellipsizeMode="head"
-              >
-                {speech.transcript}
-              </Text>
+              <View style={{ backgroundColor: "rgba(20,22,28,0.7)", borderRadius: 999, paddingVertical: 8, paddingHorizontal: 15 }}>
+                <Text style={{ fontSize: 13, color: "#FFC9C9", fontWeight: "600" }}>{speech.error}</Text>
+              </View>
             ) : (
-              <Text style={{ fontSize: 13.5, color: "rgba(255,255,255,0.55)", textAlign: "center" }}>
-                {speech.recognizing ? "Listening… just talk." : "Getting the mic ready…"}
-              </Text>
+              <View style={{ backgroundColor: "rgba(20,22,28,0.7)", borderRadius: 999, paddingVertical: 8, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#F0453A" }} />
+                <Text style={{ fontSize: 14, color: "#fff", fontWeight: "600" }}>{speech.recognizing ? "Listening · keep talking" : "Getting the mic ready…"}</Text>
+              </View>
             )}
           </View>
 
+          {/* Live on-device caption — words appear as you speak. */}
+          {speech.transcript ? (
+            <View style={{ position: "absolute", top: insets.top + (subPill ? 132 : 104), left: 22, right: 22, alignItems: "center", zIndex: 11 }}>
+              <Text style={{ fontSize: 17, lineHeight: 25, color: "#fff", textAlign: "center", fontWeight: "500" }} numberOfLines={4} ellipsizeMode="head">
+                {speech.transcript}
+              </Text>
+            </View>
+          ) : null}
+
           {toast ? (
-            <View style={{ position: "absolute", bottom: 268, left: 0, right: 0, alignItems: "center", zIndex: 25 }}>
+            <View style={{ position: "absolute", bottom: 300, left: 0, right: 0, alignItems: "center", zIndex: 25 }}>
               <View style={{ backgroundColor: FROST, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 7 }}>
                 <Icon name="bank" s={14} w={2} c="#FFD79A" />
                 <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>Moment saved · {toast}</Text>
@@ -489,67 +502,105 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </View>
           ) : null}
 
-          {/* cue card */}
-          <View style={{ position: "absolute", left: 18, right: 18, bottom: 138, zIndex: 15 }}>
-            {cue === "hidden" ? (
-              <View style={{ alignItems: "center" }}>
-                <Pressable onPress={() => setCue("phrase")} style={{ backgroundColor: "rgba(20,22,28,0.5)", borderRadius: 999, height: 36, paddingHorizontal: 15, alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ fontSize: 13.5, fontWeight: "600", color: "rgba(255,255,255,0.8)" }}>Show a cue</Text>
-                </Pressable>
+          {/* cue card — segmented Today's phrase / Story beats */}
+          <View style={[{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, backgroundColor: "rgba(255,255,255,0.97)", borderRadius: 26, padding: 16 }, t.shadowLg, { zIndex: 15 }]}>
+            <View style={{ flexDirection: "row", backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 999, padding: 4 }}>
+              {(
+                [
+                  ["phrase", "Today's phrase"],
+                  ["beats", `Story beats · ${beats.length}`],
+                ] as const
+              ).map(([key, label]) => {
+                const on = tab === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setTab(key)}
+                    style={{ flex: 1, height: 40, borderRadius: 999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: on ? t.colors.accS : "transparent" }}
+                  >
+                    {on ? <Icon name="sparkle" s={15} c={t.colors.accD} /> : null}
+                    <Text style={{ fontSize: 14.5, fontWeight: "700", color: on ? t.colors.accD : "rgba(0,0,0,0.5)" }}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {tab === "phrase" ? (
+              <View style={{ paddingTop: 16, paddingHorizontal: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }}>PRIORITY FOR TODAY</Text>
+                <Serif style={{ fontSize: 24, lineHeight: 30, color: "#16181d", marginTop: 8 }}>{prompt}</Serif>
+                <Text style={{ fontSize: 14, color: "rgba(0,0,0,0.5)", marginTop: 6 }}>Use it naturally when it fits.</Text>
               </View>
             ) : (
-              <Pressable
-                onPress={() => setCue(cue === "phrase" ? "beats" : "phrase")}
-                style={[{ backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 20, padding: 16 }, t.shadowLg]}
-              >
-                <Pressable onPress={() => setCue("hidden")} style={{ position: "absolute", top: 10, right: 10, width: 26, height: 26, borderRadius: 13, backgroundColor: "rgba(0,0,0,0.06)", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
-                  <Icon name="x" s={11} w={2.2} c="rgba(0,0,0,0.45)" />
-                </Pressable>
-                {cue === "phrase" ? (
-                  <>
-                    <Serif style={{ fontSize: 20, lineHeight: 26, color: "#16181d", paddingRight: 24 }}>{prompt}</Serif>
-                    <Text style={{ fontSize: 12, color: "rgba(0,0,0,0.45)", fontWeight: "600", marginTop: 5 }}>Phrase cue</Text>
-                  </>
-                ) : (
-                  <>
-                    <View style={{ gap: 6, paddingRight: 24 }}>
-                      {beats.map((b, i) => (
-                        <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-                          <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: t.colors.acc, opacity: 0.6 }} />
-                          <Text style={{ fontSize: 14.5, fontWeight: "600", color: "#16181d" }}>{b}</Text>
-                        </View>
-                      ))}
-                    </View>
-                    <Text style={{ fontSize: 12, color: "rgba(0,0,0,0.45)", fontWeight: "600", marginTop: 7 }}>Message beats</Text>
-                  </>
-                )}
-                <View style={{ flexDirection: "row", gap: 5, justifyContent: "center", marginTop: 9 }}>
-                  <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: cue === "phrase" ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.18)" }} />
-                  <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: cue === "beats" ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.18)" }} />
+              <View style={{ paddingTop: 14, paddingHorizontal: 4 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }} numberOfLines={1}>
+                    {ctx.toUpperCase()}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: "rgba(0,0,0,0.4)" }}>
+                    {Math.min(beatIdx + 1, beats.length)} OF {beats.length}
+                  </Text>
                 </View>
-              </Pressable>
+                {beats.map((b, i) => {
+                  const done = i < beatIdx;
+                  const current = i === beatIdx;
+                  return (
+                    <Pressable
+                      key={i}
+                      onPress={() => setBeatIdx(i)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 8, borderRadius: 14, backgroundColor: current ? t.colors.accS : "transparent" }}
+                    >
+                      <View
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 11,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: done || current ? t.colors.acc : "transparent",
+                          borderWidth: done || current ? 0 : 2,
+                          borderColor: "rgba(0,0,0,0.2)",
+                        }}
+                      >
+                        {done ? <Icon name="check" s={12} w={3} c="#fff" /> : null}
+                      </View>
+                      <Text style={{ flex: 1, fontSize: 15.5, fontWeight: current ? "700" : "600", color: current ? "#16181d" : done ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.7)" }}>
+                        {b}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                <View style={{ alignItems: "flex-end", marginTop: 6 }}>
+                  <Pressable
+                    onPress={() => setTab("phrase")}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1.5, borderColor: t.colors.accS, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14 }}
+                  >
+                    <Icon name="sparkle" s={14} c={t.colors.accD} />
+                    <Text style={{ fontSize: 13.5, fontWeight: "700", color: t.colors.accD }}>Use today’s phrase</Text>
+                  </Pressable>
+                </View>
+              </View>
             )}
           </View>
 
-          {/* bottom controls */}
-          <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 24, flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 36, zIndex: 15 }}>
-            <View style={{ alignItems: "center", gap: 7 }}>
-              <Pressable onPress={stuck} style={{ backgroundColor: "rgba(255,255,255,0.16)", width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center" }}>
-                <Icon name="bank" s={20} w={1.9} c="#fff" />
+          {/* bottom controls — Stuck · record indicator · Finish */}
+          <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 24, flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 40, zIndex: 15 }}>
+            <View style={{ alignItems: "center", gap: 8 }}>
+              <Pressable onPress={stuck} style={{ backgroundColor: "rgba(28,30,36,0.66)", width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" }}>
+                <Icon name="life" s={24} w={1.9} c="#fff" />
               </Pressable>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Stuck</Text>
+              <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>Stuck</Text>
             </View>
-            <View style={{ alignItems: "center", gap: 7 }}>
-              <View style={[{ width: 74, height: 74, borderRadius: 37, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" }, t.shadowLg]}>
-                <Wave n={5} h={26} active color="#E5484D" />
+            <View style={{ alignItems: "center", gap: 8, paddingBottom: 22 }}>
+              <View style={[{ width: 84, height: 84, borderRadius: 42, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }, t.shadowLg]}>
+                <Wave n={5} h={30} active color="#fff" />
               </View>
-              <Text style={{ fontSize: 12 }}> </Text>
             </View>
-            <View style={{ alignItems: "center", gap: 7 }}>
-              <Pressable onPress={finish} style={{ backgroundColor: "rgba(255,255,255,0.16)", width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center" }}>
-                <View style={{ width: 16, height: 16, borderRadius: 4, backgroundColor: "#fff" }} />
+            <View style={{ alignItems: "center", gap: 8 }}>
+              <Pressable onPress={finish} style={{ backgroundColor: "rgba(28,30,36,0.66)", width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 17, height: 17, borderRadius: 4, backgroundColor: "#fff" }} />
               </Pressable>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Finish</Text>
+              <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>Finish</Text>
             </View>
           </View>
         </>
