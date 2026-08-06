@@ -1,6 +1,6 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { SplashIntro } from "@/screens/splash";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -19,6 +20,9 @@ SplashScreen.preventAutoHideAsync();
  */
 function RootNavigator() {
   const { session, loading } = useAuth();
+  // Brand splash on every launch, after fonts/session are ready. "Get started"
+  // (or a backdrop tap once the animation lands) proceeds into the app.
+  const [splashDone, setSplashDone] = useState(false);
 
   // Saylo design-system fonts, loaded at runtime (expo-font is already in the
   // dev client, so no native rebuild). Newsreader = editorial serif hero; Inter
@@ -39,6 +43,8 @@ function RootNavigator() {
   }, [ready]);
 
   if (!ready) return null;
+
+  if (!splashDone) return <SplashIntro onDone={() => setSplashDone(true)} />;
 
   // SKELETON PREVIEW: while the app is a design skeleton running on mock data,
   // show the (app) group without a Supabase session so it opens straight into
