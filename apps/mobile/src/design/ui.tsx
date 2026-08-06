@@ -15,6 +15,9 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import MaskedView from "@react-native-masked-view/masked-view";
 
 import { Icon, type IconName } from "./icon";
 import { SERIF, hairline, statusColors, useTheme, type Theme } from "./theme";
@@ -421,24 +424,49 @@ export function Screen({
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  // Progressive top frost: full (translucent) over the status bar, then a long,
+  // gentle multi-stop fade to nothing well below it so there's no visible edge.
+  const frostH = insets.top + 40;
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: t.colors.bg }}
-      contentContainerStyle={[
-        {
-          paddingTop: insets.top + 8,
-          paddingBottom: bottomPad + insets.bottom,
-          paddingHorizontal: noPad ? 0 : 18,
-          gap: t.gap,
-        },
-        style,
-      ]}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={refreshControl}
-    >
-      {children}
-    </ScrollView>
+    <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: t.colors.bg }}
+        contentContainerStyle={[
+          {
+            paddingTop: insets.top + 8,
+            paddingBottom: bottomPad + insets.bottom,
+            paddingHorizontal: noPad ? 0 : 18,
+            gap: t.gap,
+          },
+          style,
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={refreshControl}
+      >
+        {children}
+      </ScrollView>
+      {/* Progressive top frost: a BlurView masked by a vertical gradient, so the
+          blur is present (translucent, ~55%) over the status bar and fades fully
+          to nothing just below it — no hard boundary line. Purely visual. */}
+      {insets.top > 0 ? (
+        <MaskedView
+          pointerEvents="none"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: frostH }}
+          maskElement={
+            <LinearGradient
+              colors={["rgba(0,0,0,0.55)", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.14)", "transparent"]}
+              locations={[0, 0.45, 0.8, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={{ flex: 1 }}
+            />
+          }
+        >
+          <BlurView tint="systemUltraThinMaterial" style={{ flex: 1 }} />
+        </MaskedView>
+      ) : null}
+    </View>
   );
 }
 
