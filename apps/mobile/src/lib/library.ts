@@ -4,7 +4,6 @@
 // jobs API is unreachable we still show the ready clips.
 import type { Job, MediaType } from "@/types/api";
 
-import { apiJson } from "./api";
 import { fetchJobs } from "./jobs";
 import { supabase } from "./supabase";
 
@@ -124,10 +123,14 @@ export interface ClipMedia {
   videoUrl: string | null;
 }
 
-/** Resolve a clip's playable media URLs via the web API (Bearer-authed,
- *  owner-scoped; signs the private R2 keys). */
+/** Resolve a clip's playable media URLs via the `media-url` Supabase Edge
+ *  Function (owner-scoped by RLS; signs the private R2 keys). NOT the Vercel
+ *  route — the native app can't reach Vercel (see the Protocol-error postmortem).
+ *  Audio still streams straight from R2. */
 export async function fetchClipMedia(videoId: string): Promise<ClipMedia> {
-  return apiJson<ClipMedia>(`/api/media/${videoId}`);
+  const { data, error } = await supabase.functions.invoke<ClipMedia>("media-url", { body: { videoId } });
+  if (error) throw new Error(error.message || "Couldn’t load this clip’s media.");
+  return data ?? { audioUrl: null, videoUrl: null };
 }
 
 /** True when a media URL can be played directly by the audio player. */
