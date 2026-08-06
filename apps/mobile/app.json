@@ -42,6 +42,13 @@
           "microphonePermission": "Shadowing+ uses the microphone to hear your speaking practice.",
           "speechRecognitionPermission": "Shadowing+ turns your spoken practice into text, on your device, so you can review what you said."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Shadowing+ shows a front-camera mirror while you speak, so you can practice looking up. Nothing is recorded or uploaded.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

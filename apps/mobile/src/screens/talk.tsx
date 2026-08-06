@@ -3,12 +3,14 @@
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Pressable, Text, View } from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SERIF, useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
+import { createSpeakPhrase } from "@/lib/phrases";
 import { diagnoseTalk } from "@/lib/talk";
 import type { TalkMoment } from "@/types/api";
 import type { Nav, TalkCtx } from "./nav";
@@ -43,6 +45,31 @@ function TalkMirror() {
   );
 }
 
+// Live front-camera "mirror" — see yourself while speaking, so you practice
+// looking up. PREVIEW ONLY: no recording, no audio (the speech recognizer owns
+// the mic; the camera plugin sets microphonePermission:false). Falls back to the
+// dark gradient TalkMirror when camera permission isn't granted.
+function CameraMirror() {
+  const [permission, requestPermission] = useCameraPermissions();
+
+  useEffect(() => {
+    if (permission && !permission.granted && permission.canAskAgain) {
+      void requestPermission();
+    }
+  }, [permission, requestPermission]);
+
+  if (!permission?.granted) return <TalkMirror />;
+
+  return (
+    <View style={{ position: "absolute", inset: 0, backgroundColor: "#000" }}>
+      <CameraView style={{ flex: 1 }} facing="front" />
+      {/* Scrim so the white top bar / caption / controls stay legible over a
+          bright camera feed. */}
+      <View style={{ position: "absolute", inset: 0, backgroundColor: "rgba(20,22,28,0.28)" }} />
+    </View>
+  );
+}
+
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const fmt2 = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
@@ -61,7 +88,8 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [toast, setToast] = useState<string | null>(null);
   const [dur, setDur] = useState(0);
   const [sel, setSel] = useState(0);
-  const [saved, setSaved] = useState<Record<number, boolean>>({});
+  // Per-moment "Save as phrase" state (persists mSel.want to phrase_items).
+  const [phraseSave, setPhraseSave] = useState<Record<number, "saving" | "saved" | "already" | "error">>({});
   const beats = p0.beats || TALK_BEATS;
   const prompt = p0.prompt || "What I’m trying to do is…";
 
@@ -167,6 +195,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setMoments([]);
     setDiagState("idle");
     setDiagErr(null);
+    setPhraseSave({});
     setPhase("count");
     setN(3);
     setSec(0);
@@ -179,6 +208,16 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     nav.go(p0.from ?? "today");
   };
   const mSel = moments[sel];
+
+  // Persist a moment's suggested expression to the Phrase Bank (phrase_items).
+  const savePhrase = (i: number) => {
+    const m = moments[i];
+    if (!m) return;
+    setPhraseSave((s) => ({ ...s, [i]: "saving" }));
+    createSpeakPhrase({ text: m.want, example: m.example, storyId: p0.storyId ?? null, said: m.said })
+      .then((r) => setPhraseSave((s) => ({ ...s, [i]: r === "already" ? "already" : "saved" })))
+      .catch(() => setPhraseSave((s) => ({ ...s, [i]: "error" })));
+  };
 
   // ── done ──
   if (phase === "done")
@@ -320,9 +359,25 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           <Pill full icon="mic" onPress={() => setPhase("retry")}>
             Retry this moment
           </Pill>
-          <Pill tone="tint" full icon={saved[sel] ? "check" : "bank"} onPress={() => setSaved((s) => ({ ...s, [sel]: true }))}>
-            {saved[sel] ? "Saved to Phrases" : "Save as phrase"}
-          </Pill>
+          {(() => {
+            const pSt = phraseSave[sel];
+            const pDone = pSt === "saved" || pSt === "already";
+            const pLabel =
+              pSt === "saving"
+                ? "Saving…"
+                : pSt === "saved"
+                  ? "Saved to Phrase Bank"
+                  : pSt === "already"
+                    ? "Already in your Phrase Bank"
+                    : pSt === "error"
+                      ? "Couldn’t save — tap to retry"
+                      : "Save as phrase";
+            return (
+              <Pill tone="tint" full icon={pDone ? "check" : "bank"} onPress={pSt === "saving" || pDone ? undefined : () => savePhrase(sel)}>
+                {pLabel}
+              </Pill>
+            );
+          })()}
         </View>
       </Screen>
     );
@@ -340,7 +395,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           ) : null}
         </Card>
         <View style={{ borderRadius: t.r, height: 170, overflow: "hidden" }}>
-          <TalkMirror />
+          <CameraMirror />
           <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", gap: 10 }}>
             <Wave n={22} h={30} active color="rgba(255,255,255,0.85)" />
             <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Just this sentence — 10 seconds is plenty</Text>
@@ -357,7 +412,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const title = [ctx, p0.sub].filter(Boolean).join(" · ");
   return (
     <View style={{ position: "absolute", inset: 0 }}>
-      <TalkMirror />
+      <CameraMirror />
       {phase === "count" ? <View style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.32)" }} /> : null}
 
       {/* top bar */}
@@ -411,7 +466,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                 {speech.error}
               </Text>
             ) : speech.transcript ? (
-              <Text style={{ fontSize: 17, lineHeight: 25, color: "#fff", textAlign: "center", fontWeight: "500" }} numberOfLines={4}>
+              <Text
+                style={{ fontSize: 17, lineHeight: 25, color: "#fff", textAlign: "center", fontWeight: "500" }}
+                numberOfLines={5}
+                ellipsizeMode="head"
+              >
                 {speech.transcript}
               </Text>
             ) : (

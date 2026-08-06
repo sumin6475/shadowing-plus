@@ -127,6 +127,64 @@ export async function updateMemo(bookmarkId: string, memo: string): Promise<void
   if (error) throw new Error(error.message);
 }
 
+/** Case/space-fold a phrase so dedup ignores incidental spacing. Copied by hand
+ *  from web/src/lib/phrases.ts (normalizePhrase) — keep in sync. */
+function normalizePhrase(value: string): string {
+  return value.toLocaleLowerCase("en").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Save a phrase captured from a Speak session moment into the Phrase Bank
+ * (`phrase_items`). Mirrors the web `saveManualPhrase` cold-start path: there's
+ * no source media, so `segment_id`/`video_id` stay NULL and `status` is 'ready'.
+ * The AI suggestion the learner just saw becomes the phrase (`text`) and its
+ * example becomes the `usage_note`; we don't fabricate a Korean meaning. Deduped
+ * against the user's other segmentless phrases by normalized text. RLS needs an
+ * explicit `user_id` (phrase_items has no auth.uid() default), read from the
+ * session. Returns "already" if an identical phrase is already banked.
+ */
+export async function createSpeakPhrase(input: {
+  text: string;
+  example?: string | null;
+  storyId?: string | null;
+  said?: string | null;
+}): Promise<"saved" | "already"> {
+  const text = input.text.replace(/\s+/g, " ").trim().slice(0, 240);
+  if (!text) throw new Error("Nothing to save.");
+  const normalized = normalizePhrase(text);
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) throw new Error("You’re signed out.");
+
+  // Dedup against this user's other segmentless (manual/speak) phrases. The
+  // table's UNIQUE (user_id, segment_id, normalized_text) treats NULL segment_ids
+  // as distinct, so we check explicitly.
+  const { data: existing, error: selErr } = await supabase
+    .from("phrase_items")
+    .select("id")
+    .eq("user_id", userId)
+    .is("segment_id", null)
+    .eq("normalized_text", normalized)
+    .limit(1);
+  if (selErr) throw new Error(selErr.message);
+  if (existing && existing.length > 0) return "already";
+
+  const note = input.example?.replace(/\s+/g, " ").trim().slice(0, 500) || null;
+  const { error } = await supabase.from("phrase_items").insert({
+    user_id: userId,
+    text,
+    normalized_text: normalized,
+    usage_note: note,
+    source_context: { source: "speak", story_id: input.storyId ?? null, said: input.said ?? null },
+    status: "ready",
+  });
+  if (error) throw new Error(error.message);
+  return "saved";
+}
+
 /**
  * Submit an SM-2 review verdict for a bookmark via the web API (POST
  * /api/bookmarks/[id]/verdict). The server applies the SRS update and returns
