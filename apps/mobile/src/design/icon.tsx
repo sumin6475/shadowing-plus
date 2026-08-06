@@ -27,6 +27,7 @@ export type IconName =
   | "upload"
   | "text"
   | "clip"
+  | "star"
   | "wave2";
 
 interface IconProps {
@@ -179,6 +180,10 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
           <Path d="M10 9.5l4.5 2.5L10 14.5z" fill={c} stroke="none" />
         </G>
       );
+      break;
+    case "star":
+      // Filled star — the favorite indicator. Fills with the passed colour.
+      body = <Path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill={c} stroke="none" />;
       break;
     case "wave2":
       body = <Path {...common} d="M3 12h2.5M8 8v8M12 5v14M16 8v8M20.5 12H23" />;

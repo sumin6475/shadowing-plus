@@ -34,6 +34,8 @@ export interface PhraseItem {
   dueAt: string;
   intervalDays: number;
   lastReviewedAt: string | null;
+  /** User-starred. Needs migration 021 (bookmarks.is_favorite). */
+  favorite: boolean;
 }
 
 function isDue(dueAt: string): boolean {
@@ -65,7 +67,7 @@ export async function fetchBookmarks(): Promise<PhraseItem[]> {
   const { data, error } = await supabase
     .from("bookmarks")
     .select(
-      "id, memo, created_at, due_at, interval_days, last_verdict, last_reviewed_at, segment:segments!inner(id, text, translation, start_time, end_time, video:videos!inner(id, title))",
+      "id, memo, created_at, due_at, interval_days, last_verdict, last_reviewed_at, is_favorite, segment:segments!inner(id, text, translation, start_time, end_time, video:videos!inner(id, title))",
     )
     .order("created_at", { ascending: false });
 
@@ -92,6 +94,7 @@ export async function fetchBookmarks(): Promise<PhraseItem[]> {
       dueAt: b.due_at as string,
       intervalDays: (b.interval_days as number) ?? 0,
       lastReviewedAt: (b.last_reviewed_at as string | null) ?? null,
+      favorite: (b.is_favorite as boolean) ?? false,
     } satisfies PhraseItem;
   });
 }
@@ -118,6 +121,18 @@ export async function saveBookmark(segmentId: string, memo?: string | null): Pro
   const { error } = await supabase.from("bookmarks").insert({ segment_id: segmentId, memo: trimmed ? trimmed : null });
   if (error) throw new Error(error.message);
   return "saved";
+}
+
+/** Permanently delete a bookmark / saved phrase (RLS-scoped to the owner). */
+export async function deleteBookmark(id: string): Promise<void> {
+  const { error } = await supabase.from("bookmarks").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Star / unstar a saved phrase (RLS-scoped). Needs migration 021 (is_favorite). */
+export async function setPhraseFavorite(id: string, favorite: boolean): Promise<void> {
+  const { error } = await supabase.from("bookmarks").update({ is_favorite: favorite }).eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 /** Update a bookmark's note (RLS-scoped). Empty string clears it. */

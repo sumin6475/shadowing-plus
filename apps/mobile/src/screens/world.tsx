@@ -2,15 +2,17 @@
 // Recommendations. Backed by the real tree (migration 020, @/lib/speaking-world).
 // Recording + AI recs are later phases; "Talk" opens the (still-mock) mirror.
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { useTheme, type Theme } from "@/design/theme";
-import { Avatar, BackBar, Card, Chip as InputChip, Header, Icon, Pill, Screen, Sect, Serif, toneColor } from "@/design/ui";
+import { Avatar, BackBar, Card, Chip as InputChip, Header, Icon, Pill, Screen, Sect, Serif, SwipeRow, confirmDelete, toneColor } from "@/design/ui";
 import {
+  archiveStory,
   createBeat,
   createMessage,
   deleteBeat,
+  deleteTalkSession,
   fetchBeats,
   fetchDomains,
   fetchMessages,
@@ -210,6 +212,21 @@ export function SessionsScreen({ nav }: { nav: Nav }) {
     load();
   }, [load]);
 
+  // Optimistically drop the row, then delete; restore it if the delete fails.
+  const removeSession = useCallback(async (id: string) => {
+    let prev: TalkSession[] | null = null;
+    setSessions((xs) => {
+      prev = xs;
+      return (xs ?? []).filter((s) => s.id !== id);
+    });
+    try {
+      await deleteTalkSession(id);
+    } catch (e) {
+      setSessions(prev);
+      Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
+    }
+  }, []);
+
   const total = sessions?.length ?? 0;
 
   return (
@@ -241,26 +258,38 @@ export function SessionsScreen({ nav }: { nav: Nav }) {
         </Card>
       ) : (
         (sessions ?? []).map((s) => (
-          <Card key={s.id} onPress={() => nav.push("session", { session: s })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <View style={{ alignItems: "center", gap: 3, width: 44 }}>
-              <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                <Icon name="mic" s={17} c={t.colors.accD} />
+          <SwipeRow
+            key={s.id}
+            onDelete={() =>
+              confirmDelete({
+                title: "Delete this session?",
+                message: "This self-talk session and its transcript will be removed.",
+                deleteLabel: "Delete",
+                onConfirm: () => removeSession(s.id),
+              })
+            }
+          >
+            <Card onPress={() => nav.push("session", { session: s })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ alignItems: "center", gap: 3, width: 44 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                  <Icon name="mic" s={17} c={t.colors.accD} />
+                </View>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: t.colors.accD }}>{fmtDur(s.durationSeconds)}</Text>
               </View>
-              <Text style={{ fontSize: 11, fontWeight: "700", color: t.colors.accD }}>{fmtDur(s.durationSeconds)}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
-                  {s.storyTitle ?? "Free talk"}
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+                    {s.storyTitle ?? "Free talk"}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: t.colors.ink3 }}>{relTime(s.createdAt)}</Text>
+                </View>
+                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3, lineHeight: 18 }} numberOfLines={2}>
+                  {s.transcript?.trim() || "No words were captured."}
                 </Text>
-                <Text style={{ fontSize: 12, color: t.colors.ink3 }}>{relTime(s.createdAt)}</Text>
               </View>
-              <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3, lineHeight: 18 }} numberOfLines={2}>
-                {s.transcript?.trim() || "No words were captured."}
-              </Text>
-            </View>
-            <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-          </Card>
+              <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+            </Card>
+          </SwipeRow>
         ))
       )}
     </Screen>
@@ -317,6 +346,22 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
     load();
   }, [load]);
 
+  // Swipe-delete archives the story (soft): it leaves the list but its messages,
+  // beats, and sessions survive. Optimistic, with rollback on failure.
+  const removeStory = useCallback(async (storyId: string) => {
+    let prev: Story[] | null = null;
+    setStories((xs) => {
+      prev = xs;
+      return (xs ?? []).filter((s) => s.id !== storyId);
+    });
+    try {
+      await archiveStory(storyId);
+    } catch (e) {
+      setStories(prev);
+      Alert.alert("Couldn’t remove", e instanceof Error ? e.message : "Try again.");
+    }
+  }, []);
+
   return (
     <Screen>
       <BackBar onBack={nav.pop} />
@@ -338,19 +383,31 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
         stories.map((s, i) => {
           const chip = statusChip(t, s.status);
           return (
-            <Card key={s.id} onPress={() => nav.push("story", { id: s.id, title: s.title })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Tile tone={TONES[i % TONES.length]} glyph="sparkle" />
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }}>{s.title}</Text>
-                  <Chip {...chip} />
+            <SwipeRow
+              key={s.id}
+              onDelete={() =>
+                confirmDelete({
+                  title: "Remove this story?",
+                  message: "It leaves this list. Its messages and any sessions are kept.",
+                  deleteLabel: "Remove",
+                  onConfirm: () => removeStory(s.id),
+                })
+              }
+            >
+              <Card onPress={() => nav.push("story", { id: s.id, title: s.title })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Tile tone={TONES[i % TONES.length]} glyph="sparkle" />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }}>{s.title}</Text>
+                    <Chip {...chip} />
+                  </View>
+                  <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>
+                    {s.messageCount} {s.messageCount === 1 ? "message" : "messages"}
+                  </Text>
                 </View>
-                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>
-                  {s.messageCount} {s.messageCount === 1 ? "message" : "messages"}
-                </Text>
-              </View>
-              <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-            </Card>
+                <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+              </Card>
+            </SwipeRow>
           );
         })
       )}

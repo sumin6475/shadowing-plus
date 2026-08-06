@@ -18,6 +18,8 @@ export interface LibraryEntry {
   progress: number | null;
   /** Human status while processing (e.g. "Transcribing"); null when ready. */
   statusLabel: string | null;
+  /** User-starred (ready clips only; processing rows are always false). */
+  favorite: boolean;
 }
 
 // Job statuses that mean "still working" — everything before `ready`/`failed`.
@@ -48,7 +50,7 @@ function jobStatusLabel(status: Job["status"]): string {
 export async function fetchLibrary(): Promise<LibraryEntry[]> {
   const { data, error } = await supabase
     .from("videos")
-    .select("id, title, media_type, duration, created_at")
+    .select("id, title, media_type, duration, created_at, is_favorite")
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -61,6 +63,7 @@ export async function fetchLibrary(): Promise<LibraryEntry[]> {
     ready: true,
     progress: null,
     statusLabel: null,
+    favorite: (v.is_favorite as boolean) ?? false,
   }));
 
   // Best-effort: surface uploads that are still processing. A missing session or
@@ -78,12 +81,30 @@ export async function fetchLibrary(): Promise<LibraryEntry[]> {
         ready: false,
         progress: typeof j.progress === "number" ? j.progress : 0,
         statusLabel: jobStatusLabel(j.status),
+        favorite: false,
       }));
   } catch {
     processing = [];
   }
 
   return [...processing, ...ready];
+}
+
+/**
+ * Permanently delete a clip and everything under it: its segments and any
+ * bookmarks saved from them cascade away (FK ON DELETE CASCADE). RLS-scoped to
+ * the owner. The R2 media object is left orphaned — there's no mobile route to
+ * delete from R2 yet (a storage-cleanup follow-up), which only costs storage.
+ */
+export async function deleteClip(videoId: string): Promise<void> {
+  const { error } = await supabase.from("videos").delete().eq("id", videoId);
+  if (error) throw new Error(error.message);
+}
+
+/** Star / unstar a clip (RLS-scoped). Needs migration 021 (videos.is_favorite). */
+export async function setClipFavorite(videoId: string, favorite: boolean): Promise<void> {
+  const { error } = await supabase.from("videos").update({ is_favorite: favorite }).eq("id", videoId);
+  if (error) throw new Error(error.message);
 }
 
 export interface TranscriptLine {

@@ -2,17 +2,17 @@
 // by the real `bookmarks` table (see @/lib/phrases). The review-verdict write
 // and per-phrase audio are still stubs (next steps).
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 
 import { useTheme } from "@/design/theme";
-import { Avatar, BackBar, Badge, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif, StatTile, Wave } from "@/design/ui";
+import { Avatar, BackBar, Badge, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif, StatTile, SwipeRow, confirmDelete, Wave } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
-import { cumulativeSeries, dueHint, fetchBookmarks, phraseIsDue, relativeTime, submitVerdict, updateMemo, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
+import { cumulativeSeries, deleteBookmark, dueHint, fetchBookmarks, phraseIsDue, relativeTime, setPhraseFavorite, submitVerdict, updateMemo, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
 import { useSegmentPlayer } from "@/hooks/use-segment-player";
 import type { Nav } from "./nav";
 
-const FILTERS = ["All", "Due now", "New", "Recognizing", "Practicing", "Ready to use", "Needs refresh"];
+const FILTERS = ["All", "Favorites", "Due now", "New", "Recognizing", "Practicing", "Ready to use", "Needs refresh"];
 
 // Fallback for mock callers (e.g. the Today tab still pushes a phrase by id).
 const SAMPLE_PHRASE: PhraseItem = {
@@ -29,6 +29,7 @@ const SAMPLE_PHRASE: PhraseItem = {
   dueAt: "2026-08-10T00:00:00.000Z",
   intervalDays: 3,
   lastReviewedAt: null,
+  favorite: false,
 };
 
 function BankChart({ points, max }: { points: number[]; max: number }) {
@@ -96,11 +97,38 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
     setRefreshing(false);
   }, [load]);
 
+  // Optimistically drop the row, then delete; restore it if the delete fails.
+  const removePhrase = useCallback(async (id: string) => {
+    let prev: PhraseItem[] | null = null;
+    setItems((xs) => {
+      prev = xs;
+      return (xs ?? []).filter((p) => p.id !== id);
+    });
+    try {
+      await deleteBookmark(id);
+    } catch (e) {
+      setItems(prev);
+      Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
+    }
+  }, []);
+
+  // Left-swipe toggles the star. Optimistic, with rollback on failure.
+  const toggleFav = useCallback(async (id: string, next: boolean) => {
+    setItems((xs) => (xs ?? []).map((p) => (p.id === id ? { ...p, favorite: next } : p)));
+    try {
+      await setPhraseFavorite(id, next);
+    } catch (e) {
+      setItems((xs) => (xs ?? []).map((p) => (p.id === id ? { ...p, favorite: !next } : p)));
+      Alert.alert("Couldn’t update", e instanceof Error ? e.message : "Try again.");
+    }
+  }, []);
+
   const all = items ?? [];
   const list = all.filter((p) => {
     const s = (p.text + (p.translation ?? "") + p.source + (p.memo ?? "")).toLowerCase();
     if (q && !s.includes(q.toLowerCase())) return false;
     if (f === "All") return true;
+    if (f === "Favorites") return p.favorite;
     if (f === "Due now") return phraseIsDue(p);
     return p.status === f;
   });
@@ -210,31 +238,46 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
           ) : null}
 
           {list.map((p) => (
-            <Card key={p.id} onPress={() => nav.push("phrase", { item: p })}>
-              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 17, fontWeight: "700", letterSpacing: -0.1, color: t.colors.ink }}>{p.text}</Text>
-                  {p.translation ? <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 3 }}>{p.translation}</Text> : null}
+            <SwipeRow
+              key={p.id}
+              favorited={p.favorite}
+              onFavorite={() => toggleFav(p.id, !p.favorite)}
+              onDelete={() =>
+                confirmDelete({
+                  title: "Delete this phrase?",
+                  message: "It’ll be removed from your Phrase Bank.",
+                  deleteLabel: "Delete",
+                  onConfirm: () => removePhrase(p.id),
+                })
+              }
+            >
+              <Card onPress={() => nav.push("phrase", { item: p })}>
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 17, fontWeight: "700", letterSpacing: -0.1, color: t.colors.ink }}>{p.text}</Text>
+                    {p.translation ? <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 3 }}>{p.translation}</Text> : null}
+                  </View>
+                  {p.favorite ? <Icon name="star" s={15} c={t.colors.acc} /> : null}
+                  <Badge s={p.status} />
                 </View>
-                <Badge s={p.status} />
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 12 }}>
-                <Text style={{ fontSize: 12, color: t.colors.ink3, flex: 1 }} numberOfLines={1}>
-                  {p.source} · {relativeTime(p.createdAt)}
-                </Text>
-                <Pill
-                  tone="tint"
-                  small
-                  icon={player.currentId === p.id ? "pause" : "speaker"}
-                  onPress={() => player.toggle({ id: p.id, videoId: p.videoId, start: p.startSec, end: p.endSec })}
-                >
-                  {player.loadingId === p.id ? "…" : player.currentId === p.id ? "Stop" : "Hear"}
-                </Pill>
-                <Pill tone="soft" small onPress={() => nav.push("review", { item: p })}>
-                  Practice
-                </Pill>
-              </View>
-            </Card>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 12 }}>
+                  <Text style={{ fontSize: 12, color: t.colors.ink3, flex: 1 }} numberOfLines={1}>
+                    {p.source} · {relativeTime(p.createdAt)}
+                  </Text>
+                  <Pill
+                    tone="tint"
+                    small
+                    icon={player.currentId === p.id ? "pause" : "speaker"}
+                    onPress={() => player.toggle({ id: p.id, videoId: p.videoId, start: p.startSec, end: p.endSec })}
+                  >
+                    {player.loadingId === p.id ? "…" : player.currentId === p.id ? "Stop" : "Hear"}
+                  </Pill>
+                  <Pill tone="soft" small onPress={() => nav.push("review", { item: p })}>
+                    Practice
+                  </Pill>
+                </View>
+              </Card>
+            </SwipeRow>
           ))}
         </>
       )}
@@ -287,7 +330,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
 
   return (
     <Screen>
-      <BackBar title="Phrase" onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
+      <BackBar title="Phrase" onBack={nav.pop} />
       <Card lg>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
           <View style={{ flex: 1 }}>
@@ -302,8 +345,9 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
             {player.loadingId === p.id ? <ActivityIndicator color="#fff" /> : <Icon name={player.currentId === p.id ? "pause" : "speaker"} s={20} c="#fff" />}
           </Pressable>
         </View>
-        <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
           <Badge s={p.status} />
+          {p.favorite ? <Icon name="star" s={16} c={t.colors.acc} /> : null}
         </View>
       </Card>
 

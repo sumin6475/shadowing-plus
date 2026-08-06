@@ -1,16 +1,16 @@
 // library.tsx — Library tab: list + add sheet, clip focus reader, chunk save
 // (sp-library.jsx). Default clip layout is "focus".
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useEvent } from "expo";
 
-import { fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
+import { deleteClip, fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, setClipFavorite, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
 import { saveBookmark } from "@/lib/phrases";
 import { useTheme } from "@/design/theme";
-import { Avatar, BackBar, Card, Header, Hero, Icon, Pill, Screen, Serif } from "@/design/ui";
+import { Avatar, BackBar, Card, Header, Hero, Icon, Pill, Screen, Serif, SwipeRow, confirmDelete } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
 
@@ -50,6 +50,32 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
     setRefreshing(false);
   }, [load]);
 
+  // Optimistically drop the clip, then delete; restore it if the delete fails.
+  const removeClip = useCallback(async (videoId: string) => {
+    let prev: LibraryEntry[] | null = null;
+    setEntries((xs) => {
+      prev = xs;
+      return (xs ?? []).filter((e) => e.id !== videoId);
+    });
+    try {
+      await deleteClip(videoId);
+    } catch (e) {
+      setEntries(prev);
+      Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
+    }
+  }, []);
+
+  // Left-swipe toggles the star. Optimistic, with rollback on failure.
+  const toggleFav = useCallback(async (videoId: string, next: boolean) => {
+    setEntries((xs) => (xs ?? []).map((e) => (e.id === videoId ? { ...e, favorite: next } : e)));
+    try {
+      await setClipFavorite(videoId, next);
+    } catch (err) {
+      setEntries((xs) => (xs ?? []).map((e) => (e.id === videoId ? { ...e, favorite: !next } : e)));
+      Alert.alert("Couldn’t update", err instanceof Error ? err.message : "Try again.");
+    }
+  }, []);
+
   return (
     <>
       <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
@@ -86,8 +112,8 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
             const meta = item.ready
               ? `${formatDuration(item.durationSec)} · ${item.mediaType}`
               : "Processing your upload…";
-            return (
-              <Card key={item.id} onPress={item.ready ? () => nav.push("libItem", { id: item.id, title: item.title }) : undefined}>
+            const card = (
+              <Card onPress={item.ready ? () => nav.push("libItem", { id: item.id, title: item.title }) : undefined}>
                 <View style={{ flexDirection: "row", gap: 13, alignItems: "center" }}>
                   <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: t.colors[tone], alignItems: "center", justifyContent: "center" }}>
                     <Icon name={icon} s={21} c={t.colors.onB} />
@@ -98,6 +124,7 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
                     </Text>
                     <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>{meta}</Text>
                   </View>
+                  {item.ready && item.favorite ? <Icon name="star" s={15} c={t.colors.acc} /> : null}
                   {item.ready ? (
                     <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
                   ) : (
@@ -117,6 +144,26 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
                   </>
                 ) : null}
               </Card>
+            );
+            // Only ready clips are deletable (processing rows are jobs, not videos).
+            return item.ready ? (
+              <SwipeRow
+                key={item.id}
+                favorited={item.favorite}
+                onFavorite={() => toggleFav(item.id, !item.favorite)}
+                onDelete={() =>
+                  confirmDelete({
+                    title: "Delete this clip?",
+                    message: "The clip, its transcript, and any phrases you saved from it will be removed.",
+                    deleteLabel: "Delete",
+                    onConfirm: () => removeClip(item.id),
+                  })
+                }
+              >
+                {card}
+              </SwipeRow>
+            ) : (
+              <Fragment key={item.id}>{card}</Fragment>
             );
           })
         )}
@@ -268,7 +315,7 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 18, paddingBottom: 96, gap: t.gap }}
         showsVerticalScrollIndicator={false}
       >
-        <BackBar title={title ?? "Clip"} onBack={nav.pop} right={<Pill tone="tint" small icon="dots" />} />
+        <BackBar title={title ?? "Clip"} onBack={nav.pop} />
         <Card lg style={{ padding: 0, overflow: "hidden" }}>
           <View style={{ height: 216, backgroundColor: isVideo ? "#000" : t.colors.soft, alignItems: "center", justifyContent: "center" }}>
             {mediaLoading ? (

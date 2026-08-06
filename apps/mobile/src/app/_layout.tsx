@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
@@ -60,11 +61,15 @@ function RootNavigator() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <RootNavigator />
-        <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-      </AuthProvider>
-    </SafeAreaProvider>
+    // GestureHandlerRootView must sit at the very top for gesture-driven UI
+    // (swipe-to-delete rows) to receive touches. flex:1 so it fills the screen.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <RootNavigator />
+          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

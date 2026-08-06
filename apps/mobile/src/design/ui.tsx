@@ -1,7 +1,8 @@
 // ui.tsx — shared primitives ported from sp-theme.jsx: Card, Hero, Block, Pill,
 // Chip, Badge, Avatar, Header, BackBar, Sect, Screen, Wave, StatTile, TabBar.
-import { useEffect, useMemo, type ReactElement, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactElement, type ReactNode } from "react";
 import {
+  Alert,
   Animated,
   Easing,
   Pressable,
@@ -14,6 +15,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
@@ -581,6 +583,85 @@ export function Row({ children, gap, style }: { children: ReactNode; gap?: numbe
   const t = useTheme();
   return <View style={[{ flexDirection: "row", gap: gap ?? t.gap, alignItems: "center" }, style]}>{children}</View>;
 }
+
+// ── SwipeRow ─────────────────────────────────────────────────────────────────
+// Wrap a list row (usually a <Card>) with iOS swipe actions:
+//   • right→left drag reveals a red Delete (onDelete)
+//   • left→right drag reveals a cobalt Favorite (onFavorite)
+// Each side is opt-in — pass only the handlers a row supports. Tapping an action
+// closes the row first, then runs the handler. The wrapped child still taps
+// through for navigation. Requires GestureHandlerRootView (see _layout).
+const DELETE_RED = "#E5484D";
+export function SwipeRow({
+  children,
+  onDelete,
+  onFavorite,
+  favorited,
+}: {
+  children: ReactNode;
+  onDelete?: () => void;
+  onFavorite?: () => void;
+  favorited?: boolean;
+}) {
+  const t = useTheme();
+  const ref = useRef<Swipeable>(null);
+  const run = (fn: () => void) => {
+    ref.current?.close();
+    fn();
+  };
+
+  const renderRight = onDelete
+    ? (_p: Animated.AnimatedInterpolation<number>, drag: Animated.AnimatedInterpolation<number>) => {
+        const scale = drag.interpolate({ inputRange: [-88, -32, 0], outputRange: [1, 0.85, 0.5], extrapolate: "clamp" });
+        return (
+          <Pressable onPress={() => run(onDelete)} style={{ width: 84, marginLeft: 8, borderRadius: t.r, backgroundColor: DELETE_RED, alignItems: "center", justifyContent: "center" }}>
+            <Animated.Text style={{ color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: -0.1, transform: [{ scale }] }}>Delete</Animated.Text>
+          </Pressable>
+        );
+      }
+    : undefined;
+
+  const renderLeft = onFavorite
+    ? (_p: Animated.AnimatedInterpolation<number>, drag: Animated.AnimatedInterpolation<number>) => {
+        const scale = drag.interpolate({ inputRange: [0, 32, 88], outputRange: [0.5, 0.85, 1], extrapolate: "clamp" });
+        return (
+          <Pressable onPress={() => run(onFavorite)} style={{ width: 88, marginRight: 8, borderRadius: t.r, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
+            <Animated.View style={{ alignItems: "center", transform: [{ scale }] }}>
+              <Icon name="star" s={19} c="#fff" />
+              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700", marginTop: 3 }}>{favorited ? "Unfave" : "Favorite"}</Text>
+            </Animated.View>
+          </Pressable>
+        );
+      }
+    : undefined;
+
+  return (
+    <Swipeable
+      ref={ref}
+      renderRightActions={renderRight}
+      renderLeftActions={renderLeft}
+      overshootRight={false}
+      overshootLeft={false}
+      rightThreshold={40}
+      leftThreshold={40}
+      friction={2}
+    >
+      {children}
+    </Swipeable>
+  );
+}
+
+// ── confirmDelete ────────────────────────────────────────────────────────────
+// Native iOS confirmation alert with a red destructive "Delete" and Cancel. Used
+// as the final gate before any destructive action (swipe-to-delete, the "…"
+// menu). onConfirm runs only if the user taps the destructive button.
+export function confirmDelete(opts: { title: string; message?: string; deleteLabel?: string; onConfirm: () => void }) {
+  Alert.alert(opts.title, opts.message, [
+    { text: "Cancel", style: "cancel" },
+    { text: opts.deleteLabel ?? "Delete", style: "destructive", onPress: opts.onConfirm },
+  ]);
+}
+
 
 // ── TabBar (floating cobalt capsule) ────────────────────────────────────────
 export type TabId = "today" | "phrases" | "speak" | "topics" | "library";

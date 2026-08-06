@@ -216,6 +216,24 @@ export async function setBeatPositions(updates: { id: string; position: number }
   }
 }
 
+/** Permanently delete a Speak session (RLS-scoped to the owner). */
+export async function deleteTalkSession(id: string): Promise<void> {
+  const { error } = await supabase.from("talk_sessions").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Archive a story so it drops out of its domain's list. We soft-archive rather
+ * than hard-delete because a real delete would cascade to the story's messages,
+ * beats, and any talk_sessions linked to it (all FK ON DELETE CASCADE). The
+ * story list already filters out status='archived', matching the domain
+ * `archived` flag pattern. Reversible by flipping the status back.
+ */
+export async function archiveStory(id: string): Promise<void> {
+  const { error } = await supabase.from("stories").update({ status: "archived" }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Persist one Speak session. Transcript comes from on-device recognition, so no
  * server/R2 round-trip; audio is not uploaded (audio_key stays null for now).
