@@ -2,13 +2,15 @@
 // Phases: count → live → done → moment → retry. The web original uses radial
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SERIF, useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
+import { diagnoseTalk } from "@/lib/talk";
+import type { TalkMoment } from "@/types/api";
 import type { Nav, TalkCtx } from "./nav";
 
 const TALK_SAMPLES = [
@@ -69,6 +71,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [transcript, setTranscript] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  // AI diagnosis of the finished session (ADR 0003 next step). moments come from
+  // the web /api/talk/diagnose route, NOT from the mock TALK_SAMPLES anymore.
+  const [moments, setMoments] = useState<TalkMoment[]>([]);
+  const [diagState, setDiagState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [diagErr, setDiagErr] = useState<string | null>(null);
 
   const pop = useMemo(() => new Animated.Value(1), []);
 
@@ -109,6 +116,28 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setToast(ts);
     setTimeout(() => setToast(null), 1300);
   };
+  // Ask the web API to surface improvable moments from the real transcript. Runs
+  // in parallel with the save; an empty/short transcript short-circuits to none.
+  const runDiagnosis = (text: string) => {
+    if (!text.trim()) {
+      setMoments([]);
+      setDiagState("done");
+      return;
+    }
+    const topic = ctx === "Free talk" ? p0.sub ?? null : [ctx, p0.sub].filter(Boolean).join(" · ") || null;
+    setDiagState("loading");
+    setDiagErr(null);
+    diagnoseTalk({ transcript: text, topic })
+      .then((ms) => {
+        setMoments(ms);
+        setDiagState("done");
+      })
+      .catch((e) => {
+        setDiagState("error");
+        setDiagErr(e instanceof Error ? e.message : "Couldn’t analyze this session.");
+      });
+  };
+
   const finish = () => {
     const text = speech.stop();
     setTranscript(text);
@@ -127,6 +156,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         setSaveState("error");
         setSaveErr(e instanceof Error ? e.message : "Couldn’t save this session.");
       });
+    runDiagnosis(text);
   };
   const restart = () => {
     speech.stop();
@@ -134,6 +164,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setTranscript("");
     setSaveState("idle");
     setSaveErr(null);
+    setMoments([]);
+    setDiagState("idle");
+    setDiagErr(null);
     setPhase("count");
     setN(3);
     setSec(0);
@@ -145,7 +178,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     speech.stop();
     nav.go(p0.from ?? "today");
   };
-  const moments = marks.map((ts, i) => ({ ts, ...TALK_SAMPLES[i % TALK_SAMPLES.length] }));
   const mSel = moments[sel];
 
   // ── done ──
@@ -155,11 +187,19 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         <View style={{ alignItems: "center", paddingTop: 26, paddingBottom: 4 }}>
           <Serif style={{ fontSize: 34, color: t.colors.ink }}>Great job!</Serif>
           <Text style={{ fontSize: 16.5, fontWeight: "600", marginTop: 14, color: t.colors.ink }}>You spoke for {fmt(dur)}</Text>
-          <Text style={{ fontSize: 16.5, fontWeight: "600", marginTop: 2, color: t.colors.ink }}>
-            You marked {moments.length} moment{moments.length === 1 ? "" : "s"}.
-          </Text>
+          {marks.length ? (
+            <Text style={{ fontSize: 16.5, fontWeight: "600", marginTop: 2, color: t.colors.ink }}>
+              You marked {marks.length} spot{marks.length === 1 ? "" : "s"}.
+            </Text>
+          ) : null}
           <Text style={{ fontSize: 13.5, color: t.colors.ink3, marginTop: 10, textAlign: "center" }}>
-            {moments.length ? "Let’s look at the moments where you wanted help." : "You kept going the whole time — nice."}
+            {diagState === "loading"
+              ? "Looking at where you could level up…"
+              : diagState === "done" && moments.length
+                ? "Here’s where you could say it more naturally."
+                : diagState === "done"
+                  ? "You kept going the whole time — nice."
+                  : ""}
           </Text>
         </View>
 
@@ -178,42 +218,62 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           </Text>
         </Card>
 
-        {moments.map((m, i) => (
-          <Card
-            key={i}
-            onPress={() => {
-              setSel(i);
-              setPhase("moment");
-            }}
-            style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
-          >
-            <View style={{ alignItems: "center", gap: 4 }}>
-              <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                <Icon name="play" s={17} c={t.colors.accD} />
-              </View>
-              <Text style={{ fontSize: 11.5, fontWeight: "700", color: t.colors.accD }}>{m.ts}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{m.label}</Text>
-              <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>
-                {m.said}
-              </Text>
-              <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.accD, marginTop: 4 }}>2 suggested expressions</Text>
-            </View>
-            <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+        {/* AI diagnosis: up to 3 improvable moments from the real transcript. */}
+        {diagState === "loading" ? (
+          <Card lg style={{ alignItems: "center", paddingVertical: 26, gap: 10 }}>
+            <ActivityIndicator color={t.colors.accD} />
+            <Text style={{ fontSize: 13.5, color: t.colors.ink3 }}>Finding moments to level up…</Text>
           </Card>
-        ))}
-        {!moments.length ? (
+        ) : null}
+
+        {diagState === "error" ? (
+          <Card lg style={{ gap: 12 }}>
+            <Text style={{ fontSize: 14, color: "#E5484D", fontWeight: "600" }}>{diagErr ?? "Couldn’t analyze this session."}</Text>
+            <Pill tone="tint" onPress={() => runDiagnosis(transcript)}>
+              Try again
+            </Pill>
+          </Card>
+        ) : null}
+
+        {diagState === "done"
+          ? moments.map((m, i) => (
+              <Card
+                key={i}
+                onPress={() => {
+                  setSel(i);
+                  setPhase("moment");
+                }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+              >
+                <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ fontSize: 16, fontWeight: "800", color: t.colors.accD }}>{i + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{m.label}</Text>
+                  <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>
+                    {m.said}
+                  </Text>
+                  <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.accD, marginTop: 4 }} numberOfLines={1}>
+                    Try: {m.want}
+                  </Text>
+                </View>
+                <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+              </Card>
+            ))
+          : null}
+
+        {diagState === "done" && !moments.length ? (
           <Card lg style={{ alignItems: "center", paddingVertical: 28 }}>
             <Wave n={20} h={26} />
             <Text style={{ fontSize: 15, fontWeight: "600", marginTop: 12, color: t.colors.ink }}>Smooth run.</Text>
             <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 4, textAlign: "center" }}>
-              Next time, tap Stuck whenever a word won’t come — we’ll catch it here.
+              Nothing stood out to fix — nice and natural. Keep going.
             </Text>
           </Card>
         ) : null}
+
         <View style={{ flexDirection: "row", gap: t.gap, marginTop: 8 }}>
-          {moments.length ? (
+          {diagState === "done" && moments.length ? (
             <Pill
               tone="tint"
               full
@@ -240,29 +300,17 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   if (phase === "moment" && mSel)
     return (
       <Screen bottomPad={40}>
-        <BackBar title={`${mSel.ts} · ${mSel.label}`} onBack={() => setPhase("done")} />
+        <BackBar title={mSel.label} onBack={() => setPhase("done")} />
         <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>You said</Text>
         <Card>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-              <Icon name="play" s={16} c={t.colors.accD} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Wave n={30} h={22} color={t.colors.ink3} />
-            </View>
-            <Text style={{ fontSize: 12.5, color: t.colors.ink3, fontWeight: "600" }}>0:06</Text>
-          </View>
-          <Text style={{ fontSize: 15, marginTop: 12, lineHeight: 22, color: t.colors.ink }}>{mSel.said}</Text>
+          <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink }}>{mSel.said}</Text>
         </Card>
         <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 6 }}>You may have meant</Text>
-        <View style={[{ backgroundColor: t.colors.pill, borderRadius: t.r, padding: t.padc, flexDirection: "row", alignItems: "center", gap: 12 }, t.shadowCard]}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16.5, fontWeight: "700", lineHeight: 22, color: "#fff" }}>{mSel.want}</Text>
-            <Text style={{ fontSize: 13.5, color: "rgba(255,255,255,0.65)", marginTop: 6, lineHeight: 20 }}>“{mSel.ex}”</Text>
-          </View>
-          <Pressable style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center" }}>
-            <Icon name="play" s={16} c="#fff" />
-          </Pressable>
+        <View style={[{ backgroundColor: t.colors.pill, borderRadius: t.r, padding: t.padc }, t.shadowCard]}>
+          <Text style={{ fontSize: 16.5, fontWeight: "700", lineHeight: 22, color: "#fff" }}>{mSel.want}</Text>
+          {mSel.example ? (
+            <Text style={{ fontSize: 13.5, color: "rgba(255,255,255,0.65)", marginTop: 6, lineHeight: 20 }}>“{mSel.example}”</Text>
+          ) : null}
         </View>
         <View style={{ paddingHorizontal: 2, paddingTop: 8 }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Try it now</Text>
@@ -287,7 +335,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         <Card lg>
           <Text style={{ fontSize: 13, color: t.colors.ink3 }}>Say just this part</Text>
           <Serif style={{ fontSize: 24, lineHeight: 31, marginTop: 6, color: t.colors.ink }}>{mSel.want}</Serif>
-          <Text style={{ fontSize: 13.5, color: t.colors.ink2, marginTop: 10, lineHeight: 20 }}>“{mSel.ex}”</Text>
+          {mSel.example ? (
+            <Text style={{ fontSize: 13.5, color: t.colors.ink2, marginTop: 10, lineHeight: 20 }}>“{mSel.example}”</Text>
+          ) : null}
         </Card>
         <View style={{ borderRadius: t.r, height: 170, overflow: "hidden" }}>
           <TalkMirror />
@@ -296,14 +346,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Just this sentence — 10 seconds is plenty</Text>
           </View>
         </View>
-        <View style={{ flexDirection: "row", gap: t.gap }}>
-          <Pill tone="tint" full icon="speaker">
-            Hear it
-          </Pill>
-          <Pill full icon="check" onPress={() => setPhase("moment")}>
-            I said it
-          </Pill>
-        </View>
+        <Pill full icon="check" onPress={() => setPhase("moment")}>
+          I said it
+        </Pill>
       </Screen>
     );
 

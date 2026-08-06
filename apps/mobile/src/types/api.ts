@@ -113,3 +113,18 @@ export interface Job {
   created_at: string;
   updated_at: string;
 }
+
+// Response shape of POST /api/talk/diagnose. Copied by hand from
+// web/src/lib/talk-diagnose.ts (TalkMoment). One improvable "moment" the AI
+// surfaced from a Speak session transcript. Not a DB row — the route is
+// stateless and nothing is persisted server-side.
+export interface TalkMoment {
+  /** ≤4 words naming what this moment is about. */
+  label: string;
+  /** A verbatim span copied from the transcript. */
+  said: string;
+  /** A more natural way to say it, in the learner's voice (≤10 words). */
+  want: string;
+  /** One short example sentence that uses `want`. */
+  example: string;
+}
