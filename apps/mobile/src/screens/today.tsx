@@ -57,15 +57,13 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const bars = weeklyCounts(all.map((p) => p.createdAt));
   const barMax = Math.max(1, ...bars.map((b) => b.count));
   const bringBack = due.slice(0, 2);
-  const firstDue = due[0]?.text ?? "";
-  const dueNames = firstDue.length > 40 ? `${firstDue.slice(0, 40).trimEnd()}…` : firstDue;
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
       <Header
         eyebrow={todayLabel()}
         title={
-          <Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>
+          <Serif style={{ fontSize: 36, lineHeight: 40, color: t.colors.ink }}>
             {greeting()},{"\n"}Sumin.
           </Serif>
         }
@@ -75,11 +73,11 @@ export function TodayScreen({ nav }: { nav: Nav }) {
 
       <Hero style={{ marginTop: 4 }}>
         <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.8, color: "rgba(255,255,255,0.75)" }}>TODAY’S SPEAKING MOMENT</Text>
-        <Serif style={{ fontSize: 22, lineHeight: 27, color: "#fff", marginTop: 10, marginBottom: 8 }}>Explain what you do in 30 seconds.</Serif>
+        <Serif style={{ fontSize: 27, lineHeight: 34, color: "#fff", marginTop: 14, marginBottom: 10 }}>Explain what you do in 30 seconds.</Serif>
         <Text style={{ fontSize: 15, lineHeight: 22, color: "rgba(255,255,255,0.85)" }}>
-          You practiced this before. Let’s make it easier to say without thinking.
+          You’ve said it before — let’s make it automatic.
         </Text>
-        <View style={{ flexDirection: "row", gap: 10, marginTop: 18, alignItems: "center" }}>
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 22, alignItems: "center" }}>
           <Pill tone="white" onPress={() => nav.go("speak")} textStyle={{ color: t.colors.accD }} style={{ shadowOpacity: 0 }}>
             Start speaking
           </Pill>
@@ -110,7 +108,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
                 label="Ready to refresh"
                 value={String(due.length)}
                 unit={`/ ${collected} phrases`}
-                foot={due.length ? dueNames : "You’re all caught up"}
+                foot={due.length ? "Tap to bring one back" : "You’re all caught up"}
                 onPress={() => (bringBack[0] ? nav.push("review", { item: bringBack[0] }) : nav.go("phrases"))}
               />
               <StatTile tone="sage" label="Ready to use" value={String(ready)} unit="phrases" foot="Your active English" onPress={() => nav.go("phrases")} />
@@ -130,12 +128,9 @@ export function TodayScreen({ nav }: { nav: Nav }) {
           {bringBack.length > 0 ? (
             bringBack.map((p) => (
               <Card key={p.id} onPress={() => nav.push("phrase", { item: p })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
-                    {p.text}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>Saved from {p.source}</Text>
-                </View>
+                <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+                  {p.text}
+                </Text>
                 <Badge s={p.status} />
               </Card>
             ))
@@ -170,8 +165,8 @@ export function TodayScreen({ nav }: { nav: Nav }) {
             </View>
             <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 12, lineHeight: 20 }}>
               {thisWeek > 0
-                ? `${thisWeek} phrase${thisWeek === 1 ? "" : "s"} saved this week. Progress is your English showing up when you need it.`
-                : "No new phrases yet this week — save one from a clip in your Library."}
+                ? `${thisWeek} phrase${thisWeek === 1 ? "" : "s"} saved this week.`
+                : "Nothing new this week — save one from a clip."}
             </Text>
           </Card>
         </>

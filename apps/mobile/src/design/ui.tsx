@@ -38,8 +38,18 @@ export function toneColor(t: Theme, name: string): string {
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────
+// Newsreader reads ~10% smaller than the Georgia it replaced, so scale every
+// serif's fontSize + lineHeight once here — the whole app compensates uniformly
+// without editing each call site. Per-site fontSize still sets relative size;
+// this only nudges the overall serif scale up.
+const SERIF_SCALE = 1.1;
+
 export function Serif({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
-  return <Text style={[{ fontFamily: SERIF, letterSpacing: -0.2 }, style]}>{children}</Text>;
+  const flat = StyleSheet.flatten(style) as TextStyle | undefined;
+  const scaled: TextStyle = {};
+  if (typeof flat?.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * SERIF_SCALE);
+  if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * SERIF_SCALE);
+  return <Text style={[{ fontFamily: SERIF, letterSpacing: -0.2 }, style, scaled]}>{children}</Text>;
 }
 
 // ── Card ─────────────────────────────────────────────────────────────────
@@ -87,7 +97,7 @@ export function Hero({
   const base: ViewStyle = {
     backgroundColor: t.colors.acc,
     borderRadius: t.r,
-    padding: t.padc + 3,
+    padding: t.padc + 9,
     overflow: "hidden",
     ...t.shadowCard,
   };

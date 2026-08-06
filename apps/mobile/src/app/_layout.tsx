@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
 
@@ -18,13 +19,25 @@ SplashScreen.preventAutoHideAsync();
 function RootNavigator() {
   const { session, loading } = useAuth();
 
+  // Saylo design-system fonts, loaded at runtime (expo-font is already in the
+  // dev client, so no native rebuild). Newsreader = editorial serif hero; Inter
+  // (per weight — RN needs an explicit family per static weight) for UI text.
+  const [fontsLoaded] = useFonts({
+    Newsreader: require("../../assets/fonts/Newsreader36pt-Regular.ttf"),
+    Inter: require("../../assets/fonts/Inter18pt-Regular.ttf"),
+    "Inter-Medium": require("../../assets/fonts/Inter18pt-Medium.ttf"),
+    "Inter-SemiBold": require("../../assets/fonts/Inter18pt-SemiBold.ttf"),
+  });
+
+  const ready = !loading && fontsLoaded;
+
   useEffect(() => {
-    if (!loading) {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [loading]);
+  }, [ready]);
 
-  if (loading) return null;
+  if (!ready) return null;
 
   // SKELETON PREVIEW: while the app is a design skeleton running on mock data,
   // show the (app) group without a Supabase session so it opens straight into

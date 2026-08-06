@@ -10,12 +10,14 @@
 // palette byte-for-byte faithful (including dark mode + the warm palette).
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { Platform, StyleSheet, useColorScheme, type TextStyle, type ViewStyle } from "react-native";
+import { StyleSheet, useColorScheme, type TextStyle, type ViewStyle } from "react-native";
 
 // ── Fonts ────────────────────────────────────────────────────────────────
-// "New York" is the editorial serif in the design; Georgia is the closest face
-// that ships on iOS without bundling. SANS falls through to San Francisco.
-export const SERIF = Platform.select({ ios: "Georgia", default: "serif" }) as string;
+// Newsreader — the editorial serif hero face from the Saylo design system,
+// loaded at runtime in the root _layout via expo-font. Used for hero + focus
+// transcript only ("serif = hero only"). UI text stays on the system font for
+// now; Inter (also loaded) can be adopted per-weight later.
+export const SERIF = "Newsreader";
 
 // ── oklch → sRGB ───────────────────────────────────────────────────────────
 // Standard OKLab → linear sRGB → gamma. Deterministic (no Date/Math.random).
