@@ -8,6 +8,12 @@
 
 ## 항목
 
+### 2026-08-07 · 빌드 · 하단바 Library→Sessions 재편 + 프로필 화면 리디자인
+- **무엇**: 정식 첫 런칭(TestFlight 개인용)을 위해 하단 탭 `Library`를 **`Sessions`**(wave2 아이콘)로 교체. Topics 홈에 있던 전역 "Your sessions" 카드를 **탭으로 승격**(`SessionsScreen`을 push 상세→탭 Header+Avatar로 전환). 각 **Story 화면에 그 스토리의 세션만 보이는 "Sessions" 섹션** 추가(`fetchTalkSessions(limit, storyId)` 필터 + 공용 `SessionRow`, `showStory=false`). Library는 제거가 아니라 **프로필의 "Library BETA" 엔트리**로 이동(push view). 프로필(`settings.tsx`)을 목업대로 재작성 — 중앙 정렬 아이덴티티 헤더 + "Your speaking world" 코발트 그라디언트 배너(→Topics) + Library BETA + Preferences/Practice/Notifications/Account 그룹(리딩 아이콘·값·chevron), Log out은 실제 signOut 유지.
+- **배운/적용한 원칙**: **탭↔push 재배치는 nav 계약부터** — `TabId`에서 `library`→`sessions`, `ViewName`에서 `sessions` 제거·`library` 추가, `shell` renderTab/renderView 동시 수정으로 컴파일이 누락을 잡게 함. 세션은 `storyId`에 붙으므로 토픽별 섹션은 **데이터 직결인 스토리 단위**로. 프로필은 아이콘 세트에 없던 11종(globe/translate/chat/contrast/clock/bulb/gauge/calendar/export/help/shield)을 **기존 24×24 stroke 규칙 그대로** 추가. 값 행은 아직 표시용 placeholder(원본도 동일) — 배선은 후속.
+- **검증**: `tsc --noEmit` PASS(exit 0) · 변경 7파일 ESLint **error 0**(경고 5=기존 `useEffect(load)` 패턴 답습) · `expo export --platform ios` 번들 PASS. **실기기 확인은 대기**.
+- **남은 것**: 실기기 비주얼 확인(그라디언트·아이콘·다크모드) · Edit profile 화면 · Preferences/Practice 값 실제 배선(First language→setFirstLanguage 등) · Sessions 탭 이후 talk 복귀는 `from:"sessions"`로 지정함.
+
 ### 2026-08-07 · 수정+실기기 검증 · self-talk 녹음 재생 스피커 라우팅
 - **무엇**: session 상세에서 로컬 WAV 재생 직전, 인식기가 남긴 iOS 공유 오디오 세션을 `playAndRecord`로 유지하면서 `mode=default` + `defaultToSpeaker`로 전환. 다음 인식 시작은 기존 모듈이 `measurement`를 복원하므로 라이브 STT·완료 시 interim flush·저장·AI 진단·Stuck 경로는 변경하지 않음.
 - **근거**: Expo 57의 `shouldRouteThroughEarpiece=false`와 설치된 네이티브 구현을 확인. `measurement` 모드는 출력 레벨을 낮추며, 기존 `playsInSilentMode` 단독 호출은 expo-audio 쪽 기본값으로 카테고리를 재구성해 두 라이브러리가 공유 세션을 서로 건드리는 구조였음. 이번엔 speech-recognition의 `setCategoryIOS` 한 경로로 격리.

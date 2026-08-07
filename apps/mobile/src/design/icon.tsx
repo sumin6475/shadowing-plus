@@ -29,7 +29,18 @@ export type IconName =
   | "clip"
   | "star"
   | "life"
-  | "wave2";
+  | "wave2"
+  | "globe"
+  | "translate"
+  | "chat"
+  | "contrast"
+  | "clock"
+  | "bulb"
+  | "gauge"
+  | "calendar"
+  | "export"
+  | "help"
+  | "shield";
 
 interface IconProps {
   name: IconName;
@@ -198,6 +209,86 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
       break;
     case "wave2":
       body = <Path {...common} d="M3 12h2.5M8 8v8M12 5v14M16 8v8M20.5 12H23" />;
+      break;
+    case "globe":
+      body = (
+        <G {...common}>
+          <Circle cx="12" cy="12" r="9" />
+          <Path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18" />
+        </G>
+      );
+      break;
+    case "translate":
+      body = (
+        <G {...common}>
+          <Path d="M3.5 6h7M7 6v1c0 3.2-1.6 5.8-3.5 7.5M5 9.2c.9 1.9 2.4 3.2 4.2 4" />
+          <Path d="M12.5 20l4-9 4 9M14 17h5" />
+        </G>
+      );
+      break;
+    case "chat":
+      body = <Path {...common} d="M4.5 7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H10l-4 3.5V15H6.5a2 2 0 0 1-2-2z" />;
+      break;
+    case "contrast":
+      body = (
+        <G {...common}>
+          <Circle cx="12" cy="12" r="9" />
+          <Path d="M12 3a9 9 0 0 1 0 18z" fill={c} stroke="none" />
+        </G>
+      );
+      break;
+    case "clock":
+      body = (
+        <G {...common}>
+          <Circle cx="12" cy="12" r="9" />
+          <Path d="M12 7.2V12l3.2 2" />
+        </G>
+      );
+      break;
+    case "bulb":
+      body = (
+        <G {...common}>
+          <Path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2h5c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z" />
+          <Path d="M9.5 18.5h5M10.5 21h3" />
+        </G>
+      );
+      break;
+    case "gauge":
+      body = (
+        <G {...common}>
+          <Path d="M4 15.5a8 8 0 0 1 16 0" />
+          <Path d="M12 15.5l4-3.4" />
+          <Circle cx="12" cy="15.5" r="1.3" fill={c} stroke="none" />
+        </G>
+      );
+      break;
+    case "calendar":
+      body = (
+        <G {...common}>
+          <Rect x="4" y="5" width="16" height="15" rx="2.5" />
+          <Path d="M4 9.5h16M8 3.5v3M16 3.5v3" />
+        </G>
+      );
+      break;
+    case "export":
+      body = (
+        <G {...common}>
+          <Path d="M13.5 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h12a1.5 1.5 0 0 0 1.5-1.5v-7.5" />
+          <Path d="M11 13L20 4M14.5 3.5H20.5V9.5" />
+        </G>
+      );
+      break;
+    case "help":
+      body = (
+        <G {...common}>
+          <Circle cx="12" cy="12" r="9" />
+          <Path d="M9.4 9.3a2.7 2.7 0 0 1 5.3 1c0 1.8-2.7 2.2-2.7 4" />
+          <Circle cx="12" cy="17.2" r="1.1" fill={c} stroke="none" />
+        </G>
+      );
+      break;
+    case "shield":
+      body = <Path {...common} d="M12 3l7 3v5.4c0 4.6-3 8-7 9.6-4-1.6-7-5-7-9.6V6z" />;
       break;
   }
   return (
