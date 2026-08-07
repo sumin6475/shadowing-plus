@@ -128,3 +128,16 @@ export interface TalkMoment {
   /** One short example sentence that uses `want`. */
   example: string;
 }
+
+// Help for a moment the learner tapped "Stuck" during a Speak session and jotted
+// a quick note (often in their native language) about what they wanted to say
+// but couldn't. talk-stuck turns each note into the natural English expression.
+// A SEPARATE analysis from TalkMoment; nothing is persisted.
+export interface StuckHelp {
+  /** Timestamp in the session, "m:ss" — echoes the note's timestamp. */
+  at: string;
+  /** The natural English way to say what they noted (≤14 words). */
+  phrase: string;
+  /** One example sentence that uses `phrase`. */
+  example: string;
+}

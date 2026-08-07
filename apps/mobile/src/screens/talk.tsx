@@ -2,7 +2,7 @@
 // Phases: count → live → done → moment → retry. The web original uses radial
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Easing, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Pressable, Text, TextInput, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,8 +11,9 @@ import { BackBar, Card, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
 import { createSpeakPhrase } from "@/lib/phrases";
-import { diagnoseTalk } from "@/lib/talk";
-import type { TalkMoment } from "@/types/api";
+import { diagnoseStuck, diagnoseTalk, type StuckMoment } from "@/lib/talk";
+import { stuckNoteCopy } from "@/lib/first-language";
+import type { StuckHelp, TalkMoment } from "@/types/api";
 import type { Nav, TalkCtx } from "./nav";
 
 const TALK_SAMPLES = [
@@ -85,7 +86,10 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [beatIdx, setBeatIdx] = useState(0); // current story beat in the checklist
   const [ctx, setCtx] = useState(p0.ctx || "Free talk");
   const [dd, setDd] = useState(false);
-  const [marks, setMarks] = useState<string[]>([]);
+  const [marks, setMarks] = useState<StuckMoment[]>([]);
+  const [noteOpen, setNoteOpen] = useState(false); // the quick "stuck" note sheet
+  const [noteText, setNoteText] = useState("");
+  const [noteAt, setNoteAt] = useState("0:00");
   const [toast, setToast] = useState<string | null>(null);
   const [dur, setDur] = useState(0);
   const [sel, setSel] = useState(0);
@@ -105,6 +109,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [moments, setMoments] = useState<TalkMoment[]>([]);
   const [diagState, setDiagState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [diagErr, setDiagErr] = useState<string | null>(null);
+  // Separate analysis of the moments the learner tapped "Stuck" (talk-stuck).
+  const [stuckHelp, setStuckHelp] = useState<StuckHelp[]>([]);
+  const [stuckState, setStuckState] = useState<"idle" | "loading" | "done" | "error">("idle");
 
   const pop = useMemo(() => new Animated.Value(1), []);
 
@@ -139,11 +146,37 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Tap "Stuck" → open a quick note at this timestamp. Recording keeps running.
   const stuck = () => {
-    const ts = fmt(sec);
-    setMarks((m) => [...m, ts]);
-    setToast(ts);
+    setNoteAt(fmt(sec));
+    setNoteText("");
+    setNoteOpen(true);
+  };
+  const saveNote = () => {
+    const note = noteText.trim();
+    setNoteOpen(false);
+    setNoteText("");
+    if (!note) return; // empty note = cancel, no mark
+    setMarks((m) => [...m, { at: noteAt, note }]);
+    setToast(noteAt);
     setTimeout(() => setToast(null), 1300);
+  };
+
+  // Coach the "Stuck" taps — runs in parallel with the main diagnosis on finish.
+  const runStuckDiagnosis = (moments: StuckMoment[]) => {
+    if (!moments.length) {
+      setStuckHelp([]);
+      setStuckState("done");
+      return;
+    }
+    const topic = ctx === "Free talk" ? p0.sub ?? null : [ctx, p0.sub].filter(Boolean).join(" · ") || null;
+    setStuckState("loading");
+    diagnoseStuck({ stuckMoments: moments, topic })
+      .then((h) => {
+        setStuckHelp(h);
+        setStuckState("done");
+      })
+      .catch(() => setStuckState("error"));
   };
   // Ask the web API to surface improvable moments from the real transcript. Runs
   // in parallel with the save; an empty/short transcript short-circuits to none.
@@ -186,6 +219,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         setSaveErr(e instanceof Error ? e.message : "Couldn’t save this session.");
       });
     runDiagnosis(text);
+    runStuckDiagnosis(marks);
   };
   const restart = () => {
     speech.stop();
@@ -196,11 +230,15 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setMoments([]);
     setDiagState("idle");
     setDiagErr(null);
+    setStuckHelp([]);
+    setStuckState("idle");
     setPhraseSave({});
     setPhase("count");
     setN(3);
     setSec(0);
     setMarks([]);
+    setNoteOpen(false);
+    setNoteText("");
     setTab("phrase");
     setBeatIdx(0);
     setDd(false);
@@ -313,6 +351,59 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           </Card>
         ) : null}
 
+        {/* Where you got stuck — a separate analysis of the "Stuck" taps. */}
+        {marks.length > 0 ? (
+          <>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2, marginTop: 6 }}>
+              <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Where you got stuck</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: t.colors.ink3 }}>
+                {marks.length} spot{marks.length === 1 ? "" : "s"}
+              </Text>
+            </View>
+            {stuckState === "loading" ? (
+              <Card style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 20 }}>
+                <ActivityIndicator color={t.colors.accD} />
+                <Text style={{ fontSize: 13.5, color: t.colors.ink3 }}>Looking at what tripped you up…</Text>
+              </Card>
+            ) : stuckState === "error" ? (
+              <Card style={{ gap: 10 }}>
+                <Text style={{ fontSize: 14, color: "#E5484D", fontWeight: "600" }}>Couldn’t analyze your stuck moments.</Text>
+                <Pill tone="tint" small onPress={() => runStuckDiagnosis(marks)}>
+                  Try again
+                </Pill>
+              </Card>
+            ) : stuckHelp.length ? (
+              stuckHelp.map((h, i) => {
+                // The learner's own note (their words, often Korean) → the English.
+                const note = ((marks.find((m) => m.at === h.at) ?? marks[i])?.note ?? "").trim();
+                return (
+                  <Card key={i} style={{ gap: 10 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                        <Icon name="life" s={17} c={t.colors.accD} />
+                      </View>
+                      <Text style={{ flex: 1, fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: t.colors.ink3 }}>YOU WANTED TO SAY</Text>
+                      <View style={{ backgroundColor: t.colors.soft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
+                        <Text style={{ fontSize: 11.5, fontWeight: "700", color: t.colors.ink3 }}>{h.at}</Text>
+                      </View>
+                    </View>
+                    {note ? <Text style={{ fontSize: 15, color: t.colors.ink, lineHeight: 21 }}>{note}</Text> : null}
+                    <View style={{ backgroundColor: t.colors.accS, borderRadius: 14, padding: 12 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: t.colors.accD }}>SAY IT LIKE THIS</Text>
+                      <Text style={{ fontSize: 16, fontWeight: "600", lineHeight: 22, color: t.colors.ink, marginTop: 4 }}>{h.phrase}</Text>
+                      {h.example ? <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 6, lineHeight: 19 }}>“{h.example}”</Text> : null}
+                    </View>
+                  </Card>
+                );
+              })
+            ) : (
+              <Card style={{ alignItems: "center", paddingVertical: 22 }}>
+                <Text style={{ fontSize: 14, color: t.colors.ink2, textAlign: "center" }}>You pushed through those spots on your own. Nice.</Text>
+              </Card>
+            )}
+          </>
+        ) : null}
+
         <View style={{ flexDirection: "row", gap: t.gap, marginTop: 8 }}>
           {diagState === "done" && moments.length ? (
             <Pill
@@ -412,6 +503,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   // ── mirror: countdown + live ──
   const live = phase === "live";
   const subPill = p0.sub || (ctx !== "Free talk" ? ctx : null);
+  const noteCopy = stuckNoteCopy(); // greet the learner in their first language
   return (
     <View style={{ position: "absolute", inset: 0 }}>
       <CameraMirror />
@@ -496,8 +588,8 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           {toast ? (
             <View style={{ position: "absolute", bottom: 300, left: 0, right: 0, alignItems: "center", zIndex: 25 }}>
               <View style={{ backgroundColor: FROST, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 7 }}>
-                <Icon name="bank" s={14} w={2} c="#FFD79A" />
-                <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>Moment saved · {toast}</Text>
+                <Icon name="life" s={14} w={2} c="#FFD79A" />
+                <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>Noted · {toast}</Text>
               </View>
             </View>
           ) : null}
@@ -603,6 +695,48 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>Finish</Text>
             </View>
           </View>
+
+          {/* Quick "stuck" note — jot what you wanted to say (native language OK). */}
+          {noteOpen ? (
+            <View style={{ position: "absolute", inset: 0, zIndex: 50 }}>
+              <Pressable style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.55)" }} onPress={saveNote} />
+              <View style={[{ position: "absolute", top: insets.top + 96, left: 20, right: 20, backgroundColor: "#fff", borderRadius: 24, padding: 18 }, t.shadowLg]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 11, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                    <Icon name="life" s={16} c={t.colors.accD} />
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: "#16181d" }}>{noteCopy.title}</Text>
+                  <Text style={{ fontSize: 12.5, fontWeight: "700", color: "rgba(0,0,0,0.4)" }}>{noteAt}</Text>
+                </View>
+                <TextInput
+                  autoFocus
+                  value={noteText}
+                  onChangeText={setNoteText}
+                  placeholder={noteCopy.placeholder}
+                  placeholderTextColor="rgba(0,0,0,0.35)"
+                  multiline
+                  onSubmitEditing={saveNote}
+                  blurOnSubmit
+                  returnKeyType="done"
+                  style={{ fontSize: 16, lineHeight: 22, color: "#16181d", minHeight: 44, paddingVertical: 6 }}
+                />
+                <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 12 }}>
+                  <Pressable
+                    onPress={() => {
+                      setNoteOpen(false);
+                      setNoteText("");
+                    }}
+                    style={{ height: 40, paddingHorizontal: 16, borderRadius: 999, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: "600", color: "rgba(0,0,0,0.5)" }}>Cancel</Text>
+                  </Pressable>
+                  <Pressable onPress={saveNote} style={{ height: 40, paddingHorizontal: 20, borderRadius: 999, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>Keep going</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ) : null}
         </>
       ) : null}
     </View>

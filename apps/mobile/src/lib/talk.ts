@@ -7,7 +7,14 @@
 // user's Supabase JWT, so auth comes for free. The OpenAI key lives in the
 // function's Supabase secret, never in the bundle.
 import { supabase } from "./supabase";
-import type { TalkMoment } from "../types/api";
+import type { StuckHelp, TalkMoment } from "../types/api";
+
+/** One "I'm stuck" note: the timestamp plus the learner's quick memo about what
+ *  they wanted to say (may be in their native language). */
+export interface StuckMoment {
+  at: string;
+  note: string;
+}
 
 /**
  * Invoke the `talk-diagnose` Edge Function with a finished transcript (+ optional
@@ -23,4 +30,22 @@ export async function diagnoseTalk(input: {
   });
   if (error) throw new Error(error.message || "Couldn’t analyze this session.");
   return data?.moments ?? [];
+}
+
+/**
+ * Invoke the `talk-stuck` Edge Function with the notes the learner jotted when
+ * they tapped "Stuck" (each note = what they wanted to say but couldn't, often
+ * in their native language) and get back the natural English expression for
+ * each. A SEPARATE analysis from diagnoseTalk — the two run in parallel on
+ * finish. Returns [] when there were no notes. Throws on a failed invocation.
+ */
+export async function diagnoseStuck(input: {
+  stuckMoments: StuckMoment[];
+  topic?: string | null;
+}): Promise<StuckHelp[]> {
+  const { data, error } = await supabase.functions.invoke<{ help: StuckHelp[] }>("talk-stuck", {
+    body: { stuckMoments: input.stuckMoments, topic: input.topic ?? null },
+  });
+  if (error) throw new Error(error.message || "Couldn’t analyze your stuck moments.");
+  return data?.help ?? [];
 }
