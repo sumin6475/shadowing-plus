@@ -56,3 +56,7 @@ docs/journal/.pending.md
 # logo/icon explorations that no code imports. Ship only the chosen asset.
 apps/mobile/assets/icon-concepts/
 web/public/icons/saylo-*.png
+
+# Scratch / CLI caches (local only)
+apps/mobile/tmp/
+supabase/.temp/
