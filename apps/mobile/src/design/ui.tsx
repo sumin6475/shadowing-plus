@@ -664,7 +664,7 @@ export function confirmDelete(opts: { title: string; message?: string; deleteLab
 
 
 // ── TabBar (floating cobalt capsule) ────────────────────────────────────────
-export type TabId = "today" | "phrases" | "speak" | "topics" | "library";
+export type TabId = "today" | "phrases" | "speak" | "topics" | "sessions";
 export function TabBar({ tab, go }: { tab: TabId; go: (id: TabId) => void }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -721,7 +721,7 @@ export function TabBar({ tab, go }: { tab: TabId; go: (id: TabId) => void }) {
         <Icon name="mic" s={24} w={1.9} c="#fff" />
       </Pressable>
       {item("topics", "map", "Topics")}
-      {item("library", "book", "Library")}
+      {item("sessions", "wave2", "Sessions")}
     </View>
   );
 }

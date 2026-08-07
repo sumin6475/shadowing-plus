@@ -13,8 +13,8 @@ export type ViewName =
   | "message"
   | "newMessage"
   | "recs"
-  | "sessions"
   | "session"
+  | "library"
   | "libItem"
   | "saveChunk"
   | "settings";

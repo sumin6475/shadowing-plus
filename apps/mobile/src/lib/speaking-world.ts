@@ -86,14 +86,17 @@ export async function fetchDomains(): Promise<Domain[]> {
 
 /**
  * All Speak sessions, newest first, with the linked story title (null = a
- * free-talk session not tied to a story). RLS scopes to the owner.
+ * free-talk session not tied to a story). RLS scopes to the owner. Pass
+ * `storyId` to list only the sessions recorded for one story.
  */
-export async function fetchTalkSessions(limit = 100): Promise<TalkSession[]> {
-  const { data, error } = await supabase
+export async function fetchTalkSessions(limit = 100, storyId?: string): Promise<TalkSession[]> {
+  let q = supabase
     .from("talk_sessions")
     .select("id, story_id, transcript, duration_seconds, created_at, audio_key, stories(title)")
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (storyId) q = q.eq("story_id", storyId);
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []).map((s) => ({
     id: s.id as string,

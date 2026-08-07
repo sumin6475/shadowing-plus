@@ -90,8 +90,8 @@ function renderTab(tab: TabId, nav: Nav, talkCtx: TalkCtx | undefined, speakKey:
       return <TalkScreen key={speakKey} nav={nav} talkCtx={talkCtx} />;
     case "topics":
       return <SpeakingWorldScreen nav={nav} />;
-    case "library":
-      return <LibraryScreen nav={nav} />;
+    case "sessions":
+      return <SessionsScreen nav={nav} />;
   }
 }
 
@@ -116,10 +116,10 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <MessageCreate nav={nav} storyId={p.storyId as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
     case "recs":
       return <RecsScreen nav={nav} />;
-    case "sessions":
-      return <SessionsScreen nav={nav} />;
     case "session":
       return <SessionDetail nav={nav} session={p.session as TalkSession | undefined} />;
+    case "library":
+      return <LibraryScreen nav={nav} />;
     case "libItem":
       return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "saveChunk":

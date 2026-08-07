@@ -163,17 +163,6 @@ export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
         </View>
         <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
       </Card>
-
-      <Card onPress={() => nav.push("sessions")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <View style={{ width: 38, height: 38, borderRadius: 16, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-          <Icon name="mic" s={18} c={t.colors.accD} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Your sessions</Text>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 1 }}>Every time you talked — across all topics</Text>
-        </View>
-        <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-      </Card>
     </Screen>
   );
 }
@@ -196,6 +185,64 @@ function relTime(iso: string): string {
   if (day < 7) return `${day}d ago`;
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// One session row — a swipe-to-delete card shared by the Sessions tab (with the
+// story title) and a Story's own Sessions section (showStory=false, since every
+// row belongs to the same story there).
+function SessionRow({
+  session,
+  onOpen,
+  onConfirmDelete,
+  showStory = true,
+}: {
+  session: TalkSession;
+  onOpen: () => void;
+  onConfirmDelete: () => void;
+  showStory?: boolean;
+}) {
+  const t = useTheme();
+  const transcript = session.transcript?.trim() || "No words were captured.";
+  return (
+    <SwipeRow
+      onDelete={() =>
+        confirmDelete({
+          title: "Delete this session?",
+          message: "This self-talk session and its transcript will be removed.",
+          deleteLabel: "Delete",
+          onConfirm: onConfirmDelete,
+        })
+      }
+    >
+      <Card onPress={onOpen} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ alignItems: "center", gap: 3, width: 44 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+            <Icon name="mic" s={17} c={t.colors.accD} />
+          </View>
+          <Text style={{ fontSize: 11, fontWeight: "700", color: t.colors.accD }}>{fmtDur(session.durationSeconds)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          {showStory ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+                {session.storyTitle ?? "Free talk"}
+              </Text>
+              <Text style={{ fontSize: 12, color: t.colors.ink3 }}>{relTime(session.createdAt)}</Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, fontWeight: "600", color: t.colors.ink3 }}>{relTime(session.createdAt)}</Text>
+          )}
+          <Text
+            style={{ fontSize: showStory ? 13 : 14.5, fontWeight: showStory ? "400" : "600", color: showStory ? t.colors.ink3 : t.colors.ink, marginTop: 3, lineHeight: 19 }}
+            numberOfLines={2}
+          >
+            {transcript}
+          </Text>
+        </View>
+        <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+      </Card>
+    </SwipeRow>
+  );
 }
 
 export function SessionsScreen({ nav }: { nav: Nav }) {
@@ -234,13 +281,12 @@ export function SessionsScreen({ nav }: { nav: Nav }) {
 
   return (
     <Screen>
-      <BackBar onBack={nav.pop} />
-      <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
-        <Serif style={{ fontSize: 30, lineHeight: 33, color: t.colors.ink }}>Your sessions</Serif>
-        <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 7 }}>
-          {total > 0 ? `${total} time${total === 1 ? "" : "s"} you sat down and talked.` : "Every self-talk session lands here."}
-        </Text>
-      </View>
+      <Header
+        eyebrow="Sessions"
+        title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Your sessions</Serif>}
+        sub={total > 0 ? `${total} time${total === 1 ? "" : "s"} you sat down and talked.` : "Every self-talk session lands here — across all topics."}
+        right={<Avatar onPress={() => nav.push("settings")} />}
+      />
 
       {sessions === null && !error ? (
         <Loading />
@@ -255,44 +301,18 @@ export function SessionsScreen({ nav }: { nav: Nav }) {
           <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19, paddingHorizontal: 8 }}>
             Tap the mic and just talk. What you say is turned to text and saved here.
           </Text>
-          <Pill icon="mic" onPress={() => nav.startTalk({ ctx: "Free talk", from: "topics" })} style={{ marginTop: 16 }}>
+          <Pill icon="mic" onPress={() => nav.startTalk({ ctx: "Free talk", from: "sessions" })} style={{ marginTop: 16 }}>
             Start a session
           </Pill>
         </Card>
       ) : (
         (sessions ?? []).map((s) => (
-          <SwipeRow
+          <SessionRow
             key={s.id}
-            onDelete={() =>
-              confirmDelete({
-                title: "Delete this session?",
-                message: "This self-talk session and its transcript will be removed.",
-                deleteLabel: "Delete",
-                onConfirm: () => removeSession(s.id),
-              })
-            }
-          >
-            <Card onPress={() => nav.push("session", { session: s })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View style={{ alignItems: "center", gap: 3, width: 44 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="mic" s={17} c={t.colors.accD} />
-                </View>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: t.colors.accD }}>{fmtDur(s.durationSeconds)}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
-                    {s.storyTitle ?? "Free talk"}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: t.colors.ink3 }}>{relTime(s.createdAt)}</Text>
-                </View>
-                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3, lineHeight: 18 }} numberOfLines={2}>
-                  {s.transcript?.trim() || "No words were captured."}
-                </Text>
-              </View>
-              <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-            </Card>
-          </SwipeRow>
+            session={s}
+            onOpen={() => nav.push("session", { session: s })}
+            onConfirmDelete={() => removeSession(s.id)}
+          />
         ))
       )}
     </Screen>
@@ -494,6 +514,7 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
   const t = useTheme();
   const [messages, setMessages] = useState<StoryMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<TalkSession[] | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -503,9 +524,33 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
       setError(e instanceof Error ? e.message : "Couldn’t load messages.");
     }
   }, [id]);
+  // Sessions load on their own — a failure here shouldn't hide the messages.
+  const loadSessions = useCallback(async () => {
+    try {
+      setSessions(await fetchTalkSessions(100, id));
+    } catch {
+      setSessions([]);
+    }
+  }, [id]);
   useEffect(() => {
     load();
-  }, [load]);
+    loadSessions();
+  }, [load, loadSessions]);
+
+  // Optimistically drop the row, then delete; restore it if the delete fails.
+  const removeSession = useCallback(async (sid: string) => {
+    let prev: TalkSession[] | null = null;
+    setSessions((xs) => {
+      prev = xs;
+      return (xs ?? []).filter((s) => s.id !== sid);
+    });
+    try {
+      await deleteTalkSession(sid);
+    } catch (e) {
+      setSessions(prev);
+      Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
+    }
+  }, []);
 
   return (
     <Screen>
@@ -544,6 +589,27 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
             </View>
             <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
           </Card>
+        ))
+      )}
+
+      <Sect title="Sessions" />
+      {sessions === null ? (
+        <Loading />
+      ) : sessions.length === 0 ? (
+        <Card style={{ alignItems: "center", paddingVertical: 22 }}>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, textAlign: "center", lineHeight: 19, paddingHorizontal: 8 }}>
+            No sessions yet. Tap “Talk about this story” above and just speak — every time you do, it lands here.
+          </Text>
+        </Card>
+      ) : (
+        sessions.map((s) => (
+          <SessionRow
+            key={s.id}
+            session={s}
+            showStory={false}
+            onOpen={() => nav.push("session", { session: s })}
+            onConfirmDelete={() => removeSession(s.id)}
+          />
         ))
       )}
     </Screen>
