@@ -8,7 +8,7 @@ import { VideoView, useVideoPlayer } from "expo-video";
 import { useEvent } from "expo";
 
 import { deleteClip, fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, setClipFavorite, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
-import { saveBookmark } from "@/lib/phrases";
+import { createPhrase } from "@/lib/phrases";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, Header, Hero, Icon, Pill, Screen, Serif, SwipeRow, confirmDelete } from "@/design/ui";
 import type { IconName } from "@/design/icon";
@@ -154,7 +154,7 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
                 onDelete={() =>
                   confirmDelete({
                     title: "Delete this clip?",
-                    message: "The clip, its transcript, and any phrases you saved from it will be removed.",
+                    message: "The clip and its transcript will be removed. Phrases you saved will stay in your Phrase Bank without the clip link.",
                     deleteLabel: "Delete",
                     onConfirm: () => removeClip(item.id),
                   })
@@ -271,7 +271,7 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
   const durRaw = isVideo ? videoPlayer.duration : audioStatus.duration;
 
   const seekTo = (s: number) => {
-    if (isVideo) videoPlayer.currentTime = s;
+    if (isVideo) videoPlayer.seekBy(s - videoPlayer.currentTime);
     else audioPlayer.seekTo(s).catch(() => {});
   };
 
@@ -375,7 +375,7 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
               {cur.translation ? <Text style={{ fontSize: 15, color: t.colors.ink3, marginTop: 8, lineHeight: 22 }}>{cur.translation}</Text> : null}
             </View>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-              <Pill small icon="bank" onPress={() => nav.push("saveChunk", { segmentId: cur.id, text: cur.text, translation: cur.translation, time: formatDuration(cur.start) })}>
+              <Pill small icon="bank" onPress={() => nav.push("saveChunk", { segmentId: cur.id, videoId: id, text: cur.text, translation: cur.translation, sourceTitle: title, start: cur.start, end: cur.end })}>
                 Save phrase
               </Pill>
               <View style={{ flex: 1 }} />
@@ -443,27 +443,41 @@ export function LibItem({ id, nav, title }: { id?: string; title?: string; nav: 
   );
 }
 
-// Saves the reader's current transcript line as a real bookmark (bookmarks
-// table, RLS-scoped). Idempotent — re-saving the same line reports "already".
-export function ChunkSave({ nav, segmentId, text, translation, time }: { nav: Nav; segmentId?: string; text?: string; translation?: string | null; time?: string }) {
+// Captures a reusable expression from a transcript line. The full line remains
+// source context; the learner edits/selects the smaller Phrase Bank item.
+export function ChunkSave({ nav, segmentId, videoId, text, translation, sourceTitle, start, end }: { nav: Nav; segmentId?: string; videoId?: string; text?: string; translation?: string | null; sourceTitle?: string; start?: number; end?: number }) {
   const t = useTheme();
+  const [phrase, setPhrase] = useState(text ?? "");
+  const [meaning, setMeaning] = useState(translation ?? "");
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<"saved" | "already" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const phrase = text ?? "take the plunge";
+  const context = text ?? "";
 
   const save = async () => {
-    if (!segmentId) {
+    if (!segmentId || !phrase.trim()) {
       setError("This line can’t be saved (missing reference).");
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      setResult(await saveBookmark(segmentId, memo));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t save. Try again.");
+      const saved = await createPhrase({
+        text: phrase,
+        meaning,
+        usageNote: memo,
+        context,
+        source: "clip",
+        sourceLabel: sourceTitle,
+        segmentId,
+        videoId,
+        startTime: start,
+        endTime: end,
+      });
+      setResult(saved.result);
+    } catch {
+      setError("Couldn’t save this phrase. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -473,11 +487,12 @@ export function ChunkSave({ nav, segmentId, text, translation, time }: { nav: Na
     <Screen bottomPad={40}>
       <BackBar title="Save this as a phrase?" onBack={nav.pop} />
       <Card lg>
-        <Serif style={{ fontSize: 22, lineHeight: 30, color: t.colors.ink }}>{phrase}</Serif>
-        {translation ? <Text style={{ fontSize: 15, color: t.colors.ink2, marginTop: 6, lineHeight: 22 }}>{translation}</Text> : null}
+        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.accD }}>PHRASE TO KEEP</Text>
+        <TextInput value={phrase} onChangeText={setPhrase} multiline style={{ fontFamily: "Newsreader", fontSize: 22, lineHeight: 30, color: t.colors.ink, marginTop: 7, padding: 0 }} />
+        <TextInput value={meaning} onChangeText={setMeaning} placeholder="Meaning (optional)" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, color: t.colors.ink2, marginTop: 8, padding: 0 }} />
         <View style={{ backgroundColor: t.colors.soft, borderRadius: 16, padding: 12, marginTop: 13 }}>
-          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3 }}>FROM THIS CLIP{time ? ` · ${time}` : ""}</Text>
-          <Serif style={{ fontSize: 15, fontStyle: "italic", lineHeight: 22, marginTop: 5, color: t.colors.ink }}>“{phrase}”</Serif>
+          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3 }}>FROM THIS CLIP{start != null ? ` · ${formatDuration(start)}` : ""}</Text>
+          <Serif style={{ fontSize: 15, fontStyle: "italic", lineHeight: 22, marginTop: 5, color: t.colors.ink }}>“{context}”</Serif>
         </View>
       </Card>
 

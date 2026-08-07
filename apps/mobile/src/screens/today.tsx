@@ -1,4 +1,4 @@
-// today.tsx — Today tab. Stats are real (derived from the bookmarks table):
+// today.tsx — Today tab. Stats are real (derived from phrase_items):
 // due-for-review, ready-to-use, collected, and saves-per-day this week. The
 // Hero "speaking moment" is a static CTA (Speak isn't data-backed yet).
 import { useCallback, useEffect, useState } from "react";
@@ -6,7 +6,7 @@ import { ActivityIndicator, RefreshControl, Text, View } from "react-native";
 
 import { useTheme } from "@/design/theme";
 import { Avatar, Badge, Card, Header, Hero, Icon, Pill, Screen, Sect, Serif, StatTile } from "@/design/ui";
-import { fetchBookmarks, phraseIsDue, weeklyCounts, type PhraseItem } from "@/lib/phrases";
+import { fetchPhrases, phraseIsDue, weeklyCounts, type PhraseItem } from "@/lib/phrases";
 import type { Nav } from "./nav";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -33,9 +33,9 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      setItems(await fetchBookmarks());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t load your progress.");
+      setItems(await fetchPhrases());
+    } catch {
+      setError("Your saved phrases are still safe. Check your connection and try again.");
     }
   }, []);
 
@@ -93,9 +93,9 @@ export function TodayScreen({ nav }: { nav: Nav }) {
         </View>
       ) : error ? (
         <Card style={{ alignItems: "center", paddingVertical: 24 }}>
-          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Couldn’t load your progress</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>We couldn’t refresh your progress</Text>
           <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
-          <Pill tone="tint" small onPress={load} style={{ marginTop: 14 }}>
+          <Pill tone="tint" small onPress={load} style={{ marginTop: 14, alignSelf: "center" }}>
             Retry
           </Pill>
         </Card>

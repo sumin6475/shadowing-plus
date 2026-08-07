@@ -1,6 +1,5 @@
-// phrases.tsx — Phrase Bank tab: list + chart, detail, review flow. Now backed
-// by the real `bookmarks` table (see @/lib/phrases). The review-verdict write
-// and per-phrase audio are still stubs (next steps).
+// phrases.tsx — Phrase Bank tab: list + chart, detail, review flow. Backed by
+// the canonical `phrase_items` collection; transcript bookmarks are separate.
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
@@ -8,7 +7,8 @@ import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Badge, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif, StatTile, SwipeRow, confirmDelete, Wave } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
-import { cumulativeSeries, deleteBookmark, dueHint, fetchBookmarks, phraseIsDue, relativeTime, setPhraseFavorite, submitVerdict, updateMemo, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
+import { cumulativeSeries, deletePhrase, dueHint, fetchPhrases, phraseIsDue, relativeTime, setPhraseFavorite, submitVerdict, updatePhraseNote, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
+import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
 import { useSegmentPlayer } from "@/hooks/use-segment-player";
 import type { Nav } from "./nav";
 
@@ -19,15 +19,20 @@ const SAMPLE_PHRASE: PhraseItem = {
   id: "sample",
   text: "take the plunge",
   translation: "망설이다가 큰맘 먹고 실행하다",
+  kind: "phrase",
   status: "Practicing",
   source: "Sample clip",
+  context: "I’ll take the plunge and buy a nice pair of sunglasses.",
   startSec: 53,
   endSec: 56,
   videoId: null,
+  segmentId: null,
   memo: null,
   createdAt: "2026-07-25T00:00:00.000Z",
   dueAt: "2026-08-10T00:00:00.000Z",
   intervalDays: 3,
+  easeFactor: 2.5,
+  lapses: 0,
   lastReviewedAt: null,
   favorite: false,
 };
@@ -70,7 +75,7 @@ function BankChart({ points, max }: { points: number[]; max: number }) {
 
 export function PhrasesScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
-  const player = useSegmentPlayer();
+  const speech = usePhraseSpeech();
   const [items, setItems] = useState<PhraseItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,9 +86,9 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      setItems(await fetchBookmarks());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t load your phrases.");
+      setItems(await fetchPhrases());
+    } catch {
+      setError("Your saved phrases are still safe. Check your connection and try again.");
     }
   }, []);
 
@@ -105,7 +110,7 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
       return (xs ?? []).filter((p) => p.id !== id);
     });
     try {
-      await deleteBookmark(id);
+      await deletePhrase(id);
     } catch (e) {
       setItems(prev);
       Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
@@ -156,7 +161,7 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
         <Card style={{ alignItems: "center", paddingVertical: 28 }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Couldn’t load your phrases</Text>
           <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
-          <Pill tone="tint" small onPress={load} style={{ marginTop: 14 }}>
+          <Pill tone="tint" small onPress={load} style={{ marginTop: 14, alignSelf: "center" }}>
             Retry
           </Pill>
         </Card>
@@ -232,7 +237,7 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
             <Card style={{ alignItems: "center", paddingVertical: 34 }}>
               <Serif style={{ fontSize: 20, color: t.colors.ink }}>{collected === 0 ? "No phrases yet" : "Nothing here"}</Serif>
               <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
-                {collected === 0 ? "Open a clip in your Library and tap Save phrase on a line." : "Try another word or filter."}
+                {collected === 0 ? "Tap + to keep an expression from anywhere." : "Try another word or filter."}
               </Text>
             </Card>
           ) : null}
@@ -267,10 +272,10 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
                   <Pill
                     tone="tint"
                     small
-                    icon={player.currentId === p.id ? "pause" : "speaker"}
-                    onPress={() => player.toggle({ id: p.id, videoId: p.videoId, start: p.startSec, end: p.endSec })}
+                    icon={speech.speakingId === p.id ? "pause" : "speaker"}
+                    onPress={() => speech.toggle(p.id, p.text)}
                   >
-                    {player.loadingId === p.id ? "…" : player.currentId === p.id ? "Stop" : "Hear"}
+                    {speech.loadingId === p.id ? "…" : speech.speakingId === p.id ? "Stop" : speech.fallbackId === p.id ? "Device voice" : "AI voice"}
                   </Pill>
                   <Pill tone="soft" small onPress={() => nav.push("review", { item: p })}>
                     Practice
@@ -290,8 +295,8 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
   const t = useTheme();
   const p = item ?? SAMPLE_PHRASE;
   const player = useSegmentPlayer();
-  // Local self-rating only — persisting the verdict to the bookmark is a next step.
-  const [use, setUse] = useState<string>(p.status);
+  const speech = usePhraseSpeech();
+  const [use, setUse] = useState<string>(p.status === "New" ? "Recognizing" : p.status);
   const [memo, setMemo] = useState(p.memo ?? "");
   const [savedMemo, setSavedMemo] = useState(p.memo ?? "");
   const [savingMemo, setSavingMemo] = useState(false);
@@ -299,12 +304,16 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
   const memoDirty = memo !== savedMemo;
   const canEdit = p.id !== "sample";
 
+  useEffect(() => {
+    if (canEdit) void speech.prepare(p.id);
+  }, [canEdit, p.id, speech.prepare]);
+
   const saveMemo = async () => {
     if (!canEdit || !memoDirty) return;
     setSavingMemo(true);
     setMemoErr(false);
     try {
-      await updateMemo(p.id, memo);
+      await updatePhraseNote(p.id, memo);
       setSavedMemo(memo);
     } catch {
       setMemoErr(true);
@@ -313,20 +322,12 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
     }
   };
 
-  const opt = (label: string, desc: string, val: string) => (
-    <Pressable
-      onPress={() => setUse(val)}
-      style={{ flexDirection: "row", gap: 11, alignItems: "flex-start", backgroundColor: use === val ? t.colors.accS : t.colors.soft, borderRadius: 16, padding: 12 }}
-    >
-      <View style={{ width: 20, height: 20, borderRadius: 10, marginTop: 1, backgroundColor: use === val ? t.colors.acc : t.colors.card, alignItems: "center", justifyContent: "center" }}>
-        {use === val ? <Icon name="check" s={11} w={3} c="#fff" /> : null}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 15, fontWeight: "700", color: use === val ? t.colors.accD : t.colors.ink }}>{label}</Text>
-        <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 2, lineHeight: 18 }}>{desc}</Text>
-      </View>
-    </Pressable>
-  );
+  const stages = [
+    { value: "Recognizing", label: "Recognize", desc: "I understand it when I see it." },
+    { value: "Practicing", label: "Use with help", desc: "I can use it with a hint or example." },
+    { value: "Ready to use", label: "Use on my own", desc: "I can bring it into my own speaking." },
+  ];
+  const currentStage = Math.max(0, stages.findIndex((stage) => stage.value === use));
 
   return (
     <Screen>
@@ -338,21 +339,41 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
             {p.translation ? <Text style={{ fontSize: 15, color: t.colors.ink2, marginTop: 8 }}>{p.translation}</Text> : null}
           </View>
           <Pressable
-            onPress={() => player.toggle({ id: p.id, videoId: p.videoId, start: p.startSec, end: p.endSec })}
-            disabled={!p.videoId}
-            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center", opacity: p.videoId ? 1 : 0.4 }}
+            accessibilityRole="button"
+            accessibilityLabel={speech.speakingId === p.id ? "Stop reading phrase" : "Read phrase aloud"}
+            onPress={() => {
+              player.stop();
+              speech.toggle(p.id, p.text);
+            }}
+            style={({ pressed }) => ({
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: t.colors.acc,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.82 : 1,
+            })}
           >
-            {player.loadingId === p.id ? <ActivityIndicator color="#fff" /> : <Icon name={player.currentId === p.id ? "pause" : "speaker"} s={20} c="#fff" />}
+            {speech.loadingId === p.id ? <ActivityIndicator color="#fff" /> : <Icon name={speech.speakingId === p.id ? "pause" : "speaker"} s={20} c="#fff" />}
           </Pressable>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
           <Badge s={p.status} />
           {p.favorite ? <Icon name="star" s={16} c={t.colors.acc} /> : null}
+          <Text style={{ marginLeft: "auto", fontSize: 11, color: t.colors.ink3 }}>
+            {speech.fallbackId === p.id ? "Device voice fallback" : "AI-generated voice"}
+          </Text>
         </View>
       </Card>
 
-      <Card onPress={p.videoId ? () => nav.push("libItem", { id: p.videoId, title: p.source }) : undefined}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <Card>
+        <Pressable
+          accessibilityRole={p.videoId ? "button" : undefined}
+          disabled={!p.videoId}
+          onPress={p.videoId ? () => nav.push("libItem", { id: p.videoId, title: p.source }) : undefined}
+          style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 10, opacity: pressed ? 0.72 : 1 })}
+        >
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>WHERE YOU FOUND IT</Text>
             <Text style={{ fontSize: 15, color: t.colors.ink, marginTop: 8 }}>
@@ -360,8 +381,29 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
             </Text>
           </View>
           {p.videoId ? <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} /> : null}
-        </View>
+        </Pressable>
+        {p.videoId ? (
+          <Pill
+            tone="tint"
+            small
+            icon={player.currentId === `context-${p.id}` ? "pause" : "speaker"}
+            onPress={() => {
+              speech.stop();
+              player.toggle({ id: `context-${p.id}`, videoId: p.videoId, start: p.startSec, end: p.endSec });
+            }}
+            style={{ marginTop: 14, alignSelf: "flex-start" }}
+          >
+            {player.loadingId === `context-${p.id}` ? "Loading…" : player.currentId === `context-${p.id}` ? "Stop context" : "Hear in context"}
+          </Pill>
+        ) : null}
       </Card>
+
+      {p.context ? (
+        <Card>
+          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>ORIGINAL CONTEXT</Text>
+          <Serif style={{ fontSize: 17, fontStyle: "italic", lineHeight: 24, marginTop: 8, color: t.colors.ink }}>“{p.context}”</Serif>
+        </Card>
+      ) : null}
 
       <Card>
         <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>YOUR NOTE</Text>
@@ -382,16 +424,99 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
         ) : null}
       </Card>
 
-      <Card>
-        <Text style={{ fontSize: 15, fontWeight: "700", marginBottom: 10, color: t.colors.ink }}>Can you use it right now?</Text>
-        <View style={{ gap: 8 }}>
-          {opt("I only recognized it", "I knew the meaning, but couldn’t say it on my own.", "Recognizing")}
-          {opt("I used it with help", "With a hint or example, I could use it.", "Practicing")}
-          {opt("I used it on my own", "No hints — it showed up in my answer.", "Ready to use")}
+      <Card lg>
+        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.7, color: t.colors.accD }}>YOUR CURRENT STAGE</Text>
+        <Serif style={{ fontSize: 17, lineHeight: 24, marginTop: 10, marginBottom: 8, color: t.colors.ink }}>
+          How available is this phrase when you speak?
+        </Serif>
+        <View>
+          {stages.map((stage, index) => {
+            const selected = index === currentStage;
+            const completed = index < currentStage;
+            return (
+              <Pressable
+                key={stage.value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                onPress={() => setUse(stage.value)}
+                style={({ pressed }) => ({ flexDirection: "row", minHeight: 78, opacity: pressed ? 0.76 : 1 })}
+              >
+                <View style={{ width: 50, alignItems: "center", paddingTop: 13 }}>
+                  {index < stages.length - 1 ? (
+                    <View style={{ position: "absolute", top: 52, bottom: -26, width: 2, backgroundColor: index < currentStage ? t.colors.acc : t.colors.sep }} />
+                  ) : null}
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      borderWidth: selected ? 0 : 1.5,
+                      borderColor: completed ? t.colors.acc : t.colors.sep,
+                      backgroundColor: selected ? t.colors.acc : t.colors.card,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 18, fontWeight: "700", color: selected ? "#fff" : t.colors.ink }}>{index + 1}</Text>
+                  </View>
+                  {completed ? (
+                    <View
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        right: 1,
+                        width: 19,
+                        height: 19,
+                        borderRadius: 10,
+                        backgroundColor: t.colors.accS,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Icon name="check" s={11} w={2.8} c={t.colors.acc} />
+                    </View>
+                  ) : null}
+                </View>
+                <View
+                  style={{
+                    flex: 1,
+                    alignSelf: "stretch",
+                    justifyContent: "center",
+                    marginLeft: 10,
+                    marginVertical: 4,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 14,
+                    borderWidth: selected ? 1.5 : 0,
+                    borderColor: selected ? t.colors.acc : "transparent",
+                    backgroundColor: selected ? t.colors.accS : "transparent",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{stage.label}</Text>
+                    {selected ? (
+                      <View style={{ borderRadius: 999, backgroundColor: t.colors.accS, paddingHorizontal: 9, paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 10, fontWeight: "800", letterSpacing: 0.8, color: t.colors.accD }}>CURRENT</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={{ fontSize: 13, lineHeight: 18, color: t.colors.ink2, marginTop: 3 }}>{stage.desc}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       </Card>
 
-      <Pill full icon="mic" onPress={() => nav.push("review", { item: p })}>
+      <Pill
+        full
+        icon="mic"
+        onPress={() => {
+          speech.stop();
+          player.stop();
+          nav.push("review", { item: p });
+        }}
+      >
         Practice in context
       </Pill>
       <Text style={{ fontSize: 13, color: t.colors.ink3, textAlign: "center", paddingVertical: 4 }}>Next review: {dueHint(p.dueAt)}</Text>
@@ -415,7 +540,7 @@ export function ReviewFlow({ item, nav }: { item?: PhraseItem; nav: Nav }) {
     setGrading(true);
     setGradeErr(null);
     try {
-      const state = await submitVerdict(p.id, verdict);
+      const state = await submitVerdict(p.id, verdict, p);
       setNewDue(state?.due_at ?? null);
       setSt(4);
     } catch (e) {

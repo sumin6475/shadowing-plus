@@ -7,11 +7,11 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SERIF, useTheme } from "@/design/theme";
-import { BackBar, Card, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
+import { BackBar, Card, Hero, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
 import { saveTalkSessionAudio } from "@/lib/talk-audio";
-import { createSpeakPhrase } from "@/lib/phrases";
+import { createSpeakPhrase, recordPhraseEvent } from "@/lib/phrases";
 import { diagnoseStuck, diagnoseTalk, type StuckMoment } from "@/lib/talk";
 import { stuckNoteCopy } from "@/lib/first-language";
 import type { StuckHelp, TalkMoment } from "@/types/api";
@@ -96,6 +96,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [sel, setSel] = useState(0);
   // Per-moment "Save as phrase" state (persists mSel.want to phrase_items).
   const [phraseSave, setPhraseSave] = useState<Record<number, "saving" | "saved" | "already" | "error">>({});
+  const [retryResult, setRetryResult] = useState<"used" | "not_yet" | null>(null);
   const beats = p0.beats || TALK_BEATS;
   const prompt = p0.prompt || "What I’m trying to do is…";
 
@@ -201,7 +202,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       })
       .catch(() => setStuckState("error"));
   };
-  // Ask the web API to surface improvable moments from the real transcript. Runs
+  // Ask the Edge Function to surface improvable moments from the real transcript. Runs
   // in parallel with the save; an empty/short transcript short-circuits to none.
   const runDiagnosis = (text: string) => {
     if (!text.trim()) {
@@ -212,7 +213,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     const topic = ctx === "Free talk" ? p0.sub ?? null : [ctx, p0.sub].filter(Boolean).join(" · ") || null;
     setDiagState("loading");
     setDiagErr(null);
-    diagnoseTalk({ transcript: text, topic })
+    diagnoseTalk({ transcript: text, topic, storyId: p0.storyId ?? null })
       .then((ms) => {
         setMoments(ms);
         setDiagState("done");
@@ -263,6 +264,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setStuckHelp([]);
     setStuckState("idle");
     setPhraseSave({});
+    setRetryResult(null);
     setPhase("count");
     setN(3);
     setSec(0);
@@ -287,6 +289,46 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     createSpeakPhrase({ text: m.want, example: m.example, storyId: p0.storyId ?? null, said: m.said })
       .then((r) => setPhraseSave((s) => ({ ...s, [i]: r === "already" ? "already" : "saved" })))
       .catch(() => setPhraseSave((s) => ({ ...s, [i]: "error" })));
+  };
+
+  const tryMoment = () => {
+    setRetryResult(null);
+    if (mSel?.phraseItemId) {
+      void recordPhraseEvent({
+        phraseItemId: mSel.phraseItemId,
+        event: "accepted",
+        storyId: p0.storyId ?? null,
+        talkSessionId: savedIdRef.current,
+        evidence: { transcript_quote: mSel.said },
+      }).catch(() => undefined);
+    }
+    setPhase("retry");
+  };
+
+  const rejectMoment = () => {
+    if (mSel?.phraseItemId) {
+      void recordPhraseEvent({
+        phraseItemId: mSel.phraseItemId,
+        event: "rejected",
+        storyId: p0.storyId ?? null,
+        talkSessionId: savedIdRef.current,
+        evidence: { transcript_quote: mSel.said },
+      }).catch(() => undefined);
+    }
+    setPhase("done");
+  };
+
+  const finishRetry = (used: boolean) => {
+    setRetryResult(used ? "used" : "not_yet");
+    if (used && mSel?.phraseItemId) {
+      void recordPhraseEvent({
+        phraseItemId: mSel.phraseItemId,
+        event: "used",
+        storyId: p0.storyId ?? null,
+        talkSessionId: savedIdRef.current,
+        evidence: { self_reported: true, prompted: true },
+      }).catch(() => undefined);
+    }
   };
 
   // ── done ──
@@ -363,7 +405,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                     {m.said}
                   </Text>
                   <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.accD, marginTop: 4 }} numberOfLines={1}>
-                    Try: {m.want}
+                    {m.source === "saved" ? "From your phrases" : "New suggestion"}: {m.want}
                   </Text>
                 </View>
                 <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
@@ -469,6 +511,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         </Card>
         <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 6 }}>You may have meant</Text>
         <View style={[{ backgroundColor: t.colors.pill, borderRadius: t.r, padding: t.padc }, t.shadowCard]}>
+          <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.5, color: "rgba(255,255,255,0.65)" }}>
+            {mSel.source === "saved" ? `FROM YOUR PHRASE BANK${mSel.sourceLabel ? ` · ${mSel.sourceLabel}` : ""}` : "NEW SUGGESTION"}
+          </Text>
           <Text style={{ fontSize: 16.5, fontWeight: "700", lineHeight: 22, color: "#fff" }}>{mSel.want}</Text>
           {mSel.example ? (
             <Text style={{ fontSize: 13.5, color: "rgba(255,255,255,0.65)", marginTop: 6, lineHeight: 20 }}>“{mSel.example}”</Text>
@@ -479,10 +524,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>Practice just this part.</Text>
         </View>
         <View style={{ gap: 10, marginTop: 8 }}>
-          <Pill full icon="mic" onPress={() => setPhase("retry")}>
+          <Pill full icon="mic" onPress={tryMoment}>
             Retry this moment
           </Pill>
-          {(() => {
+          {mSel.source === "saved" ? (
+            <Pill tone="ghost" full onPress={rejectMoment}>Doesn’t fit</Pill>
+          ) : (() => {
             const pSt = phraseSave[sel];
             const pDone = pSt === "saved" || pSt === "already";
             const pLabel =
@@ -524,9 +571,19 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Just this sentence — 10 seconds is plenty</Text>
           </View>
         </View>
-        <Pill full icon="check" onPress={() => setPhase("moment")}>
-          I said it
-        </Pill>
+        {retryResult ? (
+          <Hero style={{ alignItems: "center" }}>
+            <Serif style={{ fontSize: 21, lineHeight: 28, color: "#fff", textAlign: "center" }}>
+              {retryResult === "used" ? "You brought it into this Story." : "Not yet is useful evidence too."}
+            </Serif>
+            <Pill tone="white" small onPress={() => setPhase("moment")} textStyle={{ color: t.colors.accD }} style={{ marginTop: 12, shadowOpacity: 0 }}>Back to the moment</Pill>
+          </Hero>
+        ) : (
+          <View style={{ gap: 10 }}>
+            <Pill full icon="check" onPress={() => finishRetry(true)}>It came out</Pill>
+            <Pill tone="tint" full onPress={() => finishRetry(false)}>Not yet</Pill>
+          </View>
+        )}
       </Screen>
     );
 

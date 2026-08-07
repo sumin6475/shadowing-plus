@@ -17,6 +17,7 @@ export type ViewName =
   | "library"
   | "libItem"
   | "saveChunk"
+  | "capture"
   | "settings";
 
 export interface TalkCtx {

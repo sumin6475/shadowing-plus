@@ -24,9 +24,10 @@ export interface StuckMoment {
 export async function diagnoseTalk(input: {
   transcript: string;
   topic?: string | null;
+  storyId?: string | null;
 }): Promise<TalkMoment[]> {
   const { data, error } = await supabase.functions.invoke<{ moments: TalkMoment[] }>("talk-diagnose", {
-    body: { transcript: input.transcript, topic: input.topic ?? null },
+    body: { transcript: input.transcript, topic: input.topic ?? null, story_id: input.storyId ?? null },
   });
   if (error) throw new Error(error.message || "Couldn’t analyze this session.");
   return data?.moments ?? [];

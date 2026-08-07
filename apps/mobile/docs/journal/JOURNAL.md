@@ -8,6 +8,38 @@
 
 ## 항목
 
+### 2026-08-07 · 개선+배포 · Phrase TTS 저장 시 prewarm + 자연 회화 속도
+- **무엇**: 신규 `phrase_items` 저장 직후 저장 UI를 막지 않는 background TTS prewarm을 시작하고, Phrase 상세 진입 시 signed URL과 MP3를 `expo-audio(downloadFirst)`로 선로딩. 동시에 `gpt-4o-mini-tts` `marin` 지시문을 학습자용 느린 발화에서 정상 회화 속도·연음·축약·강세·리듬으로 교체하고 캐시를 `phrase-pronunciation-v2`로 분리. 첫 탭 lazy 생성과 기기 TTS 폴백은 유지.
+- **배운/적용한 원칙**: 저장 성공은 음성 생성 성공과 분리해 표현 포착 흐름을 보호한다. 캐시된 생성물의 프롬프트를 바꿀 때는 키 버전도 함께 올려 오래된 음성이 섞이지 않게 한다. 앱 내부 동시 요청은 phrase id 기준 한 Promise로 합쳐 저장 prewarm과 화면 선로딩의 중복 호출을 줄인다.
+- **리뷰 수정**: holdout review에서 Story/Message Talk가 scope id를 잃는 경로와 duplicate Phrase의 Story link 조기 반환을 발견해 수정. capture의 Story 로딩/실패/빈 상태와 안전한 저장 오류 문구, clip 삭제 후 Phrase 보존 안내도 데이터 동작에 맞게 교정. 재리뷰 APPROVE.
+- **검증**: diff check PASS · TypeScript PASS · ESLint PASS · iOS production export PASS(1,845 modules) · holdout code review APPROVE · `phrase-tts` ACTIVE v2/verify_jwt=true · anon-only 401 차단 PASS · 연결된 iPhone dev-client 재실행/프로세스 유지 PASS. 인증 사용자 v2 생성과 체감 속도 청음은 실기기 탭 확인 대기.
+- **산출물**: [decisions/0009-phrase-tts-prewarm-natural-speed](decisions/0009-phrase-tts-prewarm-natural-speed.md) · [quality/2026-08-07-phrase-tts-prewarm-natural-speed](quality/2026-08-07-phrase-tts-prewarm-natural-speed.md) · [postmortems/2026-08-07-phrase-tts-deploy-working-directory](postmortems/2026-08-07-phrase-tts-deploy-working-directory.md)
+
+### 2026-08-07 · 빌드+배포 · Phrase 클라우드 AI 음성 + R2 lazy cache
+- **무엇**: 품질이 낮은 기기 TTS를 폴백으로 내리고, Phrase 목록·상세의 기본 발음을 OpenAI `gpt-4o-mini-tts` `marin`으로 전환. 인증된 `phrase_items.id`만 Edge Function이 RLS 조회하고, 첫 재생 MP3를 모델·음성·프롬프트 버전·문구 해시 기준 사용자별 비공개 R2 경로에 저장해 이후 재사용. 앱은 첫 생성/다운로드 중 spinner를 표시하고 API·네트워크·15초 로딩 실패 시 기존 기기 TTS로 자동 폴백. 공식 정책에 따라 `AI-generated voice`를 표시.
+- **배운/적용한 원칙**: 반복 학습 음성은 **매번 생성하지 않고 첫 사용에만 생성**. 모바일은 text나 API key를 전달하지 않고 phrase id만 전송하며, 서버가 소유권과 실제 원문을 다시 확정한다. `marin`과 말투 instructions는 OpenAI 공식 TTS 가이드의 최신 권장값을 사용.
+- **검증**: TypeScript PASS · ESLint error 0 · iOS production export PASS(1,845 modules) · `phrase-tts` ACTIVE v1/verify_jwt=true · anon-only 401 차단 PASS · 실제 iPhone dev-client 재실행 PASS. 인증 사용자 첫 생성/cache hit 청음은 사용자 탭 확인 대기.
+- **산출물**: [decisions/0008-cloud-phrase-tts-cache](decisions/0008-cloud-phrase-tts-cache.md) · [quality/2026-08-07-phrase-cloud-tts](quality/2026-08-07-phrase-cloud-tts.md)
+
+### 2026-08-07 · 빌드+검증 · Phrase TTS + 현재 학습 단계 상세 UI
+- **무엇**: Phrase 목록·상세의 `Hear`를 원본 클립 재생에서 **저장 표현 자체를 읽는 온디바이스 TTS**로 교체. 영어 enhanced voice 우선·0.9× 속도·재생/정지 상태를 제공하고, 스크린샷/직접 입력처럼 영상이 없는 표현도 항상 들을 수 있게 함. 원본 영상이 있는 경우 출처 카드에 `Hear in context`를 별도 제공해 실제 억양·문맥 발음은 보존. 하단 자가평가를 목업의 3단계 세로 진행선(Recognize → Use with help → Use on my own, CURRENT/완료 표시)으로 재디자인.
+- **배운/적용한 원칙**: **발음과 문맥 오디오는 역할을 분리** — 상단 스피커는 정확히 저장한 언어 단위, 출처 카드는 실제 장면. 첨부 실기기가 무음 모드였으므로 TTS가 기존 앱 오디오 세션의 `playsInSilentMode`를 사용하게 하고, 원본 재생·Practice/STT 진입 전에는 상호 정지해 공유 세션 경합을 줄임. 네이티브 모듈은 Expo 57 번들 버전 `57.0.1`로 정확 핀.
+- **검증**: TypeScript PASS · ESLint error 0 · CocoaPods `ExpoSpeech 57.0.1` 링크 · iOS simulator/물리 iPhone Debug build 0 errors · 양쪽 설치/앱 launch PASS. 실제 TTS 청음은 사용자 탭 확인 대기.
+- **산출물**: [quality/2026-08-07-phrase-tts-stage-detail](quality/2026-08-07-phrase-tts-stage-detail.md)
+
+### 2026-08-07 · 수정+검증 · migration 전 홈 데이터 fallback + 오류/빈 상태 정렬
+- **무엇**: migration 022 미적용 DB에서 Today가 `phrase_items.is_favorite` 오류로 전체 실패하던 경로를 교정. 해당 optional 컬럼이 없을 때만 컬럼 없이 다시 읽어 기존 표현·SRS 데이터를 표시하고, Today/Phrases에는 DB 원문 대신 저장 데이터가 안전하다는 복구형 안내를 표시. 오류 Retry와 Story의 빈 Messages `New message` CTA를 중앙 정렬.
+- **검증**: TypeScript PASS · 변경 파일 ESLint error 0(기존 warning 9) · iOS production export PASS(1,840 modules) · diff check PASS.
+- **산출물**: [postmortems/2026-08-07-mobile-schema-rollout-raw-error](postmortems/2026-08-07-mobile-schema-rollout-raw-error.md)
+- **남은 것**: migration 022 적용 후 즐겨찾기 쓰기 및 Story memory 활성화. fallback은 migration 전 읽기 호환용으로 유지.
+
+### 2026-08-07 · 빌드+검증 · 개인 Phrase Bank 수집 → Story/self-talk 재사용 루프
+- **무엇**: 모바일 Phrases의 데이터 정본을 자막 북마크(`bookmarks`)에서 실제 학습 표현(`phrase_items`)으로 교정. Today/SRS/즐겨찾기·클립 선택 저장을 같은 모델로 통합하고, 전 화면 우하단 `+`에서 직접 입력·붙여넣기·스크린샷 OCR로 표현과 원문 문맥을 저장하도록 구현. 표현↔Story 연결 및 추천/수락/사용/거절 이벤트를 추가하고, self-talk 진단이 현재 Story·사용 이력·최근 거절을 반영해 저장 표현을 우선 제안하도록 변경. 기존 Sessions 하단 탭과 Profile/Library BETA 구조는 유지.
+- **배운/적용한 원칙**: **저장 위치와 학습 단위는 분리** — bookmark는 자막 위치, phrase는 재사용할 표현. OCR 이미지는 저장하지 않고 서버에서 텍스트만 추출하며, AI 추천은 저장 표현 ID를 반환해 서버가 실제 원문으로 다시 고정한다. 저장 표현이 부적절할 때만 신규 표현을 생성하는 fallback으로 둔다.
+- **검증**: TypeScript PASS · ESLint error 0(warning 13) · iOS production export PASS(1,840 modules) · Edge Function parse PASS · resolved Expo config에서 CAMERA/RECORD_AUDIO 보존 · 이미지 모듈을 SDK 번들 버전에 정확 핀 후 dev client 빌드·설치·물리 iPhone startup PASS · DB lint는 로컬 DB 부재로 대기.
+- **산출물**: [decisions/0007-phrase-items-canonical-mobile-bank](decisions/0007-phrase-items-canonical-mobile-bank.md) · [quality/2026-08-07-personal-phrase-capture-retrieval](quality/2026-08-07-personal-phrase-capture-retrieval.md) · [postmortems/2026-08-07-image-picker-permission-blocking](postmortems/2026-08-07-image-picker-permission-blocking.md) · [postmortems/2026-08-07-image-capture-native-module-abi](postmortems/2026-08-07-image-capture-native-module-abi.md)
+- **남은 것**: migration 022 적용 · `phrase-capture`/`talk-diagnose` 배포 · 물리 iPhone에서 사진 선택→OCR→표현 저장 및 Story 추천→Retry evidence end-to-end 검증.
+
 ### 2026-08-07 · 빌드 · 하단바 Library→Sessions 재편 + 프로필 화면 리디자인
 - **무엇**: 정식 첫 런칭(TestFlight 개인용)을 위해 하단 탭 `Library`를 **`Sessions`**(wave2 아이콘)로 교체. Topics 홈에 있던 전역 "Your sessions" 카드를 **탭으로 승격**(`SessionsScreen`을 push 상세→탭 Header+Avatar로 전환). 각 **Story 화면에 그 스토리의 세션만 보이는 "Sessions" 섹션** 추가(`fetchTalkSessions(limit, storyId)` 필터 + 공용 `SessionRow`, `showStory=false`). Library는 제거가 아니라 **프로필의 "Library BETA" 엔트리**로 이동(push view). 프로필(`settings.tsx`)을 목업대로 재작성 — 중앙 정렬 아이덴티티 헤더 + "Your speaking world" 코발트 그라디언트 배너(→Topics) + Library BETA + Preferences/Practice/Notifications/Account 그룹(리딩 아이콘·값·chevron), Log out은 실제 signOut 유지.
 - **배운/적용한 원칙**: **탭↔push 재배치는 nav 계약부터** — `TabId`에서 `library`→`sessions`, `ViewName`에서 `sessions` 제거·`library` 추가, `shell` renderTab/renderView 동시 수정으로 컴파일이 누락을 잡게 함. 세션은 `storyId`에 붙으므로 토픽별 섹션은 **데이터 직결인 스토리 단위**로. 프로필은 아이콘 세트에 없던 11종(globe/translate/chat/contrast/clock/bulb/gauge/calendar/export/help/shield)을 **기존 24×24 stroke 규칙 그대로** 추가. 값 행은 아직 표시용 placeholder(원본도 동일) — 배선은 후속.

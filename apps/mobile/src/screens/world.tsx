@@ -559,7 +559,7 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
         <Serif style={{ fontSize: 30, lineHeight: 33, color: t.colors.ink }}>{title ?? "Story"}</Serif>
         <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 8 }}>Your story is getting clearer.</Text>
       </View>
-      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: title ?? "This story", from: "topics" })} style={{ marginTop: 6 }}>
+      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: title ?? "This story", from: "topics", storyId: id })} style={{ marginTop: 6 }}>
         Talk about this story
       </Pill>
       <Text style={{ textAlign: "center", fontSize: 13, color: t.colors.ink3, marginTop: -4 }}>Start a self-talk session</Text>
@@ -573,7 +573,7 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
         <Card style={{ alignItems: "center", paddingVertical: 26 }}>
           <Serif style={{ fontSize: 20, color: t.colors.ink }}>No messages yet</Serif>
           <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>A message is one way to tell this story — a 30-second version, a version for a friend…</Text>
-          <Pill icon="plus" onPress={() => nav.push("newMessage", { storyId: id, storyTitle: title })} style={{ marginTop: 16 }}>
+          <Pill icon="plus" onPress={() => nav.push("newMessage", { storyId: id, storyTitle: title })} style={{ marginTop: 16, alignSelf: "center" }}>
             New message
           </Pill>
         </Card>
@@ -616,7 +616,7 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
   );
 }
 
-export function MessageScreen({ id, label, storyTitle, nav }: { id?: string; label?: string; storyTitle?: string; nav: Nav }) {
+export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: string; label?: string; storyId?: string; storyTitle?: string; nav: Nav }) {
   const t = useTheme();
   const [beats, setBeats] = useState<Beat[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -756,7 +756,19 @@ export function MessageScreen({ id, label, storyTitle, nav }: { id?: string; lab
         </View>
       ) : null}
 
-      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: storyTitle ?? "This story", sub: label, from: "topics" })} style={{ marginTop: 4 }}>
+      <Pill
+        full
+        icon="mic"
+        onPress={() => nav.startTalk({
+          ctx: storyTitle ?? "This story",
+          sub: label,
+          beats: list.length ? list.map((beat) => beat.text) : null,
+          from: "topics",
+          storyId: storyId ?? null,
+          messageId: id ?? null,
+        })}
+        style={{ marginTop: 4 }}
+      >
         Talk with this message
       </Pill>
     </Screen>

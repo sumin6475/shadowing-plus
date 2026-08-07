@@ -15,6 +15,7 @@ import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, MessageC
 import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem, ChunkSave } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
+import { CaptureFab, PhraseCaptureScreen } from "@/screens/capture";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
 import type { TalkSession } from "@/lib/speaking-world";
@@ -71,11 +72,13 @@ export function AppShell() {
   }
 
   const showTabBar = !ob && !top && tab !== "speak";
+  const showCaptureFab = !ob && tab !== "speak" && top?.name !== "capture";
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
       {content}
       {showTabBar ? <TabBar tab={tab} go={nav.go} /> : null}
+      {showCaptureFab ? <CaptureFab nav={nav} aboveTabs={showTabBar} /> : null}
     </View>
   );
 }
@@ -111,7 +114,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "story":
       return <StoryScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "message":
-      return <MessageScreen nav={nav} id={p.id as string | undefined} label={p.label as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
+      return <MessageScreen nav={nav} id={p.id as string | undefined} label={p.label as string | undefined} storyId={p.storyId as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
     case "newMessage":
       return <MessageCreate nav={nav} storyId={p.storyId as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
     case "recs":
@@ -123,7 +126,9 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "libItem":
       return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "saveChunk":
-      return <ChunkSave nav={nav} segmentId={p.segmentId as string | undefined} text={p.text as string | undefined} translation={p.translation as string | null | undefined} time={p.time as string | undefined} />;
+      return <ChunkSave nav={nav} segmentId={p.segmentId as string | undefined} videoId={p.videoId as string | undefined} text={p.text as string | undefined} translation={p.translation as string | null | undefined} sourceTitle={p.sourceTitle as string | undefined} start={p.start as number | undefined} end={p.end as number | undefined} />;
+    case "capture":
+      return <PhraseCaptureScreen nav={nav} />;
     case "settings":
       return <SettingsScreen nav={nav} />;
   }

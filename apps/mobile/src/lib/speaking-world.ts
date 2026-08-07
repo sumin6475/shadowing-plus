@@ -19,6 +19,11 @@ export interface Story {
   position: number;
   messageCount: number;
 }
+export interface StoryChoice {
+  id: string;
+  title: string;
+  domainName: string | null;
+}
 export interface StoryMessage {
   id: string;
   storyId: string;
@@ -137,6 +142,21 @@ export async function fetchStories(domainId: string): Promise<Story[]> {
     status: (s.status as string) ?? "draft",
     position: (s.position as number) ?? 0,
     messageCount: (one(s.messages as { count: number }[]) as { count: number } | null)?.count ?? 0,
+  }));
+}
+
+/** Compact owner-scoped Story list for capture/recommendation pickers. */
+export async function fetchAllStories(): Promise<StoryChoice[]> {
+  const { data, error } = await supabase
+    .from("stories")
+    .select("id, title, domains(name)")
+    .neq("status", "archived")
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((story) => ({
+    id: story.id as string,
+    title: (story.title as string) || "Untitled story",
+    domainName: (one(story.domains as { name: string }[]) as { name: string } | null)?.name ?? null,
   }));
 }
 

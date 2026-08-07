@@ -114,10 +114,10 @@ export interface Job {
   updated_at: string;
 }
 
-// Response shape of POST /api/talk/diagnose. Copied by hand from
-// web/src/lib/talk-diagnose.ts (TalkMoment). One improvable "moment" the AI
-// surfaced from a Speak session transcript. Not a DB row — the route is
-// stateless and nothing is persisted server-side.
+// Response shape of the Supabase talk-diagnose Edge Function. One improvable
+// "moment" the AI surfaced from a Speak session transcript. Not a DB row;
+// owned-phrase suggestions write a separate phrase_event so future ranking can
+// learn.
 export interface TalkMoment {
   /** ≤4 words naming what this moment is about. */
   label: string;
@@ -127,6 +127,11 @@ export interface TalkMoment {
   want: string;
   /** One short example sentence that uses `want`. */
   example: string;
+  /** Exact owned Phrase Bank row when this is a retrieval suggestion. */
+  phraseItemId: string | null;
+  /** Keeps generated language visibly separate from previously saved language. */
+  source: "saved" | "generated";
+  sourceLabel: string | null;
 }
 
 // Help for a moment the learner tapped "Stuck" during a Speak session and jotted

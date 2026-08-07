@@ -47,7 +47,12 @@
           "imageWidth": 76
         }
       ],
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Shadowing+ records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
+        }
+      ],
       "expo-video",
       [
         "expo-speech-recognition",
@@ -62,7 +67,14 @@
           "cameraPermission": "Shadowing+ shows a front-camera mirror while you speak, so you can practice looking up. Nothing is recorded or uploaded.",
           "microphonePermission": false
         }
-      ]
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Shadowing+ lets you choose a learning screenshot so you can extract and save a useful expression."
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
