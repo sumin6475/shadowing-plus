@@ -10,6 +10,7 @@ import { SERIF, useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
+import { saveTalkSessionAudio } from "@/lib/talk-audio";
 import { createSpeakPhrase } from "@/lib/phrases";
 import { diagnoseStuck, diagnoseTalk, type StuckMoment } from "@/lib/talk";
 import { stuckNoteCopy } from "@/lib/first-language";
@@ -101,6 +102,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   // On-device speech recognition for the live session (ADR 0003).
   const speech = useSpeechSession();
   const startedRef = useRef(false);
+  // Recording persistence: the session id (from createTalkSession) and the audio
+  // uri (from the audioend event) arrive independently after finish; move+link
+  // the file once both are ready, exactly once.
+  const savedIdRef = useRef<string | null>(null);
+  const audioUriRef = useRef<string | null>(null);
+  const audioSavedRef = useRef(false);
   const [transcript, setTranscript] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -145,6 +152,22 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     void speech.start({ onDevice: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
+
+  // Move the recorded WAV into place + link it to the session, once both the
+  // session row (createTalkSession) and the file (audioend) are ready.
+  const persistAudioIfReady = () => {
+    const id = savedIdRef.current;
+    const uri = audioUriRef.current;
+    if (!id || !uri || audioSavedRef.current) return;
+    audioSavedRef.current = true;
+    saveTalkSessionAudio(id, uri).catch(() => {
+      audioSavedRef.current = false; // leave it for a later attempt
+    });
+  };
+  useEffect(() => {
+    audioUriRef.current = speech.audioUri;
+    if (speech.audioUri) persistAudioIfReady();
+  }, [speech.audioUri]);
 
   // Tap "Stuck" → open a quick note at this timestamp. Recording keeps running.
   const stuck = () => {
@@ -213,7 +236,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       transcript: text,
       durationSeconds: sec,
     })
-      .then(() => setSaveState("saved"))
+      .then((id) => {
+        setSaveState("saved");
+        savedIdRef.current = id;
+        persistAudioIfReady(); // in case audioend already fired
+      })
       .catch((e) => {
         setSaveState("error");
         setSaveErr(e instanceof Error ? e.message : "Couldn’t save this session.");
@@ -224,6 +251,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const restart = () => {
     speech.stop();
     startedRef.current = false;
+    savedIdRef.current = null;
+    audioUriRef.current = null;
+    audioSavedRef.current = false;
     setTranscript("");
     setSaveState("idle");
     setSaveErr(null);

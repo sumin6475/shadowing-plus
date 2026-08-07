@@ -4,7 +4,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
+import { deleteTalkSessionAudio, talkAudioUri } from "@/lib/talk-audio";
 import { useTheme, type Theme } from "@/design/theme";
 import { Avatar, BackBar, Card, Chip as InputChip, Header, Icon, Pill, Screen, Sect, Serif, SwipeRow, confirmDelete, toneColor } from "@/design/ui";
 import {
@@ -298,6 +300,23 @@ export function SessionsScreen({ nav }: { nav: Nav }) {
 
 export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Nav }) {
   const t = useTheme();
+  // Hooks run unconditionally (before any early return). The recording, if any,
+  // is a local file resolved from the session's audio_key.
+  const [deleted, setDeleted] = useState(false);
+  const audioUri = session && !deleted ? talkAudioUri(session.audioKey) : null;
+  const player = useAudioPlayer(audioUri);
+  const status = useAudioPlayerStatus(player);
+
+  useEffect(() => {
+    // Only ensure playback is audible even with the ringer/silent switch on. We
+    // deliberately do NOT set category/routing here: iOS shares one process-wide
+    // AVAudioSession with the speech recognizer, and toggling allowsRecording /
+    // routing from this screen degraded the next recording's input gain. Playback
+    // routes wherever iOS defaults; dedicated speaker routing is deferred (see
+    // docs/pre-submission-roadmap).
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
+
   if (!session) {
     return (
       <Screen>
@@ -306,6 +325,31 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
       </Screen>
     );
   }
+
+  const togglePlay = () => {
+    if (status.playing) {
+      player.pause();
+      return;
+    }
+    if (status.duration > 0 && status.currentTime >= status.duration) player.seekTo(0);
+    player.play();
+  };
+  const deleteRecording = () =>
+    confirmDelete({
+      title: "Delete this recording?",
+      message: "The audio for this session will be removed from your device.",
+      deleteLabel: "Delete",
+      onConfirm: async () => {
+        try {
+          player.pause();
+          await deleteTalkSessionAudio(session.id, session.audioKey);
+          setDeleted(true);
+        } catch (e) {
+          Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
+        }
+      },
+    });
+
   return (
     <Screen>
       <BackBar title={session.storyTitle ?? "Free talk"} onBack={nav.pop} />
@@ -314,6 +358,40 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
         <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: t.colors.ink3 }} />
         <Text style={{ fontSize: 13, color: t.colors.ink3 }}>{relTime(session.createdAt)}</Text>
       </View>
+
+      {audioUri ? (
+        (() => {
+          const dur = status.duration > 0 ? status.duration : (session.durationSeconds ?? 0);
+          const pct = dur > 0 ? Math.min(100, (status.currentTime / dur) * 100) : 0;
+          return (
+            <Card style={{ gap: 13 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                <Pressable
+                  onPress={togglePlay}
+                  style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Icon name={status.playing ? "pause" : "play"} s={22} c="#fff" />
+                </Pressable>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Your recording</Text>
+                  <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>Play back your self-talk · on this device</Text>
+                </View>
+                <Pill tone="tint" small onPress={deleteRecording}>
+                  Delete
+                </Pill>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: t.colors.accD, width: 38, fontVariant: ["tabular-nums"] }}>{fmtDur(status.currentTime)}</Text>
+                <View style={{ flex: 1, height: 5, borderRadius: 9999, backgroundColor: t.colors.soft, overflow: "hidden" }}>
+                  <View style={{ width: `${pct}%`, height: "100%", backgroundColor: t.colors.acc, borderRadius: 9999 }} />
+                </View>
+                <Text style={{ fontSize: 12, color: t.colors.ink3, width: 38, textAlign: "right", fontVariant: ["tabular-nums"] }}>{fmtDur(dur)}</Text>
+              </View>
+            </Card>
+          );
+        })()
+      ) : null}
+
       <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>WHAT YOU SAID</Text>
       <Card>
         {session.transcript?.trim() ? (

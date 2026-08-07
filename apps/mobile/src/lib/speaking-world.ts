@@ -41,6 +41,8 @@ export interface TalkSession {
   transcript: string | null;
   durationSeconds: number | null;
   createdAt: string;
+  /** Relative key of the on-device recording (speak/{id}.wav), or null. */
+  audioKey: string | null;
 }
 
 // Design tones (map to Cobalt tokens) cycled across seeded domains.
@@ -89,7 +91,7 @@ export async function fetchDomains(): Promise<Domain[]> {
 export async function fetchTalkSessions(limit = 100): Promise<TalkSession[]> {
   const { data, error } = await supabase
     .from("talk_sessions")
-    .select("id, story_id, transcript, duration_seconds, created_at, stories(title)")
+    .select("id, story_id, transcript, duration_seconds, created_at, audio_key, stories(title)")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
@@ -100,6 +102,7 @@ export async function fetchTalkSessions(limit = 100): Promise<TalkSession[]> {
     transcript: (s.transcript as string | null) ?? null,
     durationSeconds: (s.duration_seconds as number | null) ?? null,
     createdAt: s.created_at as string,
+    audioKey: (s.audio_key as string | null) ?? null,
   }));
 }
 

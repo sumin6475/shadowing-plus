@@ -9,7 +9,12 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.shadowingplus.mobile"
+      "bundleIdentifier": "com.shadowingplus.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSpeechRecognitionUsageDescription": "Shadowing+ turns your spoken practice into text, on your device, so you can review what you said.",
+        "NSMicrophoneUsageDescription": "Shadowing+ records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +23,15 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.CAMERA"
+      ],
+      "package": "com.shadowingplus.mobile"
     },
     "web": {
       "output": "static",
@@ -39,7 +52,7 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Shadowing+ uses the microphone to hear your speaking practice.",
+          "microphonePermission": "Shadowing+ records your speaking practice so you can play it back and review what you said. Recordings stay on your device.",
           "speechRecognitionPermission": "Shadowing+ turns your spoken practice into text, on your device, so you can review what you said."
         }
       ],
