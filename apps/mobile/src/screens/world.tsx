@@ -4,9 +4,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
 import { deleteTalkSessionAudio, talkAudioUri } from "@/lib/talk-audio";
+import { prepareTalkRecordingPlayback } from "@/lib/talk-audio-session";
 import { useTheme, type Theme } from "@/design/theme";
 import { Avatar, BackBar, Card, Chip as InputChip, Header, Icon, Pill, Screen, Sect, Serif, SwipeRow, confirmDelete, toneColor } from "@/design/ui";
 import {
@@ -307,16 +308,6 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
   const player = useAudioPlayer(audioUri);
   const status = useAudioPlayerStatus(player);
 
-  useEffect(() => {
-    // Only ensure playback is audible even with the ringer/silent switch on. We
-    // deliberately do NOT set category/routing here: iOS shares one process-wide
-    // AVAudioSession with the speech recognizer, and toggling allowsRecording /
-    // routing from this screen degraded the next recording's input gain. Playback
-    // routes wherever iOS defaults; dedicated speaker routing is deferred (see
-    // docs/pre-submission-roadmap).
-    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
-  }, []);
-
   if (!session) {
     return (
       <Screen>
@@ -326,12 +317,18 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
     );
   }
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (status.playing) {
       player.pause();
       return;
     }
     if (status.duration > 0 && status.currentTime >= status.duration) player.seekTo(0);
+    // The speech recognizer leaves iOS in playAndRecord + measurement mode.
+    // Preserve the category (so we do not regress the next STT session), but
+    // restore normal output processing and default the built-in route to the
+    // loudspeaker before playback. A connected headset/Bluetooth route still
+    // wins over defaultToSpeaker.
+    await prepareTalkRecordingPlayback();
     player.play();
   };
   const deleteRecording = () =>
