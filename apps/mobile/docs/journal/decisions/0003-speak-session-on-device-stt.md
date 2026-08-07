@@ -24,3 +24,12 @@ Speak 탭은 "거울 보고 그냥 말하기" 세션인데 현재 전부 목업�
 - **시뮬레이터 한계 가능성**: on-device STT는 실기기(마이크 + on-device 모델)가 필요할 수 있어, 최종 검증은 물리 iPhone(dev client)일 수 있음. 시뮬레이터에서 안 되면 기기 테스트로 전환.
 - **audio_key/R2 업로드는 이번에 미룸** — transcript + duration만 저장(모바일은 R2 접근 없음).
 - **재검토 조건 (revisit trigger)**: 한국어 억양 영어 정확도가 실사용에서 부족하면 옵션 2(서버 Groq 전사)로 전환하거나 병행. 또는 `expo-speech-recognition` SDK 57 빌드가 나오면 그 버전으로 업그레이드.
+
+## 후속 — AI 진단 구현 완료 (2026-08-05)
+
+이 결정에서 "다음 스텝"으로 미뤘던 **AI 진단(moments)**을 구현·검증함. 결정의 방향(옵션 1: on-device STT, 웹 무변경)과는 별개로, 진단은 GPT가 필요해 **웹에 additive 프록시 라우트**를 신설(모바일 시크릿 금지 제약 그대로). 옵션 2가 우려했던 "웹 코드베이스 변경"은 여기서 **읽기 전용·stateless 신규 라우트 1개**로 최소화됨(기존 웹 동작 무변경, R2/업로드 없음).
+
+- 웹: `src/lib/talk-diagnose.ts`(순수 파서+타입), `talk-diagnose-ai.ts`(gpt-4o-mini), `src/app/api/talk/diagnose/route.ts`(Bearer, `{transcript,topic}`→`{moments}`). 웹 `/api/island/diagnose` 패턴 미러링.
+- 모바일: `src/lib/talk.ts` + `src/screens/talk.tsx`(done/moment/retry 실 진단 배선).
+- **검증**: tsc/lint/vitest(파서 5케이스) 통과 + **로컬 웹 E2E 실기기 성공**(실제 발화 교정·반복 포착). 커밋 `d358aa5`(mobile)/`0f934f8`(web).
+- **미결**: prod 배포(로컬 우선이라 보류, 사람이 /deploy).

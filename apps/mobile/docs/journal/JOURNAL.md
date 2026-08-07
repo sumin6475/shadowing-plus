@@ -8,6 +8,74 @@
 
 ## 항목
 
+### 2026-08-07 · 수정+실기기 검증 · self-talk 녹음 재생 스피커 라우팅
+- **무엇**: session 상세에서 로컬 WAV 재생 직전, 인식기가 남긴 iOS 공유 오디오 세션을 `playAndRecord`로 유지하면서 `mode=default` + `defaultToSpeaker`로 전환. 다음 인식 시작은 기존 모듈이 `measurement`를 복원하므로 라이브 STT·완료 시 interim flush·저장·AI 진단·Stuck 경로는 변경하지 않음.
+- **근거**: Expo 57의 `shouldRouteThroughEarpiece=false`와 설치된 네이티브 구현을 확인. `measurement` 모드는 출력 레벨을 낮추며, 기존 `playsInSilentMode` 단독 호출은 expo-audio 쪽 기본값으로 카테고리를 재구성해 두 라이브러리가 공유 세션을 서로 건드리는 구조였음. 이번엔 speech-recognition의 `setCategoryIOS` 한 경로로 격리.
+- **검증**: TypeScript PASS, 변경 파일 ESLint error 0(기존 world warning 5), iOS production bundle PASS(1,818 modules), 연결된 iPhone dev-client launch PASS. **실기기 스피커 재생 정상 + 기능 종료 승인**(사용자: "응 잘 된다").
+- **산출물**: [quality/2026-08-07-self-talk-speaker-routing](quality/2026-08-07-self-talk-speaker-routing.md)
+
+### 2026-08-07 · 빌드+실패+검증 · 음성 녹음 Phase 1 (로컬 저장·재생·삭제)
+- **무엇**: self-talk 세션 오디오를 **기기 로컬에 저장→재생**. 인식기 `recordingOptions.persist`가 뱉는 캐시 WAV를 `expo-file-system`(신 `File/Directory/Paths` API)으로 `document/speak/{id}.wav`로 옮기고 `talk_sessions.audio_key`(상대 키)에 기록(업로드 없음). world의 세션 상세에 **재생 카드**(play/pause·진행바·총길이·네이티브확인 Delete). **실기기 확인**(사용자 "녹음은 된거니까").
+- **배운/적용한 원칙**: **저장은 인식기 finalize 타이밍에 무의존해야** — on-device 연속 인식은 "isFinal 1개 + 나머지 interim" 패턴이라 `stop()`이 final만 반환하면 첫 몇 단어만 저장됨 → **완료 시 interim flush**([[postmortems/2026-08-07-stt-final-truncated-audio-session-thrash]]). iOS는 **프로세스 전체 단일 `AVAudioSession` 공유** — 재생 화면에서 카테고리/라우팅을 만지면 STT 게인이 깨진다 → 세션 조작 롤백, `playsInSilentMode`만, **스피커 라우팅은 defer**. Expo 네이티브 모듈은 코어와 **정확한 버전 정렬** 필요 — `expo install`이 고른 file-system 57.0.2가 `ExpoModulesCore` 57.0.7에 없는 심볼 참조 → 실행 즉시 dyld 크래시, **57.0.1 정확 핀**으로 해결([[postmortems/2026-08-07-expo-file-system-abi-crash]]).
+- **스킬/도구**: expo-file-system(File/Directory/Paths), expo-audio(useAudioPlayer/Status), expo-speech-recognition(persist·16kHz·interim), Supabase update(audio_key), 서브에이전트 리서치(iOS 오디오세션)
+- **산출물**: [postmortems/2026-08-07-expo-file-system-abi-crash](postmortems/2026-08-07-expo-file-system-abi-crash.md) · [postmortems/2026-08-07-stt-final-truncated-audio-session-thrash](postmortems/2026-08-07-stt-final-truncated-audio-session-thrash.md)
+- **남은 것**: 스피커 라우팅(인식기 `setCategoryIOS` `defaultToSpeaker`로 격리, post-submission) · 삭제된 클립/세션의 R2·로컬 고아 정리 · Settings의 main-language 선택.
+
+### 2026-08-06 · 빌드+검증 · Stuck = 즉석 메모 → AI 영어 변환 (+ N:1 L1)
+- **무엇**: self-talk "Stuck" 버튼을 실기능화. **v1(transcript 추론)**을 만들어 실기기 테스트 → "잘 되는지 모르겠다"(grounding 약함) → **v2(즉석 메모)로 피벗**. Stuck 탭 → 자동포커스 입력창(녹음 계속) → **L1(모국어)으로** 한 줄 → 저장/계속. Finish 시 새 Edge Function **`talk-stuck`**(gpt-4o-mini)이 각 메모를 **영어 표현+예문**으로 변환, done의 "Where you got stuck" 섹션에 표시(YOU WANTED TO SAY=메모 / SAY IT LIKE THIS=영어). 기존 3-moment 진단은 그대로, 둘이 병렬. talk-stuck 2회 배포·스모크(401 JSON)로 라이브 확인. **실기기 확인**(사용자 "훨씬 낫네").
+- **배운/적용한 원칙**: 막히는 순간 학습자는 **L1으로 튀어나오는데 STT는 en-US 전용**이라 transcript엔 안 잡힘 → **추론보다 명시적 유저 입력이 grounded**([[decisions/0006-stuck-explicit-memo]]). 앱은 **N:1**(L1 N개 : 영어 1개)이라 안내 문구는 **유저 L1로**, 한국어 하드코딩 금지 → `first-language.ts`(Hermes `Intl`로 기기 로케일 추론, `setFirstLanguage` override 훅, ko/es/ru/en; expo-localization 없이 재빌드 회피)([[mobile-first-language-n1]]). 메모 내용은 다국어 그대로 GPT가 영어화. 새 함수는 talk-diagnose 구조 미러(verify_jwt + getUser, OPENAI 시크릿 공유).
+- **스킬/도구**: Supabase Edge Functions(Deno, functions deploy), gpt-4o-mini(json_object), Hermes Intl 로케일, functions.invoke
+- **산출물**: [decisions/0006-stuck-explicit-memo](decisions/0006-stuck-explicit-memo.md)
+- **남은 것**: 음성 녹음 Phase 1(로컬) — 플랜 `docs/audio-recording-plan.md` · Settings의 main-language 선택(→ setFirstLanguage) · talk-stuck usage/cost 트래킹.
+
+### 2026-08-06 · 빌드+검증 · 셀프톡 live 화면 목업 반영 (Mirror)
+- **무엇**: self-talk(=Mirror) live 화면을 Claude Design "Free talk" 목업 2장에 맞춰 재작성(`talk.tsx`). 상단 "Free talk" 타이틀(탭→컨텍스트 드롭다운)+토픽 pill+타이머, 🔴 "Listening · keep talking" 다크 pill+실시간 자막, 큐카드를 **세그먼트 토글**(Today's phrase / Story beats·N, active=코발트+sparkle)로, Story beats는 **체크리스트**(✓done/●current+하이라이트/○upcoming, 비트 탭→current 이동), 하단 컨트롤 **Stuck(라이프부이 신규 아이콘)·코발트 녹음 인디케이터·Finish(다크 원)**. **실기기 확인**(사용자 "굉장히 괜찮다").
+- **배운/적용한 원칙**: 목업의 "가운데 파란 원"은 **녹음 인디케이터**(별도 Finish가 액션)라, 이전 "가운데 버튼이 안 눌린다"는 지적은 디자인 의도였음을 확인 — 인디케이터/액션 분리를 존중. TTS "Hear it"은 expo-speech(네이티브)라 이번 비주얼 패스에서 **제외**(재빌드 회피), beats는 mock 폴백 + 탭 이동으로 **비주얼 우선**(실데이터 스레딩은 분리된 후속). 새 아이콘은 stroke 세트 규칙대로 `life`(라이프부이) 추가.
+- **스킬/도구**: react-native-svg(life 아이콘), expo-camera 미러, 디자인 목업 대조
+- **남은 것**: 실제 message beats·targetSeconds("30 sec") talkCtx 스레딩(world.tsx) · Hear it TTS(expo-speech+재빌드) · **Stuck 실동작** + **음성 녹음**(다음 작업) · count/done/moment/retry도 목업 나오면 다듬기.
+
+### 2026-08-06 · 빌드 · Saylo 브랜드 스플래시 (Claude Design 포팅)
+- **무엇**: 앱 시작 시 브랜드 스플래시 신설. Claude Design `Saylo Splash`(3씬: Logo draw 2.6s → Reveal 2.2s → Idle loop, palette=COBALT, motion=springy)를 **DesignSync로 직접 읽어** RN으로 포팅(`src/screens/splash.tsx`). 커시브 더블루프 마크를 `strokeDashoffset`로 그리고("Saylo" 워드마크 페이드 → 로고 draw → "Find your flow / in English." 마스크 슬라이드업 → 서브타이틀 → "Get started" 스프링업 + 글로스 스윕 → idle 플로팅). `_layout`에서 폰트/세션 준비 후 라우팅 전에 표시. **정적 통과**(tsc 0, lint 0). 실기기 검증은 대기(사용자가 "일단 이대로 두고" 확정).
+- **배운/적용한 원칙**: 웹 디자인의 **씬-경계 프레임매칭**(모든 씬이 같은 Screen을 다른 phase 값으로 렌더)을 RN에선 **단일 RAF 타임라인 + 조각별 phase 파생**으로 재현 — 디자인의 easing(easeOutCubic/InOutCubic/OutQuart/OutBack)을 그대로 이식. SVG draw는 **패스 길이를 실측(≈2493)**해서 `strokeDasharray=[L,L]` + `offset=L*(1-p)`로(react-native-svg는 `pathLength` 불확실 → 실측이 안전). 렌더 안에서 컴포넌트 정의 금지(60fps RAF면 매 프레임 리마운트) → 인라인 함수로. **리틴트 불필요**: 이 디자인은 기본 팔레트가 이미 코발트. 폰트는 Figtree→**Inter 대체**(이미 로드, identity 미확정이라 폰트 추가 보류). 재빌드 불필요(svg/linear-gradient 이미 링크).
+- **스킬/도구**: DesignSync(Claude Design 읽기), react-native-svg(strokeDashoffset draw), expo-linear-gradient(글로스), RAF 타임라인, node로 패스 길이 실측
+- **남은 것**: 네이티브 스플래시(크림 `#fbf9f4`)→코발트 정렬(prebuild 필요, 로고 확정 후) · 스플래시→온보딩 이중 웰컴 정리 · 첫 실행만 뜨게 게이트(AsyncStorage) · Figtree 정확히 넣을지 · 구체 유저저니(언제 뜨는지)는 사용자가 추후 지정.
+
+### 2026-08-06 · 빌드+검증 · 밀어서 삭제 + 즐겨찾기 (스와이프 통일, `...` 제거, migration 021)
+- **무엇**: 삭제 기능이 없던 리스트(Phrases·Library·Sessions·Stories)와 죽은 `...` 버튼(clip player·phrase 상세)을 정리. **`SwipeRow`**(gesture-handler 레거시 `Swipeable` + `GestureHandlerRootView`)로 **오른쪽→왼쪽=삭제 / 왼쪽→오른쪽=즐겨찾기** 좌우 대칭 제스처. 삭제 전엔 **네이티브 확인 다이얼로그**(`Alert`, destructive). `...` UI는 요청대로 완전 제거. 즐겨찾기는 **migration 021**(`videos·bookmarks.is_favorite`)로 실기능화 — 리스트 ★ 인디케이터 + Phrases의 Favorites 필터. **실기기 확인**(사용자): 양방향 스와이프·확인창·별표 정상.
+- **배운/적용한 원칙**: 삭제 **의미를 엔티티별로 차등** — 클립·표현·세션은 하드 삭제(의도된 FK 캐스케이드: videos→segments→bookmarks), **스토리는 소프트 아카이브**(`status='archived'`, 앱이 이미 필터) → messages/beats/talk_sessions 캐스케이드 손실 방지 + 되돌리기 가능. 즐겨찾기 컬럼은 **additive**(nullable-default boolean)라 웹 무해 + 기존 owner `FOR ALL` RLS가 UPDATE 커버(새 정책 불필요). 낙관적 업데이트+롤백. **순서 함정**: 021 실행 전 리로드하면 select에 `is_favorite`가 있어 Library·Phrases 로딩이 통째로 깨짐 → 마이그레이션 우선.
+- **스킬/도구**: react-native-gesture-handler(Swipeable, GestureHandlerRootView — pod 이미 링크됨, 재빌드 불필요), Alert(네이티브 확인), Supabase update(RLS), 수동 마이그레이션, tsc/eslint(안전망)
+- **산출물**: [decisions/0005-destructive-actions-swipe-and-favorites](decisions/0005-destructive-actions-swipe-and-favorites.md)
+- **남은 것**: 클립 하드 삭제 시 R2 미디어 오브젝트 고아(모바일→R2 삭제 경로 없음) — 후속 정리. 스와이프 액션 발견성(힌트/어포던스 미제공).
+
+### 2026-08-06 · 빌드+검증 · Speak 전면 카메라 미러 (진짜 거울)
+- **무엇**: Speak 녹음 중 가짜 그라데이션 미러 → **실제 전면 카메라 프리뷰**(expo-camera `CameraView facing="front"`). count/live/retry 미러 교체, 권한 없으면 그라데이션 폴백. 프리뷰 전용(녹화·오디오 X). **실기기 확인**: 카메라 미러 + STT 자막 **공존**(오디오세션 충돌 없음 — 걱정했던 그 버그류 안 남).
+- **배운/적용한 원칙**: 카메라 프리뷰가 마이크/오디오세션을 안 잡게 **플러그인 `microphonePermission:false`** → speech recognizer와 공존. **빌드 함정**: config-plugin 권한(`NSCameraUsageDescription`)은 **prebuild를 거쳐야 Info.plist에 생김** — xcodebuild-only는 app.json 플러그인을 안 봐서 `missing NSCameraUsageDescription` 크래시. 수동으로 `ios/Shadowing/Info.plist`에 키 추가 + app.json 플러그인 유지(향후 prebuild 대비).
+- **스킬/도구**: expo-camera(CameraView, useCameraPermissions), Info.plist, expo run:ios(--device)
+
+### 2026-08-06 · 이전+검증 · 클립 재생을 Supabase Edge Function으로 (media-url)
+- **무엇**: `/api/media`(Vercel, 앱에서 Protocol error)를 **Supabase Edge Function `media-url`**(Deno)로 이전 — videos에서 R2 key 조회(RLS owner-scoped) → `aws4fetch`로 R2 presign → `{audioUrl, videoUrl}`. 클라 `fetchClipMedia`를 `functions.invoke("media-url")`로 전환. **실기기 재생 확인.** 오디오 자체는 R2 직접 스트리밍이라 서명 홉만 이동.
+- **배운/적용한 원칙**: [[decisions/0004-mobile-api-supabase-edge-functions]] 규칙대로 모바일-필요 라우트를 Vercel→Edge Function로 하나씩. Deno에선 AWS SDK 대신 경량 `aws4fetch`로 R2 SigV4 presign. RLS anon+JWT 클라로 videos 조회 → 소유권 자동 스코프(서비스키 불필요).
+- **스킬/도구**: Supabase Edge Functions(Deno), aws4fetch(R2 presign), functions.invoke
+- **남은 것**: `/api/jobs`(처리중 목록)도 Vercel — ready 클립은 videos(RLS)라 목록엔 뜨지만 in-flight는 이전 필요.
+
+### 2026-08-06 · 이전+검증 · 모바일 진단 API를 Supabase Edge Function으로 (+ Save as phrase 실동작)
+- **무엇**: 실기기에서 **앱→Vercel 모든 fetch가 "Protocol error"** 로 실패(Safari·PWA·Supabase는 정상) → 진단 API를 **Supabase Edge Function**(`talk-diagnose`, Deno, OpenAI 직접 fetch + JWT 인증)으로 이전하고 클라를 `supabase.functions.invoke`로 전환. Supabase CLI(Homebrew) 세팅+배포. **실기기 확인**: 진단 moments 정상 + "Save as phrase"→`phrase_items` 저장("Saved to Phrase Bank") 동시 확인.
+- **배운/적용한 원칙**: 대조군(브라우저/앱·Supabase/Vercel·Wi-Fi/셀룰러)으로 실패 층을 갈라 "호스트 특정 앱-fetch 문제"로 좁힘. **에러에 대상 URL을 박아** 진단 가속(회귀 방지책). **Expo+Supabase 앱의 표준(앱→Supabase+Edge Functions, Vercel은 웹)** 으로 정렬. CLI 가드레일: worktree 루트, `functions`·`secrets`만, `db push` 금지(공유 prod DB=웹).
+- **스킬/도구**: Supabase Edge Functions(Deno, Deno.serve), supabase CLI(brew), functions.invoke, OpenAI REST, WebSearch/WebFetch(리서치)
+- **산출물**: [decisions/0004-mobile-api-supabase-edge-functions](decisions/0004-mobile-api-supabase-edge-functions.md) · [postmortems/2026-08-06-ios-native-fetch-vercel-protocol-error](postmortems/2026-08-06-ios-native-fetch-vercel-protocol-error.md)
+
+### 2026-08-05 · 평가+결정 · 네이티브 @expo/ui vs 브랜드 디자인 (Settings)
+- **무엇**: "네이티브 iOS 느낌" 방향 판단용으로 Settings를 `@expo/ui`(진짜 SwiftUI: Host/List/Section/Toggle/Picker)로 재구성한 **증명**을 만들어 브랜드(Cobalt Editorial·serif) 버전과 비교. 결정: **Settings는 브랜드 디자인 유지** → 증명 되돌리고 파일 삭제(shell.tsx 무손상, tsc 0).
+- **배운/적용한 원칙**: 이 앱은 이미 RN이라 "웹을 네이티브처럼 위장"이 아니라 `@expo/ui`로 **진짜 SwiftUI를 부분 삽입**하는 Level B 하이브리드가 가능·검증됨(tsc가 실제 패키지 타입으로 API 검증 — `Button`은 문자열 child 거부해서 `<Text>`로 감쌈). 다만 네이티브 컨트롤은 기본 Apple-blue 틴트 + 그룹리스트라 브랜드 차별성(serif·따뜻한 톤)을 덮어씀 → **정체성 강한 화면은 커스텀 RN 유지, 리스트/피커/시트류처럼 "네이티브가 값을 파는" 화면에만 선택 적용**이 하이브리드의 올바른 경계. `@expo/ui`+`expo-glass-effect`는 이미 설치돼 있어 향후 고가치 지점에 바로 쓸 수 있음.
+- **스킬/도구**: @expo/ui(swift-ui), Expo 57 문서(WebFetch/WebSearch), tsc(타입 안전망)
+
+### 2026-08-05 · 빌드+검증 · Speak 세션 AI 진단 (moments, 웹 프록시 라우트)
+- **무엇**: Speak done/moment/retry의 목업 진단(`TALK_SAMPLES`)을 실제 GPT 진단으로 교체. 모바일 번들 시크릿 금지라 앱이 GPT를 직접 못 부름 → **웹에 프록시 라우트 신설** `POST /api/talk/diagnose`(Bearer 인증, gpt-4o-mini, `{transcript,topic}`→`{moments}`, stateless). 앱은 finish 시 transcript를 그 라우트로 보내 최대 3개 moment(`{label, said(원문 인용), want(자연스러운 표현), example}`)를 받아 done 목록·상세에 렌더. **로컬 웹 E2E 실기기 성공**(2026-08-05 21:36): 실제 발화에서 어색한 명사구→동사구 교정("Evaluation using the AI…"→"Evaluating AI and human interaction is very different"), 말더듬 반복("it could be it could be different"→"it could be different") 포착 확인.
+- **배운/적용한 원칙**: 클라이언트에 시크릿 금지 → **서버 프록시 라우트**가 표준(웹 `/api/island/diagnose` 패턴 미러링, OpenAI SDK를 클라 번들에 안 넣음). 순수 파서 `parseMoments`는 서버 GPT 호출과 **분리**해 vitest로 회귀 커버(island-speak.ts/-ai.ts 분리 방식 그대로). 오디오 미업로드라 목업 재생 UI는 정직하게 제거. 커밋: `d358aa5`(mobile), `0f934f8`(web/main).
+- **스킬/도구**: OpenAI(gpt-4o-mini, json_object), Next.js route(getSessionUserId Bearer), vitest, Expo(apiJson), on-device STT
+- **산출물**: [decisions/0003-speak-session-on-device-stt](decisions/0003-speak-session-on-device-stt.md) (다음 스텝=AI 진단 구현·검증 완료)
+- **남은 것**: 웹 라우트 prod 배포(사람이 /deploy — 지금은 로컬만), "Save as phrase" 실제 Phrase Bank 연결(현재 로컬 토글), 로컬 테스트 후 모바일 `.env`를 prod로 원복.
+
 ### 2026-08-05 · 검증+수정 · Speak 세션 실기기 성공 + 세션 목록 뷰
 - **무엇**: 실기기(iPhone 16 Pro Max, 개인 팀 서명)에 dev build 설치 → **온디바이스 STT 자막 지속 + `talk_sessions` 저장 성공** 확인. 첫 실행에서 터진 두 버그를 진단·수정: ①"Audio session was interrupted"(자막 끊김) ②`talk_sessions` RLS 위반(저장 실패). 이어 요청받은 **전체 세션 뷰**를 추가 — Topics 하단 "Your sessions" → 목록(스토리/Free talk·길이·상대시간·자막 미리보기) → 상세(전체 transcript + Talk again). `fetchTalkSessions`(stories 조인, RLS).
 - **배운/적용한 원칙**: 훅이 매 렌더 새로 만드는 **반환 객체를 effect deps에 넣으면** cleanup이 매 렌더 돌아 자원을 죽인다 → 정리는 자원을 소유한 훅 안 빈 deps로. **RLS 쓰기는 실제 로그인 세션에서 검증**해야 진실이 드러난다(프리뷰 우회 플래그는 남은 세션 읽기만 가려줌) → `SKELETON_PREVIEW=false`로 전환, 이메일/비번 로그인.
