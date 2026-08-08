@@ -20,6 +20,13 @@ export function usePhraseSpeech() {
   const pendingRef = useRef<PendingAudio | null>(null);
   const modeRef = useRef<"cloud" | "device" | null>(null);
   const urlCache = useRef<Map<string, string>>(new Map());
+  // Track the current player so the unmount cleanup can pause it without a
+  // [player] dependency — that dep fires the cleanup on every source swap, and
+  // expo-audio has already released the swapped-out native player by then.
+  const playerRef = useRef(player);
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
 
   useEffect(() => {
     let active = true;
@@ -41,14 +48,21 @@ export function usePhraseSpeech() {
     };
   }, []);
 
+  // Stop audio + speech when the hook unmounts. Empty deps = unmount-only, so we
+  // never pause a player that expo-audio already tore down on a source change
+  // (which throws "Unable to find the native shared object"). Guard anyway.
   useEffect(() => {
     return () => {
       requestRef.current += 1;
       pendingRef.current = null;
-      player.pause();
+      try {
+        playerRef.current.pause();
+      } catch {
+        // Native player already released — nothing to pause.
+      }
       Speech.stop().catch(() => {});
     };
-  }, [player]);
+  }, []);
 
   const startCloud = useCallback(
     async (id: string, request: number) => {
@@ -59,7 +73,12 @@ export function usePhraseSpeech() {
       setFallbackId(null);
       setLoadingId(null);
       setSpeakingId(id);
-      player.play();
+      try {
+        player.play();
+      } catch {
+        // Player released between load and play — treat as a miss; the caller's
+        // fallback/timeout paths still cover it.
+      }
     },
     [player],
   );
@@ -124,7 +143,11 @@ export function usePhraseSpeech() {
     requestRef.current += 1;
     pendingRef.current = null;
     modeRef.current = null;
-    player.pause();
+    try {
+      player.pause();
+    } catch {
+      // Native player already released — nothing to pause.
+    }
     setLoadingId(null);
     setSpeakingId(null);
     setFallbackId(null);
