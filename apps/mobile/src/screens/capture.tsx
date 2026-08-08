@@ -91,10 +91,46 @@ export function PhraseCaptureScreen({ nav }: { nav: Nav }) {
     void loadStories();
   }, [loadStories]);
 
-  const openEditor = (nextSource: CaptureSource) => {
-    setSource(nextSource);
+  // A started-but-unsaved draft. Used to guard the back button and to decide
+  // whether re-entering the editor needs a clean slate.
+  const hasDraft = () => Boolean(text.trim() || context.trim() || meaning.trim() || usageNote.trim());
+
+  const resetDraft = () => {
+    setText("");
+    setContext("");
+    setMeaning("");
+    setUsageNote("");
+    setSourceLabel("");
+    setKind("phrase");
+    setSelection({ start: 0, end: 0 });
+    setConfidence(null);
+    setImageUri(null);
+    setStoryId(null);
     setError(null);
+  };
+
+  // Every capture method starts fresh — no leftover fields from a prior draft.
+  const openEditor = (nextSource: CaptureSource) => {
+    resetDraft();
+    setSource(nextSource);
     setStage("edit");
+  };
+
+  // Leaving the editor with unsaved input asks first, then discards the draft.
+  const leaveEditor = () => {
+    if (!hasDraft()) {
+      resetDraft();
+      setStage("choose");
+      return;
+    }
+    Alert.alert(
+      "Leave without saving?",
+      "This phrase draft won’t be saved.",
+      [
+        { text: "Keep editing", style: "cancel" },
+        { text: "Discard", style: "destructive", onPress: () => { resetDraft(); setStage("choose"); } },
+      ],
+    );
   };
 
   const pickScreenshot = async () => {
@@ -106,6 +142,7 @@ export function PhraseCaptureScreen({ nav }: { nav: Nav }) {
     });
     if (result.canceled) return;
     const asset = result.assets[0];
+    resetDraft();
     setImageUri(asset.uri);
     setSource("image_ocr");
     setStage("edit");
@@ -232,7 +269,7 @@ export function PhraseCaptureScreen({ nav }: { nav: Nav }) {
 
   return (
     <Screen bottomPad={54}>
-      <BackBar title={source === "image_ocr" ? "From screenshot" : "Add a phrase"} onBack={() => setStage("choose")} />
+      <BackBar title={source === "image_ocr" ? "From screenshot" : "Add a phrase"} onBack={leaveEditor} />
       {imageUri ? <Image source={{ uri: imageUri }} style={{ width: "100%", height: 210, borderRadius: 24, backgroundColor: t.colors.soft }} contentFit="contain" /> : null}
       {reading ? (
         <Card style={{ alignItems: "center", paddingVertical: 24 }}>
