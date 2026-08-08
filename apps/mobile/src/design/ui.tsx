@@ -444,6 +444,10 @@ export function Screen({
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        // Focused inputs sit above the keyboard: iOS insets the scroll view for
+        // the keyboard and scrolls the focused field into view automatically.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
         refreshControl={refreshControl}
       >
         {children}
