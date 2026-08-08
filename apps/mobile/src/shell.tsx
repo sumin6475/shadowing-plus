@@ -2,10 +2,12 @@
 // a push/pop detail stack, the onboarding gate, and the self-talk context. Expo
 // Router hosts this single tree; the floating TabBar (not Router tabs) drives
 // tab switching so the stateful flows (Speak, Talk) stay intact.
-import { useCallback, useMemo, useState } from "react";
-import { View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
-import { TabBar, type TabId } from "@/design/ui";
+import { Icon, TabBar, type TabId } from "@/design/ui";
 import { useTheme } from "@/design/theme";
 import { Onboarding } from "@/screens/onboarding";
 import { TodayScreen } from "@/screens/today";
@@ -15,7 +17,8 @@ import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, MessageC
 import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem, ChunkSave } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
-import { CaptureFab, PhraseCaptureScreen } from "@/screens/capture";
+import { EditProfileScreen } from "@/screens/edit-profile";
+import { CaptureFab, PhraseCaptureScreen, type CaptureImageAsset } from "@/screens/capture";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
 import type { TalkSession } from "@/lib/speaking-world";
@@ -27,11 +30,25 @@ interface StackEntry {
 
 export function AppShell() {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [ob, setOb] = useState(true);
   const [tab, setTab] = useState<TabId>("today");
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [talkCtx, setTalkCtx] = useState<TalkCtx | undefined>(undefined);
   const [speakKey, setSpeakKey] = useState(0);
+  const [notice, setNotice] = useState<{ message: string; shownAt: number } | null>(null);
+
+  const notify = useCallback((message: string) => {
+    setNotice({ message, shownAt: Date.now() });
+  }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => {
+      setNotice((current) => current?.shownAt === notice.shownAt ? null : current);
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const nav: Nav = useMemo(
     () => ({
@@ -51,8 +68,24 @@ export function AppShell() {
         setSpeakKey((k) => k + 1);
         setTab("speak");
       },
+      notify,
     }),
-    [],
+    [notify],
+  );
+
+  // iOS-style left-edge swipe = back. The in-app stack isn't a native navigator,
+  // so we drive nav.pop() from an edge Pan. runOnJS keeps the JS callback valid
+  // with reanimated present; failOffsetY yields to vertical scrolling.
+  const backSwipe = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX(18)
+        .failOffsetY([-16, 16])
+        .runOnJS(true)
+        .onEnd((e) => {
+          if (e.translationX > 60) nav.pop();
+        }),
+    [nav],
   );
 
   const finishOnboarding = useCallback(() => {
@@ -61,6 +94,9 @@ export function AppShell() {
   }, [nav]);
 
   const top = stack[stack.length - 1];
+  // Enable edge-swipe-back only when a pushed view is on top and it uses the
+  // standard nav.pop back (capture runs its own unsaved-draft guard).
+  const swipeBackEnabled = !!top && top.name !== "capture";
 
   let content: React.ReactNode;
   if (ob) {
@@ -72,13 +108,36 @@ export function AppShell() {
   }
 
   const showTabBar = !ob && !top && tab !== "speak";
-  const showCaptureFab = !ob && tab !== "speak" && top?.name !== "capture";
+  const showCaptureFab = !ob && tab !== "speak" && top?.name !== "capture" && top?.name !== "phrase";
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
       {content}
+      {swipeBackEnabled ? (
+        <GestureDetector gesture={backSwipe}>
+          <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 22, zIndex: 90 }} />
+        </GestureDetector>
+      ) : null}
       {showTabBar ? <TabBar tab={tab} go={nav.go} /> : null}
       {showCaptureFab ? <CaptureFab nav={nav} aboveTabs={showTabBar} /> : null}
+      {notice ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: 18,
+            right: 18,
+            bottom: showTabBar ? Math.max(insets.bottom, 12) + 92 : Math.max(insets.bottom, 12) + 20,
+            alignItems: "center",
+            zIndex: 120,
+          }}
+        >
+          <View style={[{ minHeight: 42, borderRadius: 999, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: t.colors.pill }, t.shadowLg]}>
+            <Icon name="check" s={15} w={2.6} c="#fff" />
+            <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>{notice.message}</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -128,8 +187,10 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "saveChunk":
       return <ChunkSave nav={nav} segmentId={p.segmentId as string | undefined} videoId={p.videoId as string | undefined} text={p.text as string | undefined} translation={p.translation as string | null | undefined} sourceTitle={p.sourceTitle as string | undefined} start={p.start as number | undefined} end={p.end as number | undefined} />;
     case "capture":
-      return <PhraseCaptureScreen nav={nav} />;
+      return <PhraseCaptureScreen nav={nav} imageAsset={p.imageAsset as CaptureImageAsset | undefined} />;
     case "settings":
       return <SettingsScreen nav={nav} />;
+    case "editProfile":
+      return <EditProfileScreen nav={nav} />;
   }
 }

@@ -18,7 +18,8 @@ export type ViewName =
   | "libItem"
   | "saveChunk"
   | "capture"
-  | "settings";
+  | "settings"
+  | "editProfile";
 
 export interface TalkCtx {
   ctx?: string;
@@ -40,6 +41,8 @@ export interface Nav {
   go: (tab: TabId) => void;
   /** Prime a self-talk context and jump to the Speak tab (mirror flow). */
   startTalk: (ctx: TalkCtx) => void;
+  /** Show a brief confirmation that survives a pushed screen being popped. */
+  notify: (message: string) => void;
 }
 
 export type { TabId };
