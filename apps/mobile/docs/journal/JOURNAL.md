@@ -8,6 +8,18 @@
 
 ## 항목
 
+### 2026-08-07 · 수정+실기기 검증 · Phrase capture e2e 다듬기 (OCR·키보드·draft)
+- **무엇**: 실기기 e2e에서 나온 문제 묶음. (1) **OCR "Edge Function returned a non-2xx"** 원인은 `phrase-capture` **미배포**(배포된 건 talk-diagnose·media-url·talk-stuck·phrase-tts 4개뿐) → `supabase functions deploy phrase-capture`로 배포(ACTIVE v1). 클라이언트도 `error.context`(Response)에서 실제 본문/404를 읽어 진짜 원인을 표시하도록 개선. (2) **키보드 회피**: `Screen`의 ScrollView에 `automaticallyAdjustKeyboardInsets`+`keyboardDismissMode="interactive"` → 포커스된 입력창이 키보드 위로 자동 스크롤(전 입력 화면 공통). (3) **capture draft 유출**: edit 뒤로가기가 `setStage("choose")`라 컴포넌트가 안 unmount돼 이전 입력이 남던 것을 `resetDraft()`로 방식 재선택/재진입 시 항상 초기화하고, 미저장 입력이 있으면 뒤로갈 때 "Leave without saving?" 확인 다이얼로그.
+- **배운/적용한 원칙**: supabase-js는 모든 non-2xx를 동일 메시지로 뭉뚱그린다 → 진단하려면 `error.context`를 열어야 한다. 미배포 함수 = 404 = "non-2xx". 스택 없는 커스텀 nav에서 "뒤로=stage 전환"이면 컴포넌트가 살아있어 상태가 샌다 → 진입점에서 리셋 + 이탈 가드.
+- **검증**: tsc=0 · 변경 파일 ESLint error 0 · `phrase-capture` ACTIVE v1(verify_jwt=true) · **실기기 확인(사용자: OCR·뜻 자동채움·키보드·draft 가드 정상)**.
+- **남은 것**: ② 수동입력(type/paste) 시 뜻 AI 자동채움(텍스트 모드 함수 필요) · 뜻 언어 학습자 L1 정렬([[mobile-first-language-n1]]).
+
+### 2026-08-07 · 실패+수정 · Phrase 저장 시 해제된 오디오 플레이어 pause 크래시
+- **무엇**: e2e 중 Phrase 저장 버튼이 Render Error(`NotFoundException: Unable to find the native shared object` @ `use-phrase-speech.ts:48 player.pause()`)로 화면을 죽임. `usePhraseSpeech`의 cleanup이 `[player]` 의존이라, 저장→`setAudioUrl()`로 `useAudioPlayer`가 이전 네이티브 플레이어를 해제·교체한 뒤 그 옛 플레이어에서 `pause()`를 불러 발생. cleanup을 **unmount 전용(`[]`)** + 최신 플레이어는 `playerRef`(effect 동기화)에서 읽도록 바꾸고, `stop()`/`startCloud()`의 동기 player 호출도 try/catch로 방어. JS-only(네이티브 재빌드 불필요).
+- **배운/적용한 원칙**: `useAudioPlayer` 같은 네이티브 shared object는 **소스가 바뀌면 해제**된다 — cleanup은 unmount 전용, 최신 인스턴스는 ref로, 동기 호출은 try/catch. 렌더 중 ref 대입은 금지(`react-hooks/refs`)라 ref 동기화도 effect로.
+- **검증**: tsc=0 · ESLint=0 · **실기기 리로드 후 저장 정상 확인(사용자)**.
+- **산출물**: [postmortems/2026-08-07-phrase-speech-released-player-pause](postmortems/2026-08-07-phrase-speech-released-player-pause.md)
+
 ### 2026-08-07 · 개선+배포 · Phrase TTS 저장 시 prewarm + 자연 회화 속도
 - **무엇**: 신규 `phrase_items` 저장 직후 저장 UI를 막지 않는 background TTS prewarm을 시작하고, Phrase 상세 진입 시 signed URL과 MP3를 `expo-audio(downloadFirst)`로 선로딩. 동시에 `gpt-4o-mini-tts` `marin` 지시문을 학습자용 느린 발화에서 정상 회화 속도·연음·축약·강세·리듬으로 교체하고 캐시를 `phrase-pronunciation-v2`로 분리. 첫 탭 lazy 생성과 기기 TTS 폴백은 유지.
 - **배운/적용한 원칙**: 저장 성공은 음성 생성 성공과 분리해 표현 포착 흐름을 보호한다. 캐시된 생성물의 프롬프트를 바꿀 때는 키 버전도 함께 올려 오래된 음성이 섞이지 않게 한다. 앱 내부 동시 요청은 phrase id 기준 한 Promise로 합쳐 저장 prewarm과 화면 선로딩의 중복 호출을 줄인다.
