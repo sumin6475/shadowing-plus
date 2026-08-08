@@ -10,7 +10,7 @@ import { useEvent } from "expo";
 import { deleteClip, fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, setClipFavorite, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
 import { createPhrase } from "@/lib/phrases";
 import { useTheme } from "@/design/theme";
-import { Avatar, BackBar, Card, Header, Hero, Icon, Pill, Screen, Serif, SwipeRow, confirmDelete } from "@/design/ui";
+import { BackBar, Card, Hero, Icon, Pill, Screen, Serif, SwipeRow, confirmDelete } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
 
@@ -79,12 +79,11 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
   return (
     <>
       <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
-        <Header
-          eyebrow="Your Library"
-          title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Learn from your{"\n"}own material.</Serif>}
-          sub="Save the parts you want to understand — then use yourself."
-          right={<Avatar onPress={() => nav.push("settings")} />}
-        />
+        <BackBar title="Library" onBack={nav.pop} />
+        <View style={{ paddingHorizontal: 2, paddingTop: 2, paddingBottom: 2 }}>
+          <Serif style={{ fontSize: 32, lineHeight: 37, color: t.colors.ink }}>Learn from your{"\n"}own material.</Serif>
+          <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, marginTop: 8 }}>Save the parts you want to understand — then use yourself.</Text>
+        </View>
 
         {entries === null && !error ? (
           <View style={{ paddingVertical: 48, alignItems: "center" }}>
