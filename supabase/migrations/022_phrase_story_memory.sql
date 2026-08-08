@@ -1,5 +1,7 @@
--- 022_phrase_story_memory.sql — make phrase_items the canonical mobile Phrase
+-- 022_phrase_story_memory.sql - make phrase_items the canonical mobile Phrase
 -- Bank and connect captured language to the Speaking World.
+-- Policies use USING only: for a FOR ALL policy, an omitted WITH CHECK reuses
+-- the USING expression as the write check, and here both were identical.
 
 ALTER TABLE public.phrase_items
   ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;
@@ -55,23 +57,12 @@ CREATE POLICY phrase_story_links_owner ON public.phrase_story_links
     user_id = auth.uid()
     AND EXISTS (SELECT 1 FROM public.phrase_items p WHERE p.id = phrase_item_id AND p.user_id = auth.uid())
     AND EXISTS (SELECT 1 FROM public.stories s WHERE s.id = story_id AND s.user_id = auth.uid())
-  )
-  WITH CHECK (
-    user_id = auth.uid()
-    AND EXISTS (SELECT 1 FROM public.phrase_items p WHERE p.id = phrase_item_id AND p.user_id = auth.uid())
-    AND EXISTS (SELECT 1 FROM public.stories s WHERE s.id = story_id AND s.user_id = auth.uid())
   );
 
 DROP POLICY IF EXISTS phrase_events_owner ON public.phrase_events;
 CREATE POLICY phrase_events_owner ON public.phrase_events
   FOR ALL
   USING (
-    user_id = auth.uid()
-    AND EXISTS (SELECT 1 FROM public.phrase_items p WHERE p.id = phrase_item_id AND p.user_id = auth.uid())
-    AND (story_id IS NULL OR EXISTS (SELECT 1 FROM public.stories s WHERE s.id = story_id AND s.user_id = auth.uid()))
-    AND (talk_session_id IS NULL OR EXISTS (SELECT 1 FROM public.talk_sessions t WHERE t.id = talk_session_id AND t.user_id = auth.uid()))
-  )
-  WITH CHECK (
     user_id = auth.uid()
     AND EXISTS (SELECT 1 FROM public.phrase_items p WHERE p.id = phrase_item_id AND p.user_id = auth.uid())
     AND (story_id IS NULL OR EXISTS (SELECT 1 FROM public.stories s WHERE s.id = story_id AND s.user_id = auth.uid()))
