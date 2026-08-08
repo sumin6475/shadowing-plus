@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "Shadowing+",
+    "name": "Saylo",
     "slug": "shadowing-plus-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/saylo-icon.png",
     "scheme": "shadowingplus",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/saylo-icon.png",
       "bundleIdentifier": "com.shadowingplus.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSSpeechRecognitionUsageDescription": "Shadowing+ turns your spoken practice into text, on your device, so you can review what you said.",
-        "NSMicrophoneUsageDescription": "Shadowing+ records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
+        "NSSpeechRecognitionUsageDescription": "Saylo turns your spoken practice into text, on your device, so you can review what you said.",
+        "NSMicrophoneUsageDescription": "Saylo records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
       }
     },
     "android": {
@@ -50,29 +50,29 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Shadowing+ records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
+          "microphonePermission": "Saylo records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
         }
       ],
       "expo-video",
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Shadowing+ records your speaking practice so you can play it back and review what you said. Recordings stay on your device.",
-          "speechRecognitionPermission": "Shadowing+ turns your spoken practice into text, on your device, so you can review what you said."
+          "microphonePermission": "Saylo records your speaking practice so you can play it back and review what you said. Recordings stay on your device.",
+          "speechRecognitionPermission": "Saylo turns your spoken practice into text, on your device, so you can review what you said."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Shadowing+ uses your camera as a speaking mirror or to capture English text you choose. Speaking practice is not recorded, and learning photos are not stored.",
+          "cameraPermission": "Saylo uses your camera as a speaking mirror or to capture English text you choose. Speaking practice is not recorded, and learning photos are not stored.",
           "microphonePermission": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Shadowing+ lets you choose a learning photo so you can extract and save a useful expression.",
-          "cameraPermission": "Shadowing+ uses your camera as a speaking mirror or to capture English text you choose. Speaking practice is not recorded, and learning photos are not stored."
+          "photosPermission": "Saylo lets you choose a learning photo so you can extract and save a useful expression.",
+          "cameraPermission": "Saylo uses your camera as a speaking mirror or to capture English text you choose. Speaking practice is not recorded, and learning photos are not stored."
         }
       ],
       "expo-asset"

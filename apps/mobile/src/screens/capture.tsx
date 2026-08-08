@@ -555,7 +555,7 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
               Choose another
             </Pill>
           </View>
-          <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18, paddingHorizontal: 4 }}>This photo is processed for this capture and isn’t stored by Shadowing+.</Text>
+          <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18, paddingHorizontal: 4 }}>This photo is processed for this capture and isn’t stored by Saylo.</Text>
         </>
       ) : null}
 

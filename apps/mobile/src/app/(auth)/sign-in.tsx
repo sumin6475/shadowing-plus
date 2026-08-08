@@ -48,7 +48,7 @@ export default function SignInScreen() {
       >
         <View style={styles.container}>
           <View style={styles.header}>
-            <Text style={[styles.wordmark, { color: c.text }]}>Shadowing+</Text>
+            <Text style={[styles.wordmark, { color: c.text }]}>Saylo</Text>
             <Text style={[styles.subtitle, { color: c.text3 }]}>
               Sign in to shadow your clips.
             </Text>

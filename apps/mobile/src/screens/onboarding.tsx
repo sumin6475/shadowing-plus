@@ -74,7 +74,7 @@ export function Onboarding({ done }: { done: () => void }) {
             <Serif style={{ fontSize: 34, lineHeight: 37, textAlign: "center", color: t.colors.ink }}>Make English{"\n"}yours.</Serif>
             <Text style={{ fontSize: 17, color: t.colors.ink2, lineHeight: 26, textAlign: "center" }}>Learn from anywhere. Bring it back when you need to speak.</Text>
             <Text style={{ fontSize: 13, color: t.colors.ink3, lineHeight: 21, textAlign: "center" }}>
-              Shadowing Plus turns English you recognize into English you can actually use.
+              Saylo turns English you recognize into English you can actually use.
             </Text>
           </View>
           <Pill full onPress={() => setSt(1)}>
