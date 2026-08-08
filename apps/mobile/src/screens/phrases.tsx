@@ -1,18 +1,26 @@
 // phrases.tsx — Phrase Bank tab: list + chart, detail, review flow. Backed by
 // the canonical `phrase_items` collection; transcript bookmarks are separate.
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Badge, Card, Chip, Header, Hero, Icon, Pill, Screen, Serif, StatTile, SwipeRow, confirmDelete, Wave } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
-import { cumulativeSeries, deletePhrase, dueHint, fetchPhrases, phraseIsDue, relativeTime, setPhraseFavorite, submitVerdict, updatePhraseNote, type PhraseItem, type SrsVerdict } from "@/lib/phrases";
+import { cumulativeSeries, deletePhrase, dueHint, fetchPhrases, phraseIsDue, relativeTime, setPhraseFavorite, submitVerdict, updatePhraseDetails, updatePhraseNote, type PhraseItem, type PhraseKind, type SrsVerdict } from "@/lib/phrases";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
 import { useSegmentPlayer } from "@/hooks/use-segment-player";
 import type { Nav } from "./nav";
 
 const FILTERS = ["All", "Favorites", "Due now", "New", "Recognizing", "Practicing", "Ready to use", "Needs refresh"];
+const PHRASE_KINDS: { value: PhraseKind; label: string }[] = [
+  { value: "phrase", label: "Expression" },
+  { value: "phrasal_verb", label: "Phrasal verb" },
+  { value: "pattern", label: "Pattern" },
+  { value: "idiom", label: "Idiom" },
+  { value: "word", label: "Word" },
+];
 
 // Fallback for mock callers (e.g. the Today tab still pushes a phrase by id).
 const SAMPLE_PHRASE: PhraseItem = {
@@ -23,6 +31,7 @@ const SAMPLE_PHRASE: PhraseItem = {
   status: "Practicing",
   source: "Sample clip",
   context: "I’ll take the plunge and buy a nice pair of sunglasses.",
+  contextTranslation: null,
   startSec: 53,
   endSec: 56,
   videoId: null,
@@ -293,16 +302,45 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
 // ── Phrase detail ───────────────────────────────────────────────────────────
 export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
   const t = useTheme();
-  const p = item ?? SAMPLE_PHRASE;
+  const insets = useSafeAreaInsets();
+  const [p, setPhrase] = useState(item ?? SAMPLE_PHRASE);
   const player = useSegmentPlayer();
   const speech = usePhraseSpeech();
   const [use, setUse] = useState<string>(p.status === "New" ? "Recognizing" : p.status);
   const [memo, setMemo] = useState(p.memo ?? "");
   const [savedMemo, setSavedMemo] = useState(p.memo ?? "");
+  const [editingMemo, setEditingMemo] = useState(false);
   const [savingMemo, setSavingMemo] = useState(false);
   const [memoErr, setMemoErr] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editText, setEditText] = useState(p.text);
+  const [editKind, setEditKind] = useState<PhraseKind>(p.kind);
+  const [editMeaning, setEditMeaning] = useState(p.translation ?? "");
+  const [editNote, setEditNote] = useState(p.memo ?? "");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const memoDirty = memo !== savedMemo;
   const canEdit = p.id !== "sample";
+  const kindLabel = PHRASE_KINDS.find((entry) => entry.value === p.kind)?.label ?? "Expression";
+  const sourceIcon: "clip" | "camera" | "mic" | "text" | "pen" = p.videoId
+    ? "clip"
+    : p.source === "Saved from photo"
+      ? "camera"
+      : p.source === "Saved while talking"
+        ? "mic"
+        : p.source === "Pasted text"
+          ? "text"
+          : "pen";
+  const sourceCopy = p.videoId
+    ? `${p.source} · ${formatDuration(p.startSec)}`
+    : p.source === "Saved from photo"
+      ? "From a photo"
+      : p.source === "Saved while talking"
+        ? "From your talk"
+        : p.source === "Pasted text"
+          ? "From pasted text"
+          : "Added manually";
 
   useEffect(() => {
     if (canEdit) void speech.prepare(p.id);
@@ -315,11 +353,67 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
     try {
       await updatePhraseNote(p.id, memo);
       setSavedMemo(memo);
+      setPhrase((current) => ({ ...current, memo: memo.trim() || null }));
+      setEditingMemo(false);
     } catch {
       setMemoErr(true);
     } finally {
       setSavingMemo(false);
     }
+  };
+
+  const openEdit = () => {
+    setMenuOpen(false);
+    setEditText(p.text);
+    setEditKind(p.kind);
+    setEditMeaning(p.translation ?? "");
+    setEditNote(p.memo ?? "");
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!canEdit || !editText.trim()) {
+      setEditError("Enter a phrase to save.");
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      await updatePhraseDetails(p.id, { text: editText, kind: editKind, meaning: editMeaning, usageNote: editNote });
+      const nextText = editText.replace(/\s+/g, " ").trim();
+      const nextMeaning = editMeaning.trim() || null;
+      const nextNote = editNote.trim() || null;
+      setPhrase((current) => ({ ...current, text: nextText, kind: editKind, translation: nextMeaning, memo: nextNote }));
+      setMemo(nextNote ?? "");
+      setSavedMemo(nextNote ?? "");
+      setEditOpen(false);
+      nav.notify("Phrase updated");
+    } catch (caught) {
+      setEditError(caught instanceof Error ? caught.message : "Couldn’t update this phrase.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const removeCurrentPhrase = () => {
+    setMenuOpen(false);
+    confirmDelete({
+      title: "Delete this phrase?",
+      message: "It will be removed from your Phrase Bank and linked stories.",
+      deleteLabel: "Delete phrase",
+      onConfirm: () => {
+        void (async () => {
+          try {
+            await deletePhrase(p.id);
+            nav.pop();
+            nav.notify("Phrase deleted");
+          } catch (caught) {
+            Alert.alert("Couldn’t delete", caught instanceof Error ? caught.message : "Try again.");
+          }
+        })();
+      },
+    });
   };
 
   const stages = [
@@ -330,106 +424,164 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
   const currentStage = Math.max(0, stages.findIndex((stage) => stage.value === use));
 
   return (
-    <Screen>
-      <BackBar title="Phrase" onBack={nav.pop} />
-      <Card lg>
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Serif style={{ fontSize: 26, lineHeight: 34, color: t.colors.ink }}>{p.text}</Serif>
-            {p.translation ? <Text style={{ fontSize: 15, color: t.colors.ink2, marginTop: 8 }}>{p.translation}</Text> : null}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={speech.speakingId === p.id ? "Stop reading phrase" : "Read phrase aloud"}
-            onPress={() => {
-              player.stop();
-              speech.toggle(p.id, p.text);
-            }}
-            style={({ pressed }) => ({
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: t.colors.acc,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: pressed ? 0.82 : 1,
-            })}
-          >
-            {speech.loadingId === p.id ? <ActivityIndicator color="#fff" /> : <Icon name={speech.speakingId === p.id ? "pause" : "speaker"} s={20} c="#fff" />}
-          </Pressable>
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
-          <Badge s={p.status} />
-          {p.favorite ? <Icon name="star" s={16} c={t.colors.acc} /> : null}
-          <Text style={{ marginLeft: "auto", fontSize: 11, color: t.colors.ink3 }}>
-            {speech.fallbackId === p.id ? "Device voice fallback" : "AI-generated voice"}
-          </Text>
-        </View>
-      </Card>
+    <>
+      <Screen bottomPad={54}>
+        <BackBar
+          title="Phrase"
+          onBack={nav.pop}
+          right={canEdit ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Phrase options"
+              onPress={() => setMenuOpen(true)}
+              style={({ pressed }) => [
+                {
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: t.colors.card,
+                  borderWidth: 1,
+                  borderColor: t.ring,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: pressed ? 0.78 : 1,
+                },
+                t.shadowCard,
+              ]}
+            >
+              <Icon name="dots" s={20} c={t.colors.ink} />
+            </Pressable>
+          ) : undefined}
+        />
 
-      <Card>
-        <Pressable
-          accessibilityRole={p.videoId ? "button" : undefined}
-          disabled={!p.videoId}
-          onPress={p.videoId ? () => nav.push("libItem", { id: p.videoId, title: p.source }) : undefined}
-          style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 10, opacity: pressed ? 0.72 : 1 })}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>WHERE YOU FOUND IT</Text>
-            <Text style={{ fontSize: 15, color: t.colors.ink, marginTop: 8 }}>
-              {p.source} · {formatDuration(p.startSec)}
+        <Card lg style={{ minHeight: 200, paddingHorizontal: 22, paddingVertical: 22, justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
+            <View style={{ flex: 1 }}>
+              <Serif style={{ fontSize: 34, lineHeight: 42, color: t.colors.ink }}>{p.text}</Serif>
+              {p.translation ? <Text style={{ fontSize: 16, lineHeight: 22, color: t.colors.ink2, marginTop: 11 }}>{p.translation}</Text> : null}
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={speech.speakingId === p.id ? "Stop reading phrase" : "Read phrase aloud"}
+              onPress={() => {
+                player.stop();
+                speech.toggle(p.id, p.text);
+              }}
+              style={({ pressed }) => ({
+                width: 54,
+                height: 54,
+                borderRadius: 27,
+                backgroundColor: t.colors.acc,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.82 : 1,
+              })}
+            >
+              {speech.loadingId === p.id ? <ActivityIndicator color="#fff" /> : <Icon name={speech.speakingId === p.id ? "pause" : "speaker"} s={23} c="#fff" />}
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 18 }}>
+            <View style={{ minHeight: 30, borderRadius: 999, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", backgroundColor: t.colors.accS }}>
+              <Text style={{ fontSize: 13.5, fontWeight: "700", color: t.colors.accD }}>{kindLabel}</Text>
+            </View>
+            <Badge s={p.status} />
+            {p.favorite ? <Icon name="star" s={16} c={t.colors.acc} /> : null}
+            <Text style={{ marginLeft: "auto", fontSize: 11.5, color: t.colors.ink3 }}>
+              {speech.fallbackId === p.id ? "Device voice fallback" : "AI-generated voice"}
             </Text>
           </View>
-          {p.videoId ? <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} /> : null}
-        </Pressable>
-        {p.videoId ? (
-          <Pill
-            tone="tint"
-            small
-            icon={player.currentId === `context-${p.id}` ? "pause" : "speaker"}
-            onPress={() => {
-              speech.stop();
-              player.toggle({ id: `context-${p.id}`, videoId: p.videoId, start: p.startSec, end: p.endSec });
-            }}
-            style={{ marginTop: 14, alignSelf: "flex-start" }}
-          >
-            {player.loadingId === `context-${p.id}` ? "Loading…" : player.currentId === `context-${p.id}` ? "Stop context" : "Hear in context"}
-          </Pill>
-        ) : null}
-      </Card>
-
-      {p.context ? (
-        <Card>
-          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>ORIGINAL CONTEXT</Text>
-          <Serif style={{ fontSize: 17, fontStyle: "italic", lineHeight: 24, marginTop: 8, color: t.colors.ink }}>“{p.context}”</Serif>
         </Card>
-      ) : null}
 
-      <Card>
-        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>YOUR NOTE</Text>
-        <TextInput
-          value={memo}
-          onChangeText={setMemo}
-          multiline
-          editable={canEdit && !savingMemo}
-          placeholder="Add a note for future-you — why this matters, when to use it…"
-          placeholderTextColor={t.colors.ink3}
-          style={{ fontSize: 15, lineHeight: 22, marginTop: 8, color: t.colors.ink, minHeight: 24, padding: 0 }}
-        />
-        {memoErr ? <Text style={{ fontSize: 12, color: "#E5484D", marginTop: 6 }}>Couldn’t save. Try again.</Text> : null}
-        {memoDirty ? (
-          <Pill tone="soft" small onPress={saveMemo} style={{ marginTop: 10 }}>
-            {savingMemo ? <ActivityIndicator color={t.colors.accD} /> : "Save note"}
-          </Pill>
+        {p.context || p.videoId ? (
+          <>
+            <Serif style={{ fontSize: 27, lineHeight: 32, color: t.colors.ink, marginTop: 6, paddingHorizontal: 4 }}>In context</Serif>
+            <View
+              style={{
+                borderRadius: t.r,
+                padding: 19,
+                backgroundColor: t.colors.accS,
+                borderWidth: 1,
+                borderColor: t.ring,
+              }}
+            >
+              {p.context ? <Serif style={{ fontSize: 18, lineHeight: 26, color: t.colors.ink }}>“{p.context}”</Serif> : null}
+              {p.contextTranslation ? (
+                <>
+                  <View style={{ height: 1, backgroundColor: t.colors.sep, marginVertical: 16 }} />
+                  <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>{p.contextTranslation}</Text>
+                </>
+              ) : null}
+              <Pressable
+                accessibilityRole={p.videoId ? "button" : undefined}
+                disabled={!p.videoId}
+                onPress={p.videoId ? () => nav.push("libItem", { id: p.videoId, title: p.source }) : undefined}
+                style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 17, opacity: pressed ? 0.7 : 1 })}
+              >
+                <Icon name={sourceIcon} s={17} c={t.colors.ink3} />
+                <Text style={{ flex: 1, fontSize: 13.5, color: t.colors.ink3 }}>{sourceCopy}</Text>
+                {p.videoId ? <Icon name="chev" s={12} c={t.colors.ink3} w={2.2} /> : null}
+              </Pressable>
+              {p.videoId ? (
+                <Pill
+                  tone="tint"
+                  small
+                  icon={player.currentId === `context-${p.id}` ? "pause" : "speaker"}
+                  onPress={() => {
+                    speech.stop();
+                    player.toggle({ id: `context-${p.id}`, videoId: p.videoId!, start: p.startSec, end: p.endSec });
+                  }}
+                  style={{ marginTop: 12, alignSelf: "flex-start" }}
+                >
+                  {player.loadingId === `context-${p.id}` ? "Loading…" : player.currentId === `context-${p.id}` ? "Stop context" : "Hear in context"}
+                </Pill>
+              ) : null}
+            </View>
+          </>
         ) : null}
-      </Card>
 
-      <Card lg>
-        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.7, color: t.colors.accD }}>YOUR CURRENT STAGE</Text>
-        <Serif style={{ fontSize: 17, lineHeight: 24, marginTop: 10, marginBottom: 8, color: t.colors.ink }}>
-          How available is this phrase when you speak?
-        </Serif>
-        <View>
+        <View style={{ paddingHorizontal: 5, paddingVertical: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Your note</Text>
+            {canEdit ? (
+              <Pressable onPress={() => { setEditingMemo(true); setMemoErr(false); }}>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>{memo ? "Edit" : "Add"}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {editingMemo ? (
+            <>
+              <TextInput
+                value={memo}
+                onChangeText={setMemo}
+                multiline
+                autoFocus
+                editable={!savingMemo}
+                placeholder="Why this matters, or when you’d use it…"
+                placeholderTextColor={t.colors.ink3}
+                style={{ fontSize: 15, lineHeight: 22, marginTop: 10, color: t.colors.ink, minHeight: 70, padding: 13, borderRadius: 15, backgroundColor: t.colors.card, borderWidth: 1, borderColor: t.ring }}
+              />
+              {memoErr ? <Text style={{ fontSize: 12, color: "#E5484D", marginTop: 6 }}>Couldn’t save. Try again.</Text> : null}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 9 }}>
+                <Pill tone="soft" small onPress={memoDirty && !savingMemo ? () => void saveMemo() : undefined} style={{ opacity: memoDirty && !savingMemo ? 1 : 0.5 }}>
+                  {savingMemo ? <ActivityIndicator color={t.colors.accD} /> : "Save note"}
+                </Pill>
+                <Pill tone="ghost" small onPress={() => { setMemo(savedMemo); setEditingMemo(false); }}>Cancel</Pill>
+              </View>
+            </>
+          ) : (
+            <Text style={{ fontSize: 15, lineHeight: 22, color: memo ? t.colors.ink : t.colors.ink3, marginTop: 10 }}>
+              {memo || "Add why this phrase matters or when you want to use it."}
+            </Text>
+          )}
+        </View>
+
+        <View style={{ paddingHorizontal: 4, marginTop: 4 }}>
+          <Serif style={{ fontSize: 27, lineHeight: 32, color: t.colors.ink }}>Make it usable</Serif>
+          <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 5 }}>How available is this phrase when you speak?</Text>
+        </View>
+
+        <Card lg style={{ padding: 15 }}>
+          <View>
           {stages.map((stage, index) => {
             const selected = index === currentStage;
             const completed = index < currentStage;
@@ -452,7 +604,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                       borderRadius: 21,
                       borderWidth: selected ? 0 : 1.5,
                       borderColor: completed ? t.colors.acc : t.colors.sep,
-                      backgroundColor: selected ? t.colors.acc : t.colors.card,
+                    backgroundColor: selected ? t.colors.acc : "transparent",
                       alignItems: "center",
                       justifyContent: "center",
                     }}
@@ -505,22 +657,89 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
               </Pressable>
             );
           })}
-        </View>
-      </Card>
+          </View>
+        </Card>
 
-      <Pill
-        full
-        icon="mic"
-        onPress={() => {
-          speech.stop();
-          player.stop();
-          nav.push("review", { item: p });
-        }}
-      >
-        Practice in context
-      </Pill>
-      <Text style={{ fontSize: 13, color: t.colors.ink3, textAlign: "center", paddingVertical: 4 }}>Next review: {dueHint(p.dueAt)}</Text>
-    </Screen>
+        <Pill
+          icon="mic"
+          onPress={() => {
+            speech.stop();
+            player.stop();
+            nav.push("review", { item: p });
+          }}
+          style={{ width: "100%", alignSelf: "stretch" }}
+        >
+          Practice in context
+        </Pill>
+      </Screen>
+
+      <Modal visible={menuOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.08)" }} onPress={() => setMenuOpen(false)}>
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={[
+              {
+                position: "absolute",
+                top: insets.top + 58,
+                right: 18,
+                width: 210,
+                overflow: "hidden",
+                borderRadius: 22,
+                backgroundColor: t.colors.card,
+                borderWidth: 1,
+                borderColor: t.ring,
+              },
+              t.shadowLg,
+            ]}
+          >
+            <Pressable onPress={openEdit} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? t.colors.soft : "transparent" })}>
+              <Icon name="pen" s={18} c={t.colors.ink} />
+              <Text style={{ fontSize: 15.5, fontWeight: "600", color: t.colors.ink }}>Edit phrase</Text>
+            </Pressable>
+            <View style={{ height: 1, backgroundColor: t.colors.sep }} />
+            <Pressable onPress={removeCurrentPhrase} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? t.colors.soft : "transparent" })}>
+              <Icon name="x" s={18} c="#D63C42" />
+              <Text style={{ fontSize: 15.5, fontWeight: "600", color: "#D63C42" }}>Delete phrase</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={editOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => { if (!savingEdit) setEditOpen(false); }}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={() => { if (!savingEdit) setEditOpen(false); }}>
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{ maxHeight: "84%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 12 }}
+          >
+            <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 18 }} />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.7, color: t.colors.accD }}>EDIT PHRASE</Text>
+              <TextInput
+                value={editText}
+                onChangeText={setEditText}
+                autoFocus
+                placeholder="Phrase"
+                placeholderTextColor={t.colors.ink3}
+                style={{ fontSize: 29, lineHeight: 36, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 10, padding: 0 }}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 15 }}>
+                {PHRASE_KINDS.map((entry) => <Chip key={entry.value} active={editKind === entry.value} onPress={() => setEditKind(entry.value)}>{entry.label}</Chip>)}
+              </ScrollView>
+              <View style={{ height: 1, backgroundColor: t.colors.sep, marginVertical: 18 }} />
+              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>MEANING</Text>
+              <TextInput value={editMeaning} onChangeText={setEditMeaning} placeholder="Meaning" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
+              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 19 }}>USAGE NOTE</Text>
+              <TextInput value={editNote} onChangeText={setEditNote} multiline placeholder="Usage note" placeholderTextColor={t.colors.ink3} style={{ minHeight: 62, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
+              {editError ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center", marginTop: 12 }}>{editError}</Text> : null}
+              <Pill onPress={savingEdit ? undefined : () => void saveEdit()} style={{ width: "100%", alignSelf: "stretch", marginTop: 22, opacity: savingEdit ? 0.6 : 1 }}>
+                {savingEdit ? <ActivityIndicator color="#fff" /> : "Save changes"}
+              </Pill>
+              <Pill tone="ghost" onPress={savingEdit ? undefined : () => setEditOpen(false)} style={{ alignSelf: "center", marginTop: 4 }}>Cancel</Pill>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 

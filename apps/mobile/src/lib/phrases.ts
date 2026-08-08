@@ -29,6 +29,7 @@ export interface PhraseItem {
   status: Status;
   source: string;
   context: string | null;
+  contextTranslation: string | null;
   startSec: number;
   endSec: number;
   videoId: string | null;
@@ -49,6 +50,7 @@ export interface CreatePhraseInput {
   usageNote?: string | null;
   kind?: PhraseKind;
   context?: string | null;
+  contextTranslation?: string | null;
   source: "manual" | "paste" | "image_ocr" | "clip" | "speak";
   sourceLabel?: string | null;
   imageUri?: string | null;
@@ -61,10 +63,20 @@ export interface CreatePhraseInput {
   said?: string | null;
 }
 
+export interface CaptureContextPhrase {
+  id: string;
+  text: string;
+  kind: PhraseKind;
+  meaning: string;
+  usageNote: string;
+}
+
 type SourceContext = {
   source?: string;
   source_label?: string;
   context_text?: string;
+  context_translation?: string;
+  context_fingerprint?: string;
   image_uri?: string;
   ocr_confidence?: number;
   story_id?: string;
@@ -99,6 +111,34 @@ function normalizePhrase(value: string): string {
   return value.toLocaleLowerCase("en").replace(/\s+/g, " ").trim();
 }
 
+function cleanCaptureContext(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 1200);
+}
+
+function canonicalCaptureContext(value: string): string {
+  return cleanCaptureContext(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("en")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Stable compact identity for matching the same extracted context. */
+export function captureContextFingerprint(value: string): string {
+  const canonical = canonicalCaptureContext(value);
+  if (!canonical) return "";
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  for (let index = 0; index < canonical.length; index += 1) {
+    const code = canonical.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x85ebca6b);
+  }
+  return `ctx1-${canonical.length.toString(36)}-${(first >>> 0).toString(16).padStart(8, "0")}${(second >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 function sourceContext(value: unknown): SourceContext {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as SourceContext) : {};
 }
@@ -118,7 +158,7 @@ function displayStatus(learningStatus: string, dueAt: string | null): Status {
 function sourceLabel(context: SourceContext, videoTitle?: string | null): string {
   if (videoTitle) return videoTitle;
   if (context.source_label) return context.source_label;
-  if (context.source === "image_ocr") return "Saved from screenshot";
+  if (context.source === "image_ocr") return "Saved from photo";
   if (context.source === "speak") return "Saved while talking";
   if (context.source === "paste") return "Pasted text";
   return "Added by me";
@@ -169,6 +209,7 @@ export async function fetchPhrases(): Promise<PhraseItem[]> {
       status: displayStatus(row.learning_status ?? "new", dueAt),
       source: sourceLabel(context, video?.title ?? null),
       context: context.context_text ?? null,
+      contextTranslation: context.context_translation ?? null,
       startSec: row.start_time ?? 0,
       endSec: row.end_time ?? row.start_time ?? 0,
       videoId: row.video_id ?? null,
@@ -183,6 +224,65 @@ export async function fetchPhrases(): Promise<PhraseItem[]> {
       favorite: row.is_favorite ?? false,
     } satisfies PhraseItem;
   });
+}
+
+type CaptureContextRow = {
+  id: string;
+  text: string;
+  kind: PhraseKind | null;
+  meaning_ko: string | null;
+  usage_note: string | null;
+  source_context: unknown;
+  created_at: string;
+};
+
+/**
+ * Rehydrate phrases captured from the same OCR/text context without retaining
+ * the source image. New rows use a fingerprint query; raw/normalized fallbacks
+ * keep contexts saved before fingerprints were introduced discoverable.
+ */
+export async function fetchPhrasesForCaptureContext(contextText: string): Promise<CaptureContextPhrase[]> {
+  const storedText = cleanCaptureContext(contextText);
+  const fingerprint = captureContextFingerprint(storedText);
+  if (!storedText || !fingerprint) return [];
+
+  const fields = "id, text, kind, meaning_ko, usage_note, source_context, created_at";
+  const [fingerprinted, exactLegacy] = await Promise.all([
+    supabase.from("phrase_items").select(fields).eq("status", "ready").contains("source_context", { context_fingerprint: fingerprint }),
+    supabase.from("phrase_items").select(fields).eq("status", "ready").contains("source_context", { context_text: storedText }),
+  ]);
+  if (fingerprinted.error) throw new Error(fingerprinted.error.message);
+  if (exactLegacy.error) throw new Error(exactLegacy.error.message);
+
+  const byId = new Map<string, CaptureContextRow>();
+  for (const row of [...(fingerprinted.data ?? []), ...(exactLegacy.data ?? [])] as CaptureContextRow[]) byId.set(row.id, row);
+
+  // A model may change punctuation or line breaks when the same old screenshot
+  // is re-read. Only legacy rows need this bounded normalized-text fallback.
+  if (byId.size === 0) {
+    const legacy = await supabase
+      .from("phrase_items")
+      .select(fields)
+      .eq("status", "ready")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (legacy.error) throw new Error(legacy.error.message);
+    for (const row of (legacy.data ?? []) as CaptureContextRow[]) {
+      const context = sourceContext(row.source_context);
+      if (captureContextFingerprint(context.context_text ?? "") === fingerprint) byId.set(row.id, row);
+    }
+  }
+
+  return [...byId.values()]
+    .filter((row) => captureContextFingerprint(sourceContext(row.source_context).context_text ?? "") === fingerprint)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((row) => ({
+      id: row.id,
+      text: row.text,
+      kind: row.kind ?? "phrase",
+      meaning: row.meaning_ko?.trim() ?? "",
+      usageNote: row.usage_note?.trim() ?? "",
+    }));
 }
 
 export function phraseIsDue(phrase: PhraseItem): boolean {
@@ -204,9 +304,11 @@ export async function createPhrase(input: CreatePhraseInput): Promise<{ result: 
   const normalized = normalizePhrase(text);
   const userId = await currentUserId();
 
+  const storedContextText = cleanCaptureContext(input.context ?? "");
+  const contextFingerprint = captureContextFingerprint(storedContextText);
   let duplicateQuery = supabase
     .from("phrase_items")
-    .select("id")
+    .select("id, source_context")
     .eq("user_id", userId)
     .eq("normalized_text", normalized);
   duplicateQuery = input.segmentId ? duplicateQuery.eq("segment_id", input.segmentId) : duplicateQuery.is("segment_id", null);
@@ -214,6 +316,18 @@ export async function createPhrase(input: CreatePhraseInput): Promise<{ result: 
   if (selectError) throw new Error(selectError.message);
   if (existing?.[0]?.id) {
     const existingId = existing[0].id as string;
+    const existingContext = sourceContext(existing[0].source_context);
+    if (
+      contextFingerprint &&
+      !existingContext.context_fingerprint &&
+      captureContextFingerprint(existingContext.context_text ?? "") === contextFingerprint
+    ) {
+      const { error: fingerprintError } = await supabase
+        .from("phrase_items")
+        .update({ source_context: { ...existingContext, context_fingerprint: contextFingerprint } })
+        .eq("id", existingId);
+      if (fingerprintError) throw new Error(fingerprintError.message);
+    }
     if (input.storyId) await linkPhraseToStory(existingId, input.storyId, "capture");
     return { result: "already", id: existingId };
   }
@@ -221,7 +335,9 @@ export async function createPhrase(input: CreatePhraseInput): Promise<{ result: 
   const context: SourceContext = {
     source: input.source,
     source_label: input.sourceLabel?.trim() || undefined,
-    context_text: input.context?.replace(/\s+/g, " ").trim().slice(0, 1200) || undefined,
+    context_text: storedContextText || undefined,
+    context_translation: input.contextTranslation?.replace(/\s+/g, " ").trim().slice(0, 1200) || undefined,
+    context_fingerprint: contextFingerprint || undefined,
     image_uri: input.imageUri || undefined,
     ocr_confidence: input.ocrConfidence ?? undefined,
     story_id: input.storyId || undefined,
@@ -288,6 +404,27 @@ export async function setPhraseFavorite(id: string, favorite: boolean): Promise<
 export async function updatePhraseNote(id: string, note: string): Promise<void> {
   const { error } = await supabase.from("phrase_items").update({ usage_note: note.trim() || null }).eq("id", id);
   if (error) throw new Error(error.message);
+}
+
+export async function updatePhraseDetails(
+  id: string,
+  input: { text: string; meaning?: string | null; usageNote?: string | null; kind: PhraseKind },
+): Promise<void> {
+  const text = input.text.replace(/\s+/g, " ").trim().slice(0, 240);
+  if (!text) throw new Error("Enter a phrase to save.");
+  const { error } = await supabase
+    .from("phrase_items")
+    .update({
+      text,
+      normalized_text: normalizePhrase(text),
+      kind: input.kind,
+      meaning_ko: input.meaning?.trim().slice(0, 500) || null,
+      usage_note: input.usageNote?.trim().slice(0, 500) || null,
+    })
+    .eq("id", id);
+  if (error?.code === "23505") throw new Error("That phrase is already in your Phrase Bank.");
+  if (error) throw new Error(error.message);
+  void prewarmPhraseSpeech(id).catch(() => {});
 }
 
 export async function linkPhraseToStory(

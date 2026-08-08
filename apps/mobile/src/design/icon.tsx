@@ -25,6 +25,8 @@ export type IconName =
   | "arrow"
   | "sparkle"
   | "upload"
+  | "camera"
+  | "photo"
   | "text"
   | "clip"
   | "star"
@@ -179,6 +181,23 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
         <G {...common}>
           <Path d="M12 16V4M7 8.5L12 3.5l5 5" />
           <Path d="M4.5 15v4a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-4" />
+        </G>
+      );
+      break;
+    case "camera":
+      body = (
+        <G {...common}>
+          <Path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3v10H4z" />
+          <Circle cx="12" cy="13.5" r="3.2" />
+        </G>
+      );
+      break;
+    case "photo":
+      body = (
+        <G {...common}>
+          <Rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+          <Circle cx="8.2" cy="9.4" r="1.5" />
+          <Path d="M5.5 17l4.2-4.1 2.8 2.6 2.5-2.3 3.5 3.8" />
         </G>
       );
       break;

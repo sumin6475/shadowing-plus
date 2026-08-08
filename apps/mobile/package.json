@@ -12,6 +12,7 @@
     "expo-audio": "~57.0.3",
     "expo-blur": "~57.0.2",
     "expo-camera": "~57.0.3",
+    "expo-clipboard": "57.0.1",
     "expo-constants": "~57.0.7",
     "expo-dev-client": "~57.0.9",
     "expo-device": "~57.0.1",

@@ -1,5 +1,5 @@
-// Private screenshot OCR + phrase draft. The uploaded image is passed through
-// to OpenAI for this request only; this function never stores it.
+// Private photo OCR or learner-triggered text drafting. Uploaded images and
+// supplied context are passed through for this request only and never stored.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "gpt-4o-mini";
@@ -27,12 +27,15 @@ Deno.serve(async (req: Request) => {
   } = await supabase.auth.getUser();
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  const body = (await req.json().catch(() => null)) as { image_base64?: unknown; mime_type?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { image_base64?: unknown; mime_type?: unknown; context_text?: unknown; phrase_text?: unknown } | null;
   const base64 = typeof body?.image_base64 === "string" ? body.image_base64 : "";
-  if (!base64 || base64.length > 8_000_000) return json({ error: "Choose a smaller screenshot." }, 400);
+  const suppliedContext = clean(body?.context_text, 1600);
+  const suppliedPhrase = clean(body?.phrase_text, 240);
+  if (!base64 && !suppliedContext && !suppliedPhrase) return json({ error: "Add a phrase, some text, or a photo first." }, 400);
+  if (base64.length > 8_000_000) return json({ error: "Choose a smaller photo." }, 400);
   const mime = body?.mime_type === "image/png" ? "image/png" : "image/jpeg";
   const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) return json({ error: "Image capture is not configured." }, 500);
+  if (!apiKey) return json({ error: "Phrase capture is not configured." }, 500);
 
   const openai = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -41,29 +44,63 @@ Deno.serve(async (req: Request) => {
       model: MODEL,
       temperature: 0.1,
       response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "Read the visible English learning text in this screenshot. Preserve the wording and line order. " +
-            "Choose one short reusable expression or sentence pattern that appears EXACTLY in the extracted text. " +
-            "Never invent missing words. Give a short Korean meaning and a brief English usage note. " +
-            "If text is unclear, return what is legible and lower confidence. Return JSON only.",
-        },
-        {
-          role: "user",
-          content: [
+      messages: base64
+        ? [
             {
-              type: "text",
-              text: 'Return {"context_text":"all legible text","suggested_phrase":"exact substring","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short Korean meaning","usage_note":"brief English nuance","confidence":0.0}.',
+              role: "system",
+              content:
+                "Read the visible English learning text in this photo. Preserve the wording and line order. " +
+                "Choose one short reusable expression or sentence pattern that appears EXACTLY in the extracted text. " +
+                "Never invent missing words. Give a short Korean meaning and a brief English usage note. " +
+                "Translate the complete extracted context naturally into Korean without omitting clauses. " +
+                "If text is unclear, return what is legible and lower confidence. Return JSON only.",
             },
-            { type: "image_url", image_url: { url: `data:${mime};base64,${base64}`, detail: "high" } },
-          ],
-        },
-      ],
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: 'Return {"context_text":"all legible text","context_translation":"natural Korean translation of all context_text","suggested_phrase":"exact substring","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short Korean meaning","usage_note":"brief English nuance","confidence":0.0}.',
+                },
+                { type: "image_url", image_url: { url: `data:${mime};base64,${base64}`, detail: "high" } },
+              ],
+            },
+          ]
+        : suppliedPhrase
+          ? [
+              {
+                role: "system",
+                content:
+                  "Draft learning details for the exact English phrase the learner chose. Never rewrite, correct, expand, or replace the phrase. " +
+                  "Use the optional context only to disambiguate its meaning and usage. Classify it as word, phrasal_verb, pattern, idiom, or phrase. " +
+                  "Give a short Korean meaning and a brief English usage note. If context is supplied, translate all of it naturally into Korean. Return JSON only.",
+              },
+              {
+                role: "user",
+                content:
+                  'Phrase (return exactly): ' + suppliedPhrase +
+                  (suppliedContext ? '\nContext: ' + suppliedContext : "") +
+                  '\nReturn {"context_text":"the supplied context or empty string","context_translation":"natural Korean translation of all context, or empty string","suggested_phrase":"the exact supplied phrase","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short Korean meaning","usage_note":"brief English nuance","confidence":1.0}.',
+              },
+            ]
+          : [
+            {
+              role: "system",
+              content:
+                "Help a learner capture useful English from text they supplied. Preserve their text exactly. " +
+                "Choose one short reusable expression or sentence pattern that appears EXACTLY in the supplied text. " +
+                "If the input is already a short expression, use the whole expression. Never rewrite or invent words. " +
+                "Give a short Korean meaning, a brief English usage note, and a natural Korean translation of the complete supplied text. Return JSON only.",
+            },
+            {
+              role: "user",
+              content:
+                'Text: ' + suppliedContext + '\nReturn {"context_text":"the supplied text","context_translation":"natural Korean translation of all supplied text","suggested_phrase":"exact substring","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short Korean meaning","usage_note":"brief English nuance","confidence":0.0}.',
+            },
+            ],
     }),
   });
-  if (!openai.ok) return json({ error: `Couldn’t read this screenshot (OpenAI ${openai.status}).` }, 502);
+  if (!openai.ok) return json({ error: `Couldn’t fill this phrase right now (OpenAI ${openai.status}).` }, 502);
   const payload = await openai.json();
   let parsed: Record<string, unknown> = {};
   try {
@@ -71,12 +108,15 @@ Deno.serve(async (req: Request) => {
   } catch {
     return json({ error: "Couldn’t understand the extracted text." }, 502);
   }
-  const context = clean(parsed.context_text, 1600);
-  let phrase = clean(parsed.suggested_phrase, 240);
-  if (phrase && !context.toLocaleLowerCase("en").includes(phrase.toLocaleLowerCase("en"))) phrase = "";
+  // Text modes preserve learner-owned inputs. The model may choose a substring
+  // from context, but it may never rewrite an explicitly supplied phrase.
+  const context = base64 ? clean(parsed.context_text, 1600) : suppliedContext;
+  let phrase = suppliedPhrase || clean(parsed.suggested_phrase, 240);
+  if (!suppliedPhrase && phrase && !context.toLocaleLowerCase("en").includes(phrase.toLocaleLowerCase("en"))) phrase = "";
   const rawKind = clean(parsed.kind, 24);
   return json({
     context_text: context,
+    context_translation: clean(parsed.context_translation, 1200),
     suggested_phrase: phrase,
     kind: KINDS.has(rawKind) ? rawKind : "phrase",
     meaning: clean(parsed.meaning, 500),
