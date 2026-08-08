@@ -7,16 +7,56 @@
 //
 // There's no user Settings choice yet, so we infer L1 from the device locale via
 // Hermes' Intl (no native module, no rebuild). When Settings lands, it calls
-// setFirstLanguage() and that override wins.
+// setFirstLanguage() and that override wins. A learner's explicit choice is
+// persisted (AsyncStorage) and reloaded at boot so it survives restarts.
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type L1 = "en" | "ko" | "es" | "ru";
 const SUPPORTED: readonly L1[] = ["en", "ko", "es", "ru"];
+const STORAGE_KEY = "first_language";
 
 let override: L1 | null = null;
 
-/** Future Settings hook: force the learner's L1, overriding the device locale. */
+/** Force the learner's L1 for this session (in-memory), overriding the locale. */
 export function setFirstLanguage(l1: L1 | null): void {
   override = l1;
+}
+
+/** English label per L1, for compact Settings rows. */
+export const L1_LABEL: Record<L1, string> = {
+  en: "English",
+  ko: "Korean",
+  es: "Spanish",
+  ru: "Russian",
+};
+
+/** Picker options — native name + English, so a learner recognises their own. */
+export const L1_OPTIONS: { value: L1; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "ko", label: "한국어 · Korean" },
+  { value: "es", label: "Español · Spanish" },
+  { value: "ru", label: "Русский · Russian" },
+];
+
+/** Load the saved L1 (if any) into the override. Call once at app boot, before
+ *  the first render that reads firstLanguage(). */
+export async function loadFirstLanguage(): Promise<void> {
+  try {
+    const saved = await AsyncStorage.getItem(STORAGE_KEY);
+    if (saved && (SUPPORTED as readonly string[]).includes(saved)) override = saved as L1;
+  } catch {
+    // Ignore — fall back to the device locale.
+  }
+}
+
+/** Persist the learner's chosen L1 and apply it immediately. */
+export async function persistFirstLanguage(l1: L1): Promise<void> {
+  setFirstLanguage(l1);
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, l1);
+  } catch {
+    // The in-memory override still applies for this session.
+  }
 }
 
 function deviceLang(): string {

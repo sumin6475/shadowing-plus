@@ -8,6 +8,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { loadFirstLanguage } from "@/lib/first-language";
 import { SplashIntro } from "@/screens/splash";
 
 SplashScreen.preventAutoHideAsync();
@@ -34,7 +35,13 @@ function RootNavigator() {
     "Inter-SemiBold": require("../../assets/fonts/Inter18pt-SemiBold.ttf"),
   });
 
-  const ready = !loading && fontsLoaded;
+  // Load the saved first language before first render so greetings use it.
+  const [l1Loaded, setL1Loaded] = useState(false);
+  useEffect(() => {
+    loadFirstLanguage().finally(() => setL1Loaded(true));
+  }, []);
+
+  const ready = !loading && fontsLoaded && l1Loaded;
 
   useEffect(() => {
     if (ready) {

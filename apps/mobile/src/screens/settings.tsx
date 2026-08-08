@@ -9,6 +9,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme, type Theme } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
+import { firstLanguage, L1_LABEL } from "@/lib/first-language";
 import { Avatar, Card, Icon, Screen } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
@@ -64,7 +65,10 @@ function SettingsGroup({ t, title, children }: { t: Theme; title: string; childr
 
 export function SettingsScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
-  const { signOut } = useAuth();
+  const { session, signOut } = useAuth();
+  const meta = (session?.user?.user_metadata ?? {}) as { display_name?: string; goal?: string };
+  const name = meta.display_name?.trim() || session?.user?.email?.split("@")[0] || "You";
+  const goal = meta.goal?.trim() || "Set your learning goal";
 
   return (
     <Screen bottomPad={40}>
@@ -85,9 +89,9 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       {/* Identity */}
       <View style={{ alignItems: "center", paddingTop: 4 }}>
         <Avatar s={84} />
-        <Text style={{ fontSize: 24, fontWeight: "800", color: t.colors.ink, marginTop: 14 }}>Sumin</Text>
-        <Text style={{ fontSize: 15, color: t.colors.ink3, marginTop: 4 }}>Explain what I do clearly</Text>
-        <Pressable style={{ marginTop: 12 }}>
+        <Text style={{ fontSize: 24, fontWeight: "800", color: t.colors.ink, marginTop: 14 }}>{name}</Text>
+        <Text style={{ fontSize: 15, color: t.colors.ink3, marginTop: 4 }}>{goal}</Text>
+        <Pressable style={{ marginTop: 12 }} onPress={() => nav.push("editProfile")}>
           <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>Edit profile</Text>
         </Pressable>
       </View>
@@ -127,7 +131,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
 
       <SettingsGroup t={t} title="Preferences">
         <SettingsRow t={t} icon="translate" label="English level" detail="Intermediate" />
-        <SettingsRow t={t} icon="chat" label="First language" detail="Korean" />
+        <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("editProfile")} />
         <SettingsRow t={t} icon="mic" label="My mirror" detail="mirror 01" />
         <SettingsRow t={t} icon="contrast" label="Theme" detail="Default" last />
       </SettingsGroup>
