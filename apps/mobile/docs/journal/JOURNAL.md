@@ -8,6 +8,42 @@
 
 ## 항목
 
+### 2026-08-07 · 재디자인+검증 · Phrase 상세 학습 행동 위계 + 편집 메뉴
+- **무엇**: Phrase 상세를 승인된 목업의 느낌으로 재구성. Phrase·뜻·TTS·kind·상태를 넉넉한 hero에 모으고, 원문·전체 해석·출처는 옅은 파란 `In context` 패널로 통합. note는 가벼운 section, proficiency는 하나의 흰색 Card로 분리해 반복되던 흰 박스/동일 제목 위계를 줄임. photo/manual의 어색한 `WHERE YOU FOUND IT` Card를 제거하고 실제 clip만 context에서 이동 가능하게 유지. 우측 overflow에서 Phrase·종류·뜻·usage note 편집과 삭제가 가능하며 상세의 전역 `+` FAB는 숨김. 실기기 피드백에 따라 hero는 context보다 약간 큰 높이를 유지하면서 `space-between`으로 콘텐츠를 배치해 칩 아래에만 몰리던 여백을 상하 균형으로 보정.
+- **검증**: TypeScript PASS · ESLint PASS · diff check PASS · iOS production export PASS(1,851 modules). 최종 실기기 시각/탭 확인은 사용자 확인 대기.
+- **산출물**: [decisions/0014-phrase-detail-information-hierarchy](decisions/0014-phrase-detail-information-hierarchy.md) · [quality/2026-08-07-phrase-detail-hierarchy](quality/2026-08-07-phrase-detail-hierarchy.md)
+
+### 2026-08-07 · 구조 수정 · OCR Context fingerprint + saved chip DB 복원
+- **무엇**: `SAVED FROM THIS CONTEXT`를 화면 로컬 state가 아니라 Phrase Bank에서 복원하도록 변경. OCR Context를 NFKD·소문자·영숫자·공백으로 정규화한 버전 fingerprint를 `source_context`에 저장하고, OCR 완료 및 `Save another` 직후 동일 그룹을 다시 조회. 이미지 자체는 계속 저장하지 않음. fingerprint 도입 전 Phrase는 raw Context와 최근 500개 normalized fallback으로 호환하며, 동일 legacy duplicate 저장 시 fingerprint를 backfill.
+- **검증**: TypeScript PASS · ESLint PASS · diff check PASS · iOS production export PASS(1,850 modules) · 연결된 iPhone 앱 재실행/process 유지 PASS. 인증 DB hydrate 및 같은 사진 재진입 chip 복원은 사용자 탭 대기.
+- **산출물**: [decisions/0013-context-fingerprint-without-image-retention](decisions/0013-context-fingerprint-without-image-retention.md) · [postmortems/2026-08-07-capture-context-chips-volatile-state](postmortems/2026-08-07-capture-context-chips-volatile-state.md) · [quality/2026-08-07-phrase-capture-quick-source-menu](quality/2026-08-07-phrase-capture-quick-source-menu.md)
+
+### 2026-08-07 · 실기기 수정 · 저장 CTA 복구 + 현재 화면에서 사진 교체
+- **무엇**: Phrase 저장 완료 bottom sheet에서 `Save another`가 사라지고 `Done`이 왼쪽으로 치우친 레이아웃 회귀를 수정. 세로 sheet의 primary CTA는 공용 `full/flex:1` 대신 명시적 100% 폭으로, secondary CTA는 중앙 정렬. 사진 preview 아래 `Take again`·`Choose another`를 추가해 route를 나가지 않고 새 이미지 선택→OCR 재실행 가능. picker 취소는 기존 draft를 유지하고, 이미 저장한 Phrase가 있을 때만 Bank 보존과 화면 context 초기화를 확인.
+- **검증**: TypeScript PASS · ESLint PASS · diff check PASS · iOS production export PASS(1,850 modules) · 연결된 iPhone 앱 재실행/process 유지 PASS. 최종 sheet/사진 교체 시각 확인은 사용자 탭 대기.
+- **산출물**: [postmortems/2026-08-07-phrase-save-sheet-full-pill-collapse](postmortems/2026-08-07-phrase-save-sheet-full-pill-collapse.md) · [quality/2026-08-07-phrase-capture-quick-source-menu](quality/2026-08-07-phrase-capture-quick-source-menu.md)
+
+### 2026-08-07 · 빌드+배포 · 하나의 Context에서 Phrase 연속 저장 + 전체 해석
+- **무엇**: OCR·붙여넣기 원문 전체의 자연스러운 한국어 번역을 Context 카드 바로 아래에 표시하고, Phrase 저장 데이터의 `source_context`에도 함께 보존. 첫 Phrase 저장 후 `Save another`를 선택하면 사진·원문·번역·source·Story는 유지하고 Phrase 필드만 비워 같은 문장에서 다음 표현을 저장할 수 있게 함. 같은 capture에서 저장한 표현은 `SAVED FROM THIS CONTEXT` chip으로 모아 보여주며, chip을 누르면 실제 저장값을 확인하고 Phrase·종류·뜻·usage note를 수정 가능. 화면은 기존 theme token·Card·Pill·Chip·Newsreader 규칙을 유지하고 저장 완료 sheet의 우발적 backdrop 진행을 차단.
+- **검증**: diff check PASS · TypeScript PASS · ESLint PASS · iOS production export PASS(1,850 modules) · `phrase-capture` ACTIVE v5/verify_jwt=true · anon-only 401 PASS · 연결된 iPhone 앱 재실행/process 유지 PASS. 인증 OCR 전체 번역과 2개 연속 저장·chip 수정은 실기기 탭 확인 대기.
+- **산출물**: [decisions/0012-multi-phrase-shared-context](decisions/0012-multi-phrase-shared-context.md) · [quality/2026-08-07-phrase-capture-quick-source-menu](quality/2026-08-07-phrase-capture-quick-source-menu.md)
+
+### 2026-08-07 · 빌드+배포 · 수동 Phrase·OCR 수정 후 AI details 채움
+- **무엇**: 문맥 없이 Phrase만 직접 입력해도 `Fill details with AI`로 kind·한국어 뜻·영문 usage note를 채우도록 `phrase-capture`에 `phrase_text` 모드를 추가. OCR/문맥 추천 Phrase를 사용자가 수정하면 버튼을 `Update AI details`로 바꿔 이전 세부정보가 stale임을 표시. 서버는 모델 출력의 Phrase를 버리고 사용자 입력 Phrase를 그대로 고정하며 context는 의미 disambiguation에만 사용.
+- **검증**: TypeScript PASS · ESLint PASS · diff check PASS · iOS production export PASS(1,850 modules) · `phrase-capture` ACTIVE v4/verify_jwt=true · phrase-details anon-only 401 PASS · 실제 iPhone 앱 재실행 PASS. 인증 사용자 생성 결과는 실기기 탭 확인 대기.
+- **산출물**: [decisions/0011-ai-details-anchor-to-user-phrase](decisions/0011-ai-details-anchor-to-user-phrase.md) · [quality/2026-08-07-phrase-capture-quick-source-menu](quality/2026-08-07-phrase-capture-quick-source-menu.md)
+
+### 2026-08-07 · 실기기 수정 · Photos picker modal-dismiss race
+- **무엇**: `Choose from Photos`에서 사진 선택 후 Today의 `+` spinner가 끝나지 않던 문제를 수정. source menu `Modal`을 닫는 state update 직후 iOS PHPicker를 동시에 present하던 흐름을, `Modal.onDismiss` 완료 후 picker를 여는 2단계 흐름으로 변경. camera/text 경로와 picker cancel/error cleanup은 유지하고 실제 iPhone 앱을 재시작.
+- **검증**: TypeScript PASS · ESLint PASS · diff check PASS · 실제 iPhone bundle 재실행/process 유지 PASS · Photos 재탭 확인 대기.
+- **산출물**: [postmortems/2026-08-07-image-picker-modal-dismiss-race](postmortems/2026-08-07-image-picker-modal-dismiss-race.md)
+
+### 2026-08-07 · 빌드+배포 · Phrase 빠른 수집 메뉴 + 공통 AI 보조 편집기
+- **무엇**: 전 화면 `+`가 전체 chooser 페이지 대신 작은 attachment-style 메뉴(`Take a Photo` / `Choose from Photos` / `Write or Paste Text`)를 열도록 변경. 카메라·앨범은 선택 즉시 네이티브 picker→OCR→공통 편집기로 연결하고, 붙여넣기와 직접 입력은 하나의 context 입력으로 통합. 텍스트는 사용자가 `Fill from context`를 눌렀을 때만 AI가 표현·종류·뜻·메모 초안을 채우며 최종 내용은 사용자가 수정·저장. 저장 후 이전 화면으로 돌아가 shell toast 표시.
+- **배운/적용한 원칙**: `+`는 capture 의도가 이미 생긴 순간이므로 source 선택만 짧게 제공한다. 입력 source와 학습 데이터 편집은 분리하고, 이미지 자동 추출과 텍스트 opt-in 자동 채움은 같은 user-review 저장 경로로 합류한다. 이미지 자체는 저장하지 않는다.
+- **검증**: diff check PASS · TypeScript PASS · ESLint PASS · iOS production export PASS(1,850 modules) · `phrase-capture` ACTIVE v3/verify_jwt=true · text anon-only 401 PASS · `expo-clipboard` Pod 포함 물리 iPhone build/install/launch PASS(Xcode 0 errors, process 유지).
+- **산출물**: [decisions/0010-phrase-capture-quick-source-menu](decisions/0010-phrase-capture-quick-source-menu.md) · [quality/2026-08-07-phrase-capture-quick-source-menu](quality/2026-08-07-phrase-capture-quick-source-menu.md)
+
 ### 2026-08-07 · 수정+실기기 검증 · Phrase capture e2e 다듬기 (OCR·키보드·draft)
 - **무엇**: 실기기 e2e에서 나온 문제 묶음. (1) **OCR "Edge Function returned a non-2xx"** 원인은 `phrase-capture` **미배포**(배포된 건 talk-diagnose·media-url·talk-stuck·phrase-tts 4개뿐) → `supabase functions deploy phrase-capture`로 배포(ACTIVE v1). 클라이언트도 `error.context`(Response)에서 실제 본문/404를 읽어 진짜 원인을 표시하도록 개선. (2) **키보드 회피**: `Screen`의 ScrollView에 `automaticallyAdjustKeyboardInsets`+`keyboardDismissMode="interactive"` → 포커스된 입력창이 키보드 위로 자동 스크롤(전 입력 화면 공통). (3) **capture draft 유출**: edit 뒤로가기가 `setStage("choose")`라 컴포넌트가 안 unmount돼 이전 입력이 남던 것을 `resetDraft()`로 방식 재선택/재진입 시 항상 초기화하고, 미저장 입력이 있으면 뒤로갈 때 "Leave without saving?" 확인 다이얼로그.
 - **배운/적용한 원칙**: supabase-js는 모든 non-2xx를 동일 메시지로 뭉뚱그린다 → 진단하려면 `error.context`를 열어야 한다. 미배포 함수 = 404 = "non-2xx". 스택 없는 커스텀 nav에서 "뒤로=stage 전환"이면 컴포넌트가 살아있어 상태가 샌다 → 진입점에서 리셋 + 이탈 가드.
