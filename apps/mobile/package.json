@@ -61,8 +61,9 @@
     "typecheck": "tsc --noEmit",
     "lint:baseline": "expo lint --no-cache --max-warnings 15",
     "export:ios": "expo export --platform ios --output-dir tmp/export-ios --clear",
+    "verify:release-config": "node ./scripts/verify-release-config.mjs",
     "verify:rls": "node ./scripts/verify-rls-isolation.mjs",
-    "validate": "npm run typecheck && npm run lint:baseline && npm run export:ios"
+    "validate": "npm run verify:release-config && npm run typecheck && npm run lint:baseline && npm run export:ios"
   },
   "private": true
 }

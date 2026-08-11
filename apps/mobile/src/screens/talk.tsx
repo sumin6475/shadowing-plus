@@ -25,6 +25,8 @@ const TALK_SAMPLES = [
 const TALK_BEATS = ["What I’m building", "Who it helps", "How it works", "Why it matters"];
 
 const FROST = "rgba(20,22,28,0.55)";
+const ANALYSIS_ERROR_COPY = "Couldn’t analyze this time. Try again.";
+const SESSION_SAVE_ERROR_COPY = "Couldn’t save this session. Check your connection and try talking again.";
 
 function TalkMirror() {
   // Approximate the mirror: dark vertical wash + a warm translucent glow.
@@ -219,8 +221,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         setDiagState("done");
       })
       .catch((e) => {
+        if (__DEV__) console.warn("Talk diagnosis failed", e);
         setDiagState("error");
-        setDiagErr(e instanceof Error ? e.message : "Couldn’t analyze this session.");
+        setDiagErr(ANALYSIS_ERROR_COPY);
       });
   };
 
@@ -243,8 +246,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         persistAudioIfReady(); // in case audioend already fired
       })
       .catch((e) => {
+        if (__DEV__) console.warn("Talk session save failed", e);
         setSaveState("error");
-        setSaveErr(e instanceof Error ? e.message : "Couldn’t save this session.");
+        setSaveErr(SESSION_SAVE_ERROR_COPY);
       });
     runDiagnosis(text);
     runStuckDiagnosis(marks);

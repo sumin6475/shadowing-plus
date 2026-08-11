@@ -4,11 +4,11 @@
     "slug": "shadowing-plus-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/saylo-icon.png",
+    "icon": "./assets/images/saylo-icon-v2.png",
     "scheme": "shadowingplus",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/saylo-icon.png",
+      "icon": "./assets/images/saylo-icon-v2.png",
       "bundleIdentifier": "com.shadowingplus.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
