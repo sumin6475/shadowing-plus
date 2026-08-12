@@ -15,6 +15,10 @@ import {
 
 export const ONBOARDING_STORAGE_KEY = "saylo.onboarding.v1";
 
+type OnboardingDraftListener = (draft: OnboardingDraft) => void;
+
+const onboardingDraftListeners = new Set<OnboardingDraftListener>();
+
 export type OnboardingStep =
   | "welcome"
   | "story"
@@ -108,7 +112,17 @@ export async function loadOnboardingDraft(): Promise<OnboardingDraft> {
 export async function saveOnboardingDraft(draft: OnboardingDraft): Promise<OnboardingDraft> {
   const next = { ...draft, updatedAt: new Date().toISOString() };
   await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next));
+  onboardingDraftListeners.forEach((listener) => listener(next));
   return next;
+}
+
+export async function resetOnboardingDraft(): Promise<OnboardingDraft> {
+  return saveOnboardingDraft(createOnboardingDraft());
+}
+
+export function subscribeToOnboardingDraft(listener: OnboardingDraftListener): () => void {
+  onboardingDraftListeners.add(listener);
+  return () => onboardingDraftListeners.delete(listener);
 }
 
 export function shapeOnboardingBeats(storyTitle: string, notes: string): string[] {

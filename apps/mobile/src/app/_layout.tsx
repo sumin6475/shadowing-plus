@@ -14,6 +14,7 @@ import {
   importOnboardingDraft,
   loadOnboardingDraft,
   saveOnboardingDraft,
+  subscribeToOnboardingDraft,
   type OnboardingDraft,
 } from "@/lib/onboarding";
 import { Onboarding } from "@/screens/onboarding";
@@ -53,10 +54,18 @@ function RootNavigator() {
   }, []);
 
   useEffect(() => {
-    loadOnboardingDraft().then((stored) => {
+    let active = true;
+    const applyDraft = (stored: OnboardingDraft) => {
+      if (!active) return;
       setDraft(stored);
-      if (stored.status === "awaiting_sign_in") setShowSignIn(true);
-    });
+      setShowSignIn(stored.status === "awaiting_sign_in");
+    };
+    const unsubscribe = subscribeToOnboardingDraft(applyDraft);
+    loadOnboardingDraft().then(applyDraft);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

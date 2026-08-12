@@ -16,6 +16,7 @@ interface AuthState {
   /** True until the initial session has been read from storage. */
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<"signed_in" | "confirmation_required">;
   signOut: () => Promise<void>;
 }
 
@@ -67,6 +68,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password,
         });
         if (error) throw error;
+      },
+      async signUp(email, password) {
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
+        if (error) throw error;
+        return data.session ? "signed_in" : "confirmation_required";
       },
       async signOut() {
         await supabase.auth.signOut();
