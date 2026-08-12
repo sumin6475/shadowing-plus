@@ -1,5 +1,5 @@
 // shell.tsx — the app shell, ported from the prototype's SPApp. Owns tab state,
-// a push/pop detail stack, the onboarding gate, and the self-talk context. Expo
+// a push/pop detail stack and the self-talk context. Expo
 // Router hosts this single tree; the floating TabBar (not Router tabs) drives
 // tab switching so the stateful flows (Speak, Talk) stay intact.
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,7 +9,6 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import { Icon, TabBar, type TabId } from "@/design/ui";
 import { useTheme } from "@/design/theme";
-import { Onboarding } from "@/screens/onboarding";
 import { TodayScreen } from "@/screens/today";
 import { PhrasesScreen, PhraseDetail, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
@@ -31,7 +30,6 @@ interface StackEntry {
 export function AppShell() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const [ob, setOb] = useState(true);
   const [tab, setTab] = useState<TabId>("today");
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [talkCtx, setTalkCtx] = useState<TalkCtx | undefined>(undefined);
@@ -88,27 +86,20 @@ export function AppShell() {
     [nav],
   );
 
-  const finishOnboarding = useCallback(() => {
-    setOb(false);
-    nav.go("today");
-  }, [nav]);
-
   const top = stack[stack.length - 1];
   // Enable edge-swipe-back only when a pushed view is on top and it uses the
   // standard nav.pop back (capture runs its own unsaved-draft guard).
   const swipeBackEnabled = !!top && top.name !== "capture";
 
   let content: React.ReactNode;
-  if (ob) {
-    content = <Onboarding done={finishOnboarding} />;
-  } else if (top) {
+  if (top) {
     content = renderView(top, nav);
   } else {
     content = renderTab(tab, nav, talkCtx, speakKey);
   }
 
-  const showTabBar = !ob && !top && tab !== "speak";
-  const showCaptureFab = !ob && tab !== "speak" && top?.name !== "capture" && top?.name !== "phrase";
+  const showTabBar = !top && tab !== "speak";
+  const showCaptureFab = tab !== "speak" && top?.name !== "capture" && top?.name !== "phrase";
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>

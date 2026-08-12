@@ -7,10 +7,21 @@ import { ActivityIndicator, RefreshControl, Text, View } from "react-native";
 import { useTheme } from "@/design/theme";
 import { Avatar, Badge, Card, Header, Hero, Icon, Pill, Screen, Sect, Serif, StatTile } from "@/design/ui";
 import { fetchPhrases, phraseIsDue, weeklyCounts, type PhraseItem } from "@/lib/phrases";
+import { useAuth } from "@/lib/auth";
+import { loadOnboardingDraft } from "@/lib/onboarding";
+import { fetchAllStories, fetchBeats, fetchMessages } from "@/lib/speaking-world";
 import type { Nav } from "./nav";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+interface FirstStorySummary {
+  storyId: string;
+  messageId: string | null;
+  storyTitle: string;
+  beats: string[];
+  phrase: string;
+}
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -26,7 +37,9 @@ function todayLabel(): string {
 
 export function TodayScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const { session } = useAuth();
   const [items, setItems] = useState<PhraseItem[] | null>(null);
+  const [firstStory, setFirstStory] = useState<FirstStorySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -43,6 +56,38 @@ export function TodayScreen({ nav }: { nav: Nav }) {
     load();
   }, [load]);
 
+  useEffect(() => {
+    let active = true;
+    Promise.all([loadOnboardingDraft(), fetchAllStories()])
+      .then(async ([draft, stories]) => {
+        const cachedId = draft.importedForUserId === session?.user.id ? draft.storyId : null;
+        const messageGroups = await Promise.all(stories.map(async (story) => ({ story, messages: await fetchMessages(story.id) })));
+        const cached = cachedId ? messageGroups.find((group) => group.story.id === cachedId) : null;
+        const imported = messageGroups.find((group) => group.messages.some((message) => message.label === "30-second version"));
+        const group = cached ?? imported;
+        if (!group) return null;
+        const story = group.story;
+        const message = group.messages.find((item) => item.label === "30-second version") ?? group.messages[0] ?? null;
+        const beats = message ? await fetchBeats(message.id) : [];
+        return {
+          storyId: story.id,
+          messageId: message?.id ?? null,
+          storyTitle: story.title,
+          beats: beats.map((beat) => beat.text),
+          phrase: draft.importedForUserId === session?.user.id ? draft.phrase : "What I’m trying to do is…",
+        } satisfies FirstStorySummary;
+      })
+      .then((summary) => {
+        if (active) setFirstStory(summary);
+      })
+      .catch(() => {
+        if (active) setFirstStory(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session?.user.id]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
@@ -57,6 +102,18 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const bars = weeklyCounts(all.map((p) => p.createdAt));
   const barMax = Math.max(1, ...bars.map((b) => b.count));
   const bringBack = due.slice(0, 2);
+  const metadata = session?.user.user_metadata as { full_name?: string; name?: string } | undefined;
+  const displayName = metadata?.full_name?.split(" ")[0] || metadata?.name?.split(" ")[0] || null;
+  const firstStoryTalk = firstStory
+    ? () => nav.startTalk({
+        ctx: firstStory.storyTitle,
+        storyId: firstStory.storyId,
+        messageId: firstStory.messageId,
+        prompt: firstStory.phrase,
+        beats: firstStory.beats,
+        from: "today",
+      })
+    : () => nav.go("speak");
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
@@ -64,7 +121,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
         eyebrow={todayLabel()}
         title={
           <Serif style={{ fontSize: 36, lineHeight: 40, color: t.colors.ink }}>
-            {greeting()},{"\n"}Sumin.
+            {greeting()}{displayName ? `,\n${displayName}.` : "."}
           </Serif>
         }
         sub="Ready to make one phrase usable?"
@@ -73,19 +130,41 @@ export function TodayScreen({ nav }: { nav: Nav }) {
 
       <Hero style={{ marginTop: 4 }}>
         <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.8, color: "rgba(255,255,255,0.75)" }}>TODAY’S SPEAKING MOMENT</Text>
-        <Serif style={{ fontSize: 27, lineHeight: 34, color: "#fff", marginTop: 14, marginBottom: 10 }}>Explain what you do in 30 seconds.</Serif>
+        <Serif style={{ fontSize: 27, lineHeight: 34, color: "#fff", marginTop: 14, marginBottom: 10 }}>
+          {firstStory ? `Tell your ${firstStory.storyTitle.toLocaleLowerCase("en")} story again — this time in your own words.` : "Explain what you do in 30 seconds."}
+        </Serif>
         <Text style={{ fontSize: 15, lineHeight: 22, color: "rgba(255,255,255,0.85)" }}>
           You’ve said it before — let’s make it automatic.
         </Text>
         <View style={{ flexDirection: "row", gap: 10, marginTop: 22, alignItems: "center" }}>
-          <Pill tone="white" onPress={() => nav.go("speak")} textStyle={{ color: t.colors.accD }} style={{ shadowOpacity: 0 }}>
+          <Pill tone="white" onPress={firstStoryTalk} textStyle={{ color: t.colors.accD }} style={{ shadowOpacity: 0 }}>
             Start speaking
           </Pill>
-          <Pill tone="ghost" onPress={() => nav.go("speak")} textStyle={{ color: "rgba(255,255,255,0.9)" }}>
+          <Pill tone="ghost" onPress={firstStoryTalk} textStyle={{ color: "rgba(255,255,255,0.9)" }}>
             Warm up first
           </Pill>
         </View>
       </Hero>
+
+      {firstStory ? (
+        <>
+          <Sect title="Your first story" />
+          <Card
+            onPress={() => firstStory.storyId ? nav.push("story", { id: firstStory.storyId, title: firstStory.storyTitle }) : undefined}
+            style={{ flexDirection: "row", alignItems: "center", gap: 13 }}
+          >
+            <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+              <Icon name="play" s={20} c={t.colors.accD} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: t.colors.ink }}>{firstStory.storyTitle}</Text>
+              <Text style={{ marginTop: 4, fontSize: 13, color: t.colors.ink2 }}>{firstStory.beats.length} beats · 1 phrase</Text>
+              <Text style={{ marginTop: 9, fontSize: 14, fontWeight: "700", color: t.colors.accD }}>Open story</Text>
+            </View>
+            <Icon name="chev" s={18} c={t.colors.ink3} />
+          </Card>
+        </>
+      ) : null}
 
       {items === null && !error ? (
         <View style={{ paddingVertical: 40, alignItems: "center" }}>

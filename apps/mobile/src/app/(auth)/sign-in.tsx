@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Motif, TypeScale } from "@/constants/cobalt";
 import { useAuth } from "@/lib/auth";
+import { loadOnboardingDraft } from "@/lib/onboarding";
 import { useCobalt } from "@/hooks/use-cobalt";
 
 export default function SignInScreen() {
@@ -22,6 +23,13 @@ export default function SignInScreen() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storyTitle, setStoryTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadOnboardingDraft().then((draft) => {
+      if (draft.status === "awaiting_sign_in") setStoryTitle(draft.storyTitle);
+    });
+  }, []);
 
   const canSubmit = email.trim().length > 0 && password.length > 0 && !busy;
 
@@ -50,7 +58,7 @@ export default function SignInScreen() {
           <View style={styles.header}>
             <Text style={[styles.wordmark, { color: c.text }]}>Saylo</Text>
             <Text style={[styles.subtitle, { color: c.text3 }]}>
-              Sign in to shadow your clips.
+              {storyTitle ? `Sign in to keep “${storyTitle}” and continue.` : "Sign in to keep building your speaking world."}
             </Text>
           </View>
 

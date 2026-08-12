@@ -1,14 +1,22 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { useColorScheme } from "react-native";
+import { ActivityIndicator, Pressable, Text, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { ThemeProvider, useTheme } from "@/design/theme";
 import { loadFirstLanguage } from "@/lib/first-language";
+import {
+  importOnboardingDraft,
+  loadOnboardingDraft,
+  saveOnboardingDraft,
+  type OnboardingDraft,
+} from "@/lib/onboarding";
+import { Onboarding } from "@/screens/onboarding";
 import { SplashIntro } from "@/screens/splash";
 
 SplashScreen.preventAutoHideAsync();
@@ -21,9 +29,12 @@ SplashScreen.preventAutoHideAsync();
  */
 function RootNavigator() {
   const { session, loading } = useAuth();
-  // Brand splash on every launch, after fonts/session are ready. "Get started"
-  // (or a backdrop tap once the animation lands) proceeds into the app.
   const [splashDone, setSplashDone] = useState(false);
+  const [draft, setDraft] = useState<OnboardingDraft | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [importState, setImportState] = useState<"idle" | "importing" | "error">("idle");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importAttempt, setImportAttempt] = useState(0);
 
   // Saylo design-system fonts, loaded at runtime (expo-font is already in the
   // dev client, so no native rebuild). Newsreader = editorial serif hero; Inter
@@ -41,7 +52,68 @@ function RootNavigator() {
     loadFirstLanguage().finally(() => setL1Loaded(true));
   }, []);
 
-  const ready = !loading && fontsLoaded && l1Loaded;
+  useEffect(() => {
+    loadOnboardingDraft().then((stored) => {
+      setDraft(stored);
+      if (stored.status === "awaiting_sign_in") setShowSignIn(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!session || draft?.status !== "not_started" || draft.step !== "welcome") return;
+    const completed = { ...draft, status: "completed" as const };
+    Promise.resolve().then(() => {
+      setDraft(completed);
+      return saveOnboardingDraft(completed);
+    });
+  }, [draft, session]);
+
+  const ready = !loading && fontsLoaded && l1Loaded && draft !== null;
+
+  const effectiveShowSignIn = Boolean(
+    showSignIn && !(session && draft?.status === "awaiting_sign_in"),
+  );
+  const returningSignedInUser = Boolean(
+    session && draft?.status === "not_started" && draft.step === "welcome",
+  );
+  const onboardingComplete = draft?.status === "completed" || returningSignedInUser;
+
+  const shouldImport = Boolean(
+    session && draft && draft.status !== "completed" && draft.step === "keep" && !effectiveShowSignIn,
+  );
+
+  // The first story is created while signed out and imported only after auth.
+  // Each remote id is checkpointed by importOnboardingDraft, so retrying after
+  // a lost connection continues instead of duplicating the learner's work.
+  useEffect(() => {
+    if (!shouldImport || !session || !draft) return;
+    let active = true;
+    Promise.resolve()
+      .then(() => {
+        if (!active) return null;
+        setImportState("importing");
+        setImportError(null);
+        return importOnboardingDraft(draft, session.user.id, (checkpoint) => {
+          if (active) setDraft(checkpoint);
+        });
+      })
+      .then((completed) => {
+        if (!active || !completed) return;
+        setDraft(completed);
+        setImportState("idle");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setImportState("error");
+        setImportError(error instanceof Error ? error.message : "We couldn’t save your first story.");
+      });
+    return () => {
+      active = false;
+    };
+    // draft changes at every checkpoint; importing the captured draft should
+    // stay in one effect run. importAttempt is the explicit retry trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldImport, session?.user.id, importAttempt]);
 
   useEffect(() => {
     if (ready) {
@@ -51,13 +123,52 @@ function RootNavigator() {
 
   if (!ready) return null;
 
-  if (!splashDone) return <SplashIntro onDone={() => setSplashDone(true)} />;
+  if (!splashDone) {
+    return <SplashIntro onDone={() => setSplashDone(true)} />;
+  }
 
   // SKELETON PREVIEW: while the app is a design skeleton running on mock data,
   // show the (app) group without a Supabase session so it opens straight into
   // the designed UI. Flip to `false` to restore the real auth gate.
   const SKELETON_PREVIEW = false;
   const signedIn = SKELETON_PREVIEW || !!session;
+
+  if (shouldImport || importState === "error") {
+    return (
+      <ThemeProvider>
+        <ImportingStory
+          error={importState === "error" ? importError : null}
+          onRetry={() => {
+            setImportState("idle");
+            setImportAttempt((value) => value + 1);
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
+
+  if (!onboardingComplete && !effectiveShowSignIn) {
+    return (
+      <ThemeProvider>
+        <Onboarding
+          initialDraft={draft}
+          signedIn={signedIn}
+          onDraftChange={setDraft}
+          onSignIn={(next) => {
+            setDraft(next);
+            setShowSignIn(true);
+          }}
+          onDirectSignIn={() => {
+            setShowSignIn(true);
+          }}
+          onComplete={(next) => {
+            setDraft(next);
+            setShowSignIn(false);
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -68,6 +179,26 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>
+  );
+}
+
+function ImportingStory({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  const t = useTheme();
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: t.colors.bg }}>
+      {error ? null : <ActivityIndicator size="large" color={t.colors.acc} />}
+      <Text style={{ marginTop: 22, fontFamily: "Newsreader", fontSize: 32, textAlign: "center", color: t.colors.ink }}>
+        {error ? "Your story is still here." : "Adding your first story…"}
+      </Text>
+      <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, textAlign: "center", color: t.colors.ink2 }}>
+        {error ?? "We’re saving the beats, phrase, and your first Talk."}
+      </Text>
+      {error ? (
+        <Pressable onPress={onRetry} style={{ marginTop: 22, minHeight: 50, minWidth: 160, paddingHorizontal: 24, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: t.colors.acc }}>
+          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Try again</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
