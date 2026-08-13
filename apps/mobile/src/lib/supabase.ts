@@ -23,7 +23,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+const configuredSupabaseUrl = supabaseUrl;
+const configuredSupabaseAnonKey = supabaseAnonKey;
+
+export const supabase = createClient(configuredSupabaseUrl, configuredSupabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -32,3 +35,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+export type SocialProviderAvailability = {
+  apple: boolean;
+  google: boolean;
+};
+
+/** Reads the public GoTrue provider flags so the app never presents a dead OAuth button. */
+export async function getSocialProviderAvailability(): Promise<SocialProviderAvailability> {
+  const response = await fetch(`${configuredSupabaseUrl}/auth/v1/settings`, {
+    headers: { apikey: configuredSupabaseAnonKey },
+  });
+  if (!response.ok) throw new Error("Couldn’t load sign-up options.");
+  const settings = (await response.json()) as {
+    external?: Partial<Record<keyof SocialProviderAvailability, boolean>>;
+  };
+  return {
+    apple: settings.external?.apple === true,
+    google: settings.external?.google === true,
+  };
+}

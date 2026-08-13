@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/design/theme";
 import { Block, Card, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
+import { useAuth } from "@/lib/auth";
 import {
   makePhraseExample,
   saveOnboardingDraft,
@@ -104,6 +105,7 @@ export function Onboarding({
   onComplete: (draft: OnboardingDraft) => void;
 }) {
   const t = useTheme();
+  const { signInWithSocial, socialProviders } = useAuth();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(initialDraft);
   const draftRef = useRef(initialDraft);
@@ -115,6 +117,8 @@ export function Onboarding({
   const [startingTalk, setStartingTalk] = useState(false);
   const [talkStarted, setTalkStarted] = useState(false);
   const [talkError, setTalkError] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState<"apple" | "google" | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const persist = (patch: Partial<OnboardingDraft>) => {
     const next: OnboardingDraft = {
@@ -183,12 +187,17 @@ export function Onboarding({
     setStartingTalk(false);
   };
 
-  const canFinishTalk = talkStarted && !speech.error;
+  const canFinishTalk = talkStarted && !startingTalk;
 
   const finishTalk = () => {
     if (!canFinishTalk) return;
     const transcript = speech.stop();
     persist({ transcript, durationSeconds: seconds, step: "keep" });
+  };
+
+  const continueWithoutTranscript = () => {
+    speech.stop();
+    persist({ transcript: speech.transcript, durationSeconds: seconds, step: "keep" });
   };
 
   const retryTalk = async () => {
@@ -205,10 +214,22 @@ export function Onboarding({
   };
 
   const finishFlow = () => {
-    if (!draft.transcript.trim()) return;
     const next = persist({ status: signedIn ? "in_progress" : "awaiting_sign_in" });
     if (signedIn) onComplete(next);
     else onSignIn(next);
+  };
+
+  const continueWithSocial = async (provider: "apple" | "google") => {
+    if (authBusy) return;
+    setAuthBusy(provider);
+    setAuthError(null);
+    try {
+      await signInWithSocial(provider);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Couldn’t sign in. Please try again.");
+    } finally {
+      setAuthBusy(null);
+    }
   };
 
   const storyTitleUpper = draft.storyTitle.toLocaleUpperCase("en");
@@ -239,6 +260,9 @@ export function Onboarding({
               <Text style={{ color: "#fff", fontSize: 13, lineHeight: 18, textAlign: "center" }}>{talkError || speech.error}</Text>
               <Pressable onPress={retryTalk} style={{ marginTop: 9, alignSelf: "center", paddingVertical: 6, paddingHorizontal: 12 }}>
                 <Text style={{ color: "#fff", fontSize: 13, fontWeight: "800" }}>Try microphone again</Text>
+              </Pressable>
+              <Pressable onPress={continueWithoutTranscript} style={{ marginTop: 4, alignSelf: "center", paddingVertical: 6, paddingHorizontal: 12 }}>
+                <Text style={{ color: "rgba(255,255,255,0.78)", fontSize: 13, fontWeight: "700" }}>Continue without transcript</Text>
               </Pressable>
             </View>
           ) : null}
@@ -272,14 +296,9 @@ export function Onboarding({
           <View style={{ flex: 1, justifyContent: "center", paddingVertical: 46 }}>
             <Serif style={{ fontSize: 43, lineHeight: 46, color: t.colors.ink }}>Make English{"\n"}yours.</Serif>
             <Text style={{ marginTop: 15, maxWidth: 310, fontSize: 18, lineHeight: 27, color: t.colors.ink2 }}>Build the stories you actually want to tell.</Text>
-            <View style={{ height: 230, marginTop: 28, alignItems: "center", justifyContent: "center" }}>
-              <View style={{ width: 178, height: 178, borderRadius: 89, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}><Icon name="mic" s={34} w={2} c="#fff" /></View>
-              </View>
-              <Wave n={28} h={40} active color={t.colors.acc} />
-            </View>
+            <VoiceWorld />
           </View>
-          <Pill full onPress={() => persist({ step: "story" })}>Start with my story</Pill>
+          <FlowButton onPress={() => persist({ step: "story" })}>Start with my story</FlowButton>
           <Text style={{ textAlign: "center", fontSize: 12.5, color: t.colors.ink3 }}>Your first story takes about a minute.</Text>
         </>
       ) : null}
@@ -292,13 +311,13 @@ export function Onboarding({
             <Text style={{ marginTop: 12, fontSize: 16, color: t.colors.ink2 }}>Choose something from your real life.</Text>
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            {STORIES.map((story, index) => <StoryCard key={story} title={story} selected={selectedStory === story} onPress={() => selectStory(story)} tone={["sky", "soft", "soft", "sky", "sky", "soft"][index]} />)}
+            {STORIES.map((story, index) => <StoryCard key={story} title={story} selected={selectedStory === story} onPress={() => selectStory(story)} tone={["sky", "sage", "blush", "sky", "butter", "soft"][index]} />)}
           </View>
           {selectedStory === "Write my own" ? (
             <TextInput value={customStory} onChangeText={setCustomStory} placeholder="Name your story" placeholderTextColor={t.colors.ink3} autoFocus style={[styles.input, { color: t.colors.ink, backgroundColor: t.colors.card, borderColor: t.ring }]} />
           ) : null}
           <View style={{ flex: 1 }} />
-          <Pill full onPress={continueFromStory}>Continue</Pill>
+          <FlowButton onPress={continueFromStory}>Continue</FlowButton>
         </>
       ) : null}
 
@@ -308,12 +327,12 @@ export function Onboarding({
           <View style={{ paddingTop: 20 }}>
             <Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.7, color: t.colors.accD }}>{storyTitleUpper}</Text>
             <Serif style={{ marginTop: 20, fontSize: 38, lineHeight: 42, color: t.colors.ink }}>Start with the{"\n"}messy version.</Serif>
-            <Text style={{ marginTop: 12, fontSize: 16, color: t.colors.ink2 }}>Korean, English, keywords — all fine.</Text>
+            <Text style={{ marginTop: 12, fontSize: 16, color: t.colors.ink2 }}>English words, fragments, keywords — all fine.</Text>
           </View>
           <TextInput
             value={draft.notes}
             onChangeText={(notes) => persist({ notes })}
-            placeholder={"영어 학습 앱을 만들고 있음\nPeople know English but can’t use it\n말문이 막히는 순간을 돕고 싶음"}
+            placeholder={"I’m building an app for English learners\nPeople know English but can’t use it\nI want to help when words don’t come out"}
             placeholderTextColor={t.colors.ink3}
             multiline
             textAlignVertical="top"
@@ -321,7 +340,7 @@ export function Onboarding({
           />
           <Text style={{ fontSize: 13.5, lineHeight: 20, color: t.colors.ink3 }}>Saylo won’t write your answer. It will help you find its shape.</Text>
           <View style={{ flex: 1 }} />
-          <Pill full onPress={shapeStory}>Shape my story</Pill>
+          <FlowButton onPress={shapeStory}>Shape my story</FlowButton>
         </>
       ) : null}
 
@@ -343,7 +362,7 @@ export function Onboarding({
             ))}
           </Card>
           <View style={{ flex: 1 }} />
-          <Pill full onPress={keepBeats}>Looks right</Pill>
+          <FlowButton onPress={keepBeats}>Looks right</FlowButton>
         </>
       ) : null}
 
@@ -361,7 +380,7 @@ export function Onboarding({
           </Block>
           <Card><Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.ink }}>{draft.phraseExample}</Text></Card>
           <View style={{ flex: 1 }} />
-          <Pill full onPress={startTalk}>Try saying it</Pill>
+          <FlowButton onPress={startTalk}>Try saying it</FlowButton>
         </>
       ) : null}
 
@@ -378,23 +397,72 @@ export function Onboarding({
             <Block tone="sky" style={{ marginTop: 16 }}><Serif style={{ fontSize: 29, lineHeight: 34, color: t.colors.ink }}>{draft.phrase}</Serif></Block>
             {draft.transcript ? <Text style={{ marginTop: 15, fontSize: 14, lineHeight: 21, color: t.colors.ink2 }} numberOfLines={4}>{draft.transcript}</Text> : null}
           </Card>
-          {!draft.transcript ? (
-            <Pressable onPress={retryTalk} style={{ alignItems: "center", paddingVertical: 6 }}><Text style={{ fontSize: 14, fontWeight: "700", color: t.colors.accD }}>Speech wasn’t captured — try again</Text></Pressable>
-          ) : null}
+          {!draft.transcript ? <Text style={{ textAlign: "center", paddingVertical: 6, fontSize: 13.5, color: t.colors.ink3 }}>Your voice wasn’t transcribed, but your story is ready to keep.</Text> : null}
           <View style={{ flex: 1 }} />
           <View style={[styles.keepSheet, { backgroundColor: t.colors.card, borderColor: t.ring }]}>
             <Serif style={{ fontSize: 31, textAlign: "center", color: t.colors.ink }}>Keep this story.</Serif>
             <Text style={{ marginTop: 8, marginBottom: 18, textAlign: "center", fontSize: 14, color: t.colors.ink2 }}>{signedIn ? "Add it to your speaking world." : "Save it safely and continue on any device."}</Text>
-            {draft.transcript.trim() ? (
-              <Pill full onPress={finishFlow}>{signedIn ? "Add to my world" : "Sign in to keep it"}</Pill>
+            {signedIn ? (
+              <FlowButton onPress={finishFlow}>Add to my world</FlowButton>
             ) : (
-              <Pill full onPress={retryTalk}>Try speaking again</Pill>
+              <View style={{ gap: 10 }}>
+                {socialProviders === null ? <ActivityIndicator color={t.colors.acc} /> : null}
+                {socialProviders?.apple ? <AuthChoice kind="apple" busy={authBusy === "apple"} disabled={Boolean(authBusy)} onPress={() => void continueWithSocial("apple")} /> : null}
+                {socialProviders?.google ? <AuthChoice kind="google" busy={authBusy === "google"} disabled={Boolean(authBusy)} onPress={() => void continueWithSocial("google")} /> : null}
+                <Pressable accessibilityRole="button" onPress={finishFlow} disabled={Boolean(authBusy)} style={{ minHeight: 42, alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Use email instead</Text>
+                </Pressable>
+                {authError ? <Text style={{ fontSize: 12.5, lineHeight: 17, textAlign: "center", color: "#c74444" }}>{authError}</Text> : null}
+              </View>
             )}
-            {!signedIn ? <Text style={{ marginTop: 11, textAlign: "center", fontSize: 12.5, color: t.colors.ink3 }}>Use your Saylo email account</Text> : null}
           </View>
         </>
       ) : null}
     </Screen>
+  );
+}
+
+function VoiceWorld() {
+  const t = useTheme();
+  return (
+    <View style={styles.voiceWorldFrame}>
+      <View style={[styles.voiceWorld, { backgroundColor: t.colors.accS }]}>
+        <View style={[styles.worldOrbitWide, { borderColor: "rgba(64,112,226,0.18)" }]} />
+        <View style={[styles.worldOrbitTall, { borderColor: "rgba(64,112,226,0.16)" }]} />
+        <View style={styles.worldWave}><Wave n={24} h={38} active color={t.colors.acc} /></View>
+        <View style={[styles.worldMic, { backgroundColor: t.colors.acc }]}><Icon name="mic" s={31} w={2} c="#fff" /></View>
+        <View style={[styles.worldDot, { left: 25, top: 42, backgroundColor: t.colors.acc }]} />
+        <View style={[styles.worldDot, { right: 30, bottom: 38, backgroundColor: t.colors.acc }]} />
+      </View>
+    </View>
+  );
+}
+
+function FlowButton({ children, onPress }: { children: string; onPress: () => void }) {
+  return <Pill onPress={onPress} style={styles.flowButton}>{children}</Pill>;
+}
+
+function AuthChoice({ kind, busy, disabled, onPress }: { kind: "apple" | "google"; busy: boolean; disabled: boolean; onPress: () => void }) {
+  const t = useTheme();
+  const apple = kind === "apple";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Continue with ${apple ? "Apple" : "Google"}`}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.authChoice,
+        {
+          backgroundColor: apple ? "#111113" : t.colors.card,
+          borderColor: apple ? "#111113" : t.colors.ink3,
+          opacity: disabled && !busy ? 0.5 : pressed ? 0.86 : 1,
+        },
+      ]}
+    >
+      {busy ? <ActivityIndicator color={apple ? "#fff" : t.colors.ink} /> : <Text style={[styles.authMark, { color: apple ? "#fff" : "#4285F4" }]}>{apple ? "" : "G"}</Text>}
+      <Text style={{ fontSize: 15.5, fontWeight: "700", color: apple ? "#fff" : t.colors.ink }}>Continue with {apple ? "Apple" : "Google"}</Text>
+    </Pressable>
   );
 }
 
@@ -405,4 +473,14 @@ const styles = StyleSheet.create({
   talkSideButton: { width: 66, alignItems: "center", gap: 7 },
   talkSideLabel: { color: "#fff", fontSize: 12, fontWeight: "600" },
   keepSheet: { borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, padding: 20 },
+  flowButton: { width: "100%", flex: 0, height: 56 },
+  authChoice: { width: "100%", minHeight: 52, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 18 },
+  authMark: { width: 20, textAlign: "center", fontSize: 21, fontWeight: "800" },
+  voiceWorldFrame: { height: 230, marginTop: 28, alignItems: "center", justifyContent: "center" },
+  voiceWorld: { width: 190, height: 190, borderRadius: 95, overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  worldOrbitWide: { position: "absolute", left: -16, right: -16, top: 57, height: 76, borderRadius: 80, borderWidth: 1.5, transform: [{ rotate: "-12deg" }] },
+  worldOrbitTall: { position: "absolute", top: -20, bottom: -20, left: 54, width: 82, borderRadius: 80, borderWidth: 1.5, transform: [{ rotate: "18deg" }] },
+  worldWave: { position: "absolute", left: 12, right: 12, alignItems: "center" },
+  worldMic: { width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center", zIndex: 2 },
+  worldDot: { position: "absolute", width: 7, height: 7, borderRadius: 4, opacity: 0.7 },
 });
