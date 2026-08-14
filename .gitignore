@@ -25,6 +25,7 @@ web/.env.local
 # Debug
 debug_*.json
 .vercel
+supabase/.temp/
 
 # Docs (local only)
 ARCHITECTURE.md
