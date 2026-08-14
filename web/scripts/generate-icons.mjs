@@ -12,21 +12,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, "..", "public", "icons");
 mkdirSync(OUT_DIR, { recursive: true });
 
-const BG = "#fbf9f4";      // warm cream
-const ACCENT = "#3B6EE1";  // cobalt
-const TEXT_DIM = "#7c6f5f";
+const BG = "#111A3D";      // Midnight
+const ACCENT = "#F47F68";  // voice action Apricot
+const TEXT_DIM = "#F7F3EA"; // Ivory
 
 // Build an SVG sized to `size` pixels. Maskable: keep the mark inside the safe
 // inner circle (≈ 80% of the canvas) so Android adaptive cropping doesn't
-// chop the "S+".
+// chop the Saylo mark.
 function svgTemplate(size, { rounded = true } = {}) {
   const radius = rounded ? size * 0.22 : 0;
-  const sFontSize = size * 0.6;
+  const sFontSize = size * 0.64;
   const sX = size * 0.5;
   const sY = size * 0.5 + sFontSize * 0.34;
-  const plusSize = size * 0.22;
-  const plusX = sX + sFontSize * 0.26;
-  const plusY = sY - sFontSize * 0.45;
+  const dotSize = size * 0.085;
+  const dotX = sX + sFontSize * 0.30;
+  const dotY = sY - sFontSize * 0.06;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <rect x="0" y="0" width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="${BG}"/>
   <text x="${sX}" y="${sY}"
@@ -34,13 +34,8 @@ function svgTemplate(size, { rounded = true } = {}) {
         font-size="${sFontSize}"
         font-style="italic"
         text-anchor="middle"
-        fill="${TEXT_DIM}">S</text>
-  <text x="${plusX}" y="${plusY}"
-        font-family="ui-sans-serif, system-ui, sans-serif"
-        font-size="${plusSize}"
-        font-weight="600"
-        text-anchor="start"
-        fill="${ACCENT}">+</text>
+        fill="${TEXT_DIM}">s</text>
+  <circle cx="${dotX}" cy="${dotY}" r="${dotSize / 2}" fill="${ACCENT}"/>
 </svg>`;
 }
 

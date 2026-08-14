@@ -1,556 +1,298 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { ProductDemo } from "@/components/landing/ProductDemo";
+import { WaitlistForm } from "@/components/landing/WaitlistForm";
 import "./landing.css";
 
-// Public marketing landing (route: /). Ported from the Claude Design
-// landing.html. The authenticated app lives at /app (see app/app/page.tsx);
-// the proxy gates /app, so logged-out users who click through land on /login.
-// CTAs adapt: signed-in visitors get "Open app", everyone else "Sign in".
+const situations = [
+  {
+    number: "01",
+    title: "When someone asks what you do",
+    copy: "Turn a half-formed answer into an introduction that sounds like you.",
+    example: "My work, in 30 seconds",
+  },
+  {
+    number: "02",
+    title: "When the room is listening",
+    copy: "Shape a project update or pitch around the people who need to understand it.",
+    example: "My startup, for a first meeting",
+  },
+  {
+    number: "03",
+    title: "When you want to connect",
+    copy: "Prepare the stories you want to tell before the meetup, interview, or dinner.",
+    example: "Why I moved abroad",
+  },
+];
 
-const APP = "/app";
-const LOGIN = "/login";
-const ISLAND = "/app/island";
-
-// Deterministic waveform bars for the practice mock (peak near the middle).
-const WAVE = Array.from({ length: 44 }, (_, i) => {
-  const dist = Math.abs(i - 16);
-  const env = Math.max(0.35, 1 - dist / 18);
-  const h = Math.round((5 + ((i * 37) % 17)) * env);
-  return { h, on: i <= 16 };
-});
-
-function ThemeIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-      <circle cx="10" cy="10" r="4" />
-      <path d="M10 1.5v2M10 16.5v2M18.5 10h-2M3.5 10h-2M15.8 4.2l-1.4 1.4M5.6 14.4l-1.4 1.4M15.8 15.8l-1.4-1.4M5.6 5.6L4.2 4.2" />
-    </svg>
-  );
-}
-function PlaySquare() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="2" y="3" width="12" height="10" rx="2" />
-      <path d="M6.5 6l3 2-3 2z" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-function Check() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M3 8.5l3 3 7-8" />
-    </svg>
-  );
-}
+const trustItems = [
+  ["No video recording", "Mirror mode uses your screen as a mirror. It saves audio, not video."],
+  ["Private by default", "Your drafts, recordings, and Speaking World belong to your account."],
+  ["Sharing takes consent", "Community feedback will never publish a practice session automatically."],
+  ["Delete when you want", "Remove individual recordings or request full account deletion."],
+];
 
 export default function LandingPage() {
-  const [authed, setAuthed] = useState(false);
-
-  // Apply the saved landing theme on mount (separate from the app's theme).
-  // Managed via the DOM directly, not React state, so no re-render is needed.
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("sp-landing-theme");
-      if (saved === "dark" || saved === "light") {
-        document.documentElement.dataset.theme = saved;
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setAuthed(!!data.user));
-  }, []);
-
-  // Scroll-reveal.
-  useEffect(() => {
-    const els = document.querySelectorAll(".landing .rv");
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            e.target.classList.add("in");
-            io.unobserve(e.target);
-          }
-        });
-      },
-      { threshold: 0.12 },
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, []);
-
-  function toggleTheme() {
-    const next =
-      document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem("sp-landing-theme", next);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const primaryHref = authed ? APP : LOGIN;
-  const primaryLabel = authed ? "Open app" : "Start free";
-  // Language Island lives behind auth (/app/island); logged-out visitors sign in first.
-  const islandHref = authed ? ISLAND : LOGIN;
-
   return (
-    <div className="landing">
-      {/* NAV */}
-      <nav className="nav">
-        <div className="nav-inner">
-          <a href="#top" className="brand">
-            Shadowing<span className="plus">+</span>
+    <main className="landing" id="top">
+      <nav className="landing-nav" aria-label="Main navigation">
+        <div className="nav-shell">
+          <a className="wordmark" href="#top" aria-label="Saylo home">
+            <span className="wordmark-loop" aria-hidden="true">s</span>
+            <span>Saylo<span className="wordmark-plus">.</span></span>
           </a>
           <div className="nav-links">
-            <a href="#features">Features</a>
             <a href="#how">How it works</a>
-            <a href="#island">Language Island</a>
-            <Link href={APP}>Library</Link>
+            <a href="#mirror">Mirror mode</a>
+            <a href="#community">Community</a>
           </div>
-          <div className="nav-right">
-            <button className="theme-btn" onClick={toggleTheme} aria-label="Toggle theme">
-              <ThemeIcon />
-            </button>
-            {authed ? (
-              <Link href={APP} className="btn primary sm">Open app</Link>
-            ) : (
-              <>
-                <Link href={LOGIN} className="btn sm">Sign in</Link>
-                <Link href={LOGIN} className="btn primary sm">Start free</Link>
-              </>
-            )}
-          </div>
+          <a className="button button-small" href="#waitlist">Join the waitlist</a>
         </div>
       </nav>
 
-      {/* HERO */}
-      <header className="hero" id="top">
-        <div className="wrap">
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span className="kicker"><span className="bar" />Shadowing, anytime</span>
-            <span className="beta-tag">Beta</span>
-          </div>
-          <h1 className="serif">
-            Shadow it.<br />
-            <span className="em">Until you own it.</span>
-            <span className="pm">+</span>
-          </h1>
-          <p className="lede">
-            Turn any video into a sentence-by-sentence shadowing drill. Loop a line,
-            hide the subtitle, and bring back only the ones that didn&rsquo;t quite
-            click — <em>every day.</em>
-          </p>
-          <div className="hero-cta">
-            <Link href={primaryHref} className="btn primary lg">{primaryLabel}</Link>
-            <a href="#how" className="btn lg">See how it works</a>
-          </div>
-          <p className="hero-note">Free forever for solo practice · No card required</p>
-
-          {/* product shot: library */}
-          <div className="frame hero-frame rv">
-            <div className="frame-chrome">
-              <div className="frame-dots"><span /><span /><span /></div>
-              <div className="frame-crumb"><b>Library</b><span className="sep">›</span><span className="cur">All clips</span></div>
+      <header className="hero">
+        <div className="hero-shell">
+          <div className="hero-copy">
+            <p className="eyebrow"><span />Private beta opening soon</p>
+            <h1>Have the words ready when the moment comes.</h1>
+            <p className="hero-lede">
+              Build the English you actually need for your life. Shape a clearer
+              introduction, a persuasive pitch, or a story worth sharing, then
+              practise it until it feels like yours.
+            </p>
+            <div className="hero-actions">
+              <a className="button button-large" href="#waitlist">Join the waitlist</a>
+              <a className="text-link" href="#how">See how it works <span aria-hidden="true">↓</span></a>
             </div>
-            <div className="appmock">
-              <aside className="am-side">
-                <div className="am-search">
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5" /><path d="M11 11l3 3" /></svg>
-                  Search clips
-                </div>
-                <div className="am-navsec">
-                  <div className="am-navhead">Library</div>
-                  <div className="am-nav active"><PlaySquare />All clips<span className="ct">8</span></div>
-                  <div className="am-nav">
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2l1.8 3.7 4.1.6-3 2.9.7 4.1L8 11.9 4.4 13.3l.7-4.1-3-2.9 4.1-.6z" /></svg>
-                    Bookmarks<span className="ct">24</span>
-                  </div>
-                </div>
-                <div className="am-navsec">
-                  <div className="am-navhead">Folders</div>
-                  <div className="am-nav" style={{ color: "var(--accent)" }}><span className="d" />Favorites<span className="ct">4</span></div>
-                  <div className="am-nav" style={{ color: "oklch(0.58 0.16 258)" }}><span className="d" />The Newsroom<span className="ct">7</span></div>
-                  <div className="am-nav" style={{ color: "oklch(0.65 0.13 75)" }}><span className="d" />Friends · S1–S3<span className="ct">12</span></div>
-                  <div className="am-nav" style={{ color: "var(--moss)" }}><span className="d" />TED Talks<span className="ct">5</span></div>
-                </div>
-              </aside>
-              <div className="am-main">
-                <div className="am-h">All clips</div>
-                <div className="am-hsub">Everything in your library, newest first.</div>
-                <div className="am-list">
-                  <div className="am-item">
-                    <span className="am-thumb"><PlaySquare /></span>
-                    <div className="am-tbody"><div className="am-ttl">The Newsroom — America is not the greatest country…</div><div className="am-tmeta"><span className="d" style={{ background: "oklch(0.58 0.16 258)" }} />The Newsroom</div></div>
-                    <span className="pill focus"><span className="dot" />Focusing</span>
-                    <span className="am-dur">4:48</span>
-                  </div>
-                  <div className="am-item">
-                    <span className="am-thumb"><PlaySquare /></span>
-                    <div className="am-tbody"><div className="am-ttl">Phoebe Becomes Chandler&rsquo;s Secretary | Friends</div><div className="am-tmeta"><span className="d" style={{ background: "oklch(0.65 0.13 75)" }} />Friends · S1–S3</div></div>
-                    <span className="pill done"><Check />Done</span>
-                    <span className="am-dur">5:08</span>
-                  </div>
-                  <div className="am-item">
-                    <span className="am-thumb"><PlaySquare /></span>
-                    <div className="am-tbody"><div className="am-ttl">Steve Jobs — Stanford Commencement Address</div><div className="am-tmeta"><span className="d" style={{ background: "var(--moss)" }} />TED Talks</div></div>
-                    <span className="pill focus"><span className="dot" />Focusing</span>
-                    <span className="am-dur">15:04</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <p className="hero-fine">Built for international professionals, founders, and people making a life in a new language.</p>
           </div>
+          <ProductDemo />
+        </div>
+        <div className="moment-row" aria-label="Common speaking moments">
+          <span>First introductions</span>
+          <span>Meetups</span>
+          <span>Job interviews</span>
+          <span>Startup pitches</span>
+          <span>Everyday stories</span>
         </div>
       </header>
 
-      {/* SOCIAL PROOF */}
-      <div className="proof">
-        <div className="wrap">
-          <p className="proof-label">Practice from the shows, talks and clips you already love</p>
-          <div className="proof-row">
-            <span className="src-chip"><span className="g" style={{ background: "oklch(0.58 0.16 258)" }} />The Newsroom</span>
-            <span className="src-chip"><span className="g" style={{ background: "oklch(0.65 0.13 75)" }} />Friends</span>
-            <span className="src-chip"><span className="g" style={{ background: "var(--moss)" }} />TED Talks</span>
-            <span className="src-chip"><span className="g" style={{ background: "var(--accent)" }} />Interviews</span>
-            <span className="src-chip"><span className="g" style={{ background: "oklch(0.58 0.18 290)" }} />Podcasts</span>
-            <span className="src-chip"><span className="g" style={{ background: "oklch(0.55 0.14 20)" }} />Films</span>
-          </div>
+      <section className="problem-section">
+        <div className="narrow intro-block">
+          <p className="section-kicker">The real problem</p>
+          <h2>You may know the English. You still need to find <em>your</em> words.</h2>
+          <p>
+            Generic lessons cannot prepare the story only you can tell. Saylo
+            starts with the moments already waiting in your calendar and your life.
+          </p>
         </div>
-      </div>
-
-      {/* HOW IT WORKS */}
-      <section className="sec" id="how">
-        <div className="wrap">
-          <div className="sec-head center rv">
-            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />How it works</span>
-            <h2 className="serif">From a clip to fluent, one line at a time</h2>
-            <p>No editing, no timelines. Drop a source and Shadowing+ breaks it into loopable sentences you can drill until they&rsquo;re yours.</p>
-          </div>
-
-          <div className="feat-row rv">
-            <div className="feat-copy">
-              <span className="kicker"><span className="bar" />Step 01 — Capture</span>
-              <h3>Any video, one drop</h3>
-              <p>Drop in a video or audio file. Shadowing+ transcribes it, aligns the subtitles, and adds a translation, so a raw clip becomes a structured drill in seconds.</p>
-              <div className="feat-tags">
-                <span className="feat-tag">Video &amp; audio files</span>
-                <span className="feat-tag">Auto-aligned subtitles</span>
-                <span className="feat-tag">Instant translation</span>
+        <div className="wide situation-grid">
+          {situations.map((item) => (
+            <article className="situation-card" key={item.number}>
+              <p className="card-number">{item.number}</p>
+              <h3>{item.title}</h3>
+              <p>{item.copy}</p>
+              <div className="example-row">
+                <span className="topic-dot" aria-hidden="true" />
+                <span>{item.example}</span>
               </div>
-            </div>
-            <div className="feat-visual">
-              <div className="frame">
-                <div className="frame-chrome">
-                  <div className="frame-dots"><span /><span /><span /></div>
-                  <div className="frame-crumb"><span className="cur">New clip</span></div>
-                </div>
-                <div style={{ padding: "34px 30px", display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div style={{ border: "1.25px dashed var(--hairline)", borderRadius: "var(--radius-lg)", background: "var(--bg-elev)", padding: "34px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }}>
-                    <span style={{ width: 52, height: 52, borderRadius: 15, background: "var(--accent-soft)", color: "var(--accent-text)", display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid oklch(from var(--accent) 0.9 0.04 h)" }}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M8 8l4-4 4 4" /><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" /></svg>
-                    </span>
-                    <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text)" }}>Drop a video or audio file</div>
-                    <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>MP4 · MOV · MP3 · WAV</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", border: "1px solid var(--hairline)", borderRadius: "var(--radius)", background: "var(--surface)" }}>
-                    <span style={{ width: 26, height: 26, borderRadius: 7, background: "var(--accent-soft)", color: "var(--accent-text)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2.5v11l9-5.5z" /></svg>
-                    </span>
-                    <span className="mono" style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>nigel-pep-talk.mp4</span>
-                    <span className="pill focus"><span className="dot" />Aligning</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="feat-row flip rv">
-            <div className="feat-copy">
-              <span className="kicker"><span className="bar" />Step 02 — Drill</span>
-              <h3>Sentence-level A–B loop</h3>
-              <p>Slow any line to 0.5×–1.5× and loop it until the rhythm sticks. Hide the translation and peek only when you actually need it — just ears and mouth.</p>
-              <div className="feat-tags">
-                <span className="feat-tag">0.5×–1.5× speed</span>
-                <span className="feat-tag">A–B loop</span>
-                <span className="feat-tag">Hide subtitle</span>
-                <span className="feat-tag">Shadow line</span>
-              </div>
-            </div>
-            <div className="feat-visual">
-              <div className="frame">
-                <div className="frame-chrome">
-                  <div className="frame-dots"><span /><span /><span /></div>
-                  <div className="frame-crumb"><b>The Devil Wears Prada</b><span className="sep">›</span><span className="cur">Practice</span></div>
-                </div>
-                <div className="pmock">
-                  <span className="pm-src"><span className="t"><svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5L8 5L2 8.5z" /></svg></span><b>Nigel&rsquo;s pep talk</b><span className="tm">1:18</span></span>
-                  <p className="pm-en">You are not <span className="hl">trying</span>. You are whining.</p>
-                  <p className="pm-ko">넌 노력하는 게 아니야. 그냥 징징대는 거지.</p>
-                  <span className="pm-note"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M7 1v2M7 11v2M1 7h2M11 7h2" /><circle cx="7" cy="7" r="2.5" /></svg>Watch the cadence on &ldquo;whining&rdquo;</span>
-                  <div className="pm-player">
-                    <button className="pm-play" aria-label="Pause"><svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor"><rect x="3" y="2.5" width="2" height="7" rx=".5" /><rect x="7" y="2.5" width="2" height="7" rx=".5" /></svg></button>
-                    <span className="pm-time">0:47</span>
-                    <div className="pm-wave">
-                      {WAVE.map((w, i) => (
-                        <span key={i} className={w.on ? "on" : undefined} style={{ height: w.h }} />
-                      ))}
-                    </div>
-                    <span className="pm-time" style={{ textAlign: "right" }}>0:55</span>
-                    <span className="pm-speed">0.85×</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="feat-row rv">
-            <div className="feat-copy">
-              <span className="kicker"><span className="bar" />Step 03 — Retain</span>
-              <h3>Bookmarks become flashcards</h3>
-              <p>The awkward lines come back tomorrow. Rate each one <em>Again · Good · Easy</em> and Shadowing+ schedules the next review — spaced repetition, built right into practice.</p>
-              <div className="feat-tags">
-                <span className="feat-tag">Spaced repetition</span>
-                <span className="feat-tag">Daily review queue</span>
-                <span className="feat-tag">Progress tracking</span>
-              </div>
-            </div>
-            <div className="feat-visual">
-              <div className="frame">
-                <div className="frame-chrome">
-                  <div className="frame-dots"><span /><span /><span /></div>
-                  <div className="frame-crumb"><b>Bookmarks</b><span className="sep">›</span><span className="cur">Practice all · 3/24</span></div>
-                </div>
-                <div className="pmock">
-                  <span className="pm-src"><span className="t"><svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5L8 5L2 8.5z" /></svg></span><b>TED · Brené Brown</b><span className="tm">6:02</span></span>
-                  <p className="pm-en">Vulnerability is the <span className="hl">birthplace</span> of innovation.</p>
-                  <p className="pm-ko">취약성은 혁신이 태어나는 곳입니다.</p>
-                  <div className="pm-srs">
-                    <div className="pm-btn again"><span className="l">Again</span><span className="s">&lt; 1 min</span></div>
-                    <div className="pm-btn good"><span className="l">Good</span><span className="s">2 days</span></div>
-                    <div className="pm-btn easy"><span className="l">Easy</span><span className="s">1 week</span></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+            </article>
+          ))}
         </div>
       </section>
 
-      {/* FEATURE GRID */}
-      <section className="sec" id="features" style={{ background: "var(--bg-elev)", borderBlock: "1px solid var(--hairline-soft)" }}>
-        <div className="wrap">
-          <div className="sec-head center rv">
-            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />Built for practice</span>
-            <h2 className="serif">Everything a serious shadower needs</h2>
-            <p>Small, sharp tools that stay out of your way — so you can spend your time speaking, not fiddling.</p>
-          </div>
-          <div className="grid">
-            <div className="card rv">
-              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h13a4 4 0 010 8H8" /><path d="M8 5L4 8l4 3" /></svg></span>
-              <h4>Precise A–B loop</h4>
-              <p>Set in and out points to the exact word and repeat a phrase as many times as it takes.</p>
+      <section className="how-section" id="how">
+        <div className="wide">
+          <div className="section-heading split-heading">
+            <div>
+              <p className="section-kicker">Your Speaking World</p>
+              <h2>Start with your life, not a curriculum.</h2>
             </div>
-            <div className="card rv">
-              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></span>
-              <h4>Speed without pitch shift</h4>
-              <p>Slow a fast talker to 0.5× and the voice still sounds natural — no chipmunk artifacts.</p>
-            </div>
-            <div className="card rv">
-              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12c2.5-5 6-7.5 9-7.5S18.5 7 21 12c-2.5 5-6 7.5-9 7.5S5.5 17 3 12z" /><circle cx="12" cy="12" r="2.5" /></svg></span>
-              <h4>Shadow line</h4>
-              <p>Strip everything but the current sentence. No timeline, no folders — just the line in front of you.</p>
-            </div>
-            <div className="card rv">
-              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l2.5 5.5 6 .5-4.5 4 1.4 6L12 15.8 6.6 19l1.4-6-4.5-4 6-.5z" /></svg></span>
-              <h4>One-tap bookmarks</h4>
-              <p>Star a line mid-play and it lands in your daily review queue automatically.</p>
-            </div>
-            <div className="card rv">
-              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /></svg></span>
-              <h4>Folders &amp; status</h4>
-              <p>Group clips by show or theme and mark each as <em>Focusing</em> or <em>Done</em> at a glance.</p>
-            </div>
-            <div className="card rv">
-              <span className="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a9 9 0 000 18 5 5 0 010-10 4 4 0 004-4c0-2.2-1.8-4-4-4z" /></svg></span>
-              <h4>Light &amp; dark, your fonts</h4>
-              <p>Warm light or focused dark, with type and density tuned to how you like to read.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* LANGUAGE ISLAND */}
-      <section className="sec island-sec" id="island">
-        <div className="wrap">
-          <div className="sec-head center rv">
-            <span className="kicker" style={{ justifyContent: "center" }}>
-              <span className="bar" />Language Island
-              <span className="beta-tag">New</span>
-            </span>
-            <h2 className="serif">Collecting English is easy.<br />Saying it is the hard part.</h2>
             <p>
-              Shadowing trains your ear. Language Island trains the moment you actually have to
-              speak — an interview, a meeting, a first hello. Bring a rough version of what you
-              want to say, and leave with a message you can own.
+              Each topic becomes a living piece of your voice. Make a version for
+              the audience, purpose, and time you have, then improve it through real practice.
             </p>
           </div>
 
-          <div className="feat-row rv" style={{ marginTop: 64 }}>
-            <div className="feat-copy">
-              <span className="kicker"><span className="bar" />The speak loop</span>
-              <h3>One try, one gap, one fix —<br />then say it again.</h3>
-              <p>
-                No report card of every mistake. You say your message once, Language Island names
-                the single thing that got in the way, and you repair just that — often by reaching
-                for a phrase you already saved. Then you say it again. The win is quiet: a phrase
-                that comes back on its own.
-              </p>
-              <div className="feat-tags">
-                <span className="feat-tag">Say it → one gap → repair → again</span>
-                <span className="feat-tag">Retrieval, not memorization</span>
-                <span className="feat-tag">Honest evidence — no streaks</span>
-                <span className="feat-tag">Your saved phrases, coming back</span>
+          <div className="world-flow" aria-label="How Saylo works">
+            <article className="flow-card flow-card-world">
+              <div className="flow-index">01</div>
+              <div className="mini-world" aria-hidden="true">
+                <span className="world-center">You</span>
+                <span className="world-node node-work">Work</span>
+                <span className="world-node node-story">Stories</span>
+                <span className="world-node node-ideas">Ideas</span>
+                <span className="world-node node-life">Life</span>
               </div>
-              <div className="isl-venn">
-                <svg viewBox="0 0 132 92" aria-hidden="true">
-                  <circle cx="66" cy="46" r="40" fill="oklch(0.72 0.008 70 / .16)" stroke="var(--text-4)" strokeWidth="1" />
-                  <circle cx="66" cy="55" r="20" fill="oklch(from var(--accent) l c h / .16)" stroke="var(--accent)" strokeWidth="1" />
-                  <text x="66" y="17" textAnchor="middle" fontSize="7.5" fontFamily="var(--lp-font-mono)" fill="var(--text-3)">PASSIVE</text>
-                  <text x="66" y="54" textAnchor="middle" fontSize="7.5" fontFamily="var(--lp-font-mono)" fill="var(--accent-text)">ACTIVE</text>
-                  <text x="66" y="63" textAnchor="middle" fontSize="6.5" fontFamily="var(--lp-font-mono)" fill="var(--accent-text)" opacity="0.75">= READY</text>
-                </svg>
-                <span className="isl-venn-cap">
-                  <b>Passive</b> is the English you recognize. <b>Active</b> is the part inside it you
-                  can actually reach for — <span className="moss">that&rsquo;s what&rsquo;s ready</span>,
-                  and what this island grows.
-                </span>
+              <div className="flow-copy">
+                <h3>Choose what matters now.</h3>
+                <p>Add a topic such as your startup, your research, or the story of moving abroad.</p>
               </div>
-            </div>
-            <div className="feat-visual">
-              <div className="frame">
-                <div className="frame-chrome">
-                  <div className="frame-dots"><span /><span /><span /></div>
-                  <div className="frame-crumb"><b>Explain what I do</b><span className="sep">›</span><span className="cur">Practice</span></div>
+            </article>
+
+            <article className="flow-card flow-card-message">
+              <div className="flow-index">02</div>
+              <div className="message-builder" aria-hidden="true">
+                <div className="builder-head"><span>My startup</span><b>3 messages</b></div>
+                <div className="message-row active"><span>30-second intro</span><small>Meetup</small></div>
+                <div className="message-row"><span>Why now?</span><small>Investor</small></div>
+                <div className="message-row"><span>What I learned</span><small>Friend</small></div>
+              </div>
+              <div className="flow-copy">
+                <h3>Shape it for the room.</h3>
+                <p>Make a short intro, a persuasive pitch, or a relaxed version for a new friend.</p>
+              </div>
+            </article>
+
+            <article className="flow-card flow-card-practice">
+              <div className="flow-index">03</div>
+              <div className="practice-strip" aria-hidden="true">
+                <div className="wave-bars">
+                  {[14, 23, 34, 18, 40, 50, 29, 56, 42, 64, 32, 47, 25, 37, 19, 28].map((height, index) => (
+                    <i key={index} style={{ height }} />
+                  ))}
                 </div>
-                <div className="isl-mock">
-                  <span className="isl-eyebrow">One gap</span>
-                  <div className="isl-chips">
-                    <span className="isl-chip on">retrieval</span>
-                    <span className="isl-chip">new language</span>
-                    <span className="isl-chip">meaning</span>
-                    <span className="isl-chip">pressure</span>
-                  </div>
-                  <p className="isl-gap-h">Retrieval gap</p>
-                  <p className="isl-quote">
-                    You stalled around <q>&ldquo;my app is, um, different — it makes you use it.&rdquo;</q> You
-                    already saved a phrase for exactly this.
-                  </p>
-                  <div className="isl-bank">
-                    <span className="isl-bank-lbl">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5v14M9 5v14M14 6l4 13" /><rect x="2" y="5" width="2" height="14" /></svg>
-                      From your Phrase Bank
-                    </span>
-                    <p className="isl-bank-phrase">&ldquo;actually use what you already saved&rdquo;</p>
-                  </div>
-                  <div className="isl-ev">
-                    <span className="isl-ev-btn">Not yet</span>
-                    <span className="isl-ev-btn">I recognized it</span>
-                    <span className="isl-ev-btn">It came back</span>
-                    <span className="isl-ev-btn used"><Check /> Used</span>
-                  </div>
+                <div className="practice-meta"><span>02:14</span><b>Saved to My startup</b></div>
+              </div>
+              <div className="flow-copy">
+                <h3>Say it, listen, return.</h3>
+                <p>Your sessions become a private voice archive, so progress sounds real instead of looking like a score.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="mirror-section" id="mirror">
+        <div className="wide mirror-grid">
+          <div className="mirror-visual">
+            <div className="mirror-glow" />
+            <div className="mirror-phone" aria-label="Mirror mode product preview">
+              <div className="phone-sensor" />
+              <div className="mirror-screen">
+                <div className="mirror-top"><span>9:41</span><span>Mirror mode</span><span>•••</span></div>
+                <div className="reflection-outline" aria-hidden="true">
+                  <span className="head" /><span className="body" />
                 </div>
+                <div className="mirror-prompt">
+                  <p>My startup · 30-second intro</p>
+                  <strong>“What we are building is a calmer way to…”</strong>
+                </div>
+                <div className="record-control"><span /><b>01:18</b><small>Recording audio</small></div>
               </div>
             </div>
+            <div className="privacy-pill pill-left"><span>●</span> Video is not recorded</div>
+            <div className="privacy-pill pill-right"><span>⌁</span> Audio saved privately</div>
           </div>
-
-          <div className="hero-cta" style={{ justifyContent: "center", marginTop: 56 }}>
-            <Link href={islandHref} className="btn primary lg">Try Language Island</Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ASPIRATION — the reader's own line, not a fake testimonial */}
-      <section className="quote">
-        <div className="wrap rv">
-          <blockquote>&ldquo;I stopped just <span className="em">watching</span> English and started <span className="em">saying</span> it. Three lines a day, and after a month my accent finally moved.&rdquo;</blockquote>
-        </div>
-      </section>
-
-      {/* PRICING */}
-      <section className="sec" id="pricing" style={{ background: "var(--bg-elev)", borderBlock: "1px solid var(--hairline-soft)" }}>
-        <div className="wrap">
-          <div className="sec-head center rv">
-            <span className="kicker" style={{ justifyContent: "center" }}><span className="bar" />Open beta</span>
-            <h2 className="serif">Free while in beta</h2>
-            <p>Shadowing+ is in open beta, so every feature is free while it&rsquo;s being built out. No plans, no card — just practice. Paid tiers may come later.</p>
-            <div className="hero-cta" style={{ justifyContent: "center", marginTop: 24 }}>
-              <Link href={primaryHref} className="btn primary lg">{primaryLabel}</Link>
-              <a href="#how" className="btn lg">See how it works</a>
-            </div>
-            <p className="hero-note">No card required</p>
+          <div className="mirror-copy">
+            <p className="section-kicker">Mirror mode</p>
+            <h2>Watch yourself speak. Keep only the voice.</h2>
+            <p className="mirror-lede">
+              A mirror is still one of the best ways to practise presence. See your
+              expression and posture in real time without turning the session into a video performance.
+            </p>
+            <ul className="plain-list">
+              <li><span>01</span><div><b>Nothing to perform for</b><p>The live camera view is not recorded or saved as video.</p></div></li>
+              <li><span>02</span><div><b>A useful record remains</b><p>Your audio joins the topic it belongs to.</p></div></li>
+              <li><span>03</span><div><b>Progress you can hear</b><p>Return to older versions and notice what became clearer.</p></div></li>
+            </ul>
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="cta">
-        <div className="wrap">
-          <div className="cta-card rv">
-            <div className="in">
-              <h2 className="serif">Say it out loud.<br /><span className="em">Starting today.+</span></h2>
-              <p>Drop your first clip and shadow three lines before your coffee&rsquo;s cold. Free forever for solo practice.</p>
-              <div className="hero-cta">
-                <Link href={primaryHref} className="btn primary lg">{primaryLabel}</Link>
-                <a href="#how" className="btn lg">See how it works</a>
-              </div>
+      <section className="archive-section">
+        <div className="wide archive-grid">
+          <div className="archive-copy">
+            <p className="section-kicker">A private voice archive</p>
+            <h2>Your stories get better because they stay connected.</h2>
+            <p>
+              Useful phrases are captured inside the story where you needed them.
+              The next time you practise, the right language is already waiting.
+            </p>
+            <div className="phrase-note">
+              <span>Useful language</span>
+              <q>What I&apos;m trying to do is make the first step feel obvious.</q>
+              <small>Captured from “My startup” · Aug 12</small>
             </div>
+          </div>
+          <div className="archive-card">
+            <div className="archive-head"><div><small>TOPIC</small><h3>My startup</h3></div><span>5 sessions</span></div>
+            <div className="timeline">
+              <div className="timeline-row"><time>Today</time><div><b>Meetup intro</b><p>Clearer opening, 00:42</p></div><span className="play-dot">▶</span></div>
+              <div className="timeline-row"><time>Aug 12</time><div><b>30-second version</b><p>New phrase captured, 00:51</p></div><span className="play-dot">▶</span></div>
+              <div className="timeline-row muted"><time>Aug 07</time><div><b>First draft</b><p>Private archive, 01:34</p></div><span className="play-dot">▶</span></div>
+            </div>
+            <div className="growth-line"><span /><p><b>Your message is 24 seconds shorter.</b><br />The main idea now arrives in the first sentence.</p></div>
           </div>
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer>
-        <div className="wrap">
-          <div className="foot-grid">
-            <div className="foot-brand">
-              <span className="brand">Shadowing<span className="plus">+</span></span>
-              <p>Shadow any video until you own it. A calmer way to practice the language you&rsquo;re actually watching.</p>
-            </div>
-            <div className="foot-col">
-              <h5>Product</h5>
-              <a href="#features">Features</a>
-              <a href="#how">How it works</a>
-              <a href="#island">Language Island</a>
-              <Link href={APP}>Library</Link>
-            </div>
-            <div className="foot-col">
-              <h5>Resources</h5>
-              <a href="#">Shadowing guide</a>
-              <a href="#">Blog</a>
-              <a href="#">Changelog</a>
-              <a href="#">Help center</a>
-            </div>
-            <div className="foot-col">
-              <h5>Company</h5>
-              <a href="#">About</a>
-              <a href="#">Contact</a>
-              <Link href="/privacy">Privacy</Link>
-              <Link href="/terms">Terms</Link>
+      <section className="community-section" id="community">
+        <div className="wide community-card">
+          <div className="community-copy">
+            <p className="section-kicker light">Exploring after private beta</p>
+            <h2>Practice can become a generous exchange.</h2>
+            <p>
+              We are exploring an opt-in community where members can share an
+              anonymised voice or script, learn whether it felt persuasive, and
+              earn AI practice credits by giving thoughtful feedback in return.
+            </p>
+            <div className="community-principles">
+              <span>Opt in every time</span><span>Remove personal details</span><span>People judge the message, not the accent</span>
             </div>
           </div>
-          <div className="foot-bot">
-            <span>© 2026 Shadowing+ · A personal project</span>
-            <span className="mono">Built with care, one sentence at a time</span>
+          <div className="feedback-mock" aria-label="Community feedback concept preview">
+            <div className="feedback-top"><div><small>COMMUNITY PRACTICE</small><b>A 45-second project pitch</b></div><span>Anonymous</span></div>
+            <div className="feedback-wave">
+              {[18, 28, 12, 35, 45, 24, 54, 38, 61, 31, 49, 22, 42, 28, 16, 32, 20, 14].map((height, index) => <i key={index} style={{ height }} />)}
+            </div>
+            <p className="feedback-question">Did the main idea feel convincing?</p>
+            <div className="feedback-scale" aria-hidden="true"><span>Not yet</span><i className="score">1</i><i className="score">2</i><i className="score">3</i><i className="score selected">4</i><i className="score">5</i><span>Very</span></div>
+            <div className="credit-row"><span>Thoughtful feedback</span><b>+1 AI credit</b></div>
           </div>
+        </div>
+      </section>
+
+      <section className="trust-section">
+        <div className="wide">
+          <div className="section-heading split-heading">
+            <div><p className="section-kicker">Built with boundaries</p><h2>Your voice is personal. The product should act like it.</h2></div>
+            <p>Clear defaults now, explicit choices if social features arrive later.</p>
+          </div>
+          <div className="trust-grid">
+            {trustItems.map(([title, copy]) => <article key={title}><span className="trust-check">✓</span><h3>{title}</h3><p>{copy}</p></article>)}
+          </div>
+          <p className="legal-bridge">Read the current <Link href="/privacy">Privacy Policy</Link> and <Link href="/terms">Terms of Service</Link>. Policies will be reviewed again before public App Store release.</p>
+        </div>
+      </section>
+
+      <section className="waitlist-section" id="waitlist">
+        <div className="wide waitlist-grid">
+          <div className="waitlist-copy">
+            <p className="section-kicker">Join early</p>
+            <h2>Bring the next conversation you care about.</h2>
+            <p>
+              Join the launch list, or volunteer for the private beta if you want
+              to test the app before it reaches the App Store.
+            </p>
+            <div className="beta-details">
+              <span><b>Waitlist</b><small>Launch news and App Store link</small></span>
+              <span><b>Private beta</b><small>Early access and occasional feedback requests</small></span>
+            </div>
+          </div>
+          <WaitlistForm />
+        </div>
+      </section>
+
+      <footer className="landing-footer">
+        <div className="wide footer-row">
+          <div>
+            <a className="wordmark" href="#top"><span className="wordmark-loop" aria-hidden="true">s</span><span>Saylo<span className="wordmark-plus">.</span></span></a>
+            <p>Build the words for the life you are already living.</p>
+          </div>
+          <div className="footer-links"><a href="#how">How it works</a><a href="#mirror">Mirror mode</a><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="mailto:sumin002@gmail.com">Contact</a></div>
+          <p className="copyright">© 2026 Saylo. Independent private beta.</p>
         </div>
       </footer>
-    </div>
+    </main>
   );
 }

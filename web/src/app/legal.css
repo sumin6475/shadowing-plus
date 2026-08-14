@@ -3,8 +3,8 @@
    read well without depending on the app's manual theme toggle. */
 .legal {
   min-height: 100vh;
-  background: #fbf9f4;
-  color: #2b2b2b;
+  background: #f7f3ea;
+  color: #171719;
   padding: 64px 20px 96px;
   font-family: var(--font-sans, "Inter", system-ui, sans-serif);
 }
@@ -14,12 +14,12 @@
   margin-bottom: 40px;
   font-size: 14px;
   font-weight: 500;
-  color: #3a5da6;
+  color: #111a3d;
   text-decoration: none;
 }
 .legal-back:hover { text-decoration: underline; }
 .legal h1 {
-  font-family: var(--font-serif, "Source Serif 4", serif);
+  font-family: var(--font-newsreader, "Newsreader", serif);
   font-size: 2.25rem;
   letter-spacing: -0.01em;
   margin: 0 0 8px;
@@ -29,7 +29,7 @@
 .legal p, .legal li { font-size: 15px; line-height: 1.7; color: #3d3d3a; }
 .legal ul { padding-left: 20px; margin: 12px 0; }
 .legal li { margin: 6px 0; }
-.legal a { color: #3a5da6; }
+.legal a { color: #111a3d; }
 .legal strong { color: #2b2b2b; }
 .legal-note {
   margin-top: 48px;
