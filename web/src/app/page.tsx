@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ProductDemo } from "@/components/landing/ProductDemo";
 import { WaitlistForm } from "@/components/landing/WaitlistForm";
 import "./landing.css";
@@ -37,8 +38,8 @@ export default function LandingPage() {
       <nav className="landing-nav" aria-label="Main navigation">
         <div className="nav-shell">
           <a className="wordmark" href="#top" aria-label="Saylo home">
-            <span className="wordmark-loop" aria-hidden="true">s</span>
-            <span>Saylo<span className="wordmark-plus">.</span></span>
+            <Image className="wordmark-mark" src="/brand/saylo-mark.png" width={36} height={36} alt="" preload />
+            <span>Saylo</span>
           </a>
           <div className="nav-links">
             <a href="#how">How it works</a>
@@ -52,7 +53,7 @@ export default function LandingPage() {
       <header className="hero">
         <div className="hero-shell">
           <div className="hero-copy">
-            <p className="eyebrow"><span />Private beta opening soon</p>
+            <p className="beta-status"><span aria-hidden="true" />Private beta · opening soon</p>
             <h1>Have the words ready when the moment comes.</h1>
             <p className="hero-lede">
               Build the English you actually need for your life. Shape a clearer
@@ -78,7 +79,6 @@ export default function LandingPage() {
 
       <section className="problem-section">
         <div className="narrow intro-block">
-          <p className="section-kicker">The real problem</p>
           <h2>You may know the English. You still need to find <em>your</em> words.</h2>
           <p>
             Generic lessons cannot prepare the story only you can tell. Saylo
@@ -88,7 +88,6 @@ export default function LandingPage() {
         <div className="wide situation-grid">
           {situations.map((item) => (
             <article className="situation-card" key={item.number}>
-              <p className="card-number">{item.number}</p>
               <h3>{item.title}</h3>
               <p>{item.copy}</p>
               <div className="example-row">
@@ -104,7 +103,7 @@ export default function LandingPage() {
         <div className="wide">
           <div className="section-heading split-heading">
             <div>
-              <p className="section-kicker">Your Speaking World</p>
+              <p className="world-label">Your Speaking World</p>
               <h2>Start with your life, not a curriculum.</h2>
             </div>
             <p>
@@ -184,7 +183,6 @@ export default function LandingPage() {
             <div className="privacy-pill pill-right"><span>⌁</span> Audio saved privately</div>
           </div>
           <div className="mirror-copy">
-            <p className="section-kicker">Mirror mode</p>
             <h2>Watch yourself speak. Keep only the voice.</h2>
             <p className="mirror-lede">
               A mirror is still one of the best ways to practise presence. See your
@@ -202,7 +200,6 @@ export default function LandingPage() {
       <section className="archive-section">
         <div className="wide archive-grid">
           <div className="archive-copy">
-            <p className="section-kicker">A private voice archive</p>
             <h2>Your stories get better because they stay connected.</h2>
             <p>
               Useful phrases are captured inside the story where you needed them.
@@ -229,7 +226,7 @@ export default function LandingPage() {
       <section className="community-section" id="community">
         <div className="wide community-card">
           <div className="community-copy">
-            <p className="section-kicker light">Exploring after private beta</p>
+            <p className="future-note">Exploring after private beta</p>
             <h2>Practice can become a generous exchange.</h2>
             <p>
               We are exploring an opt-in community where members can share an
@@ -255,7 +252,7 @@ export default function LandingPage() {
       <section className="trust-section">
         <div className="wide">
           <div className="section-heading split-heading">
-            <div><p className="section-kicker">Built with boundaries</p><h2>Your voice is personal. The product should act like it.</h2></div>
+            <div><h2>Your voice is personal. The product should act like it.</h2></div>
             <p>Clear defaults now, explicit choices if social features arrive later.</p>
           </div>
           <div className="trust-grid">
@@ -268,7 +265,6 @@ export default function LandingPage() {
       <section className="waitlist-section" id="waitlist">
         <div className="wide waitlist-grid">
           <div className="waitlist-copy">
-            <p className="section-kicker">Join early</p>
             <h2>Bring the next conversation you care about.</h2>
             <p>
               Join the launch list, or volunteer for the private beta if you want
@@ -286,7 +282,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="wide footer-row">
           <div>
-            <a className="wordmark" href="#top"><span className="wordmark-loop" aria-hidden="true">s</span><span>Saylo<span className="wordmark-plus">.</span></span></a>
+            <a className="wordmark" href="#top"><Image className="wordmark-mark" src="/brand/saylo-mark.png" width={36} height={36} alt="" /><span>Saylo</span></a>
             <p>Build the words for the life you are already living.</p>
           </div>
           <div className="footer-links"><a href="#how">How it works</a><a href="#mirror">Mirror mode</a><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="mailto:sumin002@gmail.com">Contact</a></div>

@@ -1,68 +1,26 @@
-// One-shot SVG → PNG generator for PWA icons.
-// Run with `npm run icons`. Outputs to web/public/icons/.
-//
-// To swap in a real logo: replace the SVG template below and re-run.
+// Resize the selected Saylo ribbon mark into the web/PWA icon set.
 
-import { Resvg } from "@resvg/resvg-js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import sharp from "sharp";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(__dirname, "..", "public", "icons");
+const PUBLIC_DIR = join(__dirname, "..", "public");
+const SOURCE = join(PUBLIC_DIR, "brand", "saylo-mark.png");
+const OUT_DIR = join(PUBLIC_DIR, "icons");
 mkdirSync(OUT_DIR, { recursive: true });
 
-const BG = "#111A3D";      // Midnight
-const ACCENT = "#F47F68";  // voice action Apricot
-const TEXT_DIM = "#F7F3EA"; // Ivory
-
-// Build an SVG sized to `size` pixels. Maskable: keep the mark inside the safe
-// inner circle (≈ 80% of the canvas) so Android adaptive cropping doesn't
-// chop the Saylo mark.
-function svgTemplate(size, { rounded = true } = {}) {
-  const radius = rounded ? size * 0.22 : 0;
-  const sFontSize = size * 0.64;
-  const sX = size * 0.5;
-  const sY = size * 0.5 + sFontSize * 0.34;
-  const dotSize = size * 0.085;
-  const dotX = sX + sFontSize * 0.30;
-  const dotY = sY - sFontSize * 0.06;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <rect x="0" y="0" width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="${BG}"/>
-  <text x="${sX}" y="${sY}"
-        font-family="Instrument Serif, Iowan Old Style, Baskerville, serif"
-        font-size="${sFontSize}"
-        font-style="italic"
-        text-anchor="middle"
-        fill="${TEXT_DIM}">s</text>
-  <circle cx="${dotX}" cy="${dotY}" r="${dotSize / 2}" fill="${ACCENT}"/>
-</svg>`;
-}
-
-function render(svg, sizePx) {
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: "width", value: sizePx },
-    background: BG,
-    font: {
-      // Resvg falls back to its built-in font when system fonts are unresolved.
-      // The placeholder text still renders; real logo file will replace this.
-      loadSystemFonts: true,
-      defaultFontFamily: "serif",
-    },
-  });
-  return resvg.render().asPng();
-}
-
 const targets = [
-  { name: "icon-192.png", size: 192, rounded: true },
-  { name: "icon-512.png", size: 512, rounded: true },
-  // apple-touch-icon: iOS does its own rounding, so render square.
-  { name: "apple-touch-icon.png", size: 180, rounded: false },
+  { name: "icon-192.png", size: 192 },
+  { name: "icon-512.png", size: 512 },
+  { name: "apple-touch-icon.png", size: 180 },
 ];
 
-for (const t of targets) {
-  const svg = svgTemplate(t.size, { rounded: t.rounded });
-  const png = render(svg, t.size);
-  writeFileSync(join(OUT_DIR, t.name), png);
-  console.log(`✓ ${t.name} (${t.size}×${t.size})`);
+for (const target of targets) {
+  await sharp(SOURCE)
+    .resize(target.size, target.size, { fit: "cover" })
+    .png()
+    .toFile(join(OUT_DIR, target.name));
+  console.log(`✓ ${target.name} (${target.size}×${target.size})`);
 }

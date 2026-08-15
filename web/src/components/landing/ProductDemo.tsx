@@ -47,7 +47,7 @@ export function ProductDemo() {
         <div className="phone-shell">
           <div className="phone-island" />
           <div className="phone-content">
-            <div className="app-top"><span className="app-mark">saylo.</span><span>Today</span><span className="app-menu" aria-hidden="true">•••</span></div>
+            <div className="app-top"><span className="app-mark">Saylo</span><span>Today</span><span className="app-menu" aria-hidden="true">•••</span></div>
             <div className="demo-tabs" role="tablist" aria-label="Preview a speaking goal">
               {(Object.keys(demos) as DemoKey[]).map((key) => (
                 <button key={key} role="tab" aria-selected={active === key} className={active === key ? "active" : ""} onClick={() => setActive(key)}>{demos[key].tab}</button>
