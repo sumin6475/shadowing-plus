@@ -114,7 +114,7 @@ function groupWordsIntoSegments(raw: AsrWord[]): PipelineSegment[] {
 
 /**
  * Stage 2: Cloud transcription. The source language (migration 011) selects the
- * provider — zh/ja → ElevenLabs Scribe, everything else → Groq Whisper (see
+ * provider — eng/zh/ja → ElevenLabs Scribe, everything else → Groq Whisper (see
  * pickAsrProvider). Reads audio from R2 via a signed URL, groups the returned
  * word stream into segments, and writes raw_transcript.json. Grouping is shared
  * across providers so segmentation behaves identically regardless of backend.

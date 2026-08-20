@@ -261,8 +261,8 @@ export default function UsagePanel() {
             <span>gpt-4o-mini</span>
           </div>
         </div>
-        {/* Transcription is routed per language: Groq (whisper-large-v3) for
-            most, ElevenLabs Scribe for zh/ja. Show each card only when it has
+        {/* Transcription is routed per language: Scribe for eng/zh/ja, Groq
+            whisper-large-v3 for the rest. Show each card only when it has
             spend so a dormant provider isn't a permanent $0.00 row. */}
         {providers.groq.calls > 0 && (
           <div className="usage-prov">
