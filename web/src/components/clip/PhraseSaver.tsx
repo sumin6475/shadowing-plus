@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import "./phrase-saver.css";
 
-// In-player Phrase Bank capture. The learner drags to select a short chunk
-// *inside one subtitle*; a popover opens right at the selection with a clearly
-// visible "Save" button, and after saving the same popover shows the
-// context-aware explanation (in the learner's language) in place.
+// In-player phrase lookup. The learner drags to select a short chunk *inside
+// one subtitle*; a popover opens at the selection, looks the phrase up with
+// the same context-aware explainer as Phrase Bank, then offers Save or Cancel.
+// Lookup never writes a row — cancel (or clicking away) leaves the bank alone.
 //
 // This overlay is rendered as a body-level sibling of `.clip-page`, i.e. OUTSIDE
 // the scope where the app's cobalt design tokens (--accent-text, --surface, …)
@@ -27,10 +27,18 @@ type SavedItem = {
   status: "pending" | "ready" | "failed";
 };
 
+type PhrasePreview = {
+  text: string;
+  kind: string;
+  meaning_ko: string;
+  usage_note: string;
+};
+
 type Anchor = { segmentId: string; text: string; cx: number; top: number; bottom: number };
 type Phase =
-  | { k: "prompt" }
-  | { k: "saving" }
+  | { k: "explaining" }
+  | { k: "preview"; preview: PhrasePreview }
+  | { k: "saving"; preview: PhrasePreview }
   | { k: "ready"; item: SavedItem; alreadySaved: boolean }
   | { k: "error"; message: string };
 
@@ -54,9 +62,9 @@ function selectionInfo(sel: Selection | null): { segmentId: string; text: string
 
 export default function PhraseSaver() {
   const [anchor, setAnchor] = useState<Anchor | null>(null);
-  const [phase, setPhase] = useState<Phase>({ k: "prompt" });
+  const [phase, setPhase] = useState<Phase>({ k: "explaining" });
 
-  // Open (or move) the popover when a pointer selection settles.
+  // Open (or move) the popover when a pointer selection settles, then look it up.
   useEffect(() => {
     function onEnd(e: Event) {
       const target = e.target as HTMLElement | null;
@@ -75,7 +83,7 @@ export default function PhraseSaver() {
           top: rect.top,
           bottom: rect.bottom,
         });
-        setPhase({ k: "prompt" });
+        setPhase({ k: "explaining" });
       }, 0);
     }
     document.addEventListener("mouseup", onEnd);
@@ -86,15 +94,6 @@ export default function PhraseSaver() {
     };
   }, []);
 
-  // A fixed popover drifts from its text on scroll — drop it while still just a
-  // prompt. Once it's showing a saved explanation it stays put like a toast.
-  useEffect(() => {
-    if (!anchor || phase.k !== "prompt") return;
-    const drop = () => setAnchor(null);
-    window.addEventListener("scroll", drop, true);
-    return () => window.removeEventListener("scroll", drop, true);
-  }, [anchor, phase.k]);
-
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setAnchor(null);
@@ -103,14 +102,60 @@ export default function PhraseSaver() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  const save = useCallback(async (a: Anchor) => {
-    setPhase({ k: "saving" });
+  useEffect(() => {
+    if (!anchor || phase.k !== "explaining") return;
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch("/api/phrases/preview", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ segmentId: anchor.segmentId, text: anchor.text }),
+          signal: ac.signal,
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          alreadySaved?: boolean;
+          item?: SavedItem;
+          preview?: PhrasePreview;
+          error?: string;
+        };
+        if (ac.signal.aborted) return;
+        if (!res.ok) {
+          setPhase({ k: "error", message: data.error || "Couldn't look this up." });
+          return;
+        }
+        if (data.alreadySaved && data.item) {
+          setPhase({ k: "ready", item: data.item, alreadySaved: true });
+          return;
+        }
+        if (!data.preview) {
+          setPhase({ k: "error", message: "Couldn't look this up." });
+          return;
+        }
+        setPhase({ k: "preview", preview: data.preview });
+      } catch (err) {
+        if (ac.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setPhase({ k: "error", message: "Network error. Try again." });
+      }
+    })();
+    return () => ac.abort();
+  }, [anchor, phase.k]);
+
+  const save = useCallback(async (a: Anchor, preview: PhrasePreview) => {
+    setPhase({ k: "saving", preview });
     window.getSelection()?.removeAllRanges();
     try {
       const res = await fetch("/api/phrases", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ segmentId: a.segmentId, text: a.text }),
+        body: JSON.stringify({
+          segmentId: a.segmentId,
+          text: a.text,
+          kind: preview.kind,
+          meaning_ko: preview.meaning_ko,
+          usage_note: preview.usage_note,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { item?: SavedItem; alreadySaved?: boolean; error?: string };
       if (!res.ok || !data.item) {
@@ -133,29 +178,60 @@ export default function PhraseSaver() {
     ? { left: anchor.cx, top: anchor.bottom + 8, transform: "translateX(-50%)" }
     : { left: anchor.cx, top: anchor.top - 8, transform: "translate(-50%, -100%)" };
 
+  const dismiss = () => {
+    window.getSelection()?.removeAllRanges();
+    setAnchor(null);
+  };
+
   return (
-    <div className="phrase-pop" style={style} role="dialog" aria-label="Save phrase" aria-live="polite">
-      {phase.k === "prompt" && (
-        <div className="phrase-pop-prompt">
-          <div className="phrase-pop-sel">“{anchor.text}”</div>
-          <button type="button" className="phrase-pop-save" onMouseDown={(e) => e.preventDefault()} onClick={() => save(anchor)}>
-            <span className="phrase-pop-plus" aria-hidden>＋</span> Save to Phrase Bank
-          </button>
+    <div className="phrase-pop" style={style} role="dialog" aria-label="Look up phrase" aria-live="polite">
+      {phase.k === "explaining" && (
+        <div className="phrase-pop-body">
+          <div className="phrase-pop-head">
+            <strong className="phrase-pop-term">{anchor.text}</strong>
+            <button type="button" className="phrase-pop-x" onMouseDown={(e) => e.preventDefault()} onClick={dismiss} aria-label="Cancel">×</button>
+          </div>
+          <p className="phrase-pop-status">Looking this up…</p>
         </div>
       )}
 
-      {phase.k === "saving" && (
+      {(phase.k === "preview" || phase.k === "saving") && (
         <div className="phrase-pop-body">
-          <strong className="phrase-pop-term">{anchor.text}</strong>
-          <p className="phrase-pop-status">Explaining this phrase…</p>
+          <div className="phrase-pop-head">
+            <strong className="phrase-pop-term">{phase.preview.text}</strong>
+            <span className="phrase-pop-kind">{phase.preview.kind.replace(/_/g, " ")}</span>
+            <button type="button" className="phrase-pop-x" onMouseDown={(e) => e.preventDefault()} onClick={dismiss} aria-label="Cancel">×</button>
+          </div>
+          {phase.preview.meaning_ko && <p className="phrase-pop-meaning">{phase.preview.meaning_ko}</p>}
+          {phase.preview.usage_note && <p className="phrase-pop-note">{phase.preview.usage_note}</p>}
+          <div className="phrase-pop-actions">
+            <button
+              type="button"
+              className="phrase-pop-cancel"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={dismiss}
+              disabled={phase.k === "saving"}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="phrase-pop-save"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => save(anchor, phase.preview)}
+              disabled={phase.k === "saving"}
+            >
+              {phase.k === "saving" ? "Saving…" : "Save to Phrase Bank"}
+            </button>
+          </div>
         </div>
       )}
 
       {phase.k === "error" && (
         <div className="phrase-pop-body">
           <div className="phrase-pop-head">
-            <strong className="phrase-pop-term">Couldn’t save</strong>
-            <button type="button" className="phrase-pop-x" onClick={() => setAnchor(null)} aria-label="Close">×</button>
+            <strong className="phrase-pop-term">Couldn’t look this up</strong>
+            <button type="button" className="phrase-pop-x" onMouseDown={(e) => e.preventDefault()} onClick={dismiss} aria-label="Close">×</button>
           </div>
           <p className="phrase-pop-status is-error">{phase.message}</p>
         </div>
@@ -166,7 +242,7 @@ export default function PhraseSaver() {
           <div className="phrase-pop-head">
             <strong className="phrase-pop-term">{phase.item.text}</strong>
             <span className="phrase-pop-kind">{phase.item.kind.replace(/_/g, " ")}</span>
-            <button type="button" className="phrase-pop-x" onClick={() => setAnchor(null)} aria-label="Close">×</button>
+            <button type="button" className="phrase-pop-x" onMouseDown={(e) => e.preventDefault()} onClick={dismiss} aria-label="Close">×</button>
           </div>
           {phase.alreadySaved && <p className="phrase-pop-flag">Already in your Phrase Bank.</p>}
           {phase.item.status === "ready" ? (
@@ -180,7 +256,7 @@ export default function PhraseSaver() {
             </p>
           )}
           <div className="phrase-pop-foot">
-            <span className="phrase-pop-saved">Saved ✓</span>
+            <span className="phrase-pop-saved">{phase.alreadySaved ? "In your bank" : "Saved ✓"}</span>
             <Link href="/phrases" className="phrase-pop-link">Open Phrase Bank →</Link>
           </div>
         </div>

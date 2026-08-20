@@ -248,6 +248,7 @@ export default function DesktopPractice({
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isDone) {
         if (e.key === "Escape") router.push("/bookmarks");
         return;

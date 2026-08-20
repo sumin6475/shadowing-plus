@@ -13,6 +13,7 @@ import { PHRASE_SELECT_COLUMNS, savePhrase, saveManualPhrase } from "@/lib/phras
 // this `userId` is the actual ownership boundary.
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 type PhraseInput = {
   // Selection from an own-media subtitle → context-aware AI explanation.
@@ -20,6 +21,7 @@ type PhraseInput = {
   text?: unknown;
   // Cold-start manual entry (no source media). Presence of `manual` routes here.
   manual?: unknown;
+  kind?: unknown;
   meaning_ko?: unknown;
   usage_note?: unknown;
 };
@@ -46,7 +48,11 @@ export async function POST(req: NextRequest) {
 
   const result = body.manual
     ? await saveManualPhrase(supabaseAdmin(), userId, body.text, body.meaning_ko, body.usage_note)
-    : await savePhrase(supabaseAdmin(), userId, body.segmentId, body.text);
+    : await savePhrase(supabaseAdmin(), userId, body.segmentId, body.text, {
+        kind: body.kind,
+        meaning_ko: body.meaning_ko,
+        usage_note: body.usage_note,
+      });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
   return NextResponse.json({ item: result.item, alreadySaved: result.alreadySaved });

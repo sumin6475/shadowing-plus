@@ -616,6 +616,10 @@ export default function PlayerPage({
       // otherwise the physical key leaks through as a composition keystroke.
       if (e.isComposing) return;
 
+      // Let browser chords through (Cmd+R refresh, Cmd+L location, Cmd+T tab…).
+      // Matching only on e.code would steal those for A–B repeat / loop / etc.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
       // Match on e.code (physical key position), not e.key (the produced
       // character). With a Korean IME active, the physical "A" key reports
       // e.key === "ㅁ", which never matches "a" — so shortcuts silently break.
