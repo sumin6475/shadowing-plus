@@ -3,24 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon } from "@/components/home/Icons";
 import {
-  AUDIO_LANGUAGE,
-  AUDIO_LANGUAGE_OPTIONS,
-  AUDIO_LANG_PREF_KEY,
   TRANSLATION_LANGUAGE,
   TRANSLATION_LANGUAGE_OPTIONS,
   TRANSLATION_LANG_PREF_KEY,
 } from "@/lib/pipeline/languages";
 
-// Language preference UI. The chosen pair is saved to localStorage and read as
-// the DEFAULT in the upload form, which sends it per clip to the pipeline
-// (migration 011 → jobs.source_lang/target_lang). A clip's pair is fixed at
-// upload time; changing this preference only affects clips uploaded afterward.
-// Design: explicit "Save changes" button (enabled only when dirty) + an
-// animated "Saved" check, per the settings-modal design handoff.
+// Translation preference. Saved to localStorage and read as the default at
+// upload time (migration 011 → jobs.target_lang). Audio is always English —
+// this panel does not offer a source-language picker. A clip's target is
+// fixed at upload; changing this only affects clips uploaded afterward.
 
-const AUDIO_OPTIONS = AUDIO_LANGUAGE_OPTIONS;
 const TRANSLATION_OPTIONS = TRANSLATION_LANGUAGE_OPTIONS;
-const AUDIO_KEY = AUDIO_LANG_PREF_KEY;
 const TRANSLATION_KEY = TRANSLATION_LANG_PREF_KEY;
 
 function readPref(key: string, fallback: string): string {
@@ -34,28 +27,24 @@ function readPref(key: string, fallback: string): string {
 export default function LanguagePanel() {
   // This panel only renders inside the (client-only) modal, so reading
   // localStorage in the lazy initializers is safe and avoids a set-state effect.
-  const [audio, setAudio] = useState<string>(() =>
-    readPref(AUDIO_KEY, AUDIO_LANGUAGE.code),
-  );
   const [translation, setTranslation] = useState<string>(() =>
     readPref(TRANSLATION_KEY, TRANSLATION_LANGUAGE),
   );
-  const [base, setBase] = useState(() => ({ audio, translation }));
+  const [base, setBase] = useState(() => translation);
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(savedTimer.current), []);
 
-  const dirty = audio !== base.audio || translation !== base.translation;
+  const dirty = translation !== base;
 
   function save() {
     try {
-      localStorage.setItem(AUDIO_KEY, audio);
       localStorage.setItem(TRANSLATION_KEY, translation);
     } catch {
       /* ignore */
     }
-    setBase({ audio, translation });
+    setBase(translation);
     setSaved(true);
     window.clearTimeout(savedTimer.current);
     savedTimer.current = window.setTimeout(() => setSaved(false), 2200);
@@ -64,27 +53,11 @@ export default function LanguagePanel() {
   return (
     <div className="set-panel">
       <div className="set-field">
-        <label htmlFor="audio-lang" className="set-field-label">
-          Audio language
-        </label>
+        <label className="set-field-label">Audio language</label>
         <p className="set-field-help">
-          What you hear and shadow. Sent to the transcriber.
+          Clips are transcribed in English. Shadowing+ is for learning English.
         </p>
-        <select
-          id="audio-lang"
-          className="set-select"
-          value={audio}
-          onChange={(e) => {
-            setAudio(e.target.value);
-            setSaved(false);
-          }}
-        >
-          {AUDIO_OPTIONS.map((o) => (
-            <option key={o.code} value={o.code}>
-              {o.name}
-            </option>
-          ))}
-        </select>
+        <p className="set-field-value">English</p>
       </div>
 
       <div className="set-field">
@@ -92,7 +65,7 @@ export default function LanguagePanel() {
           Translation language
         </label>
         <p className="set-field-help">
-          Your native language — subtitles are translated into this.
+          Your language — line translations and phrase explanations use this.
         </p>
         <select
           id="translation-lang"
@@ -126,8 +99,8 @@ export default function LanguagePanel() {
       </div>
 
       <p className="set-note">
-        Saved as your default. New clips you upload use this pair; you can still
-        change it per upload. Existing clips keep the pair they were made with.
+        Saved as your default for new clips. Existing clips keep the translation
+        language they were made with.
       </p>
     </div>
   );

@@ -2,21 +2,19 @@
 
 import { useCallback, useState } from "react";
 import {
-  AUDIO_LANG_PREF_KEY,
   TRANSLATION_LANG_PREF_KEY,
 } from "@/lib/pipeline/languages";
 import type { MediaType } from "@/lib/types";
 
 /**
- * The user's preferred language pair, set in Settings → Language. Read at
- * upload time so file uploads (a batch, no per-file UI) inherit the preference
- * without an extra picker. Missing values are omitted, and the upload route
- * falls back to the DB default (eng → Korean).
+ * The user's translation language, set in Settings → Language. Audio is always
+ * English. Read at upload time so file uploads (a batch, no per-file UI) inherit
+ * the preference without an extra picker. Missing values are omitted, and the
+ * upload route falls back to the DB default (Korean).
  */
-function readLanguagePref(): { sourceLang?: string; targetLang?: string } {
+function readLanguagePref(): { targetLang?: string } {
   try {
     return {
-      sourceLang: localStorage.getItem(AUDIO_LANG_PREF_KEY) ?? undefined,
       targetLang: localStorage.getItem(TRANSLATION_LANG_PREF_KEY) ?? undefined,
     };
   } catch {
