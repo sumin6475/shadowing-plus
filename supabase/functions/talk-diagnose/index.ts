@@ -5,6 +5,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "gpt-4o-mini";
 const MAX_MOMENTS = 3;
+const FOCUS_VALUES = ["grammar", "structure", "advanced", "pattern"] as const;
+type TalkFocus = (typeof FOCUS_VALUES)[number];
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
@@ -25,6 +27,10 @@ interface TalkMoment {
   said: string;
   want: string;
   example: string;
+  /** One-sentence reason the top suggestion matches this focus. */
+  why: string;
+  /** One-sentence reason for the second recommendation. */
+  exampleWhy: string;
   phraseItemId: string | null;
   source: "saved" | "generated";
   sourceLabel: string | null;
@@ -55,18 +61,20 @@ function parseMoments(raw: string, candidates: Candidate[]): TalkMoment[] {
   const out: TalkMoment[] = [];
   for (const value of rows) {
     const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-    const said = clamp(row.said, 200);
+    const said = clamp(row.said, 400);
     if (!said) continue;
     const requestedId = clamp(row.phraseItemId ?? row.phrase_item_id, 80);
     const owned = requestedId ? byId.get(requestedId) ?? null : null;
-    const generated = clamp(row.want, 120);
+    const generated = clamp(row.want, 180);
     const want = owned?.text ?? generated;
     if (!want) continue;
     out.push({
       label: clamp(row.label, 40) || "A moment",
       said,
       want,
-      example: clamp(row.example, 240) || owned?.note || "",
+      example: clamp(row.example, 280) || owned?.note || "",
+      why: clamp(row.why, 220),
+      exampleWhy: clamp(row.exampleWhy ?? row.example_why, 220),
       phraseItemId: owned?.id ?? null,
       source: owned ? "saved" : "generated",
       sourceLabel: owned?.sourceLabel ?? null,
@@ -91,10 +99,19 @@ Deno.serve(async (req: Request) => {
   } = await supabase.auth.getUser();
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  const body = (await req.json().catch(() => null)) as { transcript?: unknown; topic?: unknown; story_id?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as {
+    transcript?: unknown;
+    topic?: unknown;
+    story_id?: unknown;
+    focus?: unknown;
+  } | null;
   const transcript = clamp(body?.transcript, 4000);
   const topic = clamp(body?.topic, 200) || null;
   const storyId = clamp(body?.story_id, 80) || null;
+  const rawFocus = typeof body?.focus === "string" ? body.focus : "";
+  const focus: TalkFocus = (FOCUS_VALUES as readonly string[]).includes(rawFocus)
+    ? (rawFocus as TalkFocus)
+    : "grammar";
   if (!transcript) return json({ error: "Say something first." }, 400);
 
   const phraseSelect =
@@ -152,6 +169,17 @@ Deno.serve(async (req: Request) => {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) return json({ error: "OpenAI is not configured." }, 500);
 
+  const focusGuide: Record<TalkFocus, string> = {
+    grammar:
+      "FOCUS = grammar. Find sentence-level grammar issues only: tense, agreement, articles, prepositions, word order of a short span. Do not comment on overall talk organization, vocabulary level, or reusable frames.",
+    structure:
+      "FOCUS = structure. Analyze the WHOLE talk as a listener would: beginning, middle, end, missing beats, order, and whether someone could follow it like a timeline. `said` may be a longer span that shows the organizational problem. `want` is a clearer structural move (what to say first / next / last), NOT a grammar rewrite of one sentence. Never collapse this into grammar.",
+    advanced:
+      "FOCUS = advanced words or phrases. Find where the learner talked around a meaning instead of using an exact word, collocation, or idiom. `want` MUST introduce that more precise word/phrase (not just a cleaner grammar rewrite of the same words). Skip a moment if the only issue is grammar, fillers, or shortening. Prefer a Phrase Bank candidate they already saved but did not use. `why` names the vague wording and the upgrade.",
+    pattern:
+      "FOCUS = pattern. Extract a reusable sentence FRAME the learner can practice until automatic — like the onboarding phrase “What I’m trying to do is…” or “I’m trying to…”, “I should have…”. `want` MUST be the frame with an ellipsis, not a fully filled unique sentence. `example` is a second filled-in recommendation using that same frame.",
+  };
+
   const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -164,17 +192,21 @@ Deno.serve(async (req: Request) => {
           role: "system",
           content:
             "You coach a non-native English speaker after an unscripted self-talk attempt. Find up to 3 high-leverage moments, not every small error. " +
-            "Prefer a saved phrase when it naturally expresses what the learner was trying to say, especially one linked to the current Story. " +
+            focusGuide[focus] +
+            " Prefer a saved phrase when it naturally expresses what the learner was trying to say, especially one linked to the current Story. " +
             "To use saved language, copy its exact id into phraseItemId; never alter that phrase. If no candidate truly fits, set phraseItemId to null and generate one short new suggestion. " +
+            "`example` is a SECOND recommendation — another natural way to say the same moment — not a usage illustration. " +
+            "`why` is one sentence of grounds for `want` under this focus; `exampleWhy` is one sentence of grounds for `example`. " +
             "Copy `said` verbatim from the transcript. Never invent facts. Return JSON only.",
         },
         {
           role: "user",
           content:
             (topic ? `Topic / Story: ${topic}\n\n` : "") +
+            `Coach only for this focus: ${focus}.\n\n` +
             `My saved Phrase Bank candidates:\n${candidateList}\n\n` +
             `My transcript (verbatim):\n"""${transcript}"""\n\n` +
-            'Return {"moments":[{"label":"max 4 words","said":"verbatim span","phraseItemId":"exact candidate id or null","want":"new suggestion only when id is null, max 10 words","example":"one short example"}]}.',
+            'Return {"moments":[{"label":"max 4 words","said":"verbatim span","phraseItemId":"exact candidate id or null","want":"top suggestion when id is null","why":"one sentence of grounds for want","example":"second recommendation for the same moment","exampleWhy":"one sentence of grounds for example"}]}.',
         },
       ],
     }),

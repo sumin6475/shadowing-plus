@@ -42,7 +42,8 @@ export type IconName =
   | "calendar"
   | "export"
   | "help"
-  | "shield";
+  | "shield"
+  | "grip";
 
 interface IconProps {
   name: IconName;
@@ -308,6 +309,14 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
       break;
     case "shield":
       body = <Path {...common} d="M12 3l7 3v5.4c0 4.6-3 8-7 9.6-4-1.6-7-5-7-9.6V6z" />;
+      break;
+    case "grip":
+      // Two horizontal lines — the common queue drag handle.
+      body = (
+        <G {...common}>
+          <Path d="M6 9.5h12M6 14.5h12" />
+        </G>
+      );
       break;
   }
   return (

@@ -10,6 +10,8 @@ import { useFonts } from "expo-font";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider, useTheme } from "@/design/theme";
 import { loadFirstLanguage } from "@/lib/first-language";
+import { loadReminders } from "@/lib/reminders";
+import { loadTalkFocus } from "@/lib/talk-focus";
 import {
   importOnboardingDraft,
   loadOnboardingDraft,
@@ -47,10 +49,11 @@ function RootNavigator() {
     "Inter-SemiBold": require("../../assets/fonts/Inter18pt-SemiBold.ttf"),
   });
 
-  // Load the saved first language before first render so greetings use it.
-  const [l1Loaded, setL1Loaded] = useState(false);
+  // Load saved first language + talk-focus before first render so greetings
+  // and Speak diagnosis use them.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
-    loadFirstLanguage().finally(() => setL1Loaded(true));
+    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadReminders()]).finally(() => setPrefsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -77,7 +80,7 @@ function RootNavigator() {
     });
   }, [draft, session]);
 
-  const ready = !loading && fontsLoaded && l1Loaded && draft !== null;
+  const ready = !loading && fontsLoaded && prefsLoaded && draft !== null;
 
   const effectiveShowSignIn = Boolean(
     showSignIn && !(session && draft?.status === "awaiting_sign_in"),
@@ -132,15 +135,17 @@ function RootNavigator() {
 
   if (!ready) return null;
 
-  if (!splashDone) {
-    return <SplashIntro onDone={() => setSplashDone(true)} />;
-  }
-
   // SKELETON PREVIEW: while the app is a design skeleton running on mock data,
   // show the (app) group without a Supabase session so it opens straight into
   // the designed UI. Flip to `false` to restore the real auth gate.
   const SKELETON_PREVIEW = false;
   const signedIn = SKELETON_PREVIEW || !!session;
+
+  // Returning signed-in users skip the Get started splash and land in the app.
+  // The native splash stays up until session is known, so this does not flash.
+  if (!splashDone && !signedIn) {
+    return <SplashIntro onDone={() => setSplashDone(true)} />;
+  }
 
   if (shouldImport || importState === "error") {
     return (

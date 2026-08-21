@@ -3,7 +3,7 @@
 // Router hosts this single tree; the floating TabBar (not Router tabs) drives
 // tab switching so the stateful flows (Speak, Talk) stay intact.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
@@ -14,10 +14,11 @@ import { PhrasesScreen, PhraseDetail, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
 import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, MessageCreate, RecsScreen, SessionsScreen, SessionDetail } from "@/screens/world";
 import { IslandDetail, IslandCreate } from "@/screens/islands";
-import { LibraryScreen, LibItem, ChunkSave } from "@/screens/library";
+import { LibraryScreen, LibItem } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
 import { EditProfileScreen } from "@/screens/edit-profile";
-import { CaptureFab, PhraseCaptureScreen, type CaptureImageAsset } from "@/screens/capture";
+import { RemindersScreen } from "@/screens/reminders";
+import { CaptureFab, PhraseCaptureScreen, type CaptureImageAsset, type ClipCaptureSeed } from "@/screens/capture";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
 import type { TalkSession } from "@/lib/speaking-world";
@@ -87,19 +88,42 @@ export function AppShell() {
   );
 
   const top = stack[stack.length - 1];
+  const prev = stack.length >= 2 ? stack[stack.length - 2] : undefined;
+  const captureOverLibItem = top?.name === "capture" && prev?.name === "libItem";
+  const libItemEntry = captureOverLibItem ? prev : top?.name === "libItem" ? top : undefined;
   // Enable edge-swipe-back only when a pushed view is on top and it uses the
   // standard nav.pop back (capture runs its own unsaved-draft guard).
   const swipeBackEnabled = !!top && top.name !== "capture";
 
   let content: React.ReactNode;
-  if (top) {
+  if (libItemEntry) {
+    const libProps = libItemEntry.props;
+    content = (
+      <View style={{ flex: 1 }}>
+        <View style={{ flex: 1 }} pointerEvents={captureOverLibItem ? "none" : "auto"} collapsable={false}>
+          <LibItem
+            key={String(libProps.id ?? "clip")}
+            nav={nav}
+            id={libProps.id as string}
+            title={libProps.title as string | undefined}
+            covered={captureOverLibItem}
+          />
+        </View>
+        {captureOverLibItem && top ? (
+          <View style={styles.captureOverlay}>
+            {renderView(top, nav)}
+          </View>
+        ) : null}
+      </View>
+    );
+  } else if (top) {
     content = renderView(top, nav);
   } else {
     content = renderTab(tab, nav, talkCtx, speakKey);
   }
 
   const showTabBar = !top && tab !== "speak";
-  const showCaptureFab = tab !== "speak" && top?.name !== "capture" && top?.name !== "phrase";
+  const showCaptureFab = tab !== "speak" && top?.name !== "capture" && top?.name !== "phrase" && top?.name !== "libItem";
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
@@ -162,7 +186,15 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "domain":
       return <DomainScreen nav={nav} id={p.id as string} name={p.name as string | undefined} />;
     case "story":
-      return <StoryScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
+      return (
+        <StoryScreen
+          nav={nav}
+          id={p.id as string}
+          title={p.title as string | undefined}
+          domainId={p.domainId as string | undefined}
+          domainName={p.domainName as string | undefined}
+        />
+      );
     case "message":
       return <MessageScreen nav={nav} id={p.id as string | undefined} label={p.label as string | undefined} storyId={p.storyId as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
     case "newMessage":
@@ -174,14 +206,26 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "library":
       return <LibraryScreen nav={nav} />;
     case "libItem":
-      return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} />;
-    case "saveChunk":
-      return <ChunkSave nav={nav} segmentId={p.segmentId as string | undefined} videoId={p.videoId as string | undefined} text={p.text as string | undefined} translation={p.translation as string | null | undefined} sourceTitle={p.sourceTitle as string | undefined} start={p.start as number | undefined} end={p.end as number | undefined} />;
+      return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} covered={p.covered === true} />;
     case "capture":
-      return <PhraseCaptureScreen nav={nav} imageAsset={p.imageAsset as CaptureImageAsset | undefined} />;
+      return <PhraseCaptureScreen nav={nav} imageAsset={p.imageAsset as CaptureImageAsset | undefined} clipSeed={p.clipSeed as ClipCaptureSeed | undefined} />;
     case "settings":
       return <SettingsScreen nav={nav} />;
     case "editProfile":
       return <EditProfileScreen nav={nav} />;
+    case "reminders":
+      return <RemindersScreen nav={nav} />;
   }
 }
+
+const styles = StyleSheet.create({
+  captureOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 2,
+  },
+});
+

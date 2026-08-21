@@ -13,7 +13,9 @@ import { createTalkSession } from "@/lib/speaking-world";
 import { saveTalkSessionAudio } from "@/lib/talk-audio";
 import { createSpeakPhrase, recordPhraseEvent } from "@/lib/phrases";
 import { diagnoseStuck, diagnoseTalk, type StuckMoment } from "@/lib/talk";
+import { logTalkSuggestions, rateTalkSuggestion, suggestionKey, type SuggestionSlot, type SuggestionVerdict } from "@/lib/talk-feedback";
 import { stuckNoteCopy } from "@/lib/first-language";
+import { talkFocus, TALK_FOCUS_LABEL, type TalkFocus } from "@/lib/talk-focus";
 import type { StuckHelp, TalkMoment } from "@/types/api";
 import type { Nav, TalkCtx } from "./nav";
 
@@ -27,6 +29,45 @@ const TALK_BEATS = ["What I’m building", "Who it helps", "How it works", "Why 
 const FROST = "rgba(20,22,28,0.55)";
 const ANALYSIS_ERROR_COPY = "Couldn’t analyze this time. Try again.";
 const SESSION_SAVE_ERROR_COPY = "Couldn’t save this session. Check your connection and try talking again.";
+
+function RateRow({
+  value,
+  onChange,
+}: {
+  value?: SuggestionVerdict;
+  onChange: (verdict: SuggestionVerdict) => void;
+}) {
+  const options: { verdict: SuggestionVerdict; label: string; icon: "check" | "x" | "help" }[] = [
+    { verdict: "like", label: "Like", icon: "check" },
+    { verdict: "dislike", label: "Dislike", icon: "x" },
+    { verdict: "unsure", label: "Not sure", icon: "help" },
+  ];
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+      {options.map(({ verdict, label, icon }) => {
+        const on = value === verdict;
+        return (
+          <Pressable
+            key={verdict}
+            onPress={() => onChange(verdict)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              height: 32,
+              paddingHorizontal: 12,
+              borderRadius: 999,
+              backgroundColor: on ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)",
+            }}
+          >
+            <Icon name={icon} s={13} w={2.4} c="#fff" />
+            <Text style={{ fontSize: 12.5, fontWeight: "700", color: "#fff" }}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 function TalkMirror() {
   // Approximate the mirror: dark vertical wash + a warm translucent glow.
@@ -119,9 +160,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [moments, setMoments] = useState<TalkMoment[]>([]);
   const [diagState, setDiagState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [diagErr, setDiagErr] = useState<string | null>(null);
+  const [sessionFocus, setSessionFocus] = useState<TalkFocus>(() => talkFocus());
   // Separate analysis of the moments the learner tapped "Stuck" (talk-stuck).
   const [stuckHelp, setStuckHelp] = useState<StuckHelp[]>([]);
   const [stuckState, setStuckState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [suggestionIds, setSuggestionIds] = useState<Record<string, string>>({});
+  const [suggestionVerdict, setSuggestionVerdict] = useState<Record<string, SuggestionVerdict>>({});
 
   const pop = useMemo(() => new Animated.Value(1), []);
 
@@ -213,12 +257,24 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       return;
     }
     const topic = ctx === "Free talk" ? p0.sub ?? null : [ctx, p0.sub].filter(Boolean).join(" · ") || null;
+    const focus = talkFocus();
+    setSessionFocus(focus);
     setDiagState("loading");
     setDiagErr(null);
-    diagnoseTalk({ transcript: text, topic, storyId: p0.storyId ?? null })
+    diagnoseTalk({ transcript: text, topic, storyId: p0.storyId ?? null, focus })
       .then((ms) => {
         setMoments(ms);
         setDiagState("done");
+        logTalkSuggestions({
+          moments: ms,
+          focus,
+          talkSessionId: savedIdRef.current,
+          storyId: p0.storyId ?? null,
+        })
+          .then(setSuggestionIds)
+          .catch((e) => {
+            if (__DEV__) console.warn("Couldn’t log talk suggestions", e);
+          });
       })
       .catch((e) => {
         if (__DEV__) console.warn("Talk diagnosis failed", e);
@@ -267,6 +323,8 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setDiagErr(null);
     setStuckHelp([]);
     setStuckState("idle");
+    setSuggestionIds({});
+    setSuggestionVerdict({});
     setPhraseSave({});
     setRetryResult(null);
     setPhase("count");
@@ -322,6 +380,17 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setPhase("done");
   };
 
+  const rateSuggestion = (slot: SuggestionSlot, verdict: SuggestionVerdict) => {
+    const key = suggestionKey(sel, slot);
+    setSuggestionVerdict((current) => ({ ...current, [key]: verdict }));
+    const id = suggestionIds[key];
+    if (id) {
+      void rateTalkSuggestion(id, verdict).catch((e) => {
+        if (__DEV__) console.warn("Couldn’t save suggestion rating", e);
+      });
+    }
+  };
+
   const finishRetry = (used: boolean) => {
     setRetryResult(used ? "used" : "not_yet");
     if (used && mSel?.phraseItemId) {
@@ -347,19 +416,24 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               You marked {marks.length} spot{marks.length === 1 ? "" : "s"}.
             </Text>
           ) : null}
-          <Text style={{ fontSize: 13.5, color: t.colors.ink3, marginTop: 10, textAlign: "center" }}>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink, marginTop: 10, textAlign: "center" }}>
             {diagState === "loading"
-              ? "Looking at where you could level up…"
+              ? `Looking at ${TALK_FOCUS_LABEL[sessionFocus].toLowerCase()}…`
               : diagState === "done" && moments.length
                 ? "Here’s where you could say it more naturally."
                 : diagState === "done"
                   ? "You kept going the whole time — nice."
                   : ""}
           </Text>
+          {diagState === "loading" || diagState === "done" || diagState === "error" ? (
+            <View style={{ marginTop: 10, backgroundColor: t.colors.accS, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>Focus · {TALK_FOCUS_LABEL[sessionFocus]}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Real transcript from on-device recognition. */}
-        <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3, paddingHorizontal: 2 }}>What you said</Text>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2 }}>What you said</Text>
         <Card>
           {transcript ? (
             <Text style={{ fontSize: 15, lineHeight: 23, color: t.colors.ink }}>{transcript}</Text>
@@ -368,7 +442,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               No words were captured this time.
             </Text>
           )}
-          <Text style={{ fontSize: 11.5, fontWeight: "600", color: saveState === "error" ? "#E5484D" : t.colors.ink3, marginTop: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: saveState === "error" ? "#E5484D" : t.colors.ink2, marginTop: 10 }}>
             {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved to your sessions" : saveState === "error" ? (saveErr ?? "Couldn’t save") : ""}
           </Text>
         </Card>
@@ -405,7 +479,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{m.label}</Text>
-                  <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 2 }} numberOfLines={1}>
                     {m.said}
                   </Text>
                   <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.accD, marginTop: 4 }} numberOfLines={1}>
@@ -509,23 +583,42 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     return (
       <Screen bottomPad={40}>
         <BackBar title={mSel.label} onBack={() => setPhase("done")} />
-        <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>You said</Text>
+        <View style={{ alignSelf: "flex-start", marginTop: 2, marginBottom: 6, backgroundColor: t.colors.accS, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+          <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>Focus · {TALK_FOCUS_LABEL[sessionFocus]}</Text>
+        </View>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2, paddingTop: 4 }}>You said</Text>
         <Card>
           <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink }}>{mSel.said}</Text>
         </Card>
-        <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 6 }}>You may have meant</Text>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2, paddingTop: 6 }}>You may have meant</Text>
         <View style={[{ backgroundColor: t.colors.pill, borderRadius: t.r, padding: t.padc }, t.shadowCard]}>
-          <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.5, color: "rgba(255,255,255,0.65)" }}>
+          <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.5, color: "rgba(255,255,255,0.82)" }}>
             {mSel.source === "saved" ? `FROM YOUR PHRASE BANK${mSel.sourceLabel ? ` · ${mSel.sourceLabel}` : ""}` : "NEW SUGGESTION"}
           </Text>
-          <Text style={{ fontSize: 16.5, fontWeight: "700", lineHeight: 22, color: "#fff" }}>{mSel.want}</Text>
+          <Text style={{ fontSize: 16.5, fontWeight: "700", lineHeight: 22, color: "#fff", marginTop: 4 }}>{mSel.want}</Text>
+          {mSel.why?.trim() ? (
+            <Text style={{ fontSize: 13, lineHeight: 18, color: "rgba(255,255,255,0.72)", marginTop: 8 }}>{mSel.why.trim()}</Text>
+          ) : null}
+          <RateRow value={suggestionVerdict[suggestionKey(sel, "want")]} onChange={(verdict) => rateSuggestion("want", verdict)} />
           {mSel.example ? (
-            <Text style={{ fontSize: 13.5, color: "rgba(255,255,255,0.65)", marginTop: 6, lineHeight: 20 }}>“{mSel.example}”</Text>
+            <>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "rgba(255,255,255,0.78)", marginTop: 12, textAlign: "center" }}>or</Text>
+              <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.4, color: "rgba(255,255,255,0.82)", marginTop: 8 }}>
+                Second recommendation
+              </Text>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: "rgba(255,255,255,0.92)", marginTop: 4, lineHeight: 21 }}>
+                “{mSel.example}”
+              </Text>
+              {mSel.exampleWhy?.trim() ? (
+                <Text style={{ fontSize: 13, lineHeight: 18, color: "rgba(255,255,255,0.72)", marginTop: 6 }}>{mSel.exampleWhy.trim()}</Text>
+              ) : null}
+              <RateRow value={suggestionVerdict[suggestionKey(sel, "example")]} onChange={(verdict) => rateSuggestion("example", verdict)} />
+            </>
           ) : null}
         </View>
         <View style={{ paddingHorizontal: 2, paddingTop: 8 }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Try it now</Text>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>Practice just this part.</Text>
+          <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 2 }}>Practice just this part.</Text>
         </View>
         <View style={{ gap: 10, marginTop: 8 }}>
           <Pill full icon="mic" onPress={tryMoment}>
@@ -562,10 +655,16 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       <Screen bottomPad={40}>
         <BackBar title="Retry this moment" onBack={() => setPhase("moment")} />
         <Card lg>
-          <Text style={{ fontSize: 13, color: t.colors.ink3 }}>Say just this part</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.ink2 }}>Say just this part</Text>
           <Serif style={{ fontSize: 24, lineHeight: 31, marginTop: 6, color: t.colors.ink }}>{mSel.want}</Serif>
           {mSel.example ? (
-            <Text style={{ fontSize: 13.5, color: t.colors.ink2, marginTop: 10, lineHeight: 20 }}>“{mSel.example}”</Text>
+            <>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.ink2, marginTop: 12, textAlign: "center" }}>or</Text>
+              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.3, color: t.colors.ink2, marginTop: 6 }}>
+                Second recommendation
+              </Text>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink, marginTop: 4, lineHeight: 21 }}>“{mSel.example}”</Text>
+            </>
           ) : null}
         </Card>
         <View style={{ borderRadius: t.r, height: 170, overflow: "hidden" }}>
@@ -580,7 +679,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <Serif style={{ fontSize: 21, lineHeight: 28, color: "#fff", textAlign: "center" }}>
               {retryResult === "used" ? "You brought it into this Story." : "Not yet is useful evidence too."}
             </Serif>
-            <Pill tone="white" small onPress={() => setPhase("moment")} textStyle={{ color: t.colors.accD }} style={{ marginTop: 12, shadowOpacity: 0 }}>Back to the moment</Pill>
+            <Pill tone="white" small onPress={() => setPhase("moment")} textStyle={{ color: t.colors.accD }} style={{ marginTop: 12, shadowOpacity: 0, alignSelf: "center" }}>Back to the moment</Pill>
           </Hero>
         ) : (
           <View style={{ gap: 10 }}>

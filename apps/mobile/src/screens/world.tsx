@@ -1,8 +1,10 @@
 // world.tsx — Topics tab (Speaking World): map + Domain, Story, Message,
 // Recommendations. Backed by the real tree (migration 020, @/lib/speaking-world).
 // Recording + AI recs are later phases; "Talk" opens the (still-mock) mirror.
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
@@ -16,19 +18,24 @@ import {
   createMessage,
   deleteBeat,
   deleteTalkSession,
+  ensureStoryDomain,
   fetchBeats,
   fetchDomains,
   fetchMessages,
   fetchStories,
+  fetchStory,
   fetchTalkSessions,
   setBeatPositions,
   updateBeat,
+  updateStoryDomain,
+  updateStorySummary,
   type Beat,
   type Domain,
   type Story,
   type StoryMessage,
   type TalkSession,
 } from "@/lib/speaking-world";
+import { storyPromptFor } from "@/lib/story-prompts";
 import type { Nav } from "./nav";
 
 // Map slots (size + position) cycled across the user's domains.
@@ -489,7 +496,7 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
                 })
               }
             >
-              <Card onPress={() => nav.push("story", { id: s.id, title: s.title })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <Card onPress={() => nav.push("story", { id: s.id, title: s.title, domainId: id, domainName: name })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                 <Tile tone={TONES[i % TONES.length]} glyph="sparkle" />
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -510,11 +517,220 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
   );
 }
 
-export function StoryScreen({ id, title, nav }: { id: string; title?: string; nav: Nav }) {
+const DEFAULT_BEAT_ROW = 52;
+
+function targetBeatIndex(from: number, dy: number, heights: number[], count: number): number {
+  if (count <= 1) return from;
+  let acc = 0;
+  let i = from;
+  if (dy >= 0) {
+    while (i < count - 1) {
+      const nextH = heights[i + 1] ?? DEFAULT_BEAT_ROW;
+      if (dy - acc < nextH * 0.5) break;
+      acc += nextH;
+      i += 1;
+    }
+  } else {
+    const dist = -dy;
+    while (i > 0) {
+      const prevH = heights[i - 1] ?? DEFAULT_BEAT_ROW;
+      if (dist - acc < prevH * 0.5) break;
+      acc += prevH;
+      i -= 1;
+    }
+  }
+  return i;
+}
+
+function StoryDescription({
+  storyId,
+  title,
+  savedSummary,
+  onSaved,
+}: {
+  storyId: string;
+  title: string;
+  savedSummary: string | null;
+  onSaved: (summary: string | null) => void;
+}) {
   const t = useTheme();
+  const builtin = storyPromptFor(title);
+  const [text, setText] = useState(savedSummary ?? "");
+
+  useEffect(() => {
+    setText(savedSummary ?? "");
+  }, [storyId, savedSummary]);
+
+  if (builtin) {
+    return (
+      <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>
+        {builtin}
+      </Text>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        backgroundColor: t.colors.soft,
+        borderRadius: t.r,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: t.dark ? "rgba(255,255,255,0.06)" : "rgba(60,60,67,0.08)",
+        shadowColor: t.colors.ink,
+        shadowOpacity: 0.04,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 2 },
+      }}
+    >
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        onEndEditing={() => {
+          const next = text.trim();
+          setText(next);
+          const previous = (savedSummary ?? "").trim();
+          if (next === previous) return;
+          updateStorySummary(storyId, next || null).then(() => onSaved(next || null)).catch(() => {});
+        }}
+        placeholder="Add a description"
+        placeholderTextColor={t.colors.ink3}
+        multiline
+        textAlignVertical="top"
+        style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, padding: t.padc, minHeight: 76 }}
+      />
+    </View>
+  );
+}
+
+function BeatRow({
+  beat,
+  index,
+  last,
+  onChangeText,
+  onCommit,
+  onReorder,
+  onLockScroll,
+  onLayoutHeight,
+}: {
+  beat: Beat;
+  index: number;
+  last: boolean;
+  onChangeText: (id: string, text: string) => void;
+  onCommit: (id: string, text: string) => void;
+  onReorder: (from: number, dy: number) => void;
+  onLockScroll: (locked: boolean) => void;
+  onLayoutHeight: (index: number, height: number) => void;
+}) {
+  const t = useTheme();
+  const [dy, setDy] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const active = useRef(false);
+
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(160)
+        .runOnJS(true)
+        .onStart(() => {
+          active.current = true;
+          setDragging(true);
+          onLockScroll(true);
+        })
+        .onUpdate((e) => {
+          setDy(e.translationY);
+        })
+        .onFinalize((e) => {
+          const was = active.current;
+          const translation = e.translationY;
+          active.current = false;
+          setDragging(false);
+          setDy(0);
+          onLockScroll(false);
+          if (was) onReorder(index, translation);
+        }),
+    [index, onLockScroll, onReorder],
+  );
+
+  return (
+    <View
+      onLayout={(e) => onLayoutHeight(index, e.nativeEvent.layout.height)}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        minHeight: DEFAULT_BEAT_ROW,
+        borderBottomWidth: last ? 0 : 1,
+        borderBottomColor: t.colors.sep,
+        zIndex: dragging ? 4 : 0,
+        elevation: dragging ? 4 : 0,
+        backgroundColor: t.colors.card,
+        transform: [{ translateY: dy }, { scale: dragging ? 1.015 : 1 }],
+        shadowColor: dragging ? "#000" : "transparent",
+        shadowOpacity: dragging ? 0.1 : 0,
+        shadowRadius: dragging ? 10 : 0,
+        shadowOffset: { width: 0, height: 4 },
+      }}
+    >
+      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>{index + 1}</Text>
+      </View>
+      <TextInput
+        value={beat.text}
+        onChangeText={(v) => onChangeText(beat.id, v)}
+        onEndEditing={(e) => onCommit(beat.id, e.nativeEvent.text)}
+        placeholder="A key point…"
+        placeholderTextColor={t.colors.ink3}
+        multiline
+        style={{ flex: 1, fontSize: 15, fontWeight: "600", color: t.colors.ink, paddingVertical: 8 }}
+      />
+      <GestureDetector gesture={pan}>
+        <View
+          accessibilityRole="adjustable"
+          accessibilityLabel="Reorder"
+          onTouchStart={() => onLockScroll(true)}
+          onTouchEnd={() => {
+            if (!active.current) onLockScroll(false);
+          }}
+          onTouchCancel={() => {
+            if (!active.current) onLockScroll(false);
+          }}
+          style={{ width: 32, height: 36, alignItems: "center", justifyContent: "center" }}
+        >
+          <Icon name="grip" s={18} w={2.2} c={t.colors.ink3} />
+        </View>
+      </GestureDetector>
+    </View>
+  );
+}
+
+export function StoryScreen({
+  id,
+  title,
+  domainId: domainIdProp,
+  domainName: domainNameProp,
+  nav,
+}: {
+  id: string;
+  title?: string;
+  domainId?: string;
+  domainName?: string;
+  nav: Nav;
+}) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<StoryMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<TalkSession[] | null>(null);
+  const [storyTitle, setStoryTitle] = useState(title ?? "Story");
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryReady, setSummaryReady] = useState(false);
+  const [domainId, setDomainId] = useState<string | null>(domainIdProp ?? null);
+  const [domainName, setDomainName] = useState<string | null>(domainNameProp ?? null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [domains, setDomains] = useState<Domain[] | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [savingMove, setSavingMove] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -532,10 +748,40 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
       setSessions([]);
     }
   }, [id]);
+  const loadStory = useCallback(async () => {
+    setSummaryReady(false);
+    try {
+      const story = await fetchStory(id);
+      if (story) {
+        setStoryTitle(story.title);
+        setSummary(story.summary);
+        let nextDomainId = story.domainId;
+        let nextDomainName = story.domainName;
+        if (!nextDomainId) {
+          try {
+            const assigned = await ensureStoryDomain(story.id, story.title, story.domainId);
+            if (assigned) {
+              nextDomainId = assigned.domainId;
+              nextDomainName = assigned.domainName;
+            }
+          } catch {
+            // Chip stays hidden if we couldn't attach a topic.
+          }
+        }
+        setDomainId(nextDomainId);
+        setDomainName(nextDomainName);
+      }
+    } catch {
+      // Title from nav is enough to show the built-in prompt.
+    } finally {
+      setSummaryReady(true);
+    }
+  }, [id]);
   useEffect(() => {
     load();
     loadSessions();
-  }, [load, loadSessions]);
+    loadStory();
+  }, [load, loadSessions, loadStory]);
 
   // Optimistically drop the row, then delete; restore it if the delete fails.
   const removeSession = useCallback(async (sid: string) => {
@@ -552,19 +798,75 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
     }
   }, []);
 
-  return (
-    <Screen>
-      <BackBar onBack={nav.pop} />
-      <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
-        <Serif style={{ fontSize: 30, lineHeight: 33, color: t.colors.ink }}>{title ?? "Story"}</Serif>
-        <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 8 }}>Your story is getting clearer.</Text>
-      </View>
-      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: title ?? "This story", from: "topics", storyId: id })} style={{ marginTop: 6 }}>
-        Talk about this story
-      </Pill>
-      <Text style={{ textAlign: "center", fontSize: 13, color: t.colors.ink3, marginTop: -4 }}>Start a self-talk session</Text>
+  const openMove = useCallback(() => {
+    setMoveOpen(true);
+    setMoveError(null);
+    fetchDomains()
+      .then(setDomains)
+      .catch((e) => setMoveError(e instanceof Error ? e.message : "Couldn’t load topics."));
+  }, []);
 
-      <Sect title="Messages" action="+ New message" onAction={() => nav.push("newMessage", { storyId: id, storyTitle: title })} />
+  const pickTopic = useCallback(
+    async (next: Domain) => {
+      if (savingMove) return;
+      if (next.id === domainId) {
+        setMoveOpen(false);
+        return;
+      }
+      setSavingMove(true);
+      try {
+        await updateStoryDomain(id, next.id);
+        setDomainId(next.id);
+        setDomainName(next.name);
+        setMoveOpen(false);
+      } catch (e) {
+        Alert.alert("Couldn’t move this story", e instanceof Error ? e.message : "Try again.");
+      } finally {
+        setSavingMove(false);
+      }
+    },
+    [domainId, id, savingMove],
+  );
+
+  return (
+    <>
+    <Screen>
+      <BackBar
+        onBack={nav.pop}
+        right={
+          <Pressable
+            onPress={openMove}
+            style={{
+              maxWidth: 188,
+              height: 34,
+              borderRadius: 9999,
+              paddingHorizontal: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              backgroundColor: t.colors.accS,
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD, flexShrink: 1 }} numberOfLines={1}>
+              {domainName ?? "Choose topic"}
+            </Text>
+            <View style={{ transform: [{ rotate: "90deg" }] }}>
+              <Icon name="chev" s={11} w={2.4} c={t.colors.accD} />
+            </View>
+          </Pressable>
+        }
+      />
+      <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
+        <Serif style={{ fontSize: 30, lineHeight: 33, color: t.colors.ink }}>{storyTitle}</Serif>
+      </View>
+      {summaryReady || storyPromptFor(storyTitle) ? (
+        <StoryDescription storyId={id} title={storyTitle} savedSummary={summary} onSaved={setSummary} />
+      ) : (
+        <View style={{ minHeight: 28 }} />
+      )}
+
+      <Sect title="Messages" action="+ New message" onAction={() => nav.push("newMessage", { storyId: id, storyTitle })} />
       {messages === null && !error ? (
         <Loading />
       ) : error ? (
@@ -573,13 +875,13 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
         <Card style={{ alignItems: "center", paddingVertical: 26 }}>
           <Serif style={{ fontSize: 20, color: t.colors.ink }}>No messages yet</Serif>
           <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>A message is one way to tell this story — a 30-second version, a version for a friend…</Text>
-          <Pill icon="plus" onPress={() => nav.push("newMessage", { storyId: id, storyTitle: title })} style={{ marginTop: 16, alignSelf: "center" }}>
+          <Pill icon="plus" onPress={() => nav.push("newMessage", { storyId: id, storyTitle })} style={{ marginTop: 16, alignSelf: "center" }}>
             New message
           </Pill>
         </Card>
       ) : (
         messages.map((m) => (
-          <Card key={m.id} onPress={() => nav.push("message", { id: m.id, label: m.label, storyId: id, storyTitle: title })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Card key={m.id} onPress={() => nav.push("message", { id: m.id, label: m.label, storyId: id, storyTitle })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
               <Icon name="text" s={18} c={t.colors.accD} />
             </View>
@@ -598,7 +900,7 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
       ) : sessions.length === 0 ? (
         <Card style={{ alignItems: "center", paddingVertical: 22 }}>
           <Text style={{ fontSize: 13, color: t.colors.ink3, textAlign: "center", lineHeight: 19, paddingHorizontal: 8 }}>
-            No sessions yet. Tap “Talk about this story” above and just speak — every time you do, it lands here.
+            No sessions yet. Tap “Talk about this story” below and just speak — every time you do, it lands here.
           </Text>
         </Card>
       ) : (
@@ -612,7 +914,55 @@ export function StoryScreen({ id, title, nav }: { id: string; title?: string; na
           />
         ))
       )}
+
+      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: storyTitle, from: "topics", storyId: id })} style={{ marginTop: 6 }}>
+        Talk about this story
+      </Pill>
+      <Text style={{ textAlign: "center", fontSize: 13, color: t.colors.ink3, marginTop: -4 }}>Start a self-talk session</Text>
     </Screen>
+    <Modal visible={moveOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => { if (!savingMove) setMoveOpen(false); }}>
+      <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={() => { if (!savingMove) setMoveOpen(false); }}>
+        <Pressable
+          onPress={(event) => event.stopPropagation()}
+          style={{ backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 8 }}
+        >
+          <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 18 }} />
+          <Serif style={{ fontSize: 22, color: t.colors.ink, textAlign: "center", marginBottom: 14 }}>Move story</Serif>
+          {domains === null && !moveError ? (
+            <View style={{ paddingVertical: 28, alignItems: "center" }}>
+              <ActivityIndicator color={t.colors.acc} />
+            </View>
+          ) : moveError ? (
+            <ErrorCard msg={moveError} onRetry={openMove} />
+          ) : (
+            (domains ?? []).map((d, i) => (
+              <Pressable
+                key={d.id}
+                onPress={() => void pickTopic(d)}
+                style={({ pressed }) => ({
+                  minHeight: 52,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 4,
+                  borderTopWidth: i === 0 ? 0 : 1,
+                  borderTopColor: t.colors.sep,
+                  backgroundColor: pressed ? t.colors.soft : "transparent",
+                  opacity: savingMove ? 0.6 : 1,
+                })}
+              >
+                <Text style={{ flex: 1, fontSize: 16, fontWeight: d.id === domainId ? "700" : "600", color: t.colors.ink }}>{d.name}</Text>
+                {d.id === domainId ? <Icon name="check" s={18} w={2.4} c={t.colors.accD} /> : null}
+              </Pressable>
+            ))
+          )}
+          <Pill tone="ghost" onPress={savingMove ? undefined : () => setMoveOpen(false)} style={{ alignSelf: "center", marginTop: 16 }}>
+            Cancel
+          </Pill>
+        </Pressable>
+      </Pressable>
+    </Modal>
+    </>
   );
 }
 
@@ -622,6 +972,10 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
   const [error, setError] = useState<string | null>(null);
   const [newText, setNewText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [scrollLocked, setScrollLocked] = useState(false);
+  const heights = useRef<number[]>([]);
+  const beatsRef = useRef<Beat[] | null>(null);
+  beatsRef.current = beats;
 
   const load = useCallback(async () => {
     if (!id) {
@@ -632,15 +986,23 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
     try {
       setBeats(await fetchBeats(id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t load beats.");
+      setError(e instanceof Error ? e.message : "Couldn’t load this outline.");
     }
   }, [id]);
   useEffect(() => {
     load();
   }, [load]);
 
-  const editLocal = (beatId: string, text: string) =>
+  const editLocal = useCallback((beatId: string, text: string) => {
     setBeats((bs) => (bs ?? []).map((b) => (b.id === beatId ? { ...b, text } : b)));
+  }, []);
+
+  const commitBeat = useCallback(
+    (beatId: string, text: string) => {
+      updateBeat(beatId, text).catch(() => load());
+    },
+    [load],
+  );
 
   const addBeat = async () => {
     if (!id || !newText.trim() || busy) return;
@@ -651,50 +1013,56 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
       setNewText("");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t add that beat.");
+      setError(e instanceof Error ? e.message : "Couldn’t add that.");
     } finally {
       setBusy(false);
     }
   };
 
-  const removeBeat = async (beatId: string) => {
-    setBeats((bs) => (bs ?? []).filter((b) => b.id !== beatId));
-    try {
-      await deleteBeat(beatId);
-    } catch {
-      await load();
-    }
-  };
+  const removeBeat = useCallback(
+    async (beatId: string) => {
+      setBeats((bs) => (bs ?? []).filter((b) => b.id !== beatId));
+      try {
+        await deleteBeat(beatId);
+      } catch {
+        await load();
+      }
+    },
+    [load],
+  );
 
-  const move = async (index: number, dir: -1 | 1) => {
-    const bs = beats ?? [];
-    const j = index + dir;
-    if (j < 0 || j >= bs.length) return;
-    const a = bs[index];
-    const b = bs[j];
-    const next = [...bs];
-    next[index] = b;
-    next[j] = a;
-    setBeats(next);
-    try {
-      await setBeatPositions([
-        { id: a.id, position: b.position },
-        { id: b.id, position: a.position },
-      ]);
-      await load();
-    } catch {
-      await load();
-    }
-  };
+  const reorder = useCallback(
+    async (from: number, dy: number) => {
+      const bs = beatsRef.current ?? [];
+      const to = targetBeatIndex(from, dy, heights.current, bs.length);
+      if (to === from || to < 0 || to >= bs.length) return;
+      const next = [...bs];
+      const [item] = next.splice(from, 1);
+      if (!item) return;
+      next.splice(to, 0, item);
+      const positioned = next.map((b, i) => ({ ...b, position: i }));
+      setBeats(positioned);
+      try {
+        await setBeatPositions(positioned.map((b) => ({ id: b.id, position: b.position })));
+      } catch {
+        await load();
+      }
+    },
+    [load],
+  );
+
+  const onLayoutHeight = useCallback((index: number, height: number) => {
+    heights.current[index] = height;
+  }, []);
 
   const list = beats ?? [];
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!scrollLocked}>
       <BackBar title={label ?? "Message"} onBack={nav.pop} />
       <View style={{ paddingHorizontal: 2, paddingTop: 4 }}>
         <Serif style={{ fontSize: 22, color: t.colors.ink }}>Your message</Serif>
-        <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>The key points you want to communicate — your beats. Tap to edit.</Text>
+        <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>The key points you want to communicate — your outline. Tap to edit.</Text>
       </View>
 
       {beats === null && !error ? (
@@ -703,49 +1071,44 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
         <ErrorCard msg={error} onRetry={load} />
       ) : list.length === 0 ? (
         <Card style={{ alignItems: "center", paddingVertical: 24 }}>
-          <Serif style={{ fontSize: 20, color: t.colors.ink }}>No beats yet</Serif>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>Add the key points below — one beat per idea. (AI structuring from your sessions comes next.)</Text>
+          <Serif style={{ fontSize: 20, color: t.colors.ink }}>No outline yet</Serif>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>Add the key points below — one per idea.</Text>
         </Card>
       ) : (
-        <Card style={{ paddingVertical: 2 }}>
+        <Card style={{ paddingVertical: 2, overflow: "visible" }}>
           {list.map((b, i) => (
-            <View key={b.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 52, borderBottomWidth: i < list.length - 1 ? 1 : 0, borderBottomColor: t.colors.sep }}>
-              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>{i + 1}</Text>
-              </View>
-              <TextInput
-                value={b.text}
-                onChangeText={(v) => editLocal(b.id, v)}
-                onEndEditing={(e) => updateBeat(b.id, e.nativeEvent.text).catch(() => load())}
-                placeholder="Beat…"
-                placeholderTextColor={t.colors.ink3}
-                multiline
-                style={{ flex: 1, fontSize: 15, fontWeight: "600", color: t.colors.ink, paddingVertical: 8 }}
+            <SwipeRow
+              key={b.id}
+              onDelete={() =>
+                confirmDelete({
+                  title: "Delete this point?",
+                  deleteLabel: "Delete",
+                  onConfirm: () => removeBeat(b.id),
+                })
+              }
+            >
+              <BeatRow
+                beat={b}
+                index={i}
+                last={i === list.length - 1}
+                onChangeText={editLocal}
+                onCommit={commitBeat}
+                onReorder={reorder}
+                onLockScroll={setScrollLocked}
+                onLayoutHeight={onLayoutHeight}
               />
-              <View style={{ alignItems: "center", justifyContent: "center" }}>
-                <Pressable onPress={() => move(i, -1)} disabled={i === 0} hitSlop={6} style={{ paddingHorizontal: 4, opacity: i === 0 ? 0.25 : 1 }}>
-                  <Text style={{ fontSize: 15, color: t.colors.ink2 }}>↑</Text>
-                </Pressable>
-                <Pressable onPress={() => move(i, 1)} disabled={i === list.length - 1} hitSlop={6} style={{ paddingHorizontal: 4, opacity: i === list.length - 1 ? 0.25 : 1 }}>
-                  <Text style={{ fontSize: 15, color: t.colors.ink2 }}>↓</Text>
-                </Pressable>
-              </View>
-              <Pressable onPress={() => removeBeat(b.id)} hitSlop={6} style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" }}>
-                <Icon name="x" s={13} w={2.2} c={t.colors.ink3} />
-              </Pressable>
-            </View>
+            </SwipeRow>
           ))}
         </Card>
       )}
 
-      {/* Add a beat */}
       {id ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View style={[{ flex: 1, backgroundColor: t.colors.card, borderRadius: t.r, paddingHorizontal: 14 }, t.shadowCard]}>
             <TextInput
               value={newText}
               onChangeText={setNewText}
-              placeholder="Add a beat…"
+              placeholder="Add a point…"
               placeholderTextColor={t.colors.ink3}
               onSubmitEditing={addBeat}
               returnKeyType="done"

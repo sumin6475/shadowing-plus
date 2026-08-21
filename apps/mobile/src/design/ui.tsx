@@ -210,21 +210,23 @@ export function Pill({
           gap: 7,
           backgroundColor: tv.bg,
           flex: full ? 1 : undefined,
-          alignSelf: full ? undefined : "flex-start",
+          alignSelf: full ? "stretch" : "flex-start",
           opacity: pressed ? 0.85 : 1,
         },
         tv.shadow ? t.shadowCard : null,
         style,
       ]}
     >
-      {icon ? <Icon name={icon} s={small ? 15 : 17} w={2} c={tv.fg} /> : null}
-      {typeof children === "string" ? (
-        <Text style={[{ color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
-          {children}
-        </Text>
-      ) : (
-        children
-      )}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
+        {icon ? <Icon name={icon} s={small ? 15 : 17} w={2} c={tv.fg} /> : null}
+        {typeof children === "string" ? (
+          <Text style={[{ color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
+            {children}
+          </Text>
+        ) : (
+          children
+        )}
+      </View>
     </Pressable>
   );
 }
@@ -416,6 +418,7 @@ export function Screen({
   bottomPad = 120,
   style,
   refreshControl,
+  scrollEnabled = true,
 }: {
   children: ReactNode;
   noPad?: boolean;
@@ -423,6 +426,8 @@ export function Screen({
   style?: StyleProp<ViewStyle>;
   /** Optional <RefreshControl> for pull-to-refresh (data-backed screens). */
   refreshControl?: ReactElement<RefreshControlProps>;
+  /** Set false while a nested drag-reorder is active so the page doesn't scroll. */
+  scrollEnabled?: boolean;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -442,6 +447,7 @@ export function Screen({
           },
           style,
         ]}
+        scrollEnabled={scrollEnabled}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         // Focused inputs sit above the keyboard: iOS insets the scroll view for

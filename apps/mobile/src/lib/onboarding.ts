@@ -4,7 +4,7 @@ import { createPhrase } from "./phrases";
 import {
   createBeat,
   createMessage,
-  createStory,
+  createStoryInDefaultTopic,
   createTalkSession,
   fetchAllStories,
   fetchBeats,
@@ -186,7 +186,7 @@ export async function importOnboardingDraft(
     await fetchDomains();
     const stories = await fetchAllStories();
     storyId = stories.find((story) => story.title.trim().toLocaleLowerCase("en") === current.storyTitle.trim().toLocaleLowerCase("en"))?.id ?? null;
-    storyId = storyId ?? (await createStory(null, current.storyTitle));
+    storyId = storyId ?? (await createStoryInDefaultTopic(current.storyTitle));
     if (!storyId) throw new Error("We couldn’t save your first story.");
     await checkpoint({ storyId });
   }

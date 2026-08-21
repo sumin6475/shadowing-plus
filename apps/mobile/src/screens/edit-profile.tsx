@@ -1,6 +1,6 @@
 // edit-profile.tsx — the "Edit profile" surface behind the Profile header.
 // Name + goal persist to Supabase auth user_metadata (no profiles table needed,
-// synced across devices); first language persists locally and applies at once.
+// synced across devices); first language and talk-focus persist locally.
 import { useState } from "react";
 import { ActivityIndicator, Text, TextInput, View } from "react-native";
 
@@ -8,6 +8,13 @@ import { useTheme } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firstLanguage, persistFirstLanguage, L1_OPTIONS, type L1 } from "@/lib/first-language";
+import {
+  persistTalkFocus,
+  talkFocus,
+  TALK_FOCUS_DETAIL,
+  TALK_FOCUS_OPTIONS,
+  type TalkFocus,
+} from "@/lib/talk-focus";
 import { Avatar, BackBar, Card, Chip, Pill, Screen } from "@/design/ui";
 import type { Nav } from "./nav";
 
@@ -19,6 +26,7 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
   const [name, setName] = useState(meta.display_name ?? "");
   const [goal, setGoal] = useState(meta.goal ?? "");
   const [l1, setL1] = useState<L1>(firstLanguage());
+  const [focus, setFocus] = useState<TalkFocus>(talkFocus());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +42,7 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
       });
       if (updateError) throw updateError;
       await persistFirstLanguage(l1);
+      await persistTalkFocus(focus);
       nav.pop();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t save your profile.");
@@ -81,6 +90,23 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
             </Chip>
           ))}
         </View>
+      </Card>
+
+      <Card>
+        <Text style={label}>FEEDBACK FOCUS</Text>
+        <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, marginTop: 6 }}>
+          After you talk, we look first at this.
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 12 }}>
+          {TALK_FOCUS_OPTIONS.map((option) => (
+            <Chip key={option.value} active={focus === option.value} onPress={() => setFocus(option.value)}>
+              {option.label}
+            </Chip>
+          ))}
+        </View>
+        <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, marginTop: 12 }}>
+          {TALK_FOCUS_DETAIL[focus]}
+        </Text>
       </Card>
 
       {error ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center" }}>{error}</Text> : null}

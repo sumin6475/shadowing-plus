@@ -1,8 +1,8 @@
 // settings.tsx — Profile & Settings, rebuilt to match the Saylo profile design:
 // a centered identity header, the "Your speaking world" cobalt banner, Library
 // (kept as a BETA entry, not a bottom-bar tab), then grouped preference rows.
-// "Log out" stays wired to the real Supabase sign-out. Row values are still
-// display-only placeholders — wiring each setting is a later pass.
+// "Log out" stays wired to the real Supabase sign-out. Unshipped rows hide
+// their fake right-side value and show a Coming soon chip (same as Library BETA).
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -10,9 +10,19 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTheme, type Theme } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
 import { firstLanguage, L1_LABEL } from "@/lib/first-language";
+import { reminderSummary } from "@/lib/reminders";
+import { talkFocus, TALK_FOCUS_LABEL } from "@/lib/talk-focus";
 import { Avatar, Card, Icon, Screen } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
+
+function StatusChip({ t, label }: { t: Theme; label: string }) {
+  return (
+    <View style={{ backgroundColor: t.colors.accS, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3 }}>
+      <Text style={{ fontSize: 11, fontWeight: "800", color: t.colors.accD, letterSpacing: 0.4 }}>{label}</Text>
+    </View>
+  );
+}
 
 function SettingsRow({
   t,
@@ -21,6 +31,7 @@ function SettingsRow({
   detail,
   last,
   danger,
+  comingSoon,
   onPress,
 }: {
   t: Theme;
@@ -29,27 +40,40 @@ function SettingsRow({
   detail?: string;
   last?: boolean;
   danger?: boolean;
+  comingSoon?: boolean;
   onPress?: () => void;
 }) {
   const fg = danger ? "#E5484D" : t.colors.ink;
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        minHeight: 52,
-        gap: 13,
-        borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
-        borderBottomColor: t.colors.sep,
-      }}
-    >
+  const row = (
+    <>
       {icon ? <Icon name={icon} s={21} w={1.8} c={danger ? "#E5484D" : t.colors.ink2} /> : null}
       <Text style={{ flex: 1, fontSize: 16.5, fontWeight: "500", color: fg }}>{label}</Text>
-      {detail ? <Text style={{ fontSize: 15, color: t.colors.ink3 }}>{detail}</Text> : null}
-      {danger ? null : <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />}
-    </Pressable>
+      {comingSoon ? (
+        <StatusChip t={t} label="Coming soon" />
+      ) : (
+        <>
+          {detail ? <Text style={{ fontSize: 15, color: t.colors.ink3 }}>{detail}</Text> : null}
+          {danger ? null : <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />}
+        </>
+      )}
+    </>
   );
+  const style = {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    minHeight: 52,
+    gap: 13,
+    borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
+    borderBottomColor: t.colors.sep,
+  };
+  if (onPress && !comingSoon) {
+    return (
+      <Pressable onPress={onPress} style={style}>
+        {row}
+      </Pressable>
+    );
+  }
+  return <View style={style}>{row}</View>;
 }
 
 function SettingsGroup({ t, title, children }: { t: Theme; title: string; children: ReactNode }) {
@@ -122,36 +146,35 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       <Card onPress={() => nav.push("library")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <Icon name="book" s={22} w={1.8} c={t.colors.ink2} />
         <Text style={{ fontSize: 16.5, fontWeight: "600", color: t.colors.ink }}>Library</Text>
-        <View style={{ backgroundColor: t.colors.accS, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3 }}>
-          <Text style={{ fontSize: 11, fontWeight: "800", color: t.colors.accD, letterSpacing: 0.4 }}>BETA</Text>
-        </View>
+        <StatusChip t={t} label="BETA" />
         <View style={{ flex: 1 }} />
         <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
       </Card>
 
       <SettingsGroup t={t} title="Preferences">
-        <SettingsRow t={t} icon="translate" label="English level" detail="Intermediate" />
+        <SettingsRow t={t} icon="translate" label="English level" comingSoon />
         <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("editProfile")} />
-        <SettingsRow t={t} icon="mic" label="My mirror" detail="mirror 01" />
-        <SettingsRow t={t} icon="contrast" label="Theme" detail="Default" last />
+        <SettingsRow t={t} icon="sparkle" label="Feedback focus" detail={TALK_FOCUS_LABEL[talkFocus()]} onPress={() => nav.push("editProfile")} />
+        <SettingsRow t={t} icon="mic" label="My mirror" comingSoon />
+        <SettingsRow t={t} icon="contrast" label="Theme" comingSoon last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Practice">
-        <SettingsRow t={t} icon="clock" label="Practice length" detail="5 min" />
-        <SettingsRow t={t} icon="bulb" label="Hints while speaking" detail="On" />
-        <SettingsRow t={t} icon="text" label="Phrases per day" detail="5" />
-        <SettingsRow t={t} icon="gauge" label="Playback speed" detail="0.9×" last />
+        <SettingsRow t={t} icon="clock" label="Practice length" comingSoon />
+        <SettingsRow t={t} icon="bulb" label="Hints while speaking" comingSoon />
+        <SettingsRow t={t} icon="text" label="Phrases per day" comingSoon />
+        <SettingsRow t={t} icon="gauge" label="Playback speed" comingSoon last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Notifications">
-        <SettingsRow t={t} icon="bell" label="Reminders" detail="Evening" />
-        <SettingsRow t={t} icon="calendar" label="Weekly recap" detail="On" last />
+        <SettingsRow t={t} icon="bell" label="Reminders" detail={reminderSummary()} onPress={() => nav.push("reminders")} />
+        <SettingsRow t={t} icon="calendar" label="Weekly recap" comingSoon last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Account">
-        <SettingsRow t={t} icon="export" label="Export my phrases" />
-        <SettingsRow t={t} icon="help" label="Help & feedback" />
-        <SettingsRow t={t} icon="shield" label="Privacy" />
+        <SettingsRow t={t} icon="export" label="Export my phrases" comingSoon />
+        <SettingsRow t={t} icon="help" label="Help & feedback" comingSoon />
+        <SettingsRow t={t} icon="shield" label="Privacy" comingSoon />
         <SettingsRow t={t} label="Log out" danger onPress={() => signOut()} last />
       </SettingsGroup>
     </Screen>

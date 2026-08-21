@@ -1,6 +1,7 @@
 // speaking-world.ts — the Speaking World tree (migration 020), RLS-scoped via
 // the anon+session client. Domain → Story → Message → beats. The initial world
 // is seeded client-side on first use (a migration can't seed per-user).
+import { storyPromptFor } from "./story-prompts";
 import { supabase } from "./supabase";
 
 export interface Domain {
@@ -56,8 +57,25 @@ const SEED = [
   { name: "Work / Study", color: "sky", stories: ["My startup", "Current project", "Interview", "My research"] },
   { name: "Experiences", color: "blush", stories: ["Moving abroad", "Biggest challenge", "Trip to Japan"] },
   { name: "Daily life", color: "butter", stories: ["Morning routine", "Gym", "Weekend"] },
-  { name: "Ideas", color: "sky", stories: ["AI", "Education", "Design"] },
+  { name: "Ideas", color: "sky", stories: ["Something I learned", "AI", "Education", "Design"] },
 ];
+
+/** Onboarding picks that aren't already in SEED still need a home topic. */
+const ONBOARDING_TOPIC: Record<string, string> = {
+  "what i do": "Work / Study",
+  "a recent challenge": "Experiences",
+  "my future plans": "About me",
+};
+
+const DEFAULT_TOPIC = "Ideas";
+
+function topicNameForStoryTitle(title: string): string {
+  const key = title.trim().toLocaleLowerCase("en");
+  for (const domain of SEED) {
+    if (domain.stories.some((story) => story.toLocaleLowerCase("en") === key)) return domain.name;
+  }
+  return ONBOARDING_TOPIC[key] ?? DEFAULT_TOPIC;
+}
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
@@ -120,7 +138,13 @@ export async function seedInitialWorld(): Promise<void> {
     const d = SEED[i];
     const { data: dom, error } = await supabase.from("domains").insert({ name: d.name, color: d.color, position: i }).select("id").single();
     if (error || !dom) continue;
-    const rows = d.stories.map((title, j) => ({ domain_id: dom.id as string, title, status: "draft", position: j }));
+    const rows = d.stories.map((title, j) => ({
+      domain_id: dom.id as string,
+      title,
+      status: "draft",
+      position: j,
+      summary: storyPromptFor(title),
+    }));
     if (rows.length) await supabase.from("stories").insert(rows);
   }
 }
@@ -158,6 +182,38 @@ export async function fetchAllStories(): Promise<StoryChoice[]> {
     title: (story.title as string) || "Untitled story",
     domainName: (one(story.domains as { name: string }[]) as { name: string } | null)?.name ?? null,
   }));
+}
+
+/** One story by id (RLS-scoped). Used by the story detail screen. */
+export async function fetchStory(
+  id: string,
+): Promise<Pick<Story, "id" | "title" | "summary" | "domainId"> & { domainName: string | null } | null> {
+  const { data, error } = await supabase
+    .from("stories")
+    .select("id, title, summary, domain_id, domains(name)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    title: (data.title as string) || "Untitled story",
+    summary: (data.summary as string | null) ?? null,
+    domainId: (data.domain_id as string | null) ?? null,
+    domainName: (one(data.domains as { name: string }[]) as { name: string } | null)?.name ?? null,
+  };
+}
+
+/** Persist the learner-edited description on a story card. Empty string clears it. */
+export async function updateStorySummary(id: string, summary: string | null): Promise<void> {
+  const { error } = await supabase.from("stories").update({ summary }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Move a story to another topic. */
+export async function updateStoryDomain(id: string, domainId: string): Promise<void> {
+  const { error } = await supabase.from("stories").update({ domain_id: domainId }).eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 /** Messages for a story, ordered. */
@@ -202,9 +258,38 @@ export async function createDomain(name: string): Promise<string | null> {
 }
 
 export async function createStory(domainId: string | null, title: string): Promise<string | null> {
-  const { data, error } = await supabase.from("stories").insert({ domain_id: domainId, title: title.trim(), status: "draft" }).select("id").single();
+  const prompt = storyPromptFor(title);
+  const { data, error } = await supabase
+    .from("stories")
+    .insert({ domain_id: domainId, title: title.trim(), status: "draft", ...(prompt ? { summary: prompt } : {}) })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
   return (data?.id as string) ?? null;
+}
+
+/** Create a story under its default topic when onboarding didn't pass a domain. */
+export async function createStoryInDefaultTopic(title: string): Promise<string | null> {
+  const topic = topicNameForStoryTitle(title);
+  const domains = await fetchDomains();
+  const domainId = domains.find((domain) => domain.name === topic)?.id ?? null;
+  return createStory(domainId, title);
+}
+
+/** Attach an orphan story (no domain_id) to the topic its title belongs in. */
+export async function ensureStoryDomain(
+  storyId: string,
+  title: string,
+  currentDomainId: string | null,
+): Promise<{ domainId: string; domainName: string } | null> {
+  if (currentDomainId) return null;
+  const domainName = topicNameForStoryTitle(title);
+  const domains = await fetchDomains();
+  const domain = domains.find((item) => item.name === domainName);
+  if (!domain) return null;
+  const { error } = await supabase.from("stories").update({ domain_id: domain.id }).eq("id", storyId);
+  if (error) throw new Error(error.message);
+  return { domainId: domain.id, domainName: domain.name };
 }
 
 export async function createMessage(storyId: string, label: string): Promise<string | null> {

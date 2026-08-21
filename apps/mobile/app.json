@@ -75,7 +75,15 @@
           "cameraPermission": "Saylo uses your camera as a speaking mirror or to capture English text you choose. Speaking practice is not recorded, and learning photos are not stored."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "color": "#3B6EE1",
+          "defaultChannel": "practice-reminders"
+        }
+      ],
+      "./plugins/with-local-reminders-only.js"
     ],
     "experiments": {
       "typedRoutes": true,

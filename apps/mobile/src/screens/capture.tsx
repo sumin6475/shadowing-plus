@@ -20,6 +20,16 @@ export interface CaptureImageAsset {
   origin: "camera" | "library";
 }
 
+export interface ClipCaptureSeed {
+  contextText: string;
+  contextTranslation?: string | null;
+  sourceLabel?: string;
+  videoId?: string;
+  segmentId?: string;
+  start?: number;
+  end?: number;
+}
+
 const KINDS: { value: PhraseKind; label: string }[] = [
   { value: "phrase", label: "Expression" },
   { value: "phrasal_verb", label: "Phrasal verb" },
@@ -177,24 +187,25 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
   );
 }
 
-export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?: CaptureImageAsset }) {
+export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; imageAsset?: CaptureImageAsset; clipSeed?: ClipCaptureSeed }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const contextInputRef = useRef<TextInput>(null);
   const processedImageRef = useRef(false);
+  const processedClipRef = useRef(false);
   const contextLookupRef = useRef(0);
   const [imageUri, setImageUri] = useState<string | null>(imageAsset?.uri ?? null);
   const [reading, setReading] = useState(Boolean(imageAsset));
-  const [filling, setFilling] = useState(false);
+  const [filling, setFilling] = useState(Boolean(clipSeed?.contextText) && !imageAsset);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [context, setContext] = useState("");
-  const [contextTranslation, setContextTranslation] = useState("");
+  const [context, setContext] = useState(clipSeed?.contextText ?? "");
+  const [contextTranslation, setContextTranslation] = useState(clipSeed?.contextTranslation ?? "");
   const [textSource, setTextSource] = useState<"manual" | "paste">("manual");
   const [meaning, setMeaning] = useState("");
   const [usageNote, setUsageNote] = useState("");
-  const [sourceLabel, setSourceLabel] = useState("");
+  const [sourceLabel, setSourceLabel] = useState(clipSeed?.sourceLabel ?? "");
   const [kind, setKind] = useState<PhraseKind>("phrase");
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [confidence, setConfidence] = useState<number | null>(null);
@@ -280,9 +291,33 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
     void readImageAsset(imageAsset);
   }, [imageAsset, readImageAsset]);
 
+  const fillFromClipSeed = useCallback(async (seed: ClipCaptureSeed) => {
+    const input = seed.contextText.trim();
+    if (!input) return;
+    setFilling(true);
+    setError(null);
+    try {
+      const draft = await extractPhraseFromText(input);
+      if (!draft.suggestedPhrase) throw new Error("We couldn’t find a phrase to suggest. Select words above or type one yourself.");
+      applyDraft(draft, false);
+      if (seed.contextTranslation) setContextTranslation(seed.contextTranslation);
+      await hydrateSavedPhrases(draft.contextText || input);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Couldn’t fill this phrase right now.");
+    } finally {
+      setFilling(false);
+    }
+  }, [applyDraft, hydrateSavedPhrases]);
+
+  useEffect(() => {
+    if (!clipSeed?.contextText || processedClipRef.current) return;
+    processedClipRef.current = true;
+    void fillFromClipSeed(clipSeed);
+  }, [clipSeed, fillFromClipSeed]);
+
   const hasDraft = () => savedPhrases.length > 0
     ? Boolean(text.trim() || meaning.trim() || usageNote.trim())
-    : Boolean(imageUri || text.trim() || context.trim() || meaning.trim() || usageNote.trim());
+    : Boolean(imageUri || text.trim() || meaning.trim() || usageNote.trim() || (!clipSeed && context.trim()));
 
   const leaveEditor = () => {
     if (!hasDraft()) {
@@ -501,9 +536,13 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
         kind,
         context,
         contextTranslation,
-        source: imageUri ? "image_ocr" : textSource,
+        source: imageUri ? "image_ocr" : clipSeed ? "clip" : textSource,
         sourceLabel,
         ocrConfidence: imageUri ? confidence : null,
+        videoId: clipSeed?.videoId,
+        segmentId: clipSeed?.segmentId,
+        startTime: clipSeed?.start,
+        endTime: clipSeed?.end,
         storyId,
       });
       const captured: SavedCapturePhrase = {
@@ -542,7 +581,7 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
   return (
     <>
       <Screen bottomPad={54}>
-      <BackBar title={imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
+      <BackBar title={clipSeed ? "From this clip" : imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
 
       {imageUri ? (
         <>
@@ -559,17 +598,23 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
         </>
       ) : null}
 
-      {reading ? (
+      {reading || (Boolean(clipSeed) && filling && !text.trim()) ? (
         <Card style={{ alignItems: "center", paddingVertical: 24 }}>
           <ActivityIndicator color={t.colors.acc} />
-          <Text style={{ fontSize: 13.5, color: t.colors.ink2, marginTop: 10 }}>Reading the visible text…</Text>
+          <Text style={{ fontSize: 13.5, color: t.colors.ink2, marginTop: 10 }}>
+            {reading ? "Reading the visible text…" : "Finding a phrase…"}
+          </Text>
         </Card>
       ) : null}
 
       <Card>
         <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>CONTEXT</Text>
         <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 5 }}>
-          {imageUri ? "Check the text we found, then choose what you want to keep." : "Paste or type a sentence, dialogue, or expression. Context is optional if you already know the phrase."}
+          {imageUri
+            ? "Check the text we found, then choose what you want to keep."
+            : clipSeed
+              ? "We’ll pick one reusable expression from this line. You can edit everything."
+              : "Paste or type a sentence, dialogue, or expression. Context is optional if you already know the phrase."}
         </Text>
         <TextInput
           ref={contextInputRef}
@@ -583,7 +628,7 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
           }}
           onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
           editable={!reading}
-          autoFocus={!imageAsset}
+          autoFocus={!imageAsset && !clipSeed}
           multiline
           placeholder="Paste a sentence, dialogue, or expression…"
           placeholderTextColor={t.colors.ink3}
@@ -598,7 +643,7 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
         ) : null}
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 11 }}>
-          {!imageUri && showNativePasteButton ? (
+          {!imageUri && !clipSeed && showNativePasteButton ? (
             <Clipboard.ClipboardPasteButton
               acceptedContentTypes={["plain-text"]}
               backgroundColor={t.colors.soft}
@@ -610,7 +655,7 @@ export function PhraseCaptureScreen({ nav, imageAsset }: { nav: Nav; imageAsset?
               }}
               style={{ width: 98, height: 34 }}
             />
-          ) : !imageUri ? (
+          ) : !imageUri && !clipSeed ? (
             <Pill tone="tint" small onPress={() => void pasteText()}>Paste</Pill>
           ) : null}
 

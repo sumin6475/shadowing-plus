@@ -16,10 +16,10 @@ export type ViewName =
   | "session"
   | "library"
   | "libItem"
-  | "saveChunk"
   | "capture"
   | "settings"
-  | "editProfile";
+  | "editProfile"
+  | "reminders";
 
 export interface TalkCtx {
   ctx?: string;

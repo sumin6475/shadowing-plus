@@ -123,10 +123,14 @@ export interface TalkMoment {
   label: string;
   /** A verbatim span copied from the transcript. */
   said: string;
-  /** A more natural way to say it, in the learner's voice (≤10 words). */
+  /** The top suggestion, in the learner's voice. */
   want: string;
-  /** One short example sentence that uses `want`. */
+  /** A second recommendation for the same moment (shown after "or"). */
   example: string;
+  /** One-sentence grounds for `want`, in the chosen feedback focus. */
+  why?: string;
+  /** One-sentence grounds for `example`. */
+  exampleWhy?: string;
   /** Exact owned Phrase Bank row when this is a retrieval suggestion. */
   phraseItemId: string | null;
   /** Keeps generated language visibly separate from previously saved language. */

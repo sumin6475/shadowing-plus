@@ -7,6 +7,7 @@
 // user's Supabase JWT, so auth comes for free. The OpenAI key lives in the
 // function's Supabase secret, never in the bundle.
 import { supabase } from "./supabase";
+import { talkFocus, type TalkFocus } from "./talk-focus";
 import type { StuckHelp, TalkMoment } from "../types/api";
 
 /** One "I'm stuck" note: the timestamp plus the learner's quick memo about what
@@ -25,9 +26,16 @@ export async function diagnoseTalk(input: {
   transcript: string;
   topic?: string | null;
   storyId?: string | null;
+  focus?: TalkFocus | null;
 }): Promise<TalkMoment[]> {
+  const focus = input.focus ?? talkFocus();
   const { data, error } = await supabase.functions.invoke<{ moments: TalkMoment[] }>("talk-diagnose", {
-    body: { transcript: input.transcript, topic: input.topic ?? null, story_id: input.storyId ?? null },
+    body: {
+      transcript: input.transcript,
+      topic: input.topic ?? null,
+      story_id: input.storyId ?? null,
+      focus,
+    },
   });
   if (error) throw new Error(error.message || "Couldn’t analyze this session.");
   return data?.moments ?? [];
