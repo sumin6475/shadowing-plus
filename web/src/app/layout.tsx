@@ -12,6 +12,9 @@ import "./mobile.css";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
+  // Landing hero uses Black (900); in-app still reads Pretendard via
+  // --font-pretendard. Explicit weights so 800/900 are not dropped.
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
 const sourceSerif = Source_Serif_4({
