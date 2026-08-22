@@ -62,16 +62,16 @@ export default function LandingPage() {
         <div className="hero-shell">
           <div className="hero-copy">
             <p className="beta-status"><span aria-hidden="true" />Personal Speaking Studio · B1–C1 English</p>
-            <h1>Turn the English you save into English you actually speak.</h1>
+            <h1>Speak the English you save.</h1>
             <p className="hero-lede">
               Save a useful phrase, connect it to a Topic from your life, speak for
               one minute, then get one clear repair before you try again.
             </p>
             <div className="hero-actions">
               <a className="button button-large" href="#waitlist">Join the waitlist</a>
-              <a className="text-link" href="#how">See the practice loop <span aria-hidden="true">↓</span></a>
+              <a className="button button-large button-ghost" href="#how">See the practice loop</a>
             </div>
-            <p className="hero-fine">Not a beginner course or an AI conversation partner. It is the activation layer between English you understand and English you can use.</p>
+            <p className="hero-fine">Not a beginner course or an AI partner — the activation layer between English you understand and English you can use.</p>
           </div>
           <ProductDemo />
         </div>
