@@ -1,4 +1,15 @@
-const goals = ["clear-speaking", "networking", "pitch", "interview", "other"] as const;
+const goals = [
+  "retrieval",
+  "rambling",
+  "translation-shaped",
+  "correction-fatigue",
+  "other",
+  // Keep accepting values sent by the previous public form.
+  "clear-speaking",
+  "networking",
+  "pitch",
+  "interview",
+] as const;
 const platforms = ["ios", "android", "either"] as const;
 
 export type WaitlistInput = {

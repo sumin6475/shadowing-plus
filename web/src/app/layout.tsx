@@ -52,29 +52,29 @@ const siteUrl =
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Saylo · Have the words ready",
+    default: "Saylo · Turn saved English into spoken English",
     template: "%s · Saylo",
   },
   description:
-    "Build and practise the English you need for real introductions, interviews, meetups, and pitches. Join the Saylo private beta waitlist.",
+    "A personal speaking studio for B1–C1 learners. Save useful English, connect it to your Topics, practise through one-minute self-talk, and fix one thing before retrying.",
   keywords: [
     "English speaking practice",
-    "speech practice",
-    "startup pitch practice",
-    "English fluency",
+    "active English vocabulary",
+    "English self-talk",
+    "B1 C1 speaking practice",
     "mirror practice",
   ],
   openGraph: {
     type: "website",
-    title: "Have the words ready when the moment comes.",
-    description: "Build the English you actually need for your life, then practise it until it feels like yours.",
+    title: "Turn the English you save into English you actually speak.",
+    description: "Save a phrase, connect it to your life, speak for one minute, fix one thing, then retry.",
     siteName: "Saylo",
     images: [{ url: "/og.png", width: 1536, height: 804, alt: "Saylo speaking practice app preview" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Have the words ready when the moment comes.",
-    description: "Build the English you actually need for your life, then practise it until it feels like yours.",
+    title: "Turn the English you save into English you actually speak.",
+    description: "Save a phrase, connect it to your life, speak for one minute, fix one thing, then retry.",
     images: ["/og.png"],
   },
   icons: {

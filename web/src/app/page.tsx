@@ -7,28 +7,34 @@ import "./landing.css";
 const situations = [
   {
     number: "01",
-    title: "When someone asks what you do",
-    copy: "Turn a half-formed answer into an introduction that sounds like you.",
-    example: "My work, in 30 seconds",
+    title: "Word retrieval fails.",
+    copy: "The phrase feels familiar on screen, then disappears the moment you need to say it.",
+    example: "“I know this. Why can’t I say it?”",
   },
   {
     number: "02",
-    title: "When the room is listening",
-    copy: "Shape a project update or pitch around the people who need to understand it.",
-    example: "My startup, for a first meeting",
+    title: "The main point gets buried.",
+    copy: "You add sentence after sentence because the idea has not found a clear shape yet.",
+    example: "Rambling → one clear message",
   },
   {
     number: "03",
-    title: "When you want to connect",
-    copy: "Prepare the stories you want to tell before the meetup, interview, or dinner.",
-    example: "Why I moved abroad",
+    title: "Your first language leads.",
+    copy: "You build the thought elsewhere, then carry that language’s structure into English.",
+    example: "Translation-shaped → natural English",
+  },
+  {
+    number: "04",
+    title: "Correction becomes exhausting.",
+    copy: "A long grammar report hides the one change that would actually improve your next attempt.",
+    example: "One high-value repair, then retry",
   },
 ];
 
 const trustItems = [
   ["No video recording", "Mirror mode uses your screen as a mirror. It saves audio, not video."],
   ["Private by default", "Your drafts, recordings, and Speaking World belong to your account."],
-  ["Sharing takes consent", "Community feedback will never publish a practice session automatically."],
+  ["Nothing is public by default", "A practice session stays in your account unless you explicitly choose otherwise."],
   ["Delete when you want", "Remove individual recordings or request full account deletion."],
 ];
 
@@ -42,47 +48,49 @@ export default function LandingPage() {
             <span>Saylo</span>
           </a>
           <div className="nav-links">
-            <a href="#how">How it works</a>
+            <a href="#how">The practice loop</a>
             <a href="#mirror">Mirror mode</a>
-            <a href="#community">Community</a>
+            <a href="#privacy">Privacy</a>
           </div>
-          <a className="button button-small" href="#waitlist">Join the waitlist</a>
+          <div className="nav-cta">
+            <a className="button button-small" href="#waitlist">Join the waitlist</a>
+          </div>
         </div>
       </nav>
 
       <header className="hero">
         <div className="hero-shell">
           <div className="hero-copy">
-            <p className="beta-status"><span aria-hidden="true" />Private beta · opening soon</p>
-            <h1>Have the words ready when the moment comes.</h1>
+            <p className="beta-status"><span aria-hidden="true" />Personal Speaking Studio · B1–C1 English</p>
+            <h1>Turn the English you save into English you actually speak.</h1>
             <p className="hero-lede">
-              Build the English you actually need for your life. Shape a clearer
-              introduction, a persuasive pitch, or a story worth sharing, then
-              practise it until it feels like yours.
+              Save a useful phrase, connect it to a Topic from your life, speak for
+              one minute, then get one clear repair before you try again.
             </p>
             <div className="hero-actions">
               <a className="button button-large" href="#waitlist">Join the waitlist</a>
-              <a className="text-link" href="#how">See how it works <span aria-hidden="true">↓</span></a>
+              <a className="text-link" href="#how">See the practice loop <span aria-hidden="true">↓</span></a>
             </div>
-            <p className="hero-fine">Built for international professionals, founders, and people making a life in a new language.</p>
+            <p className="hero-fine">Not a beginner course or an AI conversation partner. It is the activation layer between English you understand and English you can use.</p>
           </div>
           <ProductDemo />
         </div>
-        <div className="moment-row" aria-label="Common speaking moments">
-          <span>First introductions</span>
-          <span>Meetups</span>
-          <span>Job interviews</span>
-          <span>Startup pitches</span>
-          <span>Everyday stories</span>
+        <div className="moment-row" aria-label="The Saylo practice loop">
+          <span>Save useful English</span>
+          <span>Connect it to your life</span>
+          <span>Speak from meaning</span>
+          <span>Repair one gap</span>
+          <span>Speak again</span>
         </div>
       </header>
 
       <section className="problem-section">
         <div className="narrow intro-block">
-          <h2>You may know the English. You still need to find <em>your</em> words.</h2>
+          <p className="world-label">Built for the intermediate plateau</p>
+          <h2>You know the English. The problem is reaching it clearly under pressure.</h2>
           <p>
-            Generic lessons cannot prepare the story only you can tell. Saylo
-            starts with the moments already waiting in your calendar and your life.
+            More passive vocabulary does not fix the moment when you default to easy
+            words, translate too literally, or lose your point halfway through.
           </p>
         </div>
         <div className="wide situation-grid">
@@ -103,58 +111,70 @@ export default function LandingPage() {
         <div className="wide">
           <div className="section-heading split-heading">
             <div>
-              <p className="world-label">Your Speaking World</p>
-              <h2>Start with your life, not a curriculum.</h2>
+              <p className="world-label">The save-to-speech loop</p>
+              <h2>A repeatable mechanism, not another open-ended conversation.</h2>
             </div>
             <p>
-              Each topic becomes a living piece of your voice. Make a version for
-              the audience, purpose, and time you have, then improve it through real practice.
+              Each cycle has one job: move a phrase from familiar on the page to
+              available in a Topic you genuinely want to talk about.
             </p>
           </div>
 
           <div className="world-flow" aria-label="How Saylo works">
-            <article className="flow-card flow-card-world">
+            <article className="flow-card flow-card-capture">
               <div className="flow-index">01</div>
-              <div className="mini-world" aria-hidden="true">
-                <span className="world-center">You</span>
-                <span className="world-node node-work">Work</span>
-                <span className="world-node node-story">Stories</span>
-                <span className="world-node node-ideas">Ideas</span>
-                <span className="world-node node-life">Life</span>
+              <div className="source-snippet" aria-hidden="true">
+                <div><span>BBC interview</span><small>02:14</small></div>
+                <q>What I&apos;m trying to do is make the first step feel obvious.</q>
+                <b>Saved with context</b>
               </div>
               <div className="flow-copy">
-                <h3>Choose what matters now.</h3>
-                <p>Add a topic such as your startup, your research, or the story of moving abroad.</p>
+                <h3>Save useful English in context.</h3>
+                <p>Keep the source and meaning, not an isolated vocabulary card.</p>
               </div>
             </article>
 
-            <article className="flow-card flow-card-message">
+            <article className="flow-card flow-card-topic">
               <div className="flow-index">02</div>
-              <div className="message-builder" aria-hidden="true">
-                <div className="builder-head"><span>My startup</span><b>3 messages</b></div>
-                <div className="message-row active"><span>30-second intro</span><small>Meetup</small></div>
-                <div className="message-row"><span>Why now?</span><small>Investor</small></div>
-                <div className="message-row"><span>What I learned</span><small>Friend</small></div>
+              <div className="topic-link-visual" aria-hidden="true">
+                <span className="topic-link-phrase">Useful phrase</span>
+                <i />
+                <span className="topic-link-topic"><small>MY TOPIC</small>My current project</span>
               </div>
               <div className="flow-copy">
-                <h3>Shape it for the room.</h3>
-                <p>Make a short intro, a persuasive pitch, or a relaxed version for a new friend.</p>
+                <h3>Attach it to your own Topic.</h3>
+                <p>Practice the phrase where you may actually need it: work, stories, ideas, or daily life.</p>
               </div>
             </article>
 
-            <article className="flow-card flow-card-practice">
+            <article className="flow-card flow-card-self-talk">
               <div className="flow-index">03</div>
-              <div className="practice-strip" aria-hidden="true">
+              <div className="self-talk-visual" aria-hidden="true">
+                <div className="self-talk-meta"><span>Mirror mode</span><b>01:00</b></div>
                 <div className="wave-bars">
-                  {[14, 23, 34, 18, 40, 50, 29, 56, 42, 64, 32, 47, 25, 37, 19, 28].map((height, index) => (
+                  {[14, 23, 34, 18, 40, 50, 29, 56, 42, 64, 32, 47].map((height, index) => (
                     <i key={index} style={{ height }} />
                   ))}
                 </div>
-                <div className="practice-meta"><span>02:14</span><b>Saved to My startup</b></div>
+                <p>Speak from meaning. No script.</p>
               </div>
               <div className="flow-copy">
-                <h3>Say it, listen, return.</h3>
-                <p>Your sessions become a private voice archive, so progress sounds real instead of looking like a score.</p>
+                <h3>Do one minute of self-talk.</h3>
+                <p>Retrieve the idea in your own words without a bot filling the silence.</p>
+              </div>
+            </article>
+
+            <article className="flow-card flow-card-repair">
+              <div className="flow-index">04</div>
+              <div className="repair-visual" aria-hidden="true">
+                <small>ONE REPAIR</small>
+                <strong>Lead with the main point.</strong>
+                <p>You reached for the phrase, but the reason arrived three sentences later.</p>
+                <span>Try again <b>→</b></span>
+              </div>
+              <div className="flow-copy">
+                <h3>Fix one thing, then retry.</h3>
+                <p>No correction dump. Apply the highest-value change while the attempt is still fresh.</p>
               </div>
             </article>
           </div>
@@ -183,32 +203,45 @@ export default function LandingPage() {
             <div className="privacy-pill pill-right"><span>⌁</span> Audio saved privately</div>
           </div>
           <div className="mirror-copy">
-            <h2>Watch yourself speak. Keep only the voice.</h2>
+            <p className="world-label">Mirror mode</p>
+            <h2>One minute of self-talk. One repair. Then say it again.</h2>
             <p className="mirror-lede">
-              A mirror is still one of the best ways to practise presence. See your
-              expression and posture in real time without turning the session into a video performance.
+              Speak from your intention without being interrupted. After you finish,
+              AI identifies the single retrieval, structure, or phrasing gap worth fixing first.
             </p>
             <ul className="plain-list">
-              <li><span>01</span><div><b>Nothing to perform for</b><p>The live camera view is not recorded or saved as video.</p></div></li>
-              <li><span>02</span><div><b>A useful record remains</b><p>Your audio joins the topic it belongs to.</p></div></li>
-              <li><span>03</span><div><b>Progress you can hear</b><p>Return to older versions and notice what became clearer.</p></div></li>
+              <li><span>01</span><div><b>Speak from meaning, not a script</b><p>Build the message yourself instead of repeating a model answer.</p></div></li>
+              <li><span>02</span><div><b>Get one high-value repair</b><p>Fix the main retrieval, rambling, or natural phrasing problem first.</p></div></li>
+              <li><span>03</span><div><b>Retry while it is still fresh</b><p>Use the repair immediately so feedback becomes spoken evidence.</p></div></li>
             </ul>
           </div>
+        </div>
+      </section>
+
+      <section className="mid-cta">
+        <div className="wide mid-cta-card">
+          <div>
+            <p className="world-label">Private beta</p>
+            <h2>Bring one phrase you want to use in your next conversation.</h2>
+            <p>Test whether it comes back when you speak, not just when you review it.</p>
+          </div>
+          <a className="button button-large" href="#waitlist">Join the waitlist</a>
         </div>
       </section>
 
       <section className="archive-section">
         <div className="wide archive-grid">
           <div className="archive-copy">
-            <h2>Your stories get better because they stay connected.</h2>
+            <p className="world-label">Retrieval evidence</p>
+            <h2>See what became available, not just what you saved.</h2>
             <p>
-              Useful phrases are captured inside the story where you needed them.
-              The next time you practise, the right language is already waiting.
+              A flashcard review proves recognition. Saylo tracks the harder change:
+              whether the phrase returned without being shown and worked inside your own message.
             </p>
             <div className="phrase-note">
-              <span>Useful language</span>
+              <span>Useful language · retrieved</span>
               <q>What I&apos;m trying to do is make the first step feel obvious.</q>
-              <small>Captured from “My startup” · Aug 12</small>
+              <small>Used in “My startup” · Today</small>
             </div>
           </div>
           <div className="archive-card">
@@ -218,42 +251,18 @@ export default function LandingPage() {
               <div className="timeline-row"><time>Aug 12</time><div><b>30-second version</b><p>New phrase captured, 00:51</p></div><span className="play-dot">▶</span></div>
               <div className="timeline-row muted"><time>Aug 07</time><div><b>First draft</b><p>Private archive, 01:34</p></div><span className="play-dot">▶</span></div>
             </div>
-            <div className="growth-line"><span /><p><b>Your message is 24 seconds shorter.</b><br />The main idea now arrives in the first sentence.</p></div>
+            <div className="evidence-track" aria-label="Phrase evidence">
+              <span className="complete">Saved</span><i /><span className="complete">Recognised</span><i /><span className="complete">Retrieved</span><i /><span>Used</span>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="community-section" id="community">
-        <div className="wide community-card">
-          <div className="community-copy">
-            <p className="future-note">Exploring after private beta</p>
-            <h2>Practice can become a generous exchange.</h2>
-            <p>
-              We are exploring an opt-in community where members can share an
-              anonymised voice or script, learn whether it felt persuasive, and
-              earn AI practice credits by giving thoughtful feedback in return.
-            </p>
-            <div className="community-principles">
-              <span>Opt in every time</span><span>Remove personal details</span><span>People judge the message, not the accent</span>
-            </div>
-          </div>
-          <div className="feedback-mock" aria-label="Community feedback concept preview">
-            <div className="feedback-top"><div><small>COMMUNITY PRACTICE</small><b>A 45-second project pitch</b></div><span>Anonymous</span></div>
-            <div className="feedback-wave">
-              {[18, 28, 12, 35, 45, 24, 54, 38, 61, 31, 49, 22, 42, 28, 16, 32, 20, 14].map((height, index) => <i key={index} style={{ height }} />)}
-            </div>
-            <p className="feedback-question">Did the main idea feel convincing?</p>
-            <div className="feedback-scale" aria-hidden="true"><span>Not yet</span><i className="score">1</i><i className="score">2</i><i className="score">3</i><i className="score selected">4</i><i className="score">5</i><span>Very</span></div>
-            <div className="credit-row"><span>Thoughtful feedback</span><b>+1 AI credit</b></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="trust-section">
+      <section className="trust-section" id="privacy">
         <div className="wide">
           <div className="section-heading split-heading">
-            <div><h2>Your voice is personal. The product should act like it.</h2></div>
-            <p>Clear defaults now, explicit choices if social features arrive later.</p>
+            <div><h2>Your practice stays personal by default.</h2></div>
+            <p>A quiet speaking studio needs clear boundaries, not vague promises.</p>
           </div>
           <div className="trust-grid">
             {trustItems.map(([title, copy]) => <article key={title}><span className="trust-check">✓</span><h3>{title}</h3><p>{copy}</p></article>)}
@@ -265,10 +274,11 @@ export default function LandingPage() {
       <section className="waitlist-section" id="waitlist">
         <div className="wide waitlist-grid">
           <div className="waitlist-copy">
-            <h2>Bring the next conversation you care about.</h2>
+            <p className="world-label">Mobile app waitlist</p>
+            <h2>Test one phrase you want to use in your next meeting, story, or presentation.</h2>
             <p>
-              Join the launch list, or volunteer for the private beta if you want
-              to test the app before it reaches the App Store.
+              Join the launch list and tell us where your English gets stuck.
+              Private beta testers will try the full save-to-speech loop before release.
             </p>
             <div className="beta-details">
               <span><b>Waitlist</b><small>Launch news and App Store link</small></span>
@@ -283,9 +293,9 @@ export default function LandingPage() {
         <div className="wide footer-row">
           <div>
             <a className="wordmark" href="#top"><Image className="wordmark-mark" src="/brand/saylo-mark.png" width={36} height={36} alt="" /><span>Saylo</span></a>
-            <p>Build the words for the life you are already living.</p>
+            <p>Turn the English you collect into English you can use.</p>
           </div>
-          <div className="footer-links"><a href="#how">How it works</a><a href="#mirror">Mirror mode</a><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="mailto:sumin002@gmail.com">Contact</a></div>
+          <div className="footer-links"><a href="#how">The practice loop</a><a href="#mirror">Mirror mode</a><Link href="/app">Existing web app</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="mailto:sumin002@gmail.com">Contact</a></div>
           <p className="copyright">© 2026 Saylo. Independent private beta.</p>
         </div>
       </footer>

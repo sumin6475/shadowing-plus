@@ -3,7 +3,7 @@ import { parseWaitlistPayload } from "../waitlist";
 
 const valid = {
   email: " Person@Example.com ",
-  goal: "pitch",
+  goal: "retrieval",
   platform: "ios",
   wantsBeta: true,
   privacyAccepted: true,
@@ -13,7 +13,14 @@ const valid = {
 describe("parseWaitlistPayload", () => {
   it("normalizes a valid signup", () => {
     const result = parseWaitlistPayload(valid);
-    expect(result).toEqual({ ok: true, data: { email: "person@example.com", goal: "pitch", platform: "ios", wantsBeta: true, locale: "en-US" } });
+    expect(result).toEqual({ ok: true, data: { email: "person@example.com", goal: "retrieval", platform: "ios", wantsBeta: true, locale: "en-US" } });
+  });
+
+  it("keeps accepting goals from the previous public form", () => {
+    expect(parseWaitlistPayload({ ...valid, goal: "pitch" })).toMatchObject({
+      ok: true,
+      data: { goal: "pitch" },
+    });
   });
 
   it("requires privacy acknowledgement", () => {

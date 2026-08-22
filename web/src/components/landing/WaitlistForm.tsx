@@ -43,18 +43,18 @@ export function WaitlistForm() {
 
   return (
     <form className="waitlist-form" onSubmit={submit}>
-      <div className="form-heading"><span>Reserve your place</span><small>About 30 seconds</small></div>
+      <div className="form-heading"><span>Join the mobile waitlist</span><small>About 30 seconds</small></div>
       <label htmlFor="waitlist-email">Email address</label>
       <input id="waitlist-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required />
 
       <div className="form-two">
         <div>
-          <label htmlFor="waitlist-goal">What would you practise?</label>
-          <select id="waitlist-goal" name="goal" defaultValue="clear-speaking" required>
-            <option value="clear-speaking">Clearer everyday speaking</option>
-            <option value="networking">Meetups and networking</option>
-            <option value="pitch">Startup or project pitch</option>
-            <option value="interview">Interview or presentation</option>
+          <label htmlFor="waitlist-goal">What gets stuck today?</label>
+          <select id="waitlist-goal" name="goal" defaultValue="retrieval" required>
+            <option value="retrieval">Words I know disappear when I speak</option>
+            <option value="rambling">I ramble or lose the main point</option>
+            <option value="translation-shaped">My English sounds directly translated</option>
+            <option value="correction-fatigue">Too many corrections overwhelm me</option>
             <option value="other">Something else</option>
           </select>
         </div>
