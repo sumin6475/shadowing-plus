@@ -100,3 +100,19 @@ export function DotsIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function RecDotIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <circle cx="8" cy="8" r="5" />
+    </svg>
+  );
+}
+
+export function StopRecIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" {...props}>
+      <rect x="4.5" y="4.5" width="7" height="7" rx="1.2" />
+    </svg>
+  );
+}

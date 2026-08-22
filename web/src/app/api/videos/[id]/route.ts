@@ -26,6 +26,12 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   }
 
+  const { data: recs } = await db
+    .from("practice_recordings")
+    .select("r2_key")
+    .eq("video_id", id)
+    .eq("user_id", userId);
+
   // Find associated job (if any) for R2 cleanup
   const { data: jobs } = await db
     .from("jobs")
@@ -57,6 +63,10 @@ export async function DELETE(
     }
     await Promise.allSettled(keys.map((k) => deleteKey(k)));
     await db.from("jobs").delete().eq("video_id", id);
+  }
+
+  if (recs && recs.length > 0) {
+    await Promise.allSettled(recs.map((r) => deleteKey(r.r2_key)));
   }
 
   return NextResponse.json({ ok: true });

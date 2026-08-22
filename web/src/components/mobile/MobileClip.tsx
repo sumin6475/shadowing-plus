@@ -19,6 +19,11 @@ import {
   Skip3ForwardIcon,
 } from "./Icons";
 import { ChevronDownIcon } from "@/components/home/Icons";
+import { RecDotIcon, StopRecIcon } from "@/components/clip/Icons";
+import RecordingsPanel from "@/components/clip/RecordingsPanel";
+import TranscriptMenu from "@/components/clip/TranscriptMenu";
+import { formatExportTime } from "@/lib/transcript-export";
+import type { PracticeRecording } from "@/lib/usePracticeRecordings";
 
 interface Props {
   video: Video;
@@ -43,6 +48,20 @@ interface Props {
   onSeekBy: (delta: number) => void;
   onSelectSegment: (i: number) => void;
   onToggleSegmentBookmark: (segmentId: string) => void;
+  isRecording: boolean;
+  recordElapsedMs: number;
+  recordBusy: boolean;
+  onToggleRecord: () => void;
+  recordError: string | null;
+  recordings: PracticeRecording[];
+  recordingPlayingId: string | null;
+  recordingsSaving: boolean;
+  recordingsError: string | null;
+  onPlayRecording: (item: PracticeRecording) => void;
+  onDeleteRecording: (id: string) => void;
+  targetLang: string;
+  englishOnly: boolean;
+  onEnglishOnlyChange: (next: boolean) => void;
 }
 
 function formatTime(s: number): string {
@@ -89,6 +108,20 @@ export default function MobileClip({
   onSeekBy,
   onSelectSegment,
   onToggleSegmentBookmark,
+  isRecording,
+  recordElapsedMs,
+  recordBusy,
+  onToggleRecord,
+  recordError,
+  recordings,
+  recordingPlayingId,
+  recordingsSaving,
+  recordingsError,
+  onPlayRecording,
+  onDeleteRecording,
+  targetLang,
+  englishOnly,
+  onEnglishOnlyChange,
 }: Props) {
   const router = useRouter();
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -243,6 +276,26 @@ export default function MobileClip({
 
         {/* Transcript */}
         <div className="m-transcript">
+          <div className="m-transcript-head">
+            <div className="m-transcript-title">Transcript</div>
+            <TranscriptMenu
+              title={video.title}
+              targetLang={targetLang}
+              segments={segments}
+              englishOnly={englishOnly}
+              onEnglishOnlyChange={onEnglishOnlyChange}
+              variant="mobile"
+            />
+          </div>
+          <RecordingsPanel
+            items={recordings}
+            playingId={recordingPlayingId}
+            saving={recordingsSaving}
+            error={recordingsError}
+            onPlay={onPlayRecording}
+            onDelete={onDeleteRecording}
+            variant="mobile"
+          />
           <div
             ref={transcriptRef}
             className="m-transcript-list"
@@ -290,6 +343,16 @@ export default function MobileClip({
           </button>
           <button
             type="button"
+            className={"m-tool-chip" + (isRecording ? " is-recording" : "")}
+            onClick={onToggleRecord}
+            disabled={recordBusy}
+            aria-pressed={isRecording}
+          >
+            {isRecording ? <StopRecIcon /> : <RecDotIcon />}
+            {isRecording ? `Stop ${formatExportTime(recordElapsedMs / 1000)}` : "Record"}
+          </button>
+          <button
+            type="button"
             className={"m-tool-chip" + (showTranslation ? " is-on" : "")}
             onClick={onToggleTranslation}
           >
@@ -329,6 +392,7 @@ export default function MobileClip({
             <ChevronDownIcon />
           </button>
         </div>
+        {recordError ? <div className="m-rec-error">{recordError}</div> : null}
         <div className="m-dock-main">
           <button type="button" className="m-dock-btn" onClick={onPrev} aria-label="Previous line">
             <PrevIcon />

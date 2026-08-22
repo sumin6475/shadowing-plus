@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { LoopMode } from "@/lib/types";
-import { NextIcon, PrevIcon, ReplayIcon } from "./Icons";
+import { formatExportTime } from "@/lib/transcript-export";
+import { NextIcon, PrevIcon, RecDotIcon, ReplayIcon, StopRecIcon } from "./Icons";
 
 interface Props {
   onPrev: () => void;
@@ -17,6 +18,11 @@ interface Props {
   speed: number;
   speeds: readonly number[];
   onSelectSpeed: (s: number) => void;
+  isRecording: boolean;
+  recordElapsedMs: number;
+  recordBusy: boolean;
+  onToggleRecord: () => void;
+  recordError: string | null;
 }
 
 function formatSpeed(s: number): string {
@@ -136,6 +142,11 @@ export default function ClipControls({
   speed,
   speeds,
   onSelectSpeed,
+  isRecording,
+  recordElapsedMs,
+  recordBusy,
+  onToggleRecord,
+  recordError,
 }: Props) {
   return (
     <div className="controls">
@@ -185,7 +196,36 @@ export default function ClipControls({
         <div className="ctl-sep" />
 
         <SpeedMenu speed={speed} speeds={speeds} onSelect={onSelectSpeed} />
+
+        <div className="ctl-sep" />
+
+        <button
+          type="button"
+          className={"ctl" + (isRecording ? " recording" : "")}
+          onClick={onToggleRecord}
+          disabled={recordBusy}
+          aria-pressed={isRecording}
+          title={isRecording ? "Stop recording" : "Record your voice"}
+        >
+          {isRecording ? (
+            <>
+              <span className="rec-dot" aria-hidden="true" />
+              <StopRecIcon />
+              <span>Stop</span>
+              <span className="rec-elapsed">
+                {formatExportTime(recordElapsedMs / 1000)}
+              </span>
+            </>
+          ) : (
+            <>
+              <RecDotIcon />
+              <span>Record</span>
+            </>
+          )}
+        </button>
       </div>
+
+      {recordError ? <div className="rec-error">{recordError}</div> : null}
 
       <div className="shortcuts">
         <span><b>Space</b> Play / Pause</span>

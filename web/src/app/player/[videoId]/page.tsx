@@ -19,10 +19,14 @@ import ClipPlayer from "@/components/clip/ClipPlayer";
 import FocusLine from "@/components/clip/FocusLine";
 import ClipControls from "@/components/clip/ClipControls";
 import Transcript from "@/components/clip/Transcript";
+import TranscriptPrint from "@/components/clip/TranscriptPrint";
+import RecordingsPanel from "@/components/clip/RecordingsPanel";
 import PhraseSaver from "@/components/clip/PhraseSaver";
 import MobileClip from "@/components/mobile/MobileClip";
 import { LoopIcon } from "@/components/mobile/Icons";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { useMicRecorder } from "@/lib/useMicRecorder";
+import { usePracticeRecordings } from "@/lib/usePracticeRecordings";
 
 import "./clip.css";
 
@@ -69,6 +73,15 @@ export default function PlayerPage({
 }) {
   const { videoId } = use(params);
   const searchParams = useSearchParams();
+  const recorder = useMicRecorder();
+  const recordings = usePracticeRecordings(videoId);
+  const {
+    isRecording,
+    start: startRecording,
+    stop: stopRecording,
+  } = recorder;
+  const { upload: uploadRecording, stopPlayback: stopTakePlayback } = recordings;
+  const [exportEnglishOnly, setExportEnglishOnly] = useState(false);
 
   const [video, setVideo] = useState<Video | null>(null);
   // Playable media URLs resolved from the video's stored R2 keys (or external
@@ -602,6 +615,16 @@ export default function PlayerPage({
     [bookmarkedIds],
   );
 
+  const handleToggleRecord = useCallback(async () => {
+    if (isRecording) {
+      const take = await stopRecording();
+      if (take) await uploadRecording(take);
+      return;
+    }
+    stopTakePlayback();
+    await startRecording();
+  }, [isRecording, startRecording, stopRecording, stopTakePlayback, uploadRecording]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -855,6 +878,7 @@ export default function PlayerPage({
   const isVideo = (video.media_type === "video" && !!video.video_url) || isYoutube;
   const showVideoFrame = isVideo && !hideVideo;
   const practiceStatus: PracticeStatus = video.practice_status || "none";
+  const targetLang = video.target_lang?.trim() || "Korean";
 
   const setPracticeStatus = async (next: PracticeStatus) => {
     setVideo((prev) => (prev ? { ...prev, practice_status: next } : prev));
@@ -909,20 +933,35 @@ export default function PlayerPage({
                 onWordClick={seekToTime}
               />
             )}
-            <ClipControls
-              onPrev={goToPrev}
-              onNext={goToNext}
-              onReplay={repeatCurrent}
-              abActive={abRepeat !== null}
-              onToggleAB={toggleAbRepeat}
-              loopMode={loopMode}
-              onToggleLoop={toggleLoop}
-              showTranslation={showTranslation}
-              onToggleTranslation={() => setShowTranslation((v) => !v)}
-              speed={SPEEDS[speedIdx]}
-              speeds={SPEEDS}
-              onSelectSpeed={selectSpeed}
-            />
+            <div className="controls-cluster">
+              <ClipControls
+                onPrev={goToPrev}
+                onNext={goToNext}
+                onReplay={repeatCurrent}
+                abActive={abRepeat !== null}
+                onToggleAB={toggleAbRepeat}
+                loopMode={loopMode}
+                onToggleLoop={toggleLoop}
+                showTranslation={showTranslation}
+                onToggleTranslation={() => setShowTranslation((v) => !v)}
+                speed={SPEEDS[speedIdx]}
+                speeds={SPEEDS}
+                onSelectSpeed={selectSpeed}
+                isRecording={isRecording}
+                recordElapsedMs={recorder.elapsedMs}
+                recordBusy={recorder.busy || recordings.saving}
+                onToggleRecord={handleToggleRecord}
+                recordError={recorder.error}
+              />
+              <RecordingsPanel
+                items={recordings.items}
+                playingId={recordings.playingId}
+                saving={recordings.saving}
+                error={recordings.error}
+                onPlay={recordings.togglePlay}
+                onDelete={recordings.remove}
+              />
+            </div>
           </div>
 
           <Transcript
@@ -932,6 +971,10 @@ export default function PlayerPage({
             bookmarkedIds={bookmarkedIds}
             onSelect={goToSegment}
             onToggleBookmark={toggleBookmark}
+            title={video.title}
+            targetLang={targetLang}
+            englishOnly={exportEnglishOnly}
+            onEnglishOnlyChange={setExportEnglishOnly}
           />
         </div>
 
@@ -996,6 +1039,27 @@ export default function PlayerPage({
         onSeekBy={seekBy}
         onSelectSegment={goToSegment}
         onToggleSegmentBookmark={toggleBookmark}
+        isRecording={isRecording}
+        recordElapsedMs={recorder.elapsedMs}
+        recordBusy={recorder.busy || recordings.saving}
+        onToggleRecord={handleToggleRecord}
+        recordError={recorder.error}
+        recordings={recordings.items}
+        recordingPlayingId={recordings.playingId}
+        recordingsSaving={recordings.saving}
+        recordingsError={recordings.error}
+        onPlayRecording={recordings.togglePlay}
+        onDeleteRecording={recordings.remove}
+        targetLang={targetLang}
+        englishOnly={exportEnglishOnly}
+        onEnglishOnlyChange={setExportEnglishOnly}
+      />
+
+      <TranscriptPrint
+        title={video.title}
+        targetLang={targetLang}
+        includeTranslation={!exportEnglishOnly}
+        segments={segments}
       />
 
       {/* In-player Phrase Bank capture — one instance covers both shells via

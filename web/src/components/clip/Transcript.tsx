@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import type { Segment } from "@/lib/types";
-import { BookmarkIcon, DotsIcon, SearchIcon } from "./Icons";
+import { BookmarkIcon, SearchIcon } from "./Icons";
+import TranscriptMenu from "./TranscriptMenu";
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -18,6 +19,10 @@ interface Props {
   bookmarkedIds: Set<string>;
   onSelect: (index: number) => void;
   onToggleBookmark: (segmentId: string) => void;
+  title: string;
+  targetLang: string;
+  englishOnly: boolean;
+  onEnglishOnlyChange: (next: boolean) => void;
 }
 
 export default function Transcript({
@@ -27,6 +32,10 @@ export default function Transcript({
   bookmarkedIds,
   onSelect,
   onToggleBookmark,
+  title,
+  targetLang,
+  englishOnly,
+  onEnglishOnlyChange,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -61,14 +70,13 @@ export default function Transcript({
           >
             <SearchIcon />
           </button>
-          <button
-            type="button"
-            title="More (coming soon)"
-            aria-label="More"
-            disabled
-          >
-            <DotsIcon />
-          </button>
+          <TranscriptMenu
+            title={title}
+            targetLang={targetLang}
+            segments={segments}
+            englishOnly={englishOnly}
+            onEnglishOnlyChange={onEnglishOnlyChange}
+          />
         </div>
       </div>
       <div className="transcript-list" ref={listRef}>
