@@ -30,6 +30,8 @@ import {
   PlusIcon,
 } from "@/components/home/Icons";
 import { folderColor } from "@/lib/folder-color";
+import { nextFolderPosition } from "@/lib/folders";
+import { persistFolderPositions } from "@/lib/persist-folders";
 import { clipKind } from "@/lib/clip-kind";
 import { TRANSLATION_LANG_PREF_KEY } from "@/lib/pipeline/languages";
 import { canImportYoutube } from "@/lib/youtubeImport";
@@ -153,7 +155,7 @@ export default function HomePage() {
     const sinceIso = new Date(Date.now() - 90 * 86_400_000).toISOString();
     const [foldersRes, videosRes, bookmarksRes, sessionsRes] =
       await Promise.all([
-        supabase.from("folders").select("*").order("created_at"),
+        supabase.from("folders").select("*").order("position").order("created_at"),
         supabase
           .from("videos")
           .select("*")
@@ -354,7 +356,7 @@ export default function HomePage() {
     async (input: { name: string; color: string }) => {
       const { data, error } = await supabase
         .from("folders")
-        .insert({ name: input.name, color: input.color })
+        .insert({ name: input.name, color: input.color, position: nextFolderPosition(folders) })
         .select()
         .single();
       if (error) {
@@ -374,7 +376,7 @@ export default function HomePage() {
         setNewFolderOpen(false);
       }
     },
-    [setSection],
+    [setSection, folders],
   );
 
   const renameFolder = useCallback(async (id: string, name: string) => {
@@ -424,6 +426,12 @@ export default function HomePage() {
     },
     [refreshAll],
   );
+
+  const reorderFolders = useCallback(async (next: Folder[]) => {
+    setFolders(next);
+    const err = await persistFolderPositions(next);
+    if (err) alert(`Couldn't reorder folders: ${err}`);
+  }, []);
 
   // Video CRUD
   const moveVideo = useCallback(
@@ -743,6 +751,7 @@ export default function HomePage() {
         onRenameFolder={renameFolder}
         onDeleteFolder={deleteFolder}
         onSetFolderColor={setFolderColor}
+        onReorderFolders={reorderFolders}
       />
 
       <NewFolderModal

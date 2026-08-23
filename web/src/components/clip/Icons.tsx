@@ -27,6 +27,15 @@ export function BookmarkIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function EyeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+      <path d="M2 8s2.2-3.5 6-3.5S14 8 14 8s-2.2 3.5-6 3.5S2 8 2 8z" />
+      <circle cx="8" cy="8" r="1.6" />
+    </svg>
+  );
+}
+
 export function EyeOffIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
@@ -103,7 +112,7 @@ export function DotsIcon(props: SVGProps<SVGSVGElement>) {
 
 export function RecDotIcon(props: SVGProps<SVGSVGElement>) {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" {...stroke} {...props}>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" {...props}>
       <circle cx="8" cy="8" r="5" />
     </svg>
   );

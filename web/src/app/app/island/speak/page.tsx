@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { Folder } from "@/lib/types";
+import { nextFolderPosition } from "@/lib/folders";
+import { persistFolderPositions } from "@/lib/persist-folders";
 import type { Island, IslandBeat } from "@/lib/island";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
@@ -71,7 +73,7 @@ export default function SpeakLoopPage() {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        supabase.from("folders").select("*").order("created_at"),
+        supabase.from("folders").select("*").order("position").order("created_at"),
         supabase.from("videos").select("id, folder_id, created_at").order("created_at", { ascending: false }),
       ]);
       if (cancelled) return;
@@ -243,7 +245,7 @@ export default function SpeakLoopPage() {
   );
   const createFolder = useCallback(
     async (input: { name: string; color: string }) => {
-      const { data, error: e } = await supabase.from("folders").insert({ name: input.name, color: input.color }).select().single();
+      const { data, error: e } = await supabase.from("folders").insert({ name: input.name, color: input.color, position: nextFolderPosition(folders) }).select().single();
       if (e) return alert(`Failed to create folder: ${e.message}`);
       if (data) {
         setFolders((prev) => [...prev, data as Folder]);
@@ -251,7 +253,7 @@ export default function SpeakLoopPage() {
         handleSidebarSelect({ kind: "folder", id: data.id });
       }
     },
-    [handleSidebarSelect],
+    [handleSidebarSelect, folders],
   );
   const renameFolder = useCallback(async (id: string, name: string) => {
     await supabase.from("folders").update({ name }).eq("id", id);
@@ -265,6 +267,11 @@ export default function SpeakLoopPage() {
   const setFolderColor = useCallback(async (id: string, color: string) => {
     setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, color } : f)));
     await supabase.from("folders").update({ color }).eq("id", id);
+  }, []);
+  const reorderFolders = useCallback(async (next: Folder[]) => {
+    setFolders(next);
+    const err = await persistFolderPositions(next);
+    if (err) alert(`Couldn't reorder folders: ${err}`);
   }, []);
 
   const [recentCutoff] = useState(() => Date.now() - 14 * 24 * 3600 * 1000);
@@ -290,6 +297,7 @@ export default function SpeakLoopPage() {
         onRenameFolder={renameFolder}
         onDeleteFolder={deleteFolder}
         onSetFolderColor={setFolderColor}
+        onReorderFolders={reorderFolders}
       />
       <NewFolderModal open={newFolderOpen} onCancel={() => setNewFolderOpen(false)} onCreate={createFolder} existingNames={folders.map((f) => f.name)} />
 

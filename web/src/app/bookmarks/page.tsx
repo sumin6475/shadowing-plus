@@ -12,6 +12,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { resolveAudioUrl, resolveAudioUrls } from "@/lib/resolve-media";
 import type { Folder, Video } from "@/lib/types";
+import { nextFolderPosition } from "@/lib/folders";
+import { persistFolderPositions } from "@/lib/persist-folders";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
 import BookmarkGroup from "@/components/bookmarks/BookmarkGroup";
@@ -114,7 +116,7 @@ export default function BookmarksPage() {
           "id, memo, created_at, segment:segments(id, text, translation, start_time, end_time, video:videos(*, folder:folders(id, name, color)))",
         )
         .order("created_at", { ascending: false }),
-      supabase.from("folders").select("*").order("created_at"),
+      supabase.from("folders").select("*").order("position").order("created_at"),
       supabase
         .from("videos")
         .select("*")
@@ -392,7 +394,7 @@ export default function BookmarksPage() {
     async (input: { name: string; color: string }) => {
       const { data, error } = await supabase
         .from("folders")
-        .insert({ name: input.name, color: input.color })
+        .insert({ name: input.name, color: input.color, position: nextFolderPosition(folders) })
         .select()
         .single();
       if (error) {
@@ -411,7 +413,7 @@ export default function BookmarksPage() {
         handleSidebarSelect({ kind: "folder", id: data.id });
       }
     },
-    [handleSidebarSelect],
+    [handleSidebarSelect, folders],
   );
 
   const renameFolder = useCallback(async (id: string, name: string) => {
@@ -456,6 +458,12 @@ export default function BookmarksPage() {
     [refresh],
   );
 
+  const reorderFolders = useCallback(async (next: Folder[]) => {
+    setFolders(next);
+    const err = await persistFolderPositions(next);
+    if (err) alert(`Couldn't reorder folders: ${err}`);
+  }, []);
+
   // Cutoff is captured at mount; useState initializer is the canonical place
   // for a one-shot impure read like Date.now().
   const [recentCutoff] = useState(() => Date.now() - 14 * 24 * 3600 * 1000);
@@ -480,6 +488,7 @@ export default function BookmarksPage() {
         onRenameFolder={renameFolder}
         onDeleteFolder={deleteFolder}
         onSetFolderColor={setFolderColor}
+        onReorderFolders={reorderFolders}
       />
 
       <NewFolderModal

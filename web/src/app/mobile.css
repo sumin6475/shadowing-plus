@@ -1117,6 +1117,32 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   gap: 8px;
   padding: 0 2px 8px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
+.m-transcript-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.m-transcript-search {
+  padding: 0 2px 8px;
+}
+.m-transcript-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+}
+.m-transcript-empty {
+  margin: 12px 4px;
+  font-size: 13px;
+  color: var(--text-3);
 }
 .m-transcript-title {
   font-size: 11px;
@@ -1125,7 +1151,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   text-transform: uppercase;
   color: var(--text-4);
 }
-.m-app .transcript-more { position: relative; }
+.m-app .transcript-more { position: relative; z-index: 8; }
 .m-app .transcript-more > button {
   height: 28px;
   padding: 0 10px;
@@ -1135,13 +1161,12 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   color: var(--text-2);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .m-app .transcript-more-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
-  min-width: 168px;
+  position: fixed;
+  z-index: 80;
+  min-width: 176px;
   padding: 6px;
   background: var(--bg-elev);
   border: 1px solid var(--hairline);
@@ -1152,12 +1177,17 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   gap: 2px;
 }
 .m-app .transcript-more-menu button {
+  display: flex;
+  width: 100%;
   text-align: left;
   padding: 8px 10px;
+  min-height: 34px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-2);
+  white-space: nowrap;
+  align-items: center;
 }
 .m-app .transcript-more-menu button:active,
 .m-app .transcript-more-menu button.is-active {
@@ -1390,6 +1420,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   border-color: transparent;
 }
 .m-tool-chip:disabled { opacity: 0.55; }
+.m-app .rec-idle-dot { color: var(--danger); }
 .m-rec-error {
   font-size: 12px;
   color: var(--danger);

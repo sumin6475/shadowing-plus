@@ -137,8 +137,120 @@
 }
 .clip-page .clip-title-row .clip-title { flex: 0 1 auto; }
 .clip-page .clip-title-row .status-control { flex-shrink: 0; }
+.clip-page .clip-title-row .focus-note { flex: 1; min-width: 0; }
 /* In the header the picker opens flush with the left edge of the row, not the right. */
 .clip-page .clip-title-row .status-menu { left: 0; right: auto; }
+
+/* Sticky weak-point note — sits in the empty space right of the status chip. */
+.clip-page .focus-note { position: relative; }
+.clip-page .focus-note-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px dashed var(--hairline);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+.clip-page .focus-note-chip:hover { background: var(--surface-2); color: var(--text-2); }
+.clip-page .focus-note-chip.has-items {
+  border-style: solid;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: transparent;
+}
+.clip-page .focus-note.is-open .focus-note-chip {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.clip-page .focus-note-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.clip-page .focus-note-count {
+  font-family: var(--home-font-mono);
+  font-size: 10.5px;
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+.clip-page .focus-note-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  width: min(380px, 70vw);
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  padding: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.6) inset,
+    0 16px 36px -16px oklch(0 0 0 / 0.24);
+}
+.clip-page .focus-note-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+.clip-page .focus-note-head span {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-4);
+}
+.clip-page .focus-note-error {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+.clip-page .focus-note-panel .wp-check {
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+}
+.clip-page .focus-note-panel .wp-check.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: oklch(0.99 0 0);
+}
+.clip-page .focus-note-panel .wp-add input,
+.clip-page .focus-note-panel .wp-edit input,
+.clip-page .focus-note-panel .wp-cat-field input,
+.clip-page .focus-note-panel .wp-cat-field select {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.clip-page .focus-note-panel .btn {
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  border-radius: 8px;
+  height: 32px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.clip-page .focus-note-panel .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: oklch(0.99 0 0);
+}
+
 .clip-page .clip-title {
   font-family: var(--home-font-serif);
   font-weight: 400;
@@ -626,6 +738,7 @@
 }
 .clip-page .ctl.recording:hover { background: var(--danger-soft); color: var(--danger); }
 .clip-page .ctl:disabled { opacity: 0.55; cursor: default; }
+.clip-page .rec-idle-dot { color: var(--danger); }
 .clip-page .rec-dot {
   width: 8px;
   height: 8px;
@@ -735,13 +848,11 @@
   color: var(--text-4);
   line-height: 1.4;
 }
-.clip-page .transcript-more { position: relative; }
+.clip-page .transcript-more { position: relative; z-index: 8; }
 .clip-page .transcript-more-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 50;
-  min-width: 168px;
+  position: fixed;
+  z-index: 80;
+  min-width: 176px;
   padding: 6px;
   background: var(--bg-elev);
   border: 1px solid var(--hairline);
@@ -754,14 +865,18 @@
   gap: 2px;
 }
 .clip-page .transcript-more-menu button {
-  width: auto;
+  display: flex;
+  width: 100%;
   height: auto;
+  min-height: 34px;
   justify-content: flex-start;
+  align-items: center;
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-2);
+  white-space: nowrap;
 }
 .clip-page .transcript-more-menu button:hover {
   background: var(--surface-2);
@@ -924,7 +1039,8 @@
   display: flex;
   flex-direction: column;
   /* clip-body is locked to viewport height, so just fill the column.
-     The internal .transcript-list scrolls. */
+     The internal .transcript-list scrolls. overflow stays visible so the
+     download menu isn't clipped by the card. */
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -935,6 +1051,8 @@
   justify-content: space-between;
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--hairline-soft);
+  position: relative;
+  z-index: 6;
 }
 .clip-page .transcript-title {
   font-size: 11px;
@@ -947,8 +1065,11 @@
   display: flex;
   gap: 2px;
   color: var(--text-3);
+  position: relative;
+  z-index: 7;
 }
-.clip-page .transcript-actions button {
+.clip-page .transcript-actions > button,
+.clip-page .transcript-more > button {
   width: 26px; height: 26px;
   border-radius: 6px;
   display: inline-flex;
@@ -957,15 +1078,55 @@
   color: inherit;
   transition: background .12s, color .12s;
 }
-.clip-page .transcript-actions button:hover { background: var(--surface-2); color: var(--text); }
-.clip-page .transcript-actions button:disabled { cursor: default; opacity: 0.6; }
+.clip-page .transcript-actions > button:hover,
+.clip-page .transcript-more > button:hover { background: var(--surface-2); color: var(--text); }
+.clip-page .transcript-actions > button:disabled { cursor: default; opacity: 0.6; }
+.clip-page .transcript-actions > button.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.clip-page .transcript-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  border-bottom: 1px solid var(--hairline-soft);
+  color: var(--text-4);
+}
+.clip-page .transcript-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  outline: none;
+}
+.clip-page .transcript-search input::placeholder { color: var(--text-4); }
+.clip-page .transcript-search-clear {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.clip-page .transcript-search-clear:hover { background: var(--surface-2); color: var(--text); }
+.clip-page .transcript-empty {
+  margin: 24px 18px;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
 
 .clip-page .transcript-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 4px 0 24px;
   scrollbar-width: thin;
   scrollbar-color: var(--hairline) transparent;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 .clip-page .transcript-list::-webkit-scrollbar { width: 10px; }
 .clip-page .transcript-list::-webkit-scrollbar-thumb {

@@ -28,9 +28,18 @@ export default function TranscriptMenu({
 }: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    const place = () => {
+      const el = btnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setCoords({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    };
+    place();
     const onDown = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -41,9 +50,13 @@ export default function TranscriptMenu({
     };
     document.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
   }, [open]);
 
@@ -75,6 +88,7 @@ export default function TranscriptMenu({
       ref={wrapRef}
     >
       <button
+        ref={btnRef}
         type="button"
         title="Download transcript"
         aria-label="Download transcript"
@@ -84,8 +98,12 @@ export default function TranscriptMenu({
       >
         {variant === "mobile" ? "Export" : <DotsIcon />}
       </button>
-      {open && (
-        <div className="transcript-more-menu" role="menu">
+      {open && coords && (
+        <div
+          className="transcript-more-menu"
+          role="menu"
+          style={{ top: coords.top, right: coords.right }}
+        >
           <button type="button" role="menuitem" onClick={downloadMarkdown}>
             Markdown
           </button>

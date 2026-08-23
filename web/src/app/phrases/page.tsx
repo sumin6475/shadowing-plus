@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { Folder } from "@/lib/types";
+import { nextFolderPosition } from "@/lib/folders";
+import { persistFolderPositions } from "@/lib/persist-folders";
 import Sidebar, { type ActiveSection } from "@/components/home/Sidebar";
 import NewFolderModal from "@/components/home/NewFolderModal";
 import {
@@ -81,7 +83,7 @@ export default function PhrasesPage() {
         .from("phrase_items")
         .select("*, video:videos(title, video_url)")
         .order("created_at", { ascending: false }),
-      supabase.from("folders").select("*").order("created_at"),
+      supabase.from("folders").select("*").order("position").order("created_at"),
       supabase.from("videos").select("id, folder_id, created_at").order("created_at", { ascending: false }),
     ]);
     setPhrases((phrasesRes.data ?? []) as unknown as PhraseRow[]);
@@ -267,7 +269,7 @@ export default function PhrasesPage() {
 
   const createFolder = useCallback(
     async (input: { name: string; color: string }) => {
-      const { data, error } = await supabase.from("folders").insert({ name: input.name, color: input.color }).select().single();
+      const { data, error } = await supabase.from("folders").insert({ name: input.name, color: input.color, position: nextFolderPosition(folders) }).select().single();
       if (error) {
         alert(`Failed to create folder: ${error.message}`);
         return;
@@ -278,7 +280,7 @@ export default function PhrasesPage() {
         handleSidebarSelect({ kind: "folder", id: data.id });
       }
     },
-    [handleSidebarSelect],
+    [handleSidebarSelect, folders],
   );
 
   const renameFolder = useCallback(async (id: string, name: string) => {
@@ -295,6 +297,12 @@ export default function PhrasesPage() {
   const setFolderColor = useCallback(async (id: string, color: string) => {
     setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, color } : f)));
     await supabase.from("folders").update({ color }).eq("id", id);
+  }, []);
+
+  const reorderFolders = useCallback(async (next: Folder[]) => {
+    setFolders(next);
+    const err = await persistFolderPositions(next);
+    if (err) alert(`Couldn't reorder folders: ${err}`);
   }, []);
 
   const [recentCutoff] = useState(() => Date.now() - 14 * 24 * 3600 * 1000);
@@ -335,6 +343,7 @@ export default function PhrasesPage() {
           onRenameFolder={renameFolder}
           onDeleteFolder={deleteFolder}
           onSetFolderColor={setFolderColor}
+          onReorderFolders={reorderFolders}
         />
 
         <NewFolderModal

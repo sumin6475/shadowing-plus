@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Folder } from "@/lib/types";
 import ProfileMenu from "@/components/settings/ProfileMenu";
 import { FOLDER_COLOR_OPTIONS, folderColor } from "@/lib/folder-color";
+import { reorderFolders, sortFolders } from "@/lib/folders";
 import {
   BookmarkIcon,
   DotsIcon,
@@ -14,6 +15,7 @@ import {
   LibraryIcon,
   MicIcon,
   SearchIcon,
+  StarIcon,
 } from "./Icons";
 
 export type ActiveSection =
@@ -33,7 +35,11 @@ export interface SidebarProps {
   onRenameFolder: (id: string, name: string) => Promise<void> | void;
   onDeleteFolder: (folder: Folder) => Promise<void> | void;
   onSetFolderColor: (id: string, color: string) => Promise<void> | void;
+  onReorderFolders?: (next: Folder[]) => Promise<void> | void;
 }
+
+// Keep the Island route/components. Flip this to true to restore the nav item.
+const SHOW_LANGUAGE_ISLAND = false;
 
 export default function Sidebar({
   active,
@@ -46,19 +52,24 @@ export default function Sidebar({
   onRenameFolder,
   onDeleteFolder,
   onSetFolderColor,
+  onReorderFolders,
 }: SidebarProps) {
   const pathname = usePathname();
   const onBookmarksRoute = pathname?.startsWith("/bookmarks");
   const onPhrasesRoute = pathname?.startsWith("/phrases");
   const onIslandRoute = pathname?.startsWith("/app/island");
+  const onFocusRoute = pathname?.startsWith("/focus");
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   const renameRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close menu on outside click
+  const orderedFolders = useMemo(() => sortFolders(folders), [folders]);
+
   useEffect(() => {
     if (!menuFor) return;
     function handle(e: MouseEvent) {
@@ -93,9 +104,12 @@ export default function Sidebar({
     }
   }
 
-  const isHomeActive = active.kind === "home" && !onBookmarksRoute && !onPhrasesRoute && !onIslandRoute;
-  const isAllActive = active.kind === "all" && !onBookmarksRoute && !onPhrasesRoute && !onIslandRoute;
-  const isRecentActive = active.kind === "recent" && !onBookmarksRoute && !onPhrasesRoute && !onIslandRoute;
+  const libraryRoute = onBookmarksRoute || onPhrasesRoute || onIslandRoute || onFocusRoute;
+  const isHomeActive = active.kind === "home" && !libraryRoute;
+  const isAllActive = active.kind === "all" && !libraryRoute;
+  const isRecentActive = active.kind === "recent" && !libraryRoute;
+
+  const canDrag = !!onReorderFolders;
 
   return (
     <aside className="sidebar">
@@ -156,12 +170,21 @@ export default function Sidebar({
           <span className="nav-label">Phrase Bank</span>
         </Link>
         <Link
-          href="/app/island"
-          className={"nav-item" + (onIslandRoute ? " active" : "")}
+          href="/focus"
+          className={"nav-item" + (onFocusRoute ? " active" : "")}
         >
-          <span className="nav-icon"><MicIcon /></span>
-          <span className="nav-label">Language Island</span>
+          <span className="nav-icon"><StarIcon /></span>
+          <span className="nav-label">Weak points</span>
         </Link>
+        {SHOW_LANGUAGE_ISLAND && (
+          <Link
+            href="/app/island"
+            className={"nav-item" + (onIslandRoute ? " active" : "")}
+          >
+            <span className="nav-icon"><MicIcon /></span>
+            <span className="nav-label">Language Island</span>
+          </Link>
+        )}
       </nav>
 
       <nav className="nav-section" aria-label="Folders">
@@ -176,13 +199,54 @@ export default function Sidebar({
             ＋
           </button>
         </div>
-        {folders.map((f) => {
+        {orderedFolders.map((f) => {
           const isActive =
-            !onBookmarksRoute && active.kind === "folder" && active.id === f.id;
+            !libraryRoute && active.kind === "folder" && active.id === f.id;
           const isRenaming = renamingId === f.id;
           const isMenuOpen = menuFor === f.id;
+          const isDragging = dragId === f.id;
+          const isOver = overId === f.id && dragId !== f.id;
           return (
-            <div key={f.id} style={{ position: "relative" }}>
+            <div
+              key={f.id}
+              className={
+                "nav-folder" +
+                (isDragging ? " is-dragging" : "") +
+                (isOver ? " is-over" : "")
+              }
+              style={{ position: "relative" }}
+              draggable={canDrag && !isRenaming}
+              onDragStart={(e) => {
+                if (!canDrag || isRenaming) {
+                  e.preventDefault();
+                  return;
+                }
+                setDragId(f.id);
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", f.id);
+              }}
+              onDragOver={(e) => {
+                if (!canDrag || !dragId || dragId === f.id) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (overId !== f.id) setOverId(f.id);
+              }}
+              onDragLeave={() => {
+                if (overId === f.id) setOverId(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const fromId = dragId ?? e.dataTransfer.getData("text/plain");
+                setOverId(null);
+                setDragId(null);
+                if (!fromId || fromId === f.id || !onReorderFolders) return;
+                void onReorderFolders(reorderFolders(orderedFolders, fromId, f.id));
+              }}
+              onDragEnd={() => {
+                setDragId(null);
+                setOverId(null);
+              }}
+            >
               <button
                 type="button"
                 className={"nav-item" + (isActive ? " active" : "")}
@@ -220,10 +284,12 @@ export default function Sidebar({
                   role="button"
                   tabIndex={0}
                   aria-label="Folder actions"
+                  draggable={false}
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuFor((cur) => (cur === f.id ? null : f.id));
                   }}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{ marginLeft: 4 }}
                 >
                   <DotsIcon />

@@ -218,7 +218,7 @@ export default function ClipControls({
             </>
           ) : (
             <>
-              <RecDotIcon />
+              <RecDotIcon className="rec-idle-dot" />
               <span>Record</span>
             </>
           )}

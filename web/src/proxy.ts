@@ -22,6 +22,7 @@ const PROTECTED_PREFIXES = [
   "/phrases",
   "/practice",
   "/player",
+  "/focus",
 ];
 
 function isProtected(pathname: string): boolean {
