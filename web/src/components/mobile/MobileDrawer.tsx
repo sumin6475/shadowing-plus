@@ -80,7 +80,7 @@ export default function MobileDrawer({
       >
         <div className="m-drawer-head">
           <div className="m-drawer-brand">
-            Shadowing<span className="plus">+</span>
+            Studio Library
           </div>
           <button
             type="button"

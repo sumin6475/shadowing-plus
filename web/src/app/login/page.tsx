@@ -115,8 +115,8 @@ function LoginForm() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <Link href="/" className="login-title" aria-label="Shadowing+ home">
-          Shadowing<span className="login-plus">+</span>
+        <Link href="/" className="login-title" aria-label="Studio Library home">
+          Studio Library
         </Link>
 
         {confirmSent ? (

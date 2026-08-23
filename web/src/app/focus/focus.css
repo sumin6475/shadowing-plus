@@ -142,11 +142,16 @@
   flex-shrink: 0;
   margin-top: 1px;
 }
+/* Beat `.home-app button { border: 0 }` — empty box was invisible. */
+.home-app button.wp-check,
+.clip-page button.wp-check,
 .wp-check {
-  border: 1.5px solid var(--hairline);
+  border: 1.5px solid var(--text-4);
   border-radius: 6px;
   background: var(--surface);
 }
+.home-app button.wp-check.is-on,
+.clip-page button.wp-check.is-on,
 .wp-check.is-on {
   background: var(--accent);
   border-color: var(--accent);

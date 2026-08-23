@@ -109,6 +109,7 @@ function Row({
         type="button"
         className={"wp-check" + (item.completed ? " is-on" : "")}
         aria-label={item.completed ? "Mark not done" : "Mark done"}
+        title={item.completed ? "Mark not done" : "Mark done"}
         aria-pressed={item.completed}
         onClick={() => onUpdate(item.id, { completed: !item.completed })}
       >

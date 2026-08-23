@@ -114,7 +114,7 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="brand">
-        Shadowing<span className="plus">+</span>
+        Studio Library
       </div>
 
       <div className="search">
