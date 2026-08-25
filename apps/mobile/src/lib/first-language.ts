@@ -78,10 +78,10 @@ export function firstLanguage(): L1 {
 // L1-localized copy for the "Stuck" quick note. The note itself can be written
 // in any language — this just greets the learner in theirs so they know it's ok.
 const STUCK_NOTE: Record<L1, { title: string; placeholder: string }> = {
-  en: { title: "What did you want to say?", placeholder: "Write it however you can — I’ll turn it into English." },
-  ko: { title: "무슨 말을 하려고 했나요?", placeholder: "한국어로 적어도 돼요 — 영어로 바꿔줄게요." },
-  es: { title: "¿Qué querías decir?", placeholder: "Escríbelo en tu idioma — lo pasaré al inglés." },
-  ru: { title: "Что вы хотели сказать?", placeholder: "Пишите на своём языке — я переведу на английский." },
+  en: { title: "What did you want to say?", placeholder: "Write it however you can. I’ll turn it into English." },
+  ko: { title: "무슨 말을 하려고 했나요?", placeholder: "한국어로 적어도 돼요. 영어로 바꿔줄게요." },
+  es: { title: "¿Qué querías decir?", placeholder: "Escríbelo en tu idioma. Lo pasaré al inglés." },
+  ru: { title: "Что вы хотели сказать?", placeholder: "Пишите на своём языке. Я переведу на английский." },
 };
 
 export function stuckNoteCopy(): { title: string; placeholder: string } {

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, InteractionManager, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, InteractionManager, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePostHog } from "posthog-react-native";
 
 import { useTheme } from "@/design/theme";
-import { BackBar, Card, Chip, Icon, Pill, Screen } from "@/design/ui";
+import { AnimatedPressable, BackBar, Card, Chip, Icon, Pill, Screen, usePressFx } from "@/design/ui";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { extractPhraseFromImage, extractPhraseFromText, fillPhraseDetails, type PhraseCaptureDraft } from "@/lib/phrase-capture";
 import { createPhrase, fetchPhrasesForCaptureContext, updatePhraseDetails, type PhraseKind } from "@/lib/phrases";
 import { fetchAllStories, type StoryChoice } from "@/lib/speaking-world";
@@ -28,6 +31,9 @@ export interface ClipCaptureSeed {
   segmentId?: string;
   start?: number;
   end?: number;
+  source?: "clip" | "speak";
+  storyId?: string | null;
+  said?: string | null;
 }
 
 const KINDS: { value: PhraseKind; label: string }[] = [
@@ -38,6 +44,16 @@ const KINDS: { value: PhraseKind; label: string }[] = [
   { value: "word", label: "Word" },
 ];
 
+function CaptureLabel({ label, tag }: { label: string; tag?: "Required" | "Optional" }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+      <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>{label}</Text>
+      {tag ? <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3 }}>{tag.toUpperCase()}</Text> : null}
+    </View>
+  );
+}
+
 interface SavedCapturePhrase {
   id: string;
   text: string;
@@ -47,13 +63,20 @@ interface SavedCapturePhrase {
   result: "saved" | "already";
 }
 
-export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean }) {
+export function PhraseAddMenu({
+  open,
+  onClose,
+  nav,
+  anchorBottom,
+}: {
+  open: boolean;
+  onClose: () => void;
+  nav: Nav;
+  anchorBottom: number;
+}) {
   const t = useTheme();
-  const insets = useSafeAreaInsets();
-  const [open, setOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [pendingImageOrigin, setPendingImageOrigin] = useState<CaptureImageAsset["origin"] | null>(null);
-  const fabBottom = aboveTabs ? Math.max(insets.bottom, 12) + 76 : Math.max(insets.bottom, 12) + 12;
 
   const launchImagePicker = async (origin: CaptureImageAsset["origin"]) => {
     try {
@@ -88,7 +111,7 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
   const chooseImage = (origin: CaptureImageAsset["origin"]) => {
     if (launching) return;
     setLaunching(true);
-    setOpen(false);
+    onClose();
     if (Platform.OS === "ios") {
       // iOS cannot reliably present PHPicker while this React Native Modal is
       // still dismissing. Wait for onDismiss before opening the native picker.
@@ -111,57 +134,73 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
       accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 54,
+        minHeight: 48,
         paddingHorizontal: 16,
         flexDirection: "row",
         alignItems: "center",
-        gap: 13,
-        borderBottomWidth: last ? 0 : 1,
+        gap: 12,
+        borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
         borderBottomColor: t.colors.sep,
         backgroundColor: pressed ? t.colors.soft : "transparent",
       })}
     >
-      <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-        <Icon name={icon} s={18} c={t.colors.accD} />
-      </View>
-      <Text style={{ fontSize: 15.5, fontWeight: "600", color: t.colors.ink }}>{label}</Text>
+      <Icon name={icon} s={18} w={1.8} c={t.colors.ink2} />
+      <Text style={{ fontSize: 16, fontWeight: "500", color: t.colors.ink }}>{label}</Text>
     </Pressable>
   );
 
   return (
-    <>
-      <Modal visible={open} transparent animationType="fade" statusBarTranslucent onDismiss={launchPendingImagePicker} onRequestClose={() => setOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.08)" }} onPress={() => setOpen(false)}>
-          <View
-            style={[
-              {
-                position: "absolute",
-                right: 18,
-                bottom: fabBottom + 64,
-                width: 250,
-                overflow: "hidden",
-                borderRadius: 23,
-                backgroundColor: t.colors.card,
-                borderWidth: 1,
-                borderColor: t.ring,
-              },
-              t.shadowLg,
-            ]}
-          >
+    <Modal visible={open} transparent animationType="fade" statusBarTranslucent onDismiss={launchPendingImagePicker} onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.12)" }} onPress={onClose}>
+        <View
+          style={[
+            {
+              position: "absolute",
+              alignSelf: "center",
+              left: 28,
+              right: 28,
+              bottom: anchorBottom,
+              overflow: "hidden",
+              borderRadius: 16,
+            },
+            t.shadowLg,
+          ]}
+        >
+          {Platform.OS === "ios" ? (
+            <BlurView intensity={80} tint={t.dark ? "systemChromeMaterialDark" : "systemChromeMaterial"} style={StyleSheet.absoluteFill} />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: t.colors.card }]} />
+          )}
+          <View style={{ backgroundColor: Platform.OS === "ios" ? "rgba(255,255,255,0.55)" : t.colors.card }}>
             {menuItem("camera", "Take a Photo", () => chooseImage("camera"))}
             {menuItem("photo", "Choose from Photos", () => chooseImage("library"))}
             {menuItem("text", "Write or Paste Text", () => {
-              setOpen(false);
+              onClose();
               nav.push("capture");
             }, true)}
           </View>
-        </Pressable>
-      </Modal>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
 
-      <Pressable
+export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean }) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const [open, setOpen] = useState(false);
+  const fx = usePressFx(0.92);
+  const fabBottom = aboveTabs ? Math.max(insets.bottom, 12) + 76 : Math.max(insets.bottom, 12) + 12;
+
+  return (
+    <>
+      <PhraseAddMenu open={open} onClose={() => setOpen(false)} nav={nav} anchorBottom={fabBottom + 64} />
+      <AnimatedPressable
         accessibilityRole="button"
         accessibilityLabel={open ? "Close add phrase menu" : "Add a phrase"}
-        onPress={launching ? undefined : () => setOpen((value) => !value)}
+        onPress={() => setOpen((value) => !value)}
+        onPressIn={fx.pressIn}
+        onPressOut={fx.pressOut}
         style={[
           {
             position: "absolute",
@@ -170,25 +209,34 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
             width: 52,
             height: 52,
             borderRadius: 26,
-            backgroundColor: t.colors.acc,
+            overflow: "hidden",
             alignItems: "center",
             justifyContent: "center",
             zIndex: 50,
             borderWidth: 2,
             borderColor: "rgba(255,255,255,0.75)",
-            opacity: launching ? 0.65 : 1,
           },
           t.shadowLg,
+          { transform: [{ scale: fx.scale }] },
         ]}
       >
-        {launching ? <ActivityIndicator color="#fff" /> : <Icon name={open ? "x" : "plus"} s={24} w={2.4} c="#fff" />}
-      </Pressable>
+        {/* Same cobalt ramp as the Hero card, so the FAB reads as a lit, floating
+            control instead of a flat disc. */}
+        <LinearGradient
+          colors={t.dark ? ["#4C7EF0", "#2E56BC"] : ["#5B8CFF", "#2F62E8"]}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.9, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <Icon name={open ? "x" : "plus"} s={24} w={2.4} c="#fff" />
+      </AnimatedPressable>
     </>
   );
 }
 
 export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; imageAsset?: CaptureImageAsset; clipSeed?: ClipCaptureSeed }) {
   const t = useTheme();
+  const posthog = usePostHog();
   const insets = useSafeAreaInsets();
   const contextInputRef = useRef<TextInput>(null);
   const processedImageRef = useRef(false);
@@ -200,18 +248,25 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
+  const [detectedText, setDetectedText] = useState("");
+  const [detectedTranslation, setDetectedTranslation] = useState("");
+  const [detectedTranslatedFrom, setDetectedTranslatedFrom] = useState("");
   const [context, setContext] = useState(clipSeed?.contextText ?? "");
   const [contextTranslation, setContextTranslation] = useState(clipSeed?.contextTranslation ?? "");
+  const [contextTranslatedFrom, setContextTranslatedFrom] = useState(clipSeed?.contextTranslation ? (clipSeed.contextText ?? "") : "");
   const [textSource, setTextSource] = useState<"manual" | "paste">("manual");
   const [meaning, setMeaning] = useState("");
   const [usageNote, setUsageNote] = useState("");
+  const [learnerNote, setLearnerNote] = useState("");
   const [sourceLabel, setSourceLabel] = useState(clipSeed?.sourceLabel ?? "");
   const [kind, setKind] = useState<PhraseKind>("phrase");
   const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [detectedSelection, setDetectedSelection] = useState({ start: 0, end: 0 });
   const [confidence, setConfidence] = useState<number | null>(null);
   const [detailedPhrase, setDetailedPhrase] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
   const [stories, setStories] = useState<StoryChoice[]>([]);
-  const [storyId, setStoryId] = useState<string | null>(null);
+  const [storyId, setStoryId] = useState<string | null>(clipSeed?.storyId ?? null);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storiesError, setStoriesError] = useState(false);
   const [savedPhrases, setSavedPhrases] = useState<SavedCapturePhrase[]>([]);
@@ -241,9 +296,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     void loadStories();
   }, [loadStories]);
 
-  const applyDraft = useCallback((draft: PhraseCaptureDraft, replaceContext: boolean) => {
-    if (replaceContext) setContext(draft.contextText);
-    setContextTranslation(draft.contextTranslation);
+  const applyPhraseDraft = useCallback((draft: PhraseCaptureDraft) => {
     setText(draft.suggestedPhrase);
     setKind(draft.kind);
     setMeaning(draft.meaning);
@@ -276,14 +329,20 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       const compact = await rendered.saveAsync({ base64: true, compress: 0.78, format: ImageManipulator.SaveFormat.JPEG });
       if (!compact.base64) throw new Error("Couldn’t prepare this photo.");
       const draft = await extractPhraseFromImage(compact.base64);
-      applyDraft(draft, true);
+      applyPhraseDraft(draft);
+      setDetectedText(draft.contextText);
+      setDetectedTranslation(draft.contextTranslation);
+      setDetectedTranslatedFrom(draft.contextText);
+      setContext("");
+      setContextTranslation("");
+      setContextTranslatedFrom("");
       await hydrateSavedPhrases(draft.contextText);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Couldn’t read this photo.");
     } finally {
       setReading(false);
     }
-  }, [applyDraft, hydrateSavedPhrases]);
+  }, [applyPhraseDraft, hydrateSavedPhrases]);
 
   useEffect(() => {
     if (!imageAsset || processedImageRef.current) return;
@@ -299,15 +358,21 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     try {
       const draft = await extractPhraseFromText(input);
       if (!draft.suggestedPhrase) throw new Error("We couldn’t find a phrase to suggest. Select words above or type one yourself.");
-      applyDraft(draft, false);
-      if (seed.contextTranslation) setContextTranslation(seed.contextTranslation);
+      applyPhraseDraft(draft);
+      if (seed.contextTranslation) {
+        setContextTranslation(seed.contextTranslation);
+        setContextTranslatedFrom(input);
+      } else if (draft.contextTranslation) {
+        setContextTranslation(draft.contextTranslation);
+        setContextTranslatedFrom(input);
+      }
       await hydrateSavedPhrases(draft.contextText || input);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Couldn’t fill this phrase right now.");
     } finally {
       setFilling(false);
     }
-  }, [applyDraft, hydrateSavedPhrases]);
+  }, [applyPhraseDraft, hydrateSavedPhrases]);
 
   useEffect(() => {
     if (!clipSeed?.contextText || processedClipRef.current) return;
@@ -316,8 +381,8 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
   }, [clipSeed, fillFromClipSeed]);
 
   const hasDraft = () => savedPhrases.length > 0
-    ? Boolean(text.trim() || meaning.trim() || usageNote.trim())
-    : Boolean(imageUri || text.trim() || meaning.trim() || usageNote.trim() || (!clipSeed && context.trim()));
+    ? Boolean(text.trim() || meaning.trim() || usageNote.trim() || learnerNote.trim())
+    : Boolean(imageUri || text.trim() || meaning.trim() || usageNote.trim() || learnerNote.trim() || detectedText.trim() || (!clipSeed && context.trim()));
 
   const leaveEditor = () => {
     if (!hasDraft()) {
@@ -341,9 +406,6 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       return;
     }
     setContext(value);
-    setContextTranslation("");
-    contextLookupRef.current += 1;
-    setSavedPhrases([]);
     setTextSource("paste");
     setSelection({ start: 0, end: 0 });
     setError(null);
@@ -354,9 +416,6 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     const clean = value.trim();
     if (!clean) return;
     setContext(clean);
-    setContextTranslation("");
-    contextLookupRef.current += 1;
-    setSavedPhrases([]);
     setTextSource("paste");
     setSelection({ start: 0, end: 0 });
     setError(null);
@@ -373,7 +432,11 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     try {
       const draft = await extractPhraseFromText(input);
       if (!draft.suggestedPhrase) throw new Error("We couldn’t find a phrase to suggest. Select words above or type one yourself.");
-      applyDraft(draft, false);
+      applyPhraseDraft(draft);
+      if (draft.contextTranslation) {
+        setContextTranslation(draft.contextTranslation);
+        setContextTranslatedFrom(input);
+      }
       await hydrateSavedPhrases(draft.contextText || input);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Couldn’t fill this phrase right now.");
@@ -385,6 +448,19 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
   const useSelectedText = () => {
     const selected = context.slice(selection.start, selection.end).replace(/\s+/g, " ").trim();
     if (selected) setText(selected);
+  };
+
+  const useSelectedDetected = () => {
+    const selected = detectedText.slice(detectedSelection.start, detectedSelection.end).replace(/\s+/g, " ").trim();
+    if (selected) setText(selected);
+  };
+
+  const useDetectedAsContext = () => {
+    const selected = detectedText.slice(detectedSelection.start, detectedSelection.end).replace(/\s+/g, " ").trim();
+    if (!selected) return;
+    setContext(selected);
+    setContextTranslation("");
+    setContextTranslatedFrom("");
   };
 
   const fillCurrentPhraseDetails = async () => {
@@ -401,7 +477,10 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       setMeaning(draft.meaning);
       setUsageNote(draft.usageNote);
       setDetailedPhrase(phrase);
-      if (draft.contextTranslation) setContextTranslation(draft.contextTranslation);
+      if (draft.contextTranslation) {
+        setContextTranslation(draft.contextTranslation);
+        setContextTranslatedFrom(context.trim());
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Couldn’t fill these details right now.");
     } finally {
@@ -427,6 +506,10 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       setSelectedSaved(null);
       setContext("");
       setContextTranslation("");
+      setContextTranslatedFrom("");
+      setDetectedText("");
+      setDetectedTranslation("");
+      setDetectedTranslatedFrom("");
       setConfidence(null);
       resetPhraseFields();
       void readImageAsset(asset);
@@ -533,10 +616,11 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         text,
         meaning,
         usageNote,
+        learnerNote,
         kind,
         context,
         contextTranslation,
-        source: imageUri ? "image_ocr" : clipSeed ? "clip" : textSource,
+        source: imageUri ? "image_ocr" : clipSeed?.source === "speak" ? "speak" : clipSeed ? "clip" : textSource,
         sourceLabel,
         ocrConfidence: imageUri ? confidence : null,
         videoId: clipSeed?.videoId,
@@ -544,6 +628,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         startTime: clipSeed?.start,
         endTime: clipSeed?.end,
         storyId,
+        said: clipSeed?.said,
       });
       const captured: SavedCapturePhrase = {
         id: saved.id,
@@ -554,6 +639,11 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         result: saved.result,
       };
       if (saved.result === "saved") {
+        posthog?.capture("phrase_saved", {
+          source: imageUri ? "image_ocr" : clipSeed?.source === "speak" ? "speak" : clipSeed ? "clip" : textSource,
+          phrase_kind: kind,
+          linked_to_story: Boolean(storyId),
+        });
         setSavedPhrases((current) => {
           const withoutCurrent = current.filter((item) => item.id !== captured.id);
           return [...withoutCurrent, captured];
@@ -569,19 +659,14 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
 
   const showNativePasteButton = Platform.OS === "ios" && Clipboard.isPasteButtonAvailable;
   const canFill = Boolean(context.trim()) && !reading && !filling;
-  const phraseNeedsDetails = Boolean(text.trim()) && text.trim().toLocaleLowerCase("en") !== detailedPhrase.trim().toLocaleLowerCase("en");
-  const detailButtonLabel = filling
-    ? "Filling…"
-    : phraseNeedsDetails && Boolean(detailedPhrase)
-      ? "Update AI details"
-      : meaning.trim() || usageNote.trim()
-        ? "Refresh AI details"
-        : "Fill details with AI";
+  const contextTranslationStale = Boolean(contextTranslation.trim()) && context.trim() !== contextTranslatedFrom.trim();
+  const detectedTranslationStale = Boolean(detectedTranslation.trim()) && detectedText.trim() !== detectedTranslatedFrom.trim();
+  const detectedHasSelection = detectedSelection.end > detectedSelection.start;
 
   return (
     <>
       <Screen bottomPad={54}>
-      <BackBar title={clipSeed ? "From this clip" : imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
+      <BackBar title={clipSeed?.source === "speak" ? "From this talk" : clipSeed ? "From this clip" : imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
 
       {imageUri ? (
         <>
@@ -607,37 +692,70 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         </Card>
       ) : null}
 
+      {imageUri ? (
+        <Card>
+          <CaptureLabel label="DETECTED TEXT" tag="Optional" />
+          <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 5 }}>
+            Check the text we found, then choose what you want to keep.
+          </Text>
+          <TextInput
+            value={detectedText}
+            onChangeText={(value) => {
+              setDetectedText(value);
+              if (error) setError(null);
+            }}
+            onSelectionChange={(event) => setDetectedSelection(event.nativeEvent.selection)}
+            editable={!reading}
+            multiline
+            placeholder="Text from this photo…"
+            placeholderTextColor={t.colors.ink3}
+            style={{ minHeight: 96, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 10, padding: 0 }}
+          />
+          {detectedTranslation ? (
+            <View style={{ borderTopWidth: 1, borderTopColor: t.colors.sep, marginTop: 14, paddingTop: 13 }}>
+              <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>TRANSLATION</Text>
+              {detectedTranslationStale ? <Text style={{ fontSize: 11.5, color: t.colors.ink3, marginTop: 4 }}>May not match your edit</Text> : null}
+              <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 7 }}>{detectedTranslation}</Text>
+            </View>
+          ) : null}
+          {detectedHasSelection ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 11 }}>
+              <Pill tone="tint" small onPress={useSelectedDetected}>Use selected words</Pill>
+              <Pill tone="soft" small onPress={useDetectedAsContext}>Use as context</Pill>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card>
-        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>CONTEXT</Text>
+        <CaptureLabel label="CONTEXT" tag="Optional" />
         <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 5 }}>
-          {imageUri
-            ? "Check the text we found, then choose what you want to keep."
+          {clipSeed?.source === "speak"
+            ? "We’ll pick one reusable expression from this suggestion. You can edit everything."
             : clipSeed
               ? "We’ll pick one reusable expression from this line. You can edit everything."
-              : "Paste or type a sentence, dialogue, or expression. Context is optional if you already know the phrase."}
+              : "The sentence or example that contains this phrase. Optional if you already know it."}
         </Text>
         <TextInput
           ref={contextInputRef}
           value={context}
           onChangeText={(value) => {
             setContext(value);
-            setContextTranslation("");
-            contextLookupRef.current += 1;
-            setSavedPhrases([]);
             if (error) setError(null);
           }}
           onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
           editable={!reading}
           autoFocus={!imageAsset && !clipSeed}
           multiline
-          placeholder="Paste a sentence, dialogue, or expression…"
+          placeholder="e.g. Don’t let his mood rub off on you."
           placeholderTextColor={t.colors.ink3}
-          style={{ minHeight: 96, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 10, padding: 0 }}
+          style={{ minHeight: imageUri ? 70 : 96, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 10, padding: 0 }}
         />
 
         {contextTranslation ? (
           <View style={{ borderTopWidth: 1, borderTopColor: t.colors.sep, marginTop: 14, paddingTop: 13 }}>
             <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>CONTEXT TRANSLATION</Text>
+            {contextTranslationStale ? <Text style={{ fontSize: 11.5, color: t.colors.ink3, marginTop: 4 }}>May not match your edit</Text> : null}
             <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 7 }}>{contextTranslation}</Text>
           </View>
         ) : null}
@@ -702,10 +820,10 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
               ))}
             </View>
             <View style={{ height: 1, backgroundColor: t.colors.sep, marginVertical: 15 }} />
-            <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>NEXT PHRASE TO KEEP</Text>
+            <CaptureLabel label="NEXT PHRASE TO KEEP" tag="Required" />
           </>
         ) : (
-          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>PHRASE TO KEEP</Text>
+          <CaptureLabel label="PHRASE TO KEEP" tag="Required" />
         )}
         <TextInput value={text} onChangeText={(value) => { setText(value); if (error) setError(null); }} placeholder="e.g. take the plunge" placeholderTextColor={t.colors.ink3} style={{ fontSize: 20, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 9, padding: 0 }} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 14 }}>
@@ -713,50 +831,73 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         </ScrollView>
         <Pill
           tone="soft"
-          small
+          full
           icon="sparkle"
           onPress={text.trim() && !reading && !filling ? () => void fillCurrentPhraseDetails() : undefined}
-          style={{ alignSelf: "flex-start", marginTop: 13, opacity: text.trim() && !reading && !filling ? 1 : 0.5 }}
+          style={{ width: "100%", alignSelf: "stretch", marginTop: 13, opacity: text.trim() && !reading && !filling ? 1 : 0.5 }}
         >
-          {detailButtonLabel}
+          {filling ? "Filling…" : "Refresh with AI"}
         </Pill>
-        <Text style={{ fontSize: 11.5, lineHeight: 17, color: t.colors.ink3, marginTop: 8 }}>
-          {savedPhrases.length > 0 ? "Select another expression above, or type it here." : "Keeps your phrase exactly as written and fills only its learning details."}
-        </Text>
+        {savedPhrases.length > 0 ? (
+          <Text style={{ fontSize: 11.5, lineHeight: 17, color: t.colors.ink3, marginTop: 8 }}>
+            Select another expression above, or type it here.
+          </Text>
+        ) : null}
       </Card>
 
       <Card>
-        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>MEANING</Text>
+        <CaptureLabel label="MEANING" tag="Optional" />
         <TextInput value={meaning} onChangeText={setMeaning} placeholder="What it means to you" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, color: t.colors.ink, marginTop: 8, padding: 0 }} />
-        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 18 }}>USAGE NOTE</Text>
-        <TextInput value={usageNote} onChangeText={setUsageNote} multiline placeholder="When or how you’d use it" placeholderTextColor={t.colors.ink3} style={{ minHeight: 46, fontSize: 15, lineHeight: 21, color: t.colors.ink, marginTop: 8, padding: 0 }} />
+        <View style={{ marginTop: 18 }}>
+          <CaptureLabel label="HOW IT’S USED" tag="Optional" />
+        </View>
+        <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 5 }}>Not an example sentence. Context holds the sentence.</Text>
+        <TextInput value={usageNote} onChangeText={setUsageNote} multiline placeholder="When this sounds natural" placeholderTextColor={t.colors.ink3} style={{ minHeight: 46, fontSize: 15, lineHeight: 21, color: t.colors.ink, marginTop: 8, padding: 0 }} />
       </Card>
 
-      <Card>
-        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>WHERE IT BELONGS</Text>
-        <TextInput value={sourceLabel} onChangeText={setSourceLabel} placeholder="Source name (optional)" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, color: t.colors.ink, marginTop: 9, padding: 0 }} />
-        {storiesLoading ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 14 }}>
-            <ActivityIndicator size="small" color={t.colors.acc} />
-            <Text style={{ fontSize: 12.5, color: t.colors.ink3 }}>Loading your stories…</Text>
-          </View>
-        ) : storiesError ? (
-          <View style={{ paddingTop: 14, alignItems: "flex-start" }}>
-            <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3 }}>Couldn’t load your stories. You can still save this phrase without linking it.</Text>
-            <Pill tone="tint" small onPress={loadStories} style={{ marginTop: 9 }}>Retry stories</Pill>
-          </View>
-        ) : (
-          <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 14 }}>
-              <Chip active={!storyId} onPress={() => setStoryId(null)}>Not linked yet</Chip>
-              {stories.map((story) => <Chip key={story.id} active={storyId === story.id} onPress={() => setStoryId(story.id)}>{story.domainName ? `${story.domainName} · ${story.title}` : story.title}</Chip>)}
-            </ScrollView>
-            {stories.length === 0 ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 9 }}>No stories yet. You can link this phrase later.</Text> : null}
-          </>
-        )}
-      </Card>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: moreOpen }}
+        onPress={() => setMoreOpen((open) => !open)}
+        style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingVertical: 6 }}
+      >
+        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>MORE</Text>
+        <View style={{ transform: [{ rotate: moreOpen ? "90deg" : "0deg" }] }}>
+          <Icon name="chev" s={14} c={t.colors.ink3} />
+        </View>
+      </Pressable>
 
-      {confidence != null && confidence < 0.7 ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18 }}>Check the suggested phrase before saving — the source was hard to interpret.</Text> : null}
+      {moreOpen ? (
+        <Card>
+          <CaptureLabel label="WHERE IT BELONGS" tag="Optional" />
+          <TextInput value={sourceLabel} onChangeText={setSourceLabel} placeholder="Source name" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, color: t.colors.ink, marginTop: 9, padding: 0 }} />
+          {storiesLoading ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 14 }}>
+              <ActivityIndicator size="small" color={t.colors.acc} />
+              <Text style={{ fontSize: 12.5, color: t.colors.ink3 }}>Loading your stories…</Text>
+            </View>
+          ) : storiesError ? (
+            <View style={{ paddingTop: 14, alignItems: "flex-start" }}>
+              <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3 }}>Couldn’t load your stories. You can still save this phrase without linking it.</Text>
+              <Pill tone="tint" small onPress={loadStories} style={{ marginTop: 9 }}>Retry stories</Pill>
+            </View>
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 14 }}>
+                <Chip active={!storyId} onPress={() => setStoryId(null)}>Not linked yet</Chip>
+                {stories.map((story) => <Chip key={story.id} active={storyId === story.id} onPress={() => setStoryId(story.id)}>{story.domainName ? `${story.domainName} · ${story.title}` : story.title}</Chip>)}
+              </ScrollView>
+              {stories.length === 0 ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 9 }}>No stories yet. You can link this phrase later.</Text> : null}
+            </>
+          )}
+          <View style={{ height: 1, backgroundColor: t.colors.sep, marginVertical: 16 }} />
+          <CaptureLabel label="YOUR NOTE" tag="Optional" />
+          <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 5 }}>A private reminder for you. AI does not fill this.</Text>
+          <TextInput value={learnerNote} onChangeText={setLearnerNote} multiline placeholder="Why you want this, or when you’ll use it…" placeholderTextColor={t.colors.ink3} style={{ minHeight: 54, fontSize: 15, lineHeight: 21, color: t.colors.ink, marginTop: 8, padding: 0 }} />
+        </Card>
+      ) : null}
+
+      {confidence != null && confidence < 0.7 ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18 }}>Check the suggested phrase before saving.</Text> : null}
       {error ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center" }}>{error}</Text> : null}
       <Pill full icon="bank" onPress={reading || filling || saving ? undefined : save} style={{ opacity: reading || filling || saving ? 0.6 : 1 }}>
         {saving ? <ActivityIndicator color="#fff" /> : savedPhrases.length > 0 ? "Save this phrase" : "Save to Phrase Bank"}
@@ -840,8 +981,8 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
                 <View style={{ height: 1, backgroundColor: t.colors.sep, marginVertical: 17 }} />
                 <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>MEANING</Text>
                 <TextInput value={savedEditMeaning} onChangeText={setSavedEditMeaning} placeholder="Meaning" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
-                <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 18 }}>USAGE NOTE</Text>
-                <TextInput value={savedEditNote} onChangeText={setSavedEditNote} multiline placeholder="Usage note" placeholderTextColor={t.colors.ink3} style={{ minHeight: 54, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
+                <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 18 }}>HOW IT’S USED</Text>
+                <TextInput value={savedEditNote} onChangeText={setSavedEditNote} multiline placeholder="How it’s used" placeholderTextColor={t.colors.ink3} style={{ minHeight: 54, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
                 {savedEditError ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center", marginTop: 12 }}>{savedEditError}</Text> : null}
                 <Pill full onPress={savingSavedEdit ? undefined : () => void saveSavedPhraseEdits()} style={{ marginTop: 20, opacity: savingSavedEdit ? 0.6 : 1 }}>
                   {savingSavedEdit ? <ActivityIndicator color="#fff" /> : "Save changes"}
@@ -863,8 +1004,8 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
                 <View style={{ height: 1, backgroundColor: t.colors.sep, marginVertical: 17 }} />
                 <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD }}>MEANING</Text>
                 <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8 }}>{selectedSaved.meaning || "No meaning added yet."}</Text>
-                <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 18 }}>USAGE NOTE</Text>
-                <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8 }}>{selectedSaved.usageNote || "No usage note added yet."}</Text>
+                <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 18 }}>HOW IT’S USED</Text>
+                <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8 }}>{selectedSaved.usageNote || "No usage added yet."}</Text>
                 <Pill tone="soft" full onPress={() => setEditingSaved(true)} style={{ marginTop: 20 }}>Edit saved phrase</Pill>
                 <Pill tone="ghost" onPress={() => setSelectedSaved(null)} style={{ alignSelf: "center", marginTop: 4 }}>Close</Pill>
               </>

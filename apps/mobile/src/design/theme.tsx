@@ -130,19 +130,22 @@ export function buildTheme(dark: boolean, palette: Palette = "ios", density: Den
     gap: density === "compact" ? 9 : 13,
     r: 26,
     ring: dark ? "rgba(255,255,255,0.07)" : "#ECECEC",
+    // Tight enough (reach ≈ offset + radius = 18pt) that clipped containers
+    // (Swipeable rows, horizontal scrollers) can give it breathing room
+    // without overlapping neighbors.
     shadowCard: {
       shadowColor: "#000",
-      shadowOpacity: dark ? 0.22 : 0.05,
-      shadowRadius: 9,
+      shadowOpacity: dark ? 0.3 : 0.09,
+      shadowRadius: 12,
       shadowOffset: { width: 0, height: 6 },
-      elevation: 2,
+      elevation: 5,
     },
     shadowLg: {
       shadowColor: "#000",
-      shadowOpacity: dark ? 0.28 : 0.07,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 4,
+      shadowOpacity: dark ? 0.4 : 0.16,
+      shadowRadius: 28,
+      shadowOffset: { width: 0, height: 16 },
+      elevation: 10,
     },
   };
 }

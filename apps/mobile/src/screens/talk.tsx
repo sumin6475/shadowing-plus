@@ -1,22 +1,24 @@
 // talk.tsx — Speak tab default: the mirror self-talk session (sp-talk.jsx).
-// Phases: count → live → done → moment → retry. The web original uses radial
+// Phases: live → done → moment → retry. The web original uses radial
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Easing, Pressable, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePostHog } from "posthog-react-native";
 
-import { SERIF, useTheme } from "@/design/theme";
-import { BackBar, Card, Hero, Icon, Pill, Screen, Serif, Wave } from "@/design/ui";
+import { useTheme } from "@/design/theme";
+import { BackBar, Card, ExpandableCopy, Hero, Icon, Pill, Screen, Serif, Wave, promptFeedbackNote } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
 import { saveTalkSessionAudio } from "@/lib/talk-audio";
-import { createSpeakPhrase, recordPhraseEvent } from "@/lib/phrases";
-import { diagnoseStuck, diagnoseTalk, type StuckMoment } from "@/lib/talk";
+import { recordPhraseEvent, setPhraseStage, type PhraseItem } from "@/lib/phrases";
+import { diagnoseTalk, suggestTalkPhrase } from "@/lib/talk";
 import { logTalkSuggestions, rateTalkSuggestion, suggestionKey, type SuggestionSlot, type SuggestionVerdict } from "@/lib/talk-feedback";
-import { stuckNoteCopy } from "@/lib/first-language";
+import { promptPhraseStage, todaysPhrases } from "@/lib/daily-phrases";
 import { talkFocus, TALK_FOCUS_LABEL, type TalkFocus } from "@/lib/talk-focus";
-import type { StuckHelp, TalkMoment } from "@/types/api";
+import type { TalkMoment, TalkPhraseSuggestion, TalkPhraseUsedMatch } from "@/types/api";
 import type { Nav, TalkCtx } from "./nav";
 
 const TALK_SAMPLES = [
@@ -120,25 +122,20 @@ const fmt2 = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${St
 
 export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const t = useTheme();
+  const posthog = usePostHog();
   const insets = useSafeAreaInsets();
   const p0 = talkCtx ?? {};
 
-  const [phase, setPhase] = useState<"count" | "live" | "done" | "moment" | "retry">("count");
-  const [n, setN] = useState(3);
+  const [phase, setPhase] = useState<"live" | "done" | "moment" | "retry" | "bankRetry">("live");
   const [sec, setSec] = useState(0);
   const [tab, setTab] = useState<"phrase" | "beats">("phrase");
   const [beatIdx, setBeatIdx] = useState(0); // current story beat in the checklist
   const [ctx, setCtx] = useState(p0.ctx || "Free talk");
   const [dd, setDd] = useState(false);
-  const [marks, setMarks] = useState<StuckMoment[]>([]);
-  const [noteOpen, setNoteOpen] = useState(false); // the quick "stuck" note sheet
-  const [noteText, setNoteText] = useState("");
-  const [noteAt, setNoteAt] = useState("0:00");
-  const [toast, setToast] = useState<string | null>(null);
+  const [hintOpen, setHintOpen] = useState(false);
+  const [todayPhrases, setTodayPhrases] = useState<PhraseItem[]>([]);
   const [dur, setDur] = useState(0);
   const [sel, setSel] = useState(0);
-  // Per-moment "Save as phrase" state (persists mSel.want to phrase_items).
-  const [phraseSave, setPhraseSave] = useState<Record<number, "saving" | "saved" | "already" | "error">>({});
   const [retryResult, setRetryResult] = useState<"used" | "not_yet" | null>(null);
   const beats = p0.beats || TALK_BEATS;
   const prompt = p0.prompt || "What I’m trying to do is…";
@@ -161,26 +158,32 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [diagState, setDiagState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [diagErr, setDiagErr] = useState<string | null>(null);
   const [sessionFocus, setSessionFocus] = useState<TalkFocus>(() => talkFocus());
-  // Separate analysis of the moments the learner tapped "Stuck" (talk-stuck).
-  const [stuckHelp, setStuckHelp] = useState<StuckHelp[]>([]);
-  const [stuckState, setStuckState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  // Bank retrieval is intentionally independent from Focus coaching. Either
+  // request may fail or return empty without suppressing the other's result.
+  const [bankSuggestion, setBankSuggestion] = useState<TalkPhraseSuggestion | null>(null);
+  const [bankUsed, setBankUsed] = useState<TalkPhraseUsedMatch[]>([]);
+  const [bankState, setBankState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [bankDismissed, setBankDismissed] = useState(false);
+  const [bankRetryResult, setBankRetryResult] = useState<"used" | "not_yet" | null>(null);
+  const bankAcceptedRef = useRef(false);
+  const bankRejectedRef = useRef(false);
+  const bankUsedRef = useRef(false);
   const [suggestionIds, setSuggestionIds] = useState<Record<string, string>>({});
   const [suggestionVerdict, setSuggestionVerdict] = useState<Record<string, SuggestionVerdict>>({});
 
-  const pop = useMemo(() => new Animated.Value(1), []);
-
-  // Countdown. State changes happen in the timer callback (not synchronously in
-  // the effect body), so each number — including "Go" — gets a visible beat.
   useEffect(() => {
-    if (phase !== "count") return;
-    pop.setValue(1.45);
-    Animated.timing(pop, { toValue: 1, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-    const id = setTimeout(() => {
-      if (n === 0) setPhase("live");
-      else setN((v) => v - 1);
-    }, n === 0 ? 550 : 850);
-    return () => clearTimeout(id);
-  }, [phase, n, pop]);
+    let active = true;
+    todaysPhrases()
+      .then((items) => {
+        if (active) setTodayPhrases(items);
+      })
+      .catch(() => {
+        if (active) setTodayPhrases([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Live timer
   useEffect(() => {
@@ -216,38 +219,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     if (speech.audioUri) persistAudioIfReady();
   }, [speech.audioUri]);
 
-  // Tap "Stuck" → open a quick note at this timestamp. Recording keeps running.
-  const stuck = () => {
-    setNoteAt(fmt(sec));
-    setNoteText("");
-    setNoteOpen(true);
-  };
-  const saveNote = () => {
-    const note = noteText.trim();
-    setNoteOpen(false);
-    setNoteText("");
-    if (!note) return; // empty note = cancel, no mark
-    setMarks((m) => [...m, { at: noteAt, note }]);
-    setToast(noteAt);
-    setTimeout(() => setToast(null), 1300);
-  };
-
-  // Coach the "Stuck" taps — runs in parallel with the main diagnosis on finish.
-  const runStuckDiagnosis = (moments: StuckMoment[]) => {
-    if (!moments.length) {
-      setStuckHelp([]);
-      setStuckState("done");
-      return;
-    }
-    const topic = ctx === "Free talk" ? p0.sub ?? null : [ctx, p0.sub].filter(Boolean).join(" · ") || null;
-    setStuckState("loading");
-    diagnoseStuck({ stuckMoments: moments, topic })
-      .then((h) => {
-        setStuckHelp(h);
-        setStuckState("done");
-      })
-      .catch(() => setStuckState("error"));
-  };
   // Ask the Edge Function to surface improvable moments from the real transcript. Runs
   // in parallel with the save; an empty/short transcript short-circuits to none.
   const runDiagnosis = (text: string) => {
@@ -283,6 +254,35 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       });
   };
 
+  const runBankSuggestion = (text: string) => {
+    if (!text.trim()) {
+      setBankSuggestion(null);
+      setBankUsed([]);
+      setBankState("done");
+      return;
+    }
+    const topic = ctx === "Free talk" ? p0.sub ?? null : [ctx, p0.sub].filter(Boolean).join(" · ") || null;
+    setBankSuggestion(null);
+    setBankUsed([]);
+    setBankDismissed(false);
+    bankAcceptedRef.current = false;
+    bankRejectedRef.current = false;
+    bankUsedRef.current = false;
+    setBankState("loading");
+    suggestTalkPhrase({ transcript: text, topic, storyId: p0.storyId ?? null })
+      .then((result) => {
+        setBankSuggestion(result.suggestion);
+        setBankUsed(result.used);
+        setBankState("done");
+      })
+      .catch((e) => {
+        if (__DEV__) console.warn("Phrase Bank suggestion failed", e);
+        setBankSuggestion(null);
+        setBankUsed([]);
+        setBankState("error");
+      });
+  };
+
   const finish = () => {
     const text = speech.stop();
     setTranscript(text);
@@ -298,6 +298,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     })
       .then((id) => {
         setSaveState("saved");
+        posthog?.capture("talk_session_completed", {
+          duration_seconds: sec,
+          has_transcript: Boolean(text.trim()),
+          linked_to_story: Boolean(p0.storyId),
+        });
         savedIdRef.current = id;
         persistAudioIfReady(); // in case audioend already fired
       })
@@ -307,7 +312,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         setSaveErr(SESSION_SAVE_ERROR_COPY);
       });
     runDiagnosis(text);
-    runStuckDiagnosis(marks);
+    runBankSuggestion(text);
   };
   const restart = () => {
     speech.stop();
@@ -321,18 +326,20 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setMoments([]);
     setDiagState("idle");
     setDiagErr(null);
-    setStuckHelp([]);
-    setStuckState("idle");
+    setBankSuggestion(null);
+    setBankUsed([]);
+    setBankState("idle");
+    setBankDismissed(false);
+    setBankRetryResult(null);
+    bankAcceptedRef.current = false;
+    bankRejectedRef.current = false;
+    bankUsedRef.current = false;
     setSuggestionIds({});
     setSuggestionVerdict({});
-    setPhraseSave({});
     setRetryResult(null);
-    setPhase("count");
-    setN(3);
+    setPhase("live");
     setSec(0);
-    setMarks([]);
-    setNoteOpen(false);
-    setNoteText("");
+    setHintOpen(false);
     setTab("phrase");
     setBeatIdx(0);
     setDd(false);
@@ -343,65 +350,106 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   };
   const mSel = moments[sel];
 
-  // Persist a moment's suggested expression to the Phrase Bank (phrase_items).
   const savePhrase = (i: number) => {
     const m = moments[i];
-    if (!m) return;
-    setPhraseSave((s) => ({ ...s, [i]: "saving" }));
-    createSpeakPhrase({ text: m.want, example: m.example, storyId: p0.storyId ?? null, said: m.said })
-      .then((r) => setPhraseSave((s) => ({ ...s, [i]: r === "already" ? "already" : "saved" })))
-      .catch(() => setPhraseSave((s) => ({ ...s, [i]: "error" })));
+    if (!m?.want.trim()) return;
+    nav.push("capture", {
+      clipSeed: {
+        contextText: m.want.trim(),
+        sourceLabel: m.label || ctx,
+        source: "speak",
+        storyId: p0.storyId ?? null,
+        said: m.said,
+      },
+    });
   };
 
   const tryMoment = () => {
     setRetryResult(null);
-    if (mSel?.phraseItemId) {
-      void recordPhraseEvent({
-        phraseItemId: mSel.phraseItemId,
-        event: "accepted",
-        storyId: p0.storyId ?? null,
-        talkSessionId: savedIdRef.current,
-        evidence: { transcript_quote: mSel.said },
-      }).catch(() => undefined);
-    }
     setPhase("retry");
   };
 
-  const rejectMoment = () => {
-    if (mSel?.phraseItemId) {
-      void recordPhraseEvent({
-        phraseItemId: mSel.phraseItemId,
-        event: "rejected",
-        storyId: p0.storyId ?? null,
-        talkSessionId: savedIdRef.current,
-        evidence: { transcript_quote: mSel.said },
-      }).catch(() => undefined);
-    }
-    setPhase("done");
-  };
-
-  const rateSuggestion = (slot: SuggestionSlot, verdict: SuggestionVerdict) => {
+  const persistSuggestionRating = (slot: SuggestionSlot, verdict: SuggestionVerdict, note?: string | null) => {
     const key = suggestionKey(sel, slot);
     setSuggestionVerdict((current) => ({ ...current, [key]: verdict }));
     const id = suggestionIds[key];
-    if (id) {
-      void rateTalkSuggestion(id, verdict).catch((e) => {
-        if (__DEV__) console.warn("Couldn’t save suggestion rating", e);
-      });
+    if (!id) return;
+    void rateTalkSuggestion(id, verdict, note).catch((e) => {
+      if (__DEV__) console.warn("Couldn’t save suggestion rating", e);
+    });
+  };
+
+  const rateSuggestion = (slot: SuggestionSlot, verdict: SuggestionVerdict) => {
+    if (verdict === "like") {
+      persistSuggestionRating(slot, verdict, null);
+      return;
     }
+    promptFeedbackNote({
+      title: verdict === "dislike" ? "What didn’t work?" : "What felt off?",
+      message: "One sentence is enough. This stays with the rating so later coaching can learn from it.",
+      onSave: (note) => persistSuggestionRating(slot, verdict, note),
+    });
   };
 
   const finishRetry = (used: boolean) => {
     setRetryResult(used ? "used" : "not_yet");
-    if (used && mSel?.phraseItemId) {
-      void recordPhraseEvent({
-        phraseItemId: mSel.phraseItemId,
-        event: "used",
-        storyId: p0.storyId ?? null,
-        talkSessionId: savedIdRef.current,
-        evidence: { self_reported: true, prompted: true },
-      }).catch(() => undefined);
-    }
+  };
+
+  const tryBankPhrase = () => {
+    if (!bankSuggestion || bankAcceptedRef.current || bankRejectedRef.current) return;
+    bankAcceptedRef.current = true;
+    setBankRetryResult(null);
+    setBankDismissed(true);
+    void recordPhraseEvent({
+      phraseItemId: bankSuggestion.phraseItemId,
+      event: "accepted",
+      storyId: p0.storyId ?? null,
+      talkSessionId: savedIdRef.current,
+      evidence: { transcript_quote: bankSuggestion.said, source: "talk_phrase_suggest" },
+    }).catch(() => undefined);
+    setPhase("bankRetry");
+  };
+
+  const rejectBankPhrase = () => {
+    if (!bankSuggestion || bankAcceptedRef.current || bankRejectedRef.current) return;
+    promptFeedbackNote({
+      title: "Why doesn’t this phrase fit?",
+      message: "One sentence is enough. This helps later ranking skip the wrong matches.",
+      onSave: (note) => {
+        bankRejectedRef.current = true;
+        setBankDismissed(true);
+        void recordPhraseEvent({
+          phraseItemId: bankSuggestion.phraseItemId,
+          event: "rejected",
+          storyId: p0.storyId ?? null,
+          talkSessionId: savedIdRef.current,
+          evidence: {
+            transcript_quote: bankSuggestion.said,
+            source: "talk_phrase_suggest",
+            reason: note || null,
+          },
+        }).catch(() => undefined);
+      },
+    });
+  };
+
+  const finishBankRetry = (used: boolean) => {
+    setBankRetryResult(used ? "used" : "not_yet");
+    if (!used || !bankSuggestion || bankUsedRef.current) return;
+    bankUsedRef.current = true;
+    void recordPhraseEvent({
+      phraseItemId: bankSuggestion.phraseItemId,
+      event: "used",
+      storyId: p0.storyId ?? null,
+      talkSessionId: savedIdRef.current,
+      evidence: { self_reported: true, prompted: true, source: "talk_phrase_suggest" },
+    }).catch(() => undefined);
+    promptPhraseStage({
+      text: bankSuggestion.text,
+      onChoose: (stage) => {
+        void setPhraseStage(bankSuggestion.phraseItemId, stage).catch(() => undefined);
+      },
+    });
   };
 
   // ── done ──
@@ -411,18 +459,19 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         <View style={{ alignItems: "center", paddingTop: 26, paddingBottom: 4 }}>
           <Serif style={{ fontSize: 34, color: t.colors.ink }}>Great job!</Serif>
           <Text style={{ fontSize: 16.5, fontWeight: "600", marginTop: 14, color: t.colors.ink }}>You spoke for {fmt(dur)}</Text>
-          {marks.length ? (
-            <Text style={{ fontSize: 16.5, fontWeight: "600", marginTop: 2, color: t.colors.ink }}>
-              You marked {marks.length} spot{marks.length === 1 ? "" : "s"}.
-            </Text>
-          ) : null}
           <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink, marginTop: 10, textAlign: "center" }}>
             {diagState === "loading"
               ? `Looking at ${TALK_FOCUS_LABEL[sessionFocus].toLowerCase()}…`
               : diagState === "done" && moments.length
                 ? "Here’s where you could say it more naturally."
+                : bankState === "loading"
+                  ? "Checking your Phrase Bank…"
+                  : bankState === "done" && bankSuggestion
+                    ? "You already saved something useful for this moment."
+                    : bankState === "error"
+                      ? "Focus coaching is ready. Your Phrase Bank check needs another try."
                 : diagState === "done"
-                  ? "You kept going the whole time — nice."
+                  ? "You kept going the whole time."
                   : ""}
           </Text>
           {diagState === "loading" || diagState === "done" || diagState === "error" ? (
@@ -435,19 +484,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         {/* Real transcript from on-device recognition. */}
         <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2 }}>What you said</Text>
         <Card>
-          {transcript ? (
-            <Text style={{ fontSize: 15, lineHeight: 23, color: t.colors.ink }}>{transcript}</Text>
-          ) : (
-            <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, fontStyle: "italic" }}>
-              No words were captured this time.
-            </Text>
-          )}
+          <ExpandableCopy text={transcript} />
           <Text style={{ fontSize: 13, fontWeight: "600", color: saveState === "error" ? "#E5484D" : t.colors.ink2, marginTop: 10 }}>
             {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved to your sessions" : saveState === "error" ? (saveErr ?? "Couldn’t save") : ""}
           </Text>
         </Card>
 
-        {/* AI diagnosis: up to 3 improvable moments from the real transcript. */}
+        {/* AI diagnosis: one highest-impact coaching moment from the real transcript. */}
         {diagState === "loading" ? (
           <Card lg style={{ alignItems: "center", paddingVertical: 26, gap: 10 }}>
             <ActivityIndicator color={t.colors.accD} />
@@ -483,7 +526,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                     {m.said}
                   </Text>
                   <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.accD, marginTop: 4 }} numberOfLines={1}>
-                    {m.source === "saved" ? "From your phrases" : "New suggestion"}: {m.want}
+                    New suggestion: {m.want}
                   </Text>
                 </View>
                 <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
@@ -494,64 +537,106 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         {diagState === "done" && !moments.length ? (
           <Card lg style={{ alignItems: "center", paddingVertical: 28 }}>
             <Wave n={20} h={26} />
-            <Text style={{ fontSize: 15, fontWeight: "600", marginTop: 12, color: t.colors.ink }}>Smooth run.</Text>
+            <Text style={{ fontSize: 15, fontWeight: "600", marginTop: 12, color: t.colors.ink }}>Smooth focus run.</Text>
             <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 4, textAlign: "center" }}>
-              Nothing stood out to fix — nice and natural. Keep going.
+              {bankState === "error"
+                ? "Nothing stood out in your Focus coaching. Retry the Phrase Bank check below."
+                : "Nothing stood out to fix. Keep going."}
             </Text>
           </Card>
         ) : null}
 
-        {/* Where you got stuck — a separate analysis of the "Stuck" taps. */}
-        {marks.length > 0 ? (
-          <>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2, marginTop: 6 }}>
-              <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Where you got stuck</Text>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: t.colors.ink3 }}>
-                {marks.length} spot{marks.length === 1 ? "" : "s"}
-              </Text>
+        {bankState === "done" && bankUsed.length ? (
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink, marginTop: 4 }}>
+            You used {bankUsed.length} saved phrase{bankUsed.length === 1 ? "" : "s"}.
+          </Text>
+        ) : null}
+
+        {bankState === "loading" ? (
+          <Card style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 20 }}>
+            <ActivityIndicator color={t.colors.accD} />
+            <Text style={{ fontSize: 13.5, color: t.colors.ink3 }}>Checking your saved phrases for a strong fit…</Text>
+          </Card>
+        ) : null}
+
+        {bankState === "error" ? (
+          <Card style={{ gap: 11 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+              <Icon name="bank" s={17} c="#E5484D" />
+              <Text style={{ flex: 1, fontSize: 14, color: "#E5484D", fontWeight: "700" }}>Couldn’t check your Phrase Bank.</Text>
             </View>
-            {stuckState === "loading" ? (
-              <Card style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 20 }}>
-                <ActivityIndicator color={t.colors.accD} />
-                <Text style={{ fontSize: 13.5, color: t.colors.ink3 }}>Looking at what tripped you up…</Text>
-              </Card>
-            ) : stuckState === "error" ? (
-              <Card style={{ gap: 10 }}>
-                <Text style={{ fontSize: 14, color: "#E5484D", fontWeight: "600" }}>Couldn’t analyze your stuck moments.</Text>
-                <Pill tone="tint" small onPress={() => runStuckDiagnosis(marks)}>
-                  Try again
-                </Pill>
-              </Card>
-            ) : stuckHelp.length ? (
-              stuckHelp.map((h, i) => {
-                // The learner's own note (their words, often Korean) → the English.
-                const note = ((marks.find((m) => m.at === h.at) ?? marks[i])?.note ?? "").trim();
-                return (
-                  <Card key={i} style={{ gap: 10 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                      <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                        <Icon name="life" s={17} c={t.colors.accD} />
-                      </View>
-                      <Text style={{ flex: 1, fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: t.colors.ink3 }}>YOU WANTED TO SAY</Text>
-                      <View style={{ backgroundColor: t.colors.soft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
-                        <Text style={{ fontSize: 11.5, fontWeight: "700", color: t.colors.ink3 }}>{h.at}</Text>
-                      </View>
-                    </View>
-                    {note ? <Text style={{ fontSize: 15, color: t.colors.ink, lineHeight: 21 }}>{note}</Text> : null}
-                    <View style={{ backgroundColor: t.colors.accS, borderRadius: 14, padding: 12 }}>
-                      <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: t.colors.accD }}>SAY IT LIKE THIS</Text>
-                      <Text style={{ fontSize: 16, fontWeight: "600", lineHeight: 22, color: t.colors.ink, marginTop: 4 }}>{h.phrase}</Text>
-                      {h.example ? <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 6, lineHeight: 19 }}>“{h.example}”</Text> : null}
-                    </View>
-                  </Card>
-                );
-              })
-            ) : (
-              <Card style={{ alignItems: "center", paddingVertical: 22 }}>
-                <Text style={{ fontSize: 14, color: t.colors.ink2, textAlign: "center" }}>You pushed through those spots on your own. Nice.</Text>
-              </Card>
-            )}
-          </>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>Your Focus coaching is still available above.</Text>
+            <Pill tone="tint" onPress={() => runBankSuggestion(transcript)}>
+              Try Phrase Bank again
+            </Pill>
+          </Card>
+        ) : null}
+
+        {bankState === "done" && bankSuggestion && !bankDismissed ? (
+          <LinearGradient
+            colors={["#315FC7", "#5B88E8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              borderRadius: t.r,
+              padding: t.padc,
+              overflow: "hidden",
+              shadowColor: "#3D6FE0",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.18,
+              shadowRadius: 16,
+              elevation: 5,
+            }}
+          >
+            <View
+              style={{
+                position: "absolute",
+                width: 150,
+                height: 150,
+                borderRadius: 75,
+                right: -48,
+                top: -88,
+                backgroundColor: "rgba(255,255,255,0.12)",
+              }}
+            />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Icon name="bank" s={16} w={2} c="#FFFFFF" />
+              <Text style={{ flex: 1, fontSize: 11.5, fontWeight: "800", letterSpacing: 0.55, color: "rgba(255,255,255,0.88)" }}>
+                FROM YOUR PHRASE BANK
+              </Text>
+              {bankSuggestion.linkedToStory ? (
+                <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(255,255,255,0.16)" }}>
+                  <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#FFFFFF" }}>STORY MATCH</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={{ fontSize: 12.5, fontWeight: "700", color: "rgba(255,255,255,0.72)", marginTop: 14 }}>
+              WHEN YOU SAID
+            </Text>
+            <Text style={{ fontSize: 14, lineHeight: 20, color: "rgba(255,255,255,0.84)", marginTop: 4 }}>“{bankSuggestion.said}”</Text>
+            <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 14 }} />
+            <Text style={{ fontSize: 18, lineHeight: 25, fontWeight: "800", color: "#FFFFFF" }}>“{bankSuggestion.text}”</Text>
+            {bankSuggestion.meaning ? (
+              <Text style={{ fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.78)", marginTop: 6 }}>{bankSuggestion.meaning}</Text>
+            ) : null}
+            {bankSuggestion.usageNote ? (
+              <Text style={{ fontSize: 12.5, lineHeight: 19, color: "rgba(255,255,255,0.72)", marginTop: 7 }}>
+                How you saved it · {bankSuggestion.usageNote}
+              </Text>
+            ) : null}
+            <Text style={{ fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.86)", marginTop: 11 }}>{bankSuggestion.why}</Text>
+            <Text style={{ fontSize: 11.5, fontWeight: "700", color: "rgba(255,255,255,0.66)", marginTop: 9 }}>
+              {bankSuggestion.sourceLabel}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+              <Pill tone="white" full icon="mic" onPress={tryBankPhrase} textStyle={{ color: t.colors.accD }}>
+                Try this phrase
+              </Pill>
+              <Pill tone="white" full onPress={rejectBankPhrase} textStyle={{ color: t.colors.ink2 }} style={{ opacity: 0.86 }}>
+                Doesn’t fit
+              </Pill>
+            </View>
+          </LinearGradient>
         ) : null}
 
         <View style={{ flexDirection: "row", gap: t.gap, marginTop: 8 }}>
@@ -587,35 +672,74 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>Focus · {TALK_FOCUS_LABEL[sessionFocus]}</Text>
         </View>
         <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2, paddingTop: 4 }}>You said</Text>
-        <Card>
-          <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink }}>{mSel.said}</Text>
-        </Card>
-        <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2, paddingTop: 6 }}>You may have meant</Text>
-        <View style={[{ backgroundColor: t.colors.pill, borderRadius: t.r, padding: t.padc }, t.shadowCard]}>
-          <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.5, color: "rgba(255,255,255,0.82)" }}>
-            {mSel.source === "saved" ? `FROM YOUR PHRASE BANK${mSel.sourceLabel ? ` · ${mSel.sourceLabel}` : ""}` : "NEW SUGGESTION"}
-          </Text>
-          <Text style={{ fontSize: 16.5, fontWeight: "700", lineHeight: 22, color: "#fff", marginTop: 4 }}>{mSel.want}</Text>
-          {mSel.why?.trim() ? (
-            <Text style={{ fontSize: 13, lineHeight: 18, color: "rgba(255,255,255,0.72)", marginTop: 8 }}>{mSel.why.trim()}</Text>
-          ) : null}
-          <RateRow value={suggestionVerdict[suggestionKey(sel, "want")]} onChange={(verdict) => rateSuggestion("want", verdict)} />
-          {mSel.example ? (
-            <>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: "rgba(255,255,255,0.78)", marginTop: 12, textAlign: "center" }}>or</Text>
-              <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.4, color: "rgba(255,255,255,0.82)", marginTop: 8 }}>
-                Second recommendation
-              </Text>
-              <Text style={{ fontSize: 15, fontWeight: "600", color: "rgba(255,255,255,0.92)", marginTop: 4, lineHeight: 21 }}>
-                “{mSel.example}”
-              </Text>
-              {mSel.exampleWhy?.trim() ? (
-                <Text style={{ fontSize: 13, lineHeight: 18, color: "rgba(255,255,255,0.72)", marginTop: 6 }}>{mSel.exampleWhy.trim()}</Text>
-              ) : null}
-              <RateRow value={suggestionVerdict[suggestionKey(sel, "example")]} onChange={(verdict) => rateSuggestion("example", verdict)} />
-            </>
-          ) : null}
+        <View
+          style={{
+            borderRadius: t.r,
+            backgroundColor: "#FFF7F7",
+            borderWidth: 1,
+            borderColor: "#FFEAEB",
+            padding: t.padc,
+          }}
+        >
+          <Text style={{ fontSize: 15, lineHeight: 23, color: "#E54D4D", fontWeight: "500" }}>{mSel.said}</Text>
         </View>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2, paddingTop: 6 }}>You may have meant</Text>
+        <LinearGradient
+          colors={["#A9C7FF", "#D5E3FF", "#7BA7F6"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            borderRadius: t.r,
+            padding: 1.5,
+            shadowColor: "#3D6FE0",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.2,
+            shadowRadius: 18,
+            elevation: 6,
+          }}
+        >
+          <LinearGradient
+            colors={["#3D6FE0", "#6C9BF2"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ borderRadius: t.r - 1.5, padding: t.padc, overflow: "hidden" }}
+          >
+            <View
+              style={{
+                position: "absolute",
+                width: 140,
+                height: 140,
+                borderRadius: 70,
+                top: -82,
+                right: -36,
+                backgroundColor: "rgba(255,255,255,0.14)",
+              }}
+            />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+              <Icon name="sparkle" s={15} w={2} c="#FFFFFF" />
+              <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.5, color: "rgba(255,255,255,0.86)" }}>
+                NEW SUGGESTION
+              </Text>
+            </View>
+            {mSel.diagnosisTag ? (
+              <View style={{ alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(255,255,255,0.16)", marginTop: 11 }}>
+                <Text style={{ fontSize: 12, fontWeight: "800", color: "#FFFFFF" }}>{mSel.diagnosisTag}</Text>
+              </View>
+            ) : null}
+            {mSel.action ? (
+              <Text style={{ fontSize: 15, fontWeight: "700", lineHeight: 22, color: "#FFFFFF", marginTop: 11 }}>{mSel.action}</Text>
+            ) : null}
+            {mSel.explanation ? (
+              <Text style={{ fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.84)", marginTop: 9 }}>{mSel.explanation}</Text>
+            ) : mSel.why?.trim() ? (
+              <Text style={{ fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.84)", marginTop: 9 }}>{mSel.why.trim()}</Text>
+            ) : null}
+            <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 14 }} />
+            <Text style={{ fontSize: 11.5, fontWeight: "800", letterSpacing: 0.6, color: "rgba(255,255,255,0.8)" }}>IMPROVED SENTENCE</Text>
+            <Text style={{ fontSize: 16.5, fontWeight: "700", lineHeight: 23, color: "#FFFFFF", marginTop: 6 }}>“{mSel.want}”</Text>
+            <RateRow value={suggestionVerdict[suggestionKey(sel, "want")]} onChange={(verdict) => rateSuggestion("want", verdict)} />
+          </LinearGradient>
+        </LinearGradient>
         <View style={{ paddingHorizontal: 2, paddingTop: 8 }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Try it now</Text>
           <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 2 }}>Practice just this part.</Text>
@@ -624,27 +748,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           <Pill full icon="mic" onPress={tryMoment}>
             Retry this moment
           </Pill>
-          {mSel.source === "saved" ? (
-            <Pill tone="ghost" full onPress={rejectMoment}>Doesn’t fit</Pill>
-          ) : (() => {
-            const pSt = phraseSave[sel];
-            const pDone = pSt === "saved" || pSt === "already";
-            const pLabel =
-              pSt === "saving"
-                ? "Saving…"
-                : pSt === "saved"
-                  ? "Saved to Phrase Bank"
-                  : pSt === "already"
-                    ? "Already in your Phrase Bank"
-                    : pSt === "error"
-                      ? "Couldn’t save — tap to retry"
-                      : "Save as phrase";
-            return (
-              <Pill tone="tint" full icon={pDone ? "check" : "bank"} onPress={pSt === "saving" || pDone ? undefined : () => savePhrase(sel)}>
-                {pLabel}
-              </Pill>
-            );
-          })()}
+          <Pill tone="tint" full icon="bank" onPress={() => savePhrase(sel)}>
+            Save as phrase
+          </Pill>
         </View>
       </Screen>
     );
@@ -657,21 +763,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         <Card lg>
           <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.ink2 }}>Say just this part</Text>
           <Serif style={{ fontSize: 24, lineHeight: 31, marginTop: 6, color: t.colors.ink }}>{mSel.want}</Serif>
-          {mSel.example ? (
-            <>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.ink2, marginTop: 12, textAlign: "center" }}>or</Text>
-              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.3, color: t.colors.ink2, marginTop: 6 }}>
-                Second recommendation
-              </Text>
-              <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink, marginTop: 4, lineHeight: 21 }}>“{mSel.example}”</Text>
-            </>
-          ) : null}
         </Card>
         <View style={{ borderRadius: t.r, height: 170, overflow: "hidden" }}>
           <CameraMirror />
           <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", gap: 10 }}>
             <Wave n={22} h={30} active color="rgba(255,255,255,0.85)" />
-            <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Just this sentence — 10 seconds is plenty</Text>
+            <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Just this sentence. 10 seconds is plenty.</Text>
           </View>
         </View>
         {retryResult ? (
@@ -690,14 +787,59 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       </Screen>
     );
 
-  // ── mirror: countdown + live ──
+  // ── Phrase Bank retry ──
+  if (phase === "bankRetry" && bankSuggestion)
+    return (
+      <Screen bottomPad={40}>
+        <BackBar title="Try this phrase" onBack={() => setPhase("done")} />
+        <Card lg>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Icon name="bank" s={16} c={t.colors.accD} />
+            <Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.5, color: t.colors.accD }}>FROM YOUR PHRASE BANK</Text>
+          </View>
+          <Serif style={{ fontSize: 24, lineHeight: 31, marginTop: 10, color: t.colors.ink }}>{bankSuggestion.text}</Serif>
+          {bankSuggestion.meaning ? (
+            <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink2, marginTop: 7 }}>{bankSuggestion.meaning}</Text>
+          ) : null}
+        </Card>
+        <View style={{ borderRadius: t.r, height: 170, overflow: "hidden" }}>
+          <CameraMirror />
+          <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <Wave n={22} h={30} active color="rgba(255,255,255,0.85)" />
+            <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.75)" }}>Bring this saved phrase into your Story</Text>
+          </View>
+        </View>
+        {bankRetryResult ? (
+          <Hero style={{ alignItems: "center" }}>
+            <Serif style={{ fontSize: 21, lineHeight: 28, color: "#fff", textAlign: "center" }}>
+              {bankRetryResult === "used" ? "You brought it into this Story." : "Not yet is useful evidence too."}
+            </Serif>
+            <Pill
+              tone="white"
+              small
+              onPress={() => setPhase("done")}
+              textStyle={{ color: t.colors.accD }}
+              style={{ marginTop: 12, shadowOpacity: 0, alignSelf: "center" }}
+            >
+              Back to feedback
+            </Pill>
+          </Hero>
+        ) : (
+          <View style={{ gap: 10 }}>
+            <Pill full icon="check" onPress={() => finishBankRetry(true)}>It came out</Pill>
+            <Pill tone="tint" full onPress={() => finishBankRetry(false)}>Not yet</Pill>
+          </View>
+        )}
+      </Screen>
+    );
+
+  // ── mirror: live ──
   const live = phase === "live";
   const subPill = p0.sub || (ctx !== "Free talk" ? ctx : null);
-  const noteCopy = stuckNoteCopy(); // greet the learner in their first language
+  const topicLine = [ctx, p0.sub].filter(Boolean).join(" · ");
   return (
     <View style={{ position: "absolute", inset: 0 }}>
       <CameraMirror />
-      {phase === "count" ? <View style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.32)" }} /> : null}
 
       {/* top bar — "Free talk" heading + topic pill, timer on the right */}
       <View style={{ position: "absolute", top: insets.top + 6, left: 14, right: 14, flexDirection: "row", alignItems: "center", gap: 8, zIndex: 20 }}>
@@ -740,16 +882,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         </View>
       ) : null}
 
-      {phase === "count" ? (
-        <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", zIndex: 10 }}>
-          <Animated.Text style={{ fontFamily: SERIF, fontSize: 116, color: "#fff", transform: [{ scale: pop }] }}>
-            {n === 0 ? "Go" : n}
-          </Animated.Text>
-          <Text style={{ fontSize: 14.5, color: "rgba(255,255,255,0.72)", marginTop: 18 }}>Find your eyes. Then just talk.</Text>
-          <Text style={{ fontSize: 12.5, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Your speech becomes text on your device. Nothing is uploaded.</Text>
-        </View>
-      ) : null}
-
       {live ? (
         <>
           {/* Recording status pill */}
@@ -775,103 +907,109 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </View>
           ) : null}
 
-          {toast ? (
-            <View style={{ position: "absolute", bottom: 300, left: 0, right: 0, alignItems: "center", zIndex: 25 }}>
-              <View style={{ backgroundColor: FROST, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 7 }}>
-                <Icon name="life" s={14} w={2} c="#FFD79A" />
-                <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>Noted · {toast}</Text>
-              </View>
-            </View>
-          ) : null}
-
-          {/* cue card — segmented Today's phrase / Story beats */}
-          <View style={[{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, backgroundColor: "rgba(255,255,255,0.97)", borderRadius: 26, padding: 16 }, t.shadowLg, { zIndex: 15 }]}>
-            <View style={{ flexDirection: "row", backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 999, padding: 4 }}>
-              {(
-                [
-                  ["phrase", "Today's phrase"],
-                  ["beats", `Story beats · ${beats.length}`],
-                ] as const
-              ).map(([key, label]) => {
-                const on = tab === key;
-                return (
-                  <Pressable
-                    key={key}
-                    onPress={() => setTab(key)}
-                    style={{ flex: 1, height: 40, borderRadius: 999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: on ? t.colors.accS : "transparent" }}
-                  >
-                    {on ? <Icon name="sparkle" s={15} c={t.colors.accD} /> : null}
-                    <Text style={{ fontSize: 14.5, fontWeight: "700", color: on ? t.colors.accD : "rgba(0,0,0,0.5)" }}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {tab === "phrase" ? (
-              <View style={{ paddingTop: 16, paddingHorizontal: 4 }}>
-                <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }}>PRIORITY FOR TODAY</Text>
-                <Serif style={{ fontSize: 24, lineHeight: 30, color: "#16181d", marginTop: 8 }}>{prompt}</Serif>
-                <Text style={{ fontSize: 14, color: "rgba(0,0,0,0.5)", marginTop: 6 }}>Use it naturally when it fits.</Text>
-              </View>
-            ) : (
-              <View style={{ paddingTop: 14, paddingHorizontal: 4 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }} numberOfLines={1}>
-                    {ctx.toUpperCase()}
-                  </Text>
-                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: "rgba(0,0,0,0.4)" }}>
-                    {Math.min(beatIdx + 1, beats.length)} OF {beats.length}
-                  </Text>
-                </View>
-                {beats.map((b, i) => {
-                  const done = i < beatIdx;
-                  const current = i === beatIdx;
+          {hintOpen ? (
+            <View style={[{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, backgroundColor: "rgba(255,255,255,0.97)", borderRadius: 26, padding: 16 }, t.shadowLg, { zIndex: 15 }]}>
+              <View style={{ flexDirection: "row", backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 999, padding: 4 }}>
+                {(
+                  [
+                    ["phrase", "Today’s phrases"],
+                    ["beats", `Story beats · ${beats.length}`],
+                  ] as const
+                ).map(([key, label]) => {
+                  const on = tab === key;
                   return (
                     <Pressable
-                      key={i}
-                      onPress={() => setBeatIdx(i)}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 8, borderRadius: 14, backgroundColor: current ? t.colors.accS : "transparent" }}
+                      key={key}
+                      onPress={() => setTab(key)}
+                      style={{ flex: 1, height: 40, borderRadius: 999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: on ? t.colors.accS : "transparent" }}
                     >
-                      <View
-                        style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 11,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: done || current ? t.colors.acc : "transparent",
-                          borderWidth: done || current ? 0 : 2,
-                          borderColor: "rgba(0,0,0,0.2)",
-                        }}
-                      >
-                        {done ? <Icon name="check" s={12} w={3} c="#fff" /> : null}
-                      </View>
-                      <Text style={{ flex: 1, fontSize: 15.5, fontWeight: current ? "700" : "600", color: current ? "#16181d" : done ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.7)" }}>
-                        {b}
-                      </Text>
+                      {on ? <Icon name="sparkle" s={15} c={t.colors.accD} /> : null}
+                      <Text style={{ fontSize: 14.5, fontWeight: "700", color: on ? t.colors.accD : "rgba(0,0,0,0.5)" }}>{label}</Text>
                     </Pressable>
                   );
                 })}
-                <View style={{ alignItems: "flex-end", marginTop: 6 }}>
-                  <Pressable
-                    onPress={() => setTab("phrase")}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1.5, borderColor: t.colors.accS, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14 }}
-                  >
-                    <Icon name="sparkle" s={14} c={t.colors.accD} />
-                    <Text style={{ fontSize: 13.5, fontWeight: "700", color: t.colors.accD }}>Use today’s phrase</Text>
-                  </Pressable>
-                </View>
               </View>
-            )}
-          </View>
 
-          {/* bottom controls — Stuck · record indicator · Finish */}
+              {tab === "phrase" ? (
+                <View style={{ paddingTop: 14, paddingHorizontal: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }}>TODAY’S TOPIC</Text>
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#16181d", marginTop: 6 }}>{topicLine}</Text>
+                  {p0.prompt ? (
+                    <Text style={{ fontSize: 13.5, lineHeight: 19, color: "rgba(0,0,0,0.5)", marginTop: 4 }}>{p0.prompt}</Text>
+                  ) : null}
+                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)", marginTop: 14 }}>REVIEW TODAY</Text>
+                  {todayPhrases.length ? (
+                    <ScrollView style={{ maxHeight: 168, marginTop: 8 }} nestedScrollEnabled>
+                      {todayPhrases.map((item, index) => (
+                        <View key={item.id} style={{ paddingVertical: 8, borderTopWidth: index ? 1 : 0, borderTopColor: "rgba(0,0,0,0.06)" }}>
+                          <Text style={{ fontSize: 16, fontWeight: "700", color: "#16181d" }}>{item.text}</Text>
+                          {item.translation ? (
+                            <Text style={{ fontSize: 13, color: "rgba(0,0,0,0.5)", marginTop: 3 }}>{item.translation}</Text>
+                          ) : null}
+                        </View>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <View style={{ paddingTop: 8 }}>
+                      <Serif style={{ fontSize: 22, lineHeight: 28, color: "#16181d" }}>{prompt}</Serif>
+                      <Text style={{ fontSize: 14, color: "rgba(0,0,0,0.5)", marginTop: 6 }}>Use it naturally when it fits.</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={{ paddingTop: 14, paddingHorizontal: 4 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }} numberOfLines={1}>
+                      {ctx.toUpperCase()}
+                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: "rgba(0,0,0,0.4)" }}>
+                      {Math.min(beatIdx + 1, beats.length)} OF {beats.length}
+                    </Text>
+                  </View>
+                  {beats.map((b, i) => {
+                    const done = i < beatIdx;
+                    const current = i === beatIdx;
+                    return (
+                      <Pressable
+                        key={i}
+                        onPress={() => setBeatIdx(i)}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 8, borderRadius: 14, backgroundColor: current ? t.colors.accS : "transparent" }}
+                      >
+                        <View
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 11,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: done || current ? t.colors.acc : "transparent",
+                            borderWidth: done || current ? 0 : 2,
+                            borderColor: "rgba(0,0,0,0.2)",
+                          }}
+                        >
+                          {done ? <Icon name="check" s={12} w={3} c="#fff" /> : null}
+                        </View>
+                        <Text style={{ flex: 1, fontSize: 15.5, fontWeight: current ? "700" : "600", color: current ? "#16181d" : done ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.7)" }}>
+                          {b}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          ) : null}
+
+          {/* bottom controls — Hint · record indicator · Finish */}
           <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 24, flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 40, zIndex: 15 }}>
             <View style={{ alignItems: "center", gap: 8 }}>
-              <Pressable onPress={stuck} style={{ backgroundColor: "rgba(28,30,36,0.66)", width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" }}>
-                <Icon name="life" s={24} w={1.9} c="#fff" />
+              <Pressable
+                onPress={() => setHintOpen((open) => !open)}
+                style={{ backgroundColor: hintOpen ? t.colors.acc : "rgba(28,30,36,0.66)", width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" }}
+              >
+                <Icon name="bulb" s={24} w={1.9} c="#fff" />
               </Pressable>
-              <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>Stuck</Text>
+              <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>{hintOpen ? "Hide" : "Hint"}</Text>
             </View>
             <View style={{ alignItems: "center", gap: 8, paddingBottom: 22 }}>
               <View style={[{ width: 84, height: 84, borderRadius: 42, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }, t.shadowLg]}>
@@ -885,48 +1023,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>Finish</Text>
             </View>
           </View>
-
-          {/* Quick "stuck" note — jot what you wanted to say (native language OK). */}
-          {noteOpen ? (
-            <View style={{ position: "absolute", inset: 0, zIndex: 50 }}>
-              <Pressable style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.55)" }} onPress={saveNote} />
-              <View style={[{ position: "absolute", top: insets.top + 96, left: 20, right: 20, backgroundColor: "#fff", borderRadius: 24, padding: 18 }, t.shadowLg]}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 11, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                    <Icon name="life" s={16} c={t.colors.accD} />
-                  </View>
-                  <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: "#16181d" }}>{noteCopy.title}</Text>
-                  <Text style={{ fontSize: 12.5, fontWeight: "700", color: "rgba(0,0,0,0.4)" }}>{noteAt}</Text>
-                </View>
-                <TextInput
-                  autoFocus
-                  value={noteText}
-                  onChangeText={setNoteText}
-                  placeholder={noteCopy.placeholder}
-                  placeholderTextColor="rgba(0,0,0,0.35)"
-                  multiline
-                  onSubmitEditing={saveNote}
-                  blurOnSubmit
-                  returnKeyType="done"
-                  style={{ fontSize: 16, lineHeight: 22, color: "#16181d", minHeight: 44, paddingVertical: 6 }}
-                />
-                <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 12 }}>
-                  <Pressable
-                    onPress={() => {
-                      setNoteOpen(false);
-                      setNoteText("");
-                    }}
-                    style={{ height: 40, paddingHorizontal: 16, borderRadius: 999, alignItems: "center", justifyContent: "center" }}
-                  >
-                    <Text style={{ fontSize: 15, fontWeight: "600", color: "rgba(0,0,0,0.5)" }}>Cancel</Text>
-                  </Pressable>
-                  <Pressable onPress={saveNote} style={{ height: 40, paddingHorizontal: 20, borderRadius: 999, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>Keep going</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          ) : null}
         </>
       ) : null}
     </View>

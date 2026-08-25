@@ -1,24 +1,38 @@
-// shell.tsx — the app shell, ported from the prototype's SPApp. Owns tab state,
-// a push/pop detail stack and the self-talk context. Expo
-// Router hosts this single tree; the floating TabBar (not Router tabs) drives
-// tab switching so the stateful flows (Speak, Talk) stay intact.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// shell.tsx — shell state shared across the NativeTabs routes, ported from the
+// prototype's SPApp. Owns the detail push/pop stack, the self-talk context and
+// the toast. The tab bar itself is the native UITabBar from expo-router's
+// NativeTabs (src/app/(app)/_layout.tsx); each tab route renders a TabHost,
+// which shows the tab's base screen or the pushed detail view on top of it.
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
-import { Icon, TabBar, type TabId } from "@/design/ui";
+import { Icon, type TabId } from "@/design/ui";
 import { useTheme } from "@/design/theme";
 import { TodayScreen } from "@/screens/today";
 import { PhrasesScreen, PhraseDetail, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
-import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, MessageCreate, RecsScreen, SessionsScreen, SessionDetail } from "@/screens/world";
+import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, MessageCreate, RecsScreen, SessionsScreen, SessionDetail, TopicsListScreen } from "@/screens/world";
 import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
-import { EditProfileScreen } from "@/screens/edit-profile";
+import { SpeakingStudioScreen } from "@/screens/studio";
+import { EditProfileScreen, EnglishLevelScreen, FeedbackFocusScreen, FirstLanguageScreen, PhrasesPerDayScreen, ThemeScreen } from "@/screens/edit-profile";
 import { RemindersScreen } from "@/screens/reminders";
+import { PrivacyScreen } from "@/screens/privacy";
 import { CaptureFab, PhraseCaptureScreen, type CaptureImageAsset, type ClipCaptureSeed } from "@/screens/capture";
+import { PracticeHubScreen, QuickRehearsalScreen } from "@/screens/practice";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
 import type { TalkSession } from "@/lib/speaking-world";
@@ -28,14 +42,54 @@ interface StackEntry {
   props: Record<string, unknown>;
 }
 
-export function AppShell() {
-  const t = useTheme();
-  const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<TabId>("today");
+/** Tab id → route path inside the (app) group. `sessions` has no tab of its
+ * own anymore; it lands on the Studio tab (the sessions list is a pushed view). */
+const TAB_PATHS = {
+  today: "/",
+  phrases: "/phrases",
+  speak: "/talk",
+  topics: "/studio",
+  sessions: "/studio",
+} as const satisfies Record<TabId, string>;
+
+interface ShellState {
+  nav: Nav;
+  stack: StackEntry[];
+  talkCtx: TalkCtx | undefined;
+  speakKey: number;
+  notice: { message: string; shownAt: number } | null;
+  talkFocused: boolean;
+  /** Stable — safe to use inside focus effects. */
+  setTalkFocused: (focused: boolean) => void;
+  /** Stable. Clears the self-talk context when the Talk tab blurs. */
+  resetTalk: () => void;
+  /** Stable. Called when a tab gains focus; clears the detail stack if the
+   * focused tab actually changed (deep links bypass nav.go, which normally
+   * does this). */
+  onTabFocused: (tab: TabId) => void;
+}
+
+const ShellContext = createContext<ShellState | null>(null);
+
+function useShell(): ShellState {
+  const shell = useContext(ShellContext);
+  if (!shell) throw new Error("TabHost must be rendered inside ShellProvider");
+  return shell;
+}
+
+/** True while the native tab bar should be hidden: a detail view is pushed, or
+ * the full-screen Talk (mirror) tab is active. */
+export function useShellBarHidden(): boolean {
+  const shell = useShell();
+  return shell.stack.length > 0 || shell.talkFocused;
+}
+
+export function ShellProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [talkCtx, setTalkCtx] = useState<TalkCtx | undefined>(undefined);
   const [speakKey, setSpeakKey] = useState(0);
   const [notice, setNotice] = useState<{ message: string; shownAt: number } | null>(null);
+  const [talkFocused, setTalkFocusedState] = useState(false);
 
   const notify = useCallback((message: string) => {
     setNotice({ message, shownAt: Date.now() });
@@ -44,10 +98,27 @@ export function AppShell() {
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => {
-      setNotice((current) => current?.shownAt === notice.shownAt ? null : current);
+      setNotice((current) => (current?.shownAt === notice.shownAt ? null : current));
     }, 1800);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  const setTalkFocused = useCallback((focused: boolean) => {
+    setTalkFocusedState(focused);
+  }, []);
+
+  const resetTalk = useCallback(() => {
+    setTalkCtx(undefined);
+    setSpeakKey((k) => k + 1);
+  }, []);
+
+  const lastFocusedTab = useRef<TabId | null>(null);
+  const onTabFocused = useCallback((tab: TabId) => {
+    if (lastFocusedTab.current !== null && lastFocusedTab.current !== tab) {
+      setStack([]);
+    }
+    lastFocusedTab.current = tab;
+  }, []);
 
   const nav: Nav = useMemo(
     () => ({
@@ -59,22 +130,67 @@ export function AppShell() {
           setTalkCtx(undefined);
           setSpeakKey((k) => k + 1);
         }
-        setTab(id);
+        router.navigate(TAB_PATHS[id]);
       },
       startTalk: (ctx) => {
         setStack([]);
         setTalkCtx(ctx);
         setSpeakKey((k) => k + 1);
-        setTab("speak");
+        router.navigate(TAB_PATHS.speak);
       },
       notify,
     }),
     [notify],
   );
 
-  // iOS-style left-edge swipe = back. The in-app stack isn't a native navigator,
-  // so we drive nav.pop() from an edge Pan. runOnJS keeps the JS callback valid
-  // with reanimated present; failOffsetY yields to vertical scrolling.
+  const value = useMemo<ShellState>(
+    () => ({ nav, stack, talkCtx, speakKey, notice, talkFocused, setTalkFocused, resetTalk, onTabFocused }),
+    [nav, stack, talkCtx, speakKey, notice, talkFocused, setTalkFocused, resetTalk, onTabFocused],
+  );
+
+  return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;
+}
+
+/** One native tab's content: the base screen, or the pushed detail stack when
+ * this tab is focused. NativeTabs keeps every tab mounted, so the Talk screen
+ * (live mic) only mounts while its tab is actually focused. */
+export function TabHost({ tab }: { tab: TabId }) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const shell = useShell();
+  const { nav, setTalkFocused, resetTalk, onTabFocused } = shell;
+  const [focused, setFocused] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      onTabFocused(tab);
+      if (tab === "speak") setTalkFocused(true);
+      return () => {
+        setFocused(false);
+        if (tab === "speak") {
+          setTalkFocused(false);
+          resetTalk();
+        }
+      };
+    }, [tab, setTalkFocused, resetTalk, onTabFocused]),
+  );
+
+  // The detail stack is global (it clears on tab switch and the tab bar is
+  // hidden while it's open), but only the focused tab renders it.
+  const stack = focused ? shell.stack : [];
+  const top = stack[stack.length - 1];
+  const prev = stack.length >= 2 ? stack[stack.length - 2] : undefined;
+  const captureOverLibItem = top?.name === "capture" && prev?.name === "libItem";
+  const libItemEntry = captureOverLibItem ? prev : top?.name === "libItem" ? top : undefined;
+  // Enable edge-swipe-back only when a pushed view is on top and it uses the
+  // standard nav.pop back (capture runs its own unsaved-draft guard; review is
+  // a native sheet with its own leave-confirm).
+  const swipeBackEnabled = focused && !!top && top.name !== "capture" && top.name !== "review";
+
+  // iOS-style left-edge swipe = back. The in-app stack isn't a native
+  // navigator, so we drive nav.pop() from an edge Pan. runOnJS keeps the JS
+  // callback valid with reanimated present; failOffsetY yields to scrolling.
   const backSwipe = useMemo(
     () =>
       Gesture.Pan()
@@ -87,16 +203,17 @@ export function AppShell() {
     [nav],
   );
 
-  const top = stack[stack.length - 1];
-  const prev = stack.length >= 2 ? stack[stack.length - 2] : undefined;
-  const captureOverLibItem = top?.name === "capture" && prev?.name === "libItem";
-  const libItemEntry = captureOverLibItem ? prev : top?.name === "libItem" ? top : undefined;
-  // Enable edge-swipe-back only when a pushed view is on top and it uses the
-  // standard nav.pop back (capture runs its own unsaved-draft guard).
-  const swipeBackEnabled = !!top && top.name !== "capture";
-
   let content: React.ReactNode;
-  if (libItemEntry) {
+  if (tab === "speak") {
+    content = (
+      <View style={{ flex: 1 }}>
+        <View style={{ flex: 1 }} pointerEvents={top ? "none" : "auto"} collapsable={false}>
+          {focused ? <TalkScreen key={shell.speakKey} nav={nav} talkCtx={shell.talkCtx} /> : null}
+        </View>
+        {top ? <View style={styles.captureOverlay}>{renderView(top, nav)}</View> : null}
+      </View>
+    );
+  } else if (libItemEntry) {
     const libProps = libItemEntry.props;
     content = (
       <View style={{ flex: 1 }}>
@@ -116,14 +233,37 @@ export function AppShell() {
         ) : null}
       </View>
     );
+  } else if (top?.name === "review") {
+    // The review flow presents itself as a native pageSheet Modal; keep the
+    // tab's base screen mounted underneath so the sheet slides over real
+    // content instead of an empty background.
+    content = (
+      <View style={{ flex: 1 }}>
+        {renderTab(tab, nav)}
+        {renderView(top, nav)}
+      </View>
+    );
   } else if (top) {
     content = renderView(top, nav);
   } else {
-    content = renderTab(tab, nav, talkCtx, speakKey);
+    content = renderTab(tab, nav);
   }
 
-  const showTabBar = !top && tab !== "speak";
-  const showCaptureFab = tab !== "speak" && top?.name !== "capture" && top?.name !== "phrase" && top?.name !== "libItem";
+  const showCaptureFab =
+    focused &&
+    tab !== "speak" &&
+    top?.name !== "capture" &&
+    top?.name !== "phrase" &&
+    top?.name !== "review" &&
+    top?.name !== "practiceHub" &&
+    top?.name !== "rehearsal" &&
+    top?.name !== "libItem" &&
+    top?.name !== "editProfile" &&
+    top?.name !== "firstLanguage" &&
+    top?.name !== "feedbackFocus" &&
+    top?.name !== "phrasesPerDay" &&
+    top?.name !== "reminders" &&
+    top?.name !== "studio";
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
@@ -133,23 +273,22 @@ export function AppShell() {
           <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 22, zIndex: 90 }} />
         </GestureDetector>
       ) : null}
-      {showTabBar ? <TabBar tab={tab} go={nav.go} /> : null}
-      {showCaptureFab ? <CaptureFab nav={nav} aboveTabs={showTabBar} /> : null}
-      {notice ? (
+      {showCaptureFab ? <CaptureFab nav={nav} aboveTabs={false} /> : null}
+      {focused && shell.notice ? (
         <View
           pointerEvents="none"
           style={{
             position: "absolute",
             left: 18,
             right: 18,
-            bottom: showTabBar ? Math.max(insets.bottom, 12) + 92 : Math.max(insets.bottom, 12) + 20,
+            bottom: Math.max(insets.bottom, 12) + 20,
             alignItems: "center",
             zIndex: 120,
           }}
         >
           <View style={[{ minHeight: 42, borderRadius: 999, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: t.colors.pill }, t.shadowLg]}>
             <Icon name="check" s={15} w={2.6} c="#fff" />
-            <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>{notice.message}</Text>
+            <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>{shell.notice.message}</Text>
           </View>
         </View>
       ) : null}
@@ -157,18 +296,17 @@ export function AppShell() {
   );
 }
 
-function renderTab(tab: TabId, nav: Nav, talkCtx: TalkCtx | undefined, speakKey: number): React.ReactNode {
+function renderTab(tab: TabId, nav: Nav): React.ReactNode {
   switch (tab) {
     case "today":
       return <TodayScreen nav={nav} />;
     case "phrases":
       return <PhrasesScreen nav={nav} />;
-    case "speak":
-      return <TalkScreen key={speakKey} nav={nav} talkCtx={talkCtx} />;
     case "topics":
-      return <SpeakingWorldScreen nav={nav} />;
     case "sessions":
-      return <SessionsScreen nav={nav} />;
+      return <SpeakingWorldScreen nav={nav} />;
+    case "speak":
+      return null; // handled in TabHost (needs focus + key)
   }
 }
 
@@ -178,7 +316,11 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "phrase":
       return <PhraseDetail nav={nav} item={p.item as PhraseItem | undefined} />;
     case "review":
-      return <ReviewFlow nav={nav} item={p.item as PhraseItem | undefined} />;
+      return <ReviewFlow nav={nav} item={p.item as PhraseItem | undefined} queue={p.queue as PhraseItem[] | undefined} />;
+    case "practiceHub":
+      return <PracticeHubScreen nav={nav} item={p.item as PhraseItem | undefined} />;
+    case "rehearsal":
+      return <QuickRehearsalScreen nav={nav} item={p.item as PhraseItem | undefined} />;
     case "island":
       return <IslandDetail nav={nav} id={p.id as string} />;
     case "newIsland":
@@ -213,8 +355,26 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <SettingsScreen nav={nav} />;
     case "editProfile":
       return <EditProfileScreen nav={nav} />;
+    case "firstLanguage":
+      return <FirstLanguageScreen nav={nav} />;
+    case "englishLevel":
+      return <EnglishLevelScreen nav={nav} />;
+    case "themePref":
+      return <ThemeScreen nav={nav} />;
+    case "feedbackFocus":
+      return <FeedbackFocusScreen nav={nav} />;
+    case "phrasesPerDay":
+      return <PhrasesPerDayScreen nav={nav} />;
     case "reminders":
       return <RemindersScreen nav={nav} />;
+    case "privacy":
+      return <PrivacyScreen nav={nav} />;
+    case "studio":
+      return <SpeakingStudioScreen nav={nav} />;
+    case "topicsList":
+      return <TopicsListScreen nav={nav} />;
+    case "sessionsList":
+      return <SessionsScreen nav={nav} stacked />;
   }
 }
 
@@ -228,4 +388,3 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
 });
-

@@ -3,14 +3,14 @@ import { supabase } from "./supabase";
 import type { TalkFocus } from "./talk-focus";
 import type { TalkMoment } from "../types/api";
 
-export type SuggestionSlot = "want" | "example";
+export type SuggestionSlot = "want";
 export type SuggestionVerdict = "like" | "dislike" | "unsure";
 
 export function suggestionKey(momentIndex: number, slot: SuggestionSlot): string {
   return `${momentIndex}:${slot}`;
 }
 
-/** Insert one row per shown suggestion. Returns id keyed by `${index}:${slot}`. */
+/** Insert the single shown suggestion. Returns id keyed by `${index}:want`. */
 export async function logTalkSuggestions(input: {
   moments: TalkMoment[];
   focus: TalkFocus;
@@ -18,8 +18,9 @@ export async function logTalkSuggestions(input: {
   storyId?: string | null;
   model?: string;
 }): Promise<Record<string, string>> {
-  const rows = input.moments.flatMap((moment, momentIndex) => {
-    const want = {
+  const rows = input.moments.map((moment, momentIndex) => {
+    const structuredWhy = [moment.action?.trim(), moment.explanation?.trim()].filter(Boolean).join(" ");
+    return {
       talk_session_id: input.talkSessionId ?? null,
       story_id: input.storyId ?? null,
       focus: input.focus,
@@ -28,22 +29,11 @@ export async function logTalkSuggestions(input: {
       slot: "want" as const,
       said: moment.said,
       suggestion: moment.want,
-      why: moment.why?.trim() || null,
+      why: structuredWhy || moment.why?.trim() || null,
       source: moment.source,
       phrase_item_id: moment.phraseItemId,
       model: input.model ?? "gpt-4o-mini",
     };
-    const example = moment.example?.trim()
-      ? {
-          ...want,
-          slot: "example" as const,
-          suggestion: moment.example.trim(),
-          why: moment.exampleWhy?.trim() || null,
-          source: "generated" as const,
-          phrase_item_id: null,
-        }
-      : null;
-    return example ? [want, example] : [want];
   });
   if (!rows.length) return {};
   const { data, error } = await supabase.from("talk_suggestion_feedback").insert(rows).select("id, moment_index, slot");
@@ -55,10 +45,25 @@ export async function logTalkSuggestions(input: {
   return ids;
 }
 
-export async function rateTalkSuggestion(id: string, verdict: SuggestionVerdict): Promise<void> {
-  const { error } = await supabase
-    .from("talk_suggestion_feedback")
-    .update({ verdict, verdict_at: new Date().toISOString() })
-    .eq("id", id);
+export async function rateTalkSuggestion(
+  id: string,
+  verdict: SuggestionVerdict,
+  note?: string | null,
+): Promise<void> {
+  const verdictAt = new Date().toISOString();
+  const patch: { verdict: SuggestionVerdict; verdict_at: string; verdict_note?: string | null } = {
+    verdict,
+    verdict_at: verdictAt,
+  };
+  if (note !== undefined) patch.verdict_note = note || null;
+  const { error } = await supabase.from("talk_suggestion_feedback").update(patch).eq("id", id);
+  if (error && /verdict_note/i.test(error.message)) {
+    const retry = await supabase
+      .from("talk_suggestion_feedback")
+      .update({ verdict, verdict_at: verdictAt })
+      .eq("id", id);
+    if (retry.error) throw new Error(retry.error.message);
+    return;
+  }
   if (error) throw new Error(error.message);
 }

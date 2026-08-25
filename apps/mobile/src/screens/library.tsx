@@ -12,6 +12,29 @@ import { BackBar, Card, Icon, Pill, Screen, Serif, SwipeRow, confirmDelete } fro
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
 
+/** Lean Library clip row for use OUTSIDE the Library screens (e.g. a phrase's
+ * In-context source). It lives here so it ships — and can be removed — with
+ * the Library beta as one unit. */
+export function LibraryClipRow({ title, meta, onPress }: { title: string; meta: string; onPress: () => void }) {
+  const t = useTheme();
+  return (
+    <Card onPress={onPress}>
+      <View style={{ flexDirection: "row", gap: 13, alignItems: "center" }}>
+        <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: t.colors.sky, alignItems: "center", justifyContent: "center" }}>
+          <Icon name="clip" s={21} c={t.colors.onB} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>{meta}</Text>
+        </View>
+        <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+      </View>
+    </Card>
+  );
+}
+
 const CARD_TONES = ["butter", "sky", "sage", "blush"] as const;
 
 const ADD_OPTS: [IconName, string, string][] = [
@@ -80,7 +103,7 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
         <BackBar title="Library" onBack={nav.pop} />
         <View style={{ paddingHorizontal: 2, paddingTop: 2, paddingBottom: 2 }}>
           <Serif style={{ fontSize: 32, lineHeight: 37, color: t.colors.ink }}>Learn from your{"\n"}own material.</Serif>
-          <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, marginTop: 8 }}>Save the parts you want to understand — then use yourself.</Text>
+          <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, marginTop: 8 }}>Save the parts you want to understand.</Text>
         </View>
 
         {entries === null && !error ? (
@@ -99,7 +122,7 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
           <Card style={{ alignItems: "center", paddingVertical: 34 }}>
             <Serif style={{ fontSize: 20, color: t.colors.ink }}>Nothing here yet</Serif>
             <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
-              Upload a clip from the web app — or make sure you’re signed in — and it’ll show up here.
+              Upload a clip from the web app and it’ll show up here.
             </Text>
           </Card>
         ) : (
@@ -136,7 +159,7 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
                       <View style={{ width: `${Math.round((item.progress ?? 0) * 100)}%`, height: "100%", borderRadius: 9999, backgroundColor: t.colors.acc }} />
                     </View>
                     <Text style={{ fontSize: 12, color: t.colors.ink3, marginTop: 7, lineHeight: 18 }}>
-                      This can take a few minutes for longer files. You can leave — we’ll keep processing in the background.
+                      This can take a few minutes for longer files. You can leave. We’ll keep processing in the background.
                     </Text>
                   </>
                 ) : null}
@@ -468,7 +491,7 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
               <>
                 {!playable ? (
                   <Text style={{ fontSize: 13, color: t.colors.ink3, position: "absolute", top: 14, left: 0, right: 0, textAlign: "center", paddingHorizontal: 24 }}>
-                    {isYoutube ? "YouTube clip — open on the web to play" : "Audio unavailable for this clip"}
+                    {isYoutube ? "YouTube clip · open on the web to play" : "Audio unavailable for this clip"}
                   </Text>
                 ) : null}
                 <AudioPlayButton player={audioPlayer} playable={playable} accent={t.colors.acc} />

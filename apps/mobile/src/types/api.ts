@@ -115,27 +115,52 @@ export interface Job {
 }
 
 // Response shape of the Supabase talk-diagnose Edge Function. One improvable
-// "moment" the AI surfaced from a Speak session transcript. Not a DB row;
-// owned-phrase suggestions write a separate phrase_event so future ranking can
-// learn.
+// coaching "moment" the AI surfaced from a Speak session transcript.
 export interface TalkMoment {
   /** ≤4 words naming what this moment is about. */
   label: string;
   /** A verbatim span copied from the transcript. */
   said: string;
-  /** The top suggestion, in the learner's voice. */
+  /** One of the ten bracketed professional-speaking pain-point tags. */
+  diagnosisTag?: string;
+  /** A concrete recommendation beginning with "I would suggest". */
+  action?: string;
+  /** Two or three concise evidence sentences supporting the recommendation. */
+  explanation?: string;
+  /** The single polished improved sentence, in the learner's voice. */
   want: string;
-  /** A second recommendation for the same moment (shown after "or"). */
-  example: string;
-  /** One-sentence grounds for `want`, in the chosen feedback focus. */
+  /** Combined fallback grounds for app builds predating structured coaching. */
   why?: string;
-  /** One-sentence grounds for `example`. */
+  /** Deprecated compatibility fields; new diagnoses always leave these empty. */
+  example?: string;
   exampleWhy?: string;
-  /** Exact owned Phrase Bank row when this is a retrieval suggestion. */
+  /** Deprecated compatibility field; separated coaching always returns null. */
   phraseItemId: string | null;
-  /** Keeps generated language visibly separate from previously saved language. */
+  /** Deprecated compatibility field; separated coaching always returns generated. */
   source: "saved" | "generated";
   sourceLabel: string | null;
+}
+
+// Independent response from talk-phrase-suggest. Every language field comes
+// from the owned phrase_items row; the model supplies only the validated id,
+// verbatim transcript evidence, and retrieval rationale.
+export interface TalkPhraseSuggestion {
+  phraseItemId: string;
+  text: string;
+  meaning: string;
+  usageNote: string;
+  sourceLabel: string;
+  linkedToStory: boolean;
+  said: string;
+  why: string;
+}
+
+/** Owned Phrase Bank rows the learner already produced in this transcript. */
+export interface TalkPhraseUsedMatch {
+  phraseItemId: string;
+  text: string;
+  said: string;
+  score: number;
 }
 
 // Help for a moment the learner tapped "Stuck" during a Speak session and jotted

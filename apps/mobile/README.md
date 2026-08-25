@@ -26,6 +26,8 @@ never the service key):
 EXPO_PUBLIC_SUPABASE_URL=…        # = web NEXT_PUBLIC_SUPABASE_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY=…   # = web NEXT_PUBLIC_SUPABASE_ANON_KEY
 EXPO_PUBLIC_API_BASE_URL=https://shadowing-plus.vercel.app
+EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN=phc_… # PostHog public project token
+EXPO_PUBLIC_POSTHOG_HOST=https://your-posthog-host
 ```
 
 ## Run on your iPhone (blocked — see Status)

@@ -3,6 +3,7 @@
 // are __DEV__-only (ship builds omit this; keep for internal copy refinement).
 import { useCallback, useEffect, useState } from "react";
 import { AppState, Linking, Pressable, Switch, Text, View } from "react-native";
+import { usePostHog } from "posthog-react-native";
 
 import { useTheme } from "@/design/theme";
 import { BackBar, Card, Chip, Pill, Screen } from "@/design/ui";
@@ -28,6 +29,7 @@ function labelStyle(color: string) {
 
 export function RemindersScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const posthog = usePostHog();
   const [settings, setSettings] = useState<ReminderSettings>(reminderSettings);
   const [permission, setPermission] = useState<ReminderPermission>("undetermined");
   const [busy, setBusy] = useState(false);
@@ -65,7 +67,12 @@ export function RemindersScreen({ nav }: { nav: Nav }) {
       const nextPermission = await requestReminderPermission();
       setPermission(nextPermission);
       if (nextPermission === "granted" || nextPermission === "provisional") {
-        setSettings(await saveReminderSettings({ enabled: true }));
+        const nextSettings = await saveReminderSettings({ enabled: true });
+        setSettings(nextSettings);
+        posthog?.capture("reminder_enabled", {
+          permission_status: nextPermission,
+          frequency: nextSettings.frequency,
+        });
       }
     } finally {
       setBusy(false);
@@ -133,7 +140,7 @@ export function RemindersScreen({ nav }: { nav: Nav }) {
         <Card>
           <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>This build can’t send reminders yet</Text>
           <Text style={{ fontSize: 13.5, lineHeight: 20, color: t.colors.ink2, marginTop: 6 }}>
-            This simulator app is older than the reminders module. Reload is enough for the rest of Saylo. To test the actual ping here, the simulator app needs a native rebuild — or install TestFlight 13 on your iPhone.
+            This simulator app is older than the reminders module. Reload is enough for the rest of Saylo. To test the actual ping here, the simulator app needs a native rebuild, or install TestFlight 13 on your iPhone.
           </Text>
         </Card>
       ) : null}

@@ -2,6 +2,7 @@
 // is a tweak-only alternate; the default Topics tab is the Speaking World.
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TextInput, View } from "react-native";
+import { usePostHog } from "posthog-react-native";
 
 import { SP } from "@/design/data";
 import { useTheme } from "@/design/theme";
@@ -78,6 +79,7 @@ export function IslandDetail({ id, nav }: { id: string; nav: Nav }) {
 
 export function IslandCreate({ domainId, domainName, nav }: { domainId?: string; domainName?: string; nav: Nav }) {
   const t = useTheme();
+  const posthog = usePostHog();
   const [title, setTitle] = useState("");
   const [domains, setDomains] = useState<Domain[] | null>(domainId ? [] : null);
   const [picked, setPicked] = useState<string | null>(domainId ?? null);
@@ -99,6 +101,9 @@ export function IslandCreate({ domainId, domainName, nav }: { domainId?: string;
     setError(null);
     try {
       await createStory(picked, title);
+      posthog?.capture("story_created", {
+        created_in_existing_domain: Boolean(domainId),
+      });
       nav.pop();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t create the story.");

@@ -1,17 +1,22 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, Text, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
+import { usePostHog } from "posthog-react-native";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { PostHogAuthBridge, PostHogGate, PostHogScreenTracker } from "@/lib/posthog";
 import { ThemeProvider, useTheme } from "@/design/theme";
 import { loadFirstLanguage } from "@/lib/first-language";
+import { loadEnglishLevel } from "@/lib/english-level";
 import { loadReminders } from "@/lib/reminders";
+import { loadPhrasesPerDay } from "@/lib/daily-phrases";
 import { loadTalkFocus } from "@/lib/talk-focus";
+import { loadThemePref } from "@/lib/theme-pref";
 import {
   importOnboardingDraft,
   loadOnboardingDraft,
@@ -20,9 +25,12 @@ import {
   type OnboardingDraft,
 } from "@/lib/onboarding";
 import { Onboarding } from "@/screens/onboarding";
+import ResetPasswordScreen from "@/screens/reset-password";
 import { SplashIntro } from "@/screens/splash";
 
-SplashScreen.preventAutoHideAsync();
+if (!(Platform.OS === "web" && typeof window === "undefined")) {
+  SplashScreen.preventAutoHideAsync();
+}
 
 /**
  * Route guard. `(auth)` shows only when signed out, `(app)` only when signed
@@ -31,7 +39,8 @@ SplashScreen.preventAutoHideAsync();
  * app never flashes the wrong group.
  */
 function RootNavigator() {
-  const { session, loading } = useAuth();
+  const posthog = usePostHog();
+  const { session, loading, passwordRecovery } = useAuth();
   const [splashDone, setSplashDone] = useState(false);
   const [draft, setDraft] = useState<OnboardingDraft | null>(null);
   const [showSignIn, setShowSignIn] = useState(false);
@@ -53,7 +62,7 @@ function RootNavigator() {
   // and Speak diagnosis use them.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
-    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadReminders()]).finally(() => setPrefsLoaded(true));
+    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref()]).finally(() => setPrefsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -112,6 +121,11 @@ function RootNavigator() {
       .then((completed) => {
         if (!active || !completed) return;
         setDraft(completed);
+        posthog?.capture("onboarding_completed", {
+          has_transcript: Boolean(completed.transcript.trim()),
+          duration_seconds: completed.durationSeconds,
+          beat_count: completed.beats.length,
+        });
         setImportState("idle");
       })
       .catch((error) => {
@@ -125,7 +139,7 @@ function RootNavigator() {
     // draft changes at every checkpoint; importing the captured draft should
     // stay in one effect run. importAttempt is the explicit retry trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldImport, session?.user.id, importAttempt]);
+  }, [shouldImport, session?.user.id, importAttempt, posthog]);
 
   useEffect(() => {
     if (ready) {
@@ -134,6 +148,12 @@ function RootNavigator() {
   }, [ready]);
 
   if (!ready) return null;
+
+  // A password-reset email link signed the learner in; let them set the new
+  // password before anything else (skippable — the session is already valid).
+  if (passwordRecovery && session) {
+    return <ResetPasswordScreen />;
+  }
 
   // SKELETON PREVIEW: while the app is a design skeleton running on mock data,
   // show the (app) group without a Supabase session so it opens straight into
@@ -144,7 +164,15 @@ function RootNavigator() {
   // Returning signed-in users skip the Get started splash and land in the app.
   // The native splash stays up until session is known, so this does not flash.
   if (!splashDone && !signedIn) {
-    return <SplashIntro onDone={() => setSplashDone(true)} />;
+    return (
+      <SplashIntro
+        onDone={() => setSplashDone(true)}
+        onLogIn={() => {
+          setSplashDone(true);
+          setShowSignIn(true);
+        }}
+      />
+    );
   }
 
   if (shouldImport || importState === "error") {
@@ -223,10 +251,14 @@ export default function RootLayout() {
     // (swipe-to-delete rows) to receive touches. flex:1 so it fills the screen.
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <RootNavigator />
-          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-        </AuthProvider>
+        <PostHogGate>
+          <AuthProvider>
+            <PostHogAuthBridge />
+            <PostHogScreenTracker />
+            <RootNavigator />
+            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+          </AuthProvider>
+        </PostHogGate>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

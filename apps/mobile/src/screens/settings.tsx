@@ -1,18 +1,24 @@
-// settings.tsx — Profile & Settings, rebuilt to match the Saylo profile design:
-// a centered identity header, the "Your speaking world" cobalt banner, Library
+// settings.tsx — Profile & Settings: a centered identity header, Library
 // (kept as a BETA entry, not a bottom-bar tab), then grouped preference rows.
-// "Log out" stays wired to the real Supabase sign-out. Unshipped rows hide
-// their fake right-side value and show a Coming soon chip (same as Library BETA).
-import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+// Speaking-world metrics live on My Studio now. "Log out" stays wired to
+// the real Supabase sign-out. Unshipped rows hide their fake right-side
+// value and show a Coming soon chip (same as Library BETA).
+import { useState, type ReactNode } from "react";
+import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
+
+import { usePostHog } from "posthog-react-native";
 
 import { useTheme, type Theme } from "@/design/theme";
+import { deleteAccount } from "@/lib/account";
 import { useAuth } from "@/lib/auth";
 import { firstLanguage, L1_LABEL } from "@/lib/first-language";
+import { phrasesPerDay } from "@/lib/daily-phrases";
+import { englishLevel, ENGLISH_LEVEL_LABEL } from "@/lib/english-level";
+import { fetchPhrases } from "@/lib/phrases";
 import { reminderSummary } from "@/lib/reminders";
 import { talkFocus, TALK_FOCUS_LABEL } from "@/lib/talk-focus";
-import { Avatar, Card, Icon, Screen } from "@/design/ui";
+import { themePref, THEME_PREF_LABEL } from "@/lib/theme-pref";
+import { Avatar, Card, Icon, Screen, Stagger } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
 
@@ -93,6 +99,71 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
   const meta = (session?.user?.user_metadata ?? {}) as { display_name?: string; goal?: string };
   const name = meta.display_name?.trim() || session?.user?.email?.split("@")[0] || "You";
   const goal = meta.goal?.trim() || "Set your learning goal";
+  const posthog = usePostHog();
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDeleteAccount = () => {
+    if (deleting) return;
+    Alert.alert(
+      "Delete your account?",
+      "Your phrases, stories, sessions, and profile will be permanently deleted. This can’t be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            setDeleting(true);
+            posthog?.capture("account_delete_confirmed");
+            deleteAccount()
+              .then(() => {
+                posthog?.reset();
+              })
+              .catch((e) => {
+                setDeleting(false);
+                Alert.alert(
+                  "Couldn’t delete your account",
+                  e instanceof Error ? e.message : "Check your connection and try again.",
+                );
+              });
+          },
+        },
+      ],
+    );
+  };
+
+  const exportPhrases = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const phrases = await fetchPhrases();
+      if (!phrases.length) {
+        Alert.alert("Nothing to export yet", "Save a phrase first, then export your collection here.");
+        return;
+      }
+      const lines = phrases.map((p) => {
+        const parts = [p.text];
+        if (p.translation?.trim()) parts.push(`  ${p.translation.trim()}`);
+        return parts.join("\n");
+      });
+      await Share.share({
+        title: "My Saylo phrases",
+        message: `My Saylo phrases (${phrases.length})\n\n${lines.join("\n\n")}`,
+      });
+    } catch (e) {
+      Alert.alert("Export failed", e instanceof Error ? e.message : "Couldn’t load your phrases.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const openFeedbackMail = () => {
+    const subject = encodeURIComponent("Saylo feedback");
+    Linking.openURL(`mailto:sumin002@gmail.com?subject=${subject}`).catch(() => {
+      Alert.alert("No mail app", "Send your thoughts to sumin002@gmail.com.");
+    });
+  };
 
   return (
     <Screen bottomPad={40}>
@@ -111,6 +182,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       </View>
 
       {/* Identity */}
+      <Stagger>
       <View style={{ alignItems: "center", paddingTop: 4 }}>
         <Avatar s={84} />
         <Text style={{ fontSize: 24, fontWeight: "800", color: t.colors.ink, marginTop: 14 }}>{name}</Text>
@@ -119,28 +191,6 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
           <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>Edit profile</Text>
         </Pressable>
       </View>
-
-      {/* Your speaking world banner */}
-      <LinearGradient
-        colors={["#3D6FE0", "#6C9BF2"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={{ borderRadius: t.r, padding: 18, flexDirection: "row", alignItems: "center", gap: 14 }}
-      >
-        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}>
-          <Icon name="globe" s={24} c="#fff" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 17, fontWeight: "800", color: "#fff" }}>Your speaking world</Text>
-          <Text style={{ fontSize: 13.5, color: "rgba(255,255,255,0.85)", marginTop: 3 }}>6 stories · 9 phrases ready</Text>
-        </View>
-        <Pressable
-          onPress={() => nav.go("topics")}
-          style={{ backgroundColor: "#fff", borderRadius: 9999, paddingHorizontal: 16, height: 36, alignItems: "center", justifyContent: "center" }}
-        >
-          <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.acc }}>View world</Text>
-        </Pressable>
-      </LinearGradient>
 
       {/* Library — kept as a BETA entry (off the bottom bar for the first launch) */}
       <Card onPress={() => nav.push("library")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -152,17 +202,17 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       </Card>
 
       <SettingsGroup t={t} title="Preferences">
-        <SettingsRow t={t} icon="translate" label="English level" comingSoon />
-        <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("editProfile")} />
-        <SettingsRow t={t} icon="sparkle" label="Feedback focus" detail={TALK_FOCUS_LABEL[talkFocus()]} onPress={() => nav.push("editProfile")} />
+        <SettingsRow t={t} icon="translate" label="English level" detail={ENGLISH_LEVEL_LABEL[englishLevel()]} onPress={() => nav.push("englishLevel")} />
+        <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("firstLanguage")} />
+        <SettingsRow t={t} icon="sparkle" label="Feedback focus" detail={TALK_FOCUS_LABEL[talkFocus()]} onPress={() => nav.push("feedbackFocus")} />
         <SettingsRow t={t} icon="mic" label="My mirror" comingSoon />
-        <SettingsRow t={t} icon="contrast" label="Theme" comingSoon last />
+        <SettingsRow t={t} icon="contrast" label="Theme" detail={THEME_PREF_LABEL[themePref()]} onPress={() => nav.push("themePref")} last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Practice">
         <SettingsRow t={t} icon="clock" label="Practice length" comingSoon />
         <SettingsRow t={t} icon="bulb" label="Hints while speaking" comingSoon />
-        <SettingsRow t={t} icon="text" label="Phrases per day" comingSoon />
+        <SettingsRow t={t} icon="text" label="Phrases per day" detail={String(phrasesPerDay())} onPress={() => nav.push("phrasesPerDay")} />
         <SettingsRow t={t} icon="gauge" label="Playback speed" comingSoon last />
       </SettingsGroup>
 
@@ -172,11 +222,20 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Account">
-        <SettingsRow t={t} icon="export" label="Export my phrases" comingSoon />
-        <SettingsRow t={t} icon="help" label="Help & feedback" comingSoon />
-        <SettingsRow t={t} icon="shield" label="Privacy" comingSoon />
-        <SettingsRow t={t} label="Log out" danger onPress={() => signOut()} last />
+        <SettingsRow t={t} icon="export" label="Export my phrases" detail={exporting ? "Preparing…" : undefined} onPress={() => void exportPhrases()} />
+        <SettingsRow t={t} icon="help" label="Help & feedback" onPress={openFeedbackMail} />
+        <SettingsRow t={t} icon="shield" label="Privacy" onPress={() => nav.push("privacy")} />
+        <SettingsRow t={t} label="Log out" danger onPress={() => signOut()} />
+        <SettingsRow
+          t={t}
+          label="Delete account"
+          detail={deleting ? "Deleting…" : undefined}
+          danger
+          onPress={confirmDeleteAccount}
+          last
+        />
       </SettingsGroup>
+      </Stagger>
     </Screen>
   );
 }

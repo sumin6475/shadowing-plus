@@ -7,8 +7,9 @@
 // user's Supabase JWT, so auth comes for free. The OpenAI key lives in the
 // function's Supabase secret, never in the bundle.
 import { supabase } from "./supabase";
+import { englishLevel } from "./english-level";
 import { talkFocus, type TalkFocus } from "./talk-focus";
-import type { StuckHelp, TalkMoment } from "../types/api";
+import type { StuckHelp, TalkMoment, TalkPhraseSuggestion, TalkPhraseUsedMatch } from "../types/api";
 
 /** One "I'm stuck" note: the timestamp plus the learner's quick memo about what
  *  they wanted to say (may be in their native language). */
@@ -19,7 +20,7 @@ export interface StuckMoment {
 
 /**
  * Invoke the `talk-diagnose` Edge Function with a finished transcript (+ optional
- * topic) and get back up to 3 improvable moments. Returns [] when the transcript
+ * topic) and get back one high-impact coaching moment. Returns [] when the transcript
  * was too short or already natural. Throws on a failed invocation.
  */
 export async function diagnoseTalk(input: {
@@ -35,10 +36,35 @@ export async function diagnoseTalk(input: {
       topic: input.topic ?? null,
       story_id: input.storyId ?? null,
       focus,
+      level: englishLevel(),
     },
   });
   if (error) throw new Error(error.message || "Couldn’t analyze this session.");
   return data?.moments ?? [];
+}
+
+/**
+ * Independently search the learner's owned Phrase Bank for one strong match to
+ * the finished transcript. The function never generates language and returns
+ * null when no saved phrase genuinely fits.
+ */
+export async function suggestTalkPhrase(input: {
+  transcript: string;
+  topic?: string | null;
+  storyId?: string | null;
+}): Promise<{ suggestion: TalkPhraseSuggestion | null; used: TalkPhraseUsedMatch[] }> {
+  const { data, error } = await supabase.functions.invoke<{
+    suggestion: TalkPhraseSuggestion | null;
+    used?: TalkPhraseUsedMatch[];
+  }>("talk-phrase-suggest", {
+    body: {
+      transcript: input.transcript,
+      topic: input.topic ?? null,
+      story_id: input.storyId ?? null,
+    },
+  });
+  if (error) throw new Error(error.message || "Couldn’t search your Phrase Bank.");
+  return { suggestion: data?.suggestion ?? null, used: data?.used ?? [] };
 }
 
 /**

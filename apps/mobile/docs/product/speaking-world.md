@@ -27,7 +27,8 @@ Domain — 삶의 영역
   ↓
 Story — 내가 말하고 싶은 나의 이야기
   ↓
-Message — 그 이야기를 누구에게, 어떤 목적과 길이로 전할지
+Version — 그 이야기를 누구에게, 어떤 목적과 길이로 전할지
+(데이터 모델/테이블명은 기존대로 `messages`)
   ↓
 Session — 실제로 말한 기록
 ```
@@ -116,23 +117,24 @@ Speaking World
 
 사용자는 토픽을 공부하는 것이 아니라 자신의 Story를 만들고 다듬는다.
 
-### 4. Message
+### 4. Version (DB: Message)
 
 같은 Story를 특정 청자, 상황, 목적, 길이에 맞게 전달하는 버전이다.
+화면에서는 **Version**이라고 부른다. 테이블/코드는 기존 `messages`를 유지한다.
 
-`My startup`이라는 Story에는 다음 Message가 생길 수 있다.
+`My startup`이라는 Story에는 다음 Version이 생길 수 있다.
 
 - 30초 버전
 - 2분 버전
 - VC에게 피칭하기
 - 친구에게 설명하기
 
-Story가 **무엇을 말할지**라면, Message는 **어떻게 전할지**다.
+Story가 **무엇을 말할지**라면, Version은 **어떻게 전할지**다.
 
 ### 5. Session
 
 사용자가 실제로 말한 한 번의 기록이다. Session은 추상적인 학습 진도가
-아니라 Story와 Message를 현실에서 표현해 본 흔적이다.
+아니라 Story와 Version을 현실에서 표현해 본 흔적이다.
 
 ## Language belongs to the Story
 

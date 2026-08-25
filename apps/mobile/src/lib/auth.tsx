@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Platform } from "react-native";
 
 import {
   getSocialProviderAvailability,
@@ -16,7 +17,9 @@ import {
   type SocialProviderAvailability,
 } from "./supabase";
 
-WebBrowser.maybeCompleteAuthSession();
+if (!(Platform.OS === "web" && typeof window === "undefined")) {
+  WebBrowser.maybeCompleteAuthSession();
+}
 
 type SocialProvider = "apple" | "google";
 
@@ -26,9 +29,18 @@ interface AuthState {
   /** True until the initial session has been read from storage. */
   loading: boolean;
   socialProviders: SocialProviderAvailability | null;
+  /** True while the session came from a password-reset email link and the
+   *  learner hasn't set a new password yet. */
+  passwordRecovery: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<"signed_in" | "confirmation_required">;
   signInWithSocial: (provider: SocialProvider) => Promise<"signed_in" | "cancelled">;
+  /** Email a password-reset link that deep-links back into the app. */
+  resetPassword: (email: string) => Promise<void>;
+  /** Set the new password after a recovery link, then leave recovery mode. */
+  updatePassword: (password: string) => Promise<void>;
+  /** Dismiss recovery mode without changing the password (stays signed in). */
+  cancelPasswordRecovery: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -70,6 +82,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [socialProviders, setSocialProviders] = useState<SocialProviderAvailability | null>(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+
+  // Email links (password reset) deep-link straight into the app; the OAuth
+  // flow never reaches this listener because openAuthSessionAsync consumes its
+  // callback URL itself. Handles both a cold start and a warm foreground open.
+  useEffect(() => {
+    let active = true;
+    const handleUrl = (url: string | null) => {
+      if (!url || !url.includes("auth/callback")) return;
+      const isRecovery = url.includes("type=recovery");
+      createSessionFromUrl(url)
+        .then((linkSession) => {
+          if (active && linkSession && isRecovery) setPasswordRecovery(true);
+        })
+        .catch(() => {
+          // Expired or reused link — the sign-in screen remains usable.
+        });
+    };
+    Linking.getInitialURL().then(handleUrl);
+    const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       socialProviders,
+      passwordRecovery,
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -145,11 +183,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!socialSession) throw new Error("Sign in returned without a session. Please try again.");
         return "signed_in";
       },
+      async resetPassword(email) {
+        const redirectTo = Linking.createURL("auth/callback");
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+        if (error) throw error;
+      },
+      async updatePassword(password) {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        setPasswordRecovery(false);
+      },
+      cancelPasswordRecovery() {
+        setPasswordRecovery(false);
+      },
       async signOut() {
-        await supabase.auth.signOut();
+        setPasswordRecovery(false);
+        // GoTrue skips clearing the stored session when its pre-flight
+        // refresh fails (dead network, expired refresh token) — signOut()
+        // then resolves with no error and no effect. A logout tap must never
+        // silently no-op, so drop the local session regardless of outcome.
+        await supabase.auth.signOut().catch(() => {});
+        setSession(null);
       },
     }),
-    [session, loading, socialProviders],
+    [session, loading, socialProviders, passwordRecovery],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -19,6 +19,17 @@ export interface Story {
   status: string;
   position: number;
   messageCount: number;
+  sessionCount: number;
+}
+
+export interface StudioDomain {
+  domain: Domain;
+  stories: Story[];
+}
+
+/** A story is “live” once it has a version or a talk — otherwise it’s an empty drawer. */
+export function isLiveStory(story: Pick<Story, "messageCount" | "sessionCount">): boolean {
+  return story.messageCount > 0 || story.sessionCount > 0;
 }
 export interface StoryChoice {
   id: string;
@@ -149,16 +160,8 @@ export async function seedInitialWorld(): Promise<void> {
   }
 }
 
-/** Stories in a domain (with message counts), ordered. */
-export async function fetchStories(domainId: string): Promise<Story[]> {
-  const { data, error } = await supabase
-    .from("stories")
-    .select("id, domain_id, title, summary, status, position, messages(count)")
-    .eq("domain_id", domainId)
-    .neq("status", "archived")
-    .order("position", { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((s) => ({
+function mapStoryRow(s: Record<string, unknown>): Story {
+  return {
     id: s.id as string,
     domainId: (s.domain_id as string | null) ?? null,
     title: (s.title as string) || "Untitled story",
@@ -166,6 +169,37 @@ export async function fetchStories(domainId: string): Promise<Story[]> {
     status: (s.status as string) ?? "draft",
     position: (s.position as number) ?? 0,
     messageCount: (one(s.messages as { count: number }[]) as { count: number } | null)?.count ?? 0,
+    sessionCount: (one(s.talk_sessions as { count: number }[]) as { count: number } | null)?.count ?? 0,
+  };
+}
+
+const STORY_SELECT = "id, domain_id, title, summary, status, position, messages(count), talk_sessions!story_id(count)";
+const STORY_SELECT_FALLBACK = "id, domain_id, title, summary, status, position, messages(count)";
+
+async function fetchStoryRows(domainId?: string): Promise<Story[]> {
+  const run = async (select: string) => {
+    let q = supabase.from("stories").select(select).neq("status", "archived").order("position", { ascending: true });
+    if (domainId) q = q.eq("domain_id", domainId);
+    return q;
+  };
+  const first = await run(STORY_SELECT);
+  const result = first.error ? await run(STORY_SELECT_FALLBACK) : first;
+  if (result.error) throw new Error(result.error.message);
+  return (result.data ?? []).map((s) => mapStoryRow(s as unknown as Record<string, unknown>));
+}
+
+/** Stories in a domain (with version + session counts), ordered. */
+export async function fetchStories(domainId: string): Promise<Story[]> {
+  return fetchStoryRows(domainId);
+}
+
+/** Topics studio: every life-area with its stories, for the bento collection. */
+export async function fetchStudioCollection(): Promise<StudioDomain[]> {
+  const domains = await fetchDomains();
+  const stories = await fetchStoryRows();
+  return domains.map((domain) => ({
+    domain,
+    stories: stories.filter((story) => story.domainId === domain.id),
   }));
 }
 
@@ -292,8 +326,20 @@ export async function ensureStoryDomain(
   return { domainId: domain.id, domainName: domain.name };
 }
 
-export async function createMessage(storyId: string, label: string): Promise<string | null> {
-  const { data, error } = await supabase.from("messages").insert({ story_id: storyId, label: label.trim() }).select("id").single();
+export async function createMessage(
+  storyId: string,
+  label: string,
+  targetSeconds?: number | null,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      story_id: storyId,
+      label: label.trim(),
+      ...(targetSeconds ? { target_seconds: targetSeconds } : {}),
+    })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
   return (data?.id as string) ?? null;
 }
@@ -368,4 +414,141 @@ export async function createTalkSession(input: {
     .single();
   if (error) throw new Error(error.message);
   return (data?.id as string) ?? null;
+}
+
+export interface RecentTalkedStory {
+  storyId: string;
+  messageId: string | null;
+  storyTitle: string;
+  beats: string[];
+}
+
+export interface StudioTopicTime {
+  name: string;
+  seconds: number;
+}
+
+export interface StudioDaySeconds {
+  date: string;
+  seconds: number;
+}
+
+export interface StudioSnapshot {
+  totalSeconds: number;
+  sessionCount: number;
+  activeTopics: number;
+  activeStories: number;
+  topicTime: StudioTopicTime[];
+  lastSevenDays: StudioDaySeconds[];
+}
+
+function localDayKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function formatSpeakingTime(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h <= 0 && m <= 0) return s > 0 ? `${s}s` : "0m";
+  if (h <= 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** A recently talked story for the Home CTA, with beats. Rotates daily across
+ * the distinct stories in the latest sessions (deterministic — day number, not
+ * random — so the pick is stable within a day but fresh across days). */
+export async function fetchRecentTalkedStory(): Promise<RecentTalkedStory | null> {
+  const sessions = await fetchTalkSessions(40);
+  const recentIds: string[] = [];
+  for (const session of sessions) {
+    if (session.storyId && !recentIds.includes(session.storyId)) recentIds.push(session.storyId);
+  }
+  if (recentIds.length === 0) return null;
+  const day = Math.floor(Date.now() / 86_400_000);
+  const story = await fetchStory(recentIds[day % recentIds.length]);
+  if (!story) return null;
+  const messages = await fetchMessages(story.id);
+  const message = messages.find((item) => item.label === "30-second version") ?? messages[0] ?? null;
+  const beats = message ? await fetchBeats(message.id) : [];
+  return {
+    storyId: story.id,
+    messageId: message?.id ?? null,
+    storyTitle: story.title,
+    beats: beats.map((beat) => beat.text).filter(Boolean),
+  };
+}
+
+/** Studio dashboard: speaking time, lived-in topics/stories, last-week days. */
+export async function fetchStudioSnapshot(): Promise<StudioSnapshot> {
+  const [{ data: sessionRows, error: sessionError }, { data: storyRows, error: storyError }] = await Promise.all([
+    supabase.from("talk_sessions").select("story_id, duration_seconds, created_at").limit(5000),
+    supabase
+      .from("stories")
+      .select("id, domain_id, status, messages(count), domains(name)")
+      .neq("status", "archived")
+      .limit(2000),
+  ]);
+  if (sessionError) throw new Error(sessionError.message);
+  if (storyError) throw new Error(storyError.message);
+
+  const sessions = sessionRows ?? [];
+  const stories = storyRows ?? [];
+  const totalSeconds = sessions.reduce((sum, row) => sum + Math.max(0, Number(row.duration_seconds) || 0), 0);
+  const talkedStoryIds = new Set(
+    sessions.map((row) => row.story_id as string | null).filter((id): id is string => Boolean(id)),
+  );
+
+  const activeStories = stories.filter((row) => {
+    const messageCount = (one(row.messages as { count: number }[]) as { count: number } | null)?.count ?? 0;
+    return messageCount > 0 || talkedStoryIds.has(row.id as string);
+  });
+  const activeTopicIds = new Set(
+    activeStories.map((row) => row.domain_id as string | null).filter((id): id is string => Boolean(id)),
+  );
+
+  const titleByStory = new Map<string, string>();
+  for (const row of stories) {
+    const domain = one(row.domains as { name: string }[]) as { name: string } | null;
+    titleByStory.set(row.id as string, domain?.name || "Other");
+  }
+
+  const secondsByTopic = new Map<string, number>();
+  for (const row of sessions) {
+    const seconds = Math.max(0, Number(row.duration_seconds) || 0);
+    const storyId = row.story_id as string | null;
+    const name = storyId ? (titleByStory.get(storyId) ?? "Other") : "Free talk";
+    secondsByTopic.set(name, (secondsByTopic.get(name) ?? 0) + seconds);
+  }
+  const topicTime = [...secondsByTopic.entries()]
+    .map(([name, seconds]) => ({ name, seconds }))
+    .filter((item) => item.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds);
+
+  const lastSevenDays: StudioDaySeconds[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 6; i >= 0; i--) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - i);
+    lastSevenDays.push({ date: localDayKey(day), seconds: 0 });
+  }
+  const byDate = new Map(lastSevenDays.map((item) => [item.date, item]));
+  for (const row of sessions) {
+    const created = new Date(row.created_at as string);
+    const bucket = byDate.get(localDayKey(created));
+    if (bucket) bucket.seconds += Math.max(0, Number(row.duration_seconds) || 0);
+  }
+
+  return {
+    totalSeconds,
+    sessionCount: sessions.length,
+    activeTopics: activeTopicIds.size,
+    activeStories: activeStories.length,
+    topicTime,
+    lastSevenDays,
+  };
 }

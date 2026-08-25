@@ -1,6 +1,6 @@
 // ui.tsx — shared primitives ported from sp-theme.jsx: Card, Hero, Block, Pill,
 // Chip, Badge, Avatar, Header, BackBar, Sect, Screen, Wave, StatTile, TabBar.
-import { useEffect, useMemo, useRef, type ReactElement, type ReactNode } from "react";
+import { Children as ReactChildren, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import {
   Alert,
   Animated,
@@ -11,15 +11,23 @@ import {
   Text,
   View,
   type RefreshControlProps,
+  type ScrollViewProps,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import Reanimated, { FadeInDown } from "react-native-reanimated";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import MaskedView from "@react-native-masked-view/masked-view";
+
+import { Image } from "expo-image";
+
+import { useAuth } from "@/lib/auth";
+import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-photo";
+import { statusStageLabel } from "@/lib/phrases";
 
 import { Icon, type IconName } from "./icon";
 import { SERIF, hairline, statusColors, useTheme, type Theme } from "./theme";
@@ -49,12 +57,81 @@ export function toneColor(t: Theme, name: string): string {
 // this only nudges the overall serif scale up.
 const SERIF_SCALE = 1.1;
 
-export function Serif({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
+export function Serif({ children, style, numberOfLines }: { children: ReactNode; style?: StyleProp<TextStyle>; numberOfLines?: number }) {
   const flat = StyleSheet.flatten(style) as TextStyle | undefined;
   const scaled: TextStyle = {};
   if (typeof flat?.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * SERIF_SCALE);
   if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * SERIF_SCALE);
-  return <Text style={[{ fontFamily: SERIF, letterSpacing: -0.2 }, style, scaled]}>{children}</Text>;
+  return (
+    <Text numberOfLines={numberOfLines} style={[{ fontFamily: SERIF, letterSpacing: -0.2 }, style, scaled]}>
+      {children}
+    </Text>
+  );
+}
+
+// ── Press feedback ─────────────────────────────────────────────────────────
+// iOS-style tactile press: a quick spring scale-down on touch, springing back
+// with a little bounce on release. Native-driver transform, so it never blocks
+// JS. Shared by Card / Block / Pill (and the capture FAB).
+export const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+export function usePressFx(depth = 0.975) {
+  // useMemo (not a ref) keeps the Animated.Value off the render-time ref-read
+  // path, same as Wave below.
+  const scale = useMemo(() => new Animated.Value(1), []);
+  const pressIn = () =>
+    Animated.spring(scale, { toValue: depth, speed: 40, bounciness: 0, useNativeDriver: true }).start();
+  const pressOut = () =>
+    Animated.spring(scale, { toValue: 1, speed: 22, bounciness: 7, useNativeDriver: true }).start();
+  return { scale, pressIn, pressOut };
+}
+
+// ── Entrance stagger ───────────────────────────────────────────────────────
+// iOS-style cascade: sections fade in and rise, top to bottom. Wrap each
+// section and pass its index; remount (new key) replays the cascade — screens
+// that live inside the kept-alive native tabs key this off a focus counter.
+export function EnterStagger({
+  i = 0,
+  children,
+  style,
+}: {
+  i?: number;
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  // Cap the delay so long lists don't keep trickling in forever.
+  return (
+    <Reanimated.View
+      entering={FadeInDown.delay(70 * Math.min(i, 8)).springify().damping(17).stiffness(160)}
+      style={style}
+    >
+      {children}
+    </Reanimated.View>
+  );
+}
+
+/** Wraps each direct child in an EnterStagger with its index, so a screen's
+ * sections cascade top-to-bottom without hand-numbering. Conditional/null
+ * children are skipped (Children.toArray drops them). Pass `replayKey` to
+ * replay the cascade (e.g. a focus counter on kept-alive tab screens). */
+export function Stagger({
+  children,
+  startIndex = 0,
+  replayKey,
+}: {
+  children: ReactNode;
+  startIndex?: number;
+  replayKey?: string | number;
+}) {
+  return (
+    <>
+      {ReactChildren.toArray(children).map((child, idx) => (
+        <EnterStagger key={`${replayKey ?? "s"}-${idx}`} i={startIndex + idx}>
+          {child}
+        </EnterStagger>
+      ))}
+    </>
+  );
 }
 
 // ── Card ─────────────────────────────────────────────────────────────────
@@ -70,6 +147,7 @@ export function Card({
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
+  const fx = usePressFx();
   const base: ViewStyle = {
     backgroundColor: t.colors.card,
     borderRadius: t.r,
@@ -80,12 +158,58 @@ export function Card({
   };
   if (onPress) {
     return (
-      <Pressable onPress={onPress} style={({ pressed }) => [base, { opacity: pressed ? 0.85 : 1 }, style]}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={fx.pressIn}
+        onPressOut={fx.pressOut}
+        style={[base, style, { transform: [{ scale: fx.scale }] }]}
+      >
         {children}
-      </Pressable>
+      </AnimatedPressable>
     );
   }
   return <View style={[base, style]}>{children}</View>;
+}
+
+/** Transcript / long copy that stays a fixed height until the learner asks for more. */
+export function ExpandableCopy({
+  text,
+  empty = "No words were captured this time.",
+  collapsedLines = 6,
+  style,
+}: {
+  text: string;
+  empty?: string;
+  collapsedLines?: number;
+  style?: StyleProp<TextStyle>;
+}) {
+  const t = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const trimmed = text.replace(/\s+/g, " ").trim() ? text.trim() : "";
+  if (!trimmed) {
+    return (
+      <Text style={[{ fontSize: 15, lineHeight: 23, color: t.colors.ink3, fontStyle: "italic" }, style]}>{empty}</Text>
+    );
+  }
+  return (
+    <View>
+      <Text
+        style={[{ fontSize: 15, lineHeight: 23, color: t.colors.ink }, style]}
+        numberOfLines={expanded ? undefined : collapsedLines}
+        onTextLayout={(event) => {
+          if (!expanded && event.nativeEvent.lines.length >= collapsedLines) setOverflows(true);
+        }}
+      >
+        {trimmed}
+      </Text>
+      {overflows ? (
+        <Pressable onPress={() => setExpanded((value) => !value)} style={{ marginTop: 8, alignSelf: "flex-start" }}>
+          <Text style={{ fontSize: 13.5, fontWeight: "700", color: t.colors.accD }}>{expanded ? "Show less" : "Show more"}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 // ── Hero (accent) ──────────────────────────────────────────────────────────
@@ -99,24 +223,41 @@ export function Hero({
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
+  const fx = usePressFx();
   const base: ViewStyle = {
-    backgroundColor: t.colors.acc,
     borderRadius: t.r,
     padding: t.padc + 9,
     overflow: "hidden",
-    ...t.shadowCard,
+    ...t.shadowLg,
   };
   const inner = (
     <>
+      <LinearGradient
+        colors={t.dark ? ["#4C7EF0", "#2E56BC"] : ["#5B8CFF", "#2F62E8"]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
       <View
         style={{
           position: "absolute",
-          right: -30,
-          top: -30,
-          width: 130,
-          height: 130,
-          borderRadius: 65,
-          backgroundColor: "rgba(255,255,255,0.09)",
+          right: -36,
+          top: -40,
+          width: 160,
+          height: 160,
+          borderRadius: 80,
+          backgroundColor: "rgba(255,255,255,0.16)",
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          left: -28,
+          bottom: -48,
+          width: 120,
+          height: 120,
+          borderRadius: 60,
+          backgroundColor: "rgba(20,40,120,0.12)",
         }}
       />
       {children}
@@ -124,9 +265,14 @@ export function Hero({
   );
   if (onPress) {
     return (
-      <Pressable onPress={onPress} style={({ pressed }) => [base, { opacity: pressed ? 0.92 : 1 }, style]}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={fx.pressIn}
+        onPressOut={fx.pressOut}
+        style={[base, style, { transform: [{ scale: fx.scale }] }]}
+      >
         {inner}
-      </Pressable>
+      </AnimatedPressable>
     );
   }
   return <View style={[base, style]}>{inner}</View>;
@@ -145,6 +291,7 @@ export function Block({
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
+  const fx = usePressFx();
   const base: ViewStyle = {
     backgroundColor: toneColor(t, tone),
     borderRadius: t.r,
@@ -155,9 +302,14 @@ export function Block({
   };
   if (onPress) {
     return (
-      <Pressable onPress={onPress} style={({ pressed }) => [base, { opacity: pressed ? 0.88 : 1 }, style]}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={fx.pressIn}
+        onPressOut={fx.pressOut}
+        style={[base, style, { transform: [{ scale: fx.scale }] }]}
+      >
         {children}
-      </Pressable>
+      </AnimatedPressable>
     );
   }
   return <View style={[base, style]}>{children}</View>;
@@ -196,10 +348,13 @@ export function Pill({
   const tv = tones[tone];
   const h = small ? 34 : 50;
   const fs = small ? 15 : 17;
+  const fx = usePressFx(0.955);
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={onPress}
-      style={({ pressed }) => [
+      onPressIn={fx.pressIn}
+      onPressOut={fx.pressOut}
+      style={[
         {
           height: h,
           borderRadius: 9999,
@@ -211,10 +366,10 @@ export function Pill({
           backgroundColor: tv.bg,
           flex: full ? 1 : undefined,
           alignSelf: full ? "stretch" : "flex-start",
-          opacity: pressed ? 0.85 : 1,
         },
         tv.shadow ? t.shadowCard : null,
         style,
+        { transform: [{ scale: fx.scale }] },
       ]}
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
@@ -227,7 +382,7 @@ export function Pill({
           children
         )}
       </View>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -237,23 +392,33 @@ export function Chip({
   active,
   onPress,
   style,
+  icon,
+  accessibilityLabel,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   active?: boolean;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
+  icon?: IconName;
+  accessibilityLabel?: string;
 }) {
   const t = useTheme();
+  const color = active ? "#fff" : t.colors.ink2;
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? (typeof children === "string" ? children : undefined)}
+      accessibilityState={{ selected: Boolean(active) }}
       onPress={onPress}
       style={({ pressed }) => [
         {
           height: 34,
           borderRadius: 9999,
-          paddingHorizontal: 15,
+          paddingHorizontal: icon && !children ? 10 : 15,
+          flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
+          gap: 6,
           backgroundColor: active ? t.colors.pill : t.colors.card,
           borderWidth: active ? 0 : hairline,
           borderColor: t.ring,
@@ -263,9 +428,12 @@ export function Chip({
         style,
       ]}
     >
-      <Text style={{ color: active ? "#fff" : t.colors.ink2, fontSize: 15, fontWeight: "600" }} numberOfLines={1}>
-        {children}
-      </Text>
+      {icon ? <Icon name={icon} s={14} c={color} /> : null}
+      {children ? (
+        <Text style={{ color, fontSize: 15, fontWeight: "600" }} numberOfLines={1}>
+          {children}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -278,7 +446,7 @@ export function Badge({ s, style }: { s: string; style?: StyleProp<ViewStyle> })
     <View
       style={[{ backgroundColor: bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }, style]}
     >
-      <Text style={{ color: cl, fontSize: 11, fontWeight: "700", letterSpacing: 0.1 }}>{s}</Text>
+      <Text style={{ color: cl, fontSize: 11, fontWeight: "700", letterSpacing: 0.1 }}>{statusStageLabel(s)}</Text>
     </View>
   );
 }
@@ -286,6 +454,10 @@ export function Badge({ s, style }: { s: string; style?: StyleProp<ViewStyle> })
 // ── Avatar ──────────────────────────────────────────────────────────────────
 export function Avatar({ s = 44, onPress }: { s?: number; onPress?: () => void }) {
   const t = useTheme();
+  const { session } = useAuth();
+  const meta = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
+  const uri = avatarUrlFromMetadata(meta);
+  const initial = avatarInitialFromMetadata(meta, session?.user?.email);
   const inner = (
     <View
       style={{
@@ -295,9 +467,14 @@ export function Avatar({ s = 44, onPress }: { s?: number; onPress?: () => void }
         backgroundColor: t.colors.pill,
         alignItems: "center",
         justifyContent: "center",
+        overflow: "hidden",
       }}
     >
-      <Text style={{ color: "#fff", fontWeight: "700", fontSize: s * 0.38 }}>S</Text>
+      {uri ? (
+        <Image source={{ uri }} style={{ width: s, height: s }} contentFit="cover" />
+      ) : (
+        <Text style={{ color: "#fff", fontWeight: "700", fontSize: s * 0.38 }}>{initial}</Text>
+      )}
     </View>
   );
   return onPress ? <Pressable onPress={onPress}>{inner}</Pressable> : inner;
@@ -354,7 +531,7 @@ export function BackBar({
 }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4, minHeight: 44 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4, minHeight: 44 }}>
       <Pressable
         onPress={onBack}
         style={[
@@ -373,10 +550,14 @@ export function BackBar({
       >
         <Icon name="back" s={18} w={2.2} c={t.colors.ink} />
       </Pressable>
-      <Text style={{ flex: 1, fontSize: 17, fontWeight: "600", letterSpacing: -0.1, color: t.colors.ink }} numberOfLines={1}>
-        {title}
-      </Text>
-      {right}
+      {title ? (
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+          {title}
+        </Text>
+      ) : (
+        <View style={{ flex: 1 }} />
+      )}
+      <View style={{ minWidth: 44, minHeight: 44, alignItems: "flex-end", justifyContent: "center" }}>{right}</View>
     </View>
   );
 }
@@ -415,10 +596,14 @@ export function Sect({
 export function Screen({
   children,
   noPad,
-  bottomPad = 120,
+  // With the native tab bar, insets.bottom already includes the bar height, so
+  // this is just breathing room past the last card (was 120 for the old
+  // floating custom bar).
+  bottomPad = 32,
   style,
   refreshControl,
   scrollEnabled = true,
+  onScroll,
 }: {
   children: ReactNode;
   noPad?: boolean;
@@ -428,6 +613,8 @@ export function Screen({
   refreshControl?: ReactElement<RefreshControlProps>;
   /** Set false while a nested drag-reorder is active so the page doesn't scroll. */
   scrollEnabled?: boolean;
+  /** Scroll events (throttled) — e.g. incremental list loading near the end. */
+  onScroll?: ScrollViewProps["onScroll"];
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -455,6 +642,8 @@ export function Screen({
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
         refreshControl={refreshControl}
+        onScroll={onScroll}
+        scrollEventThrottle={onScroll ? 120 : undefined}
       >
         {children}
       </ScrollView>
@@ -559,6 +748,7 @@ export function StatTile({
   foot,
   span,
   onPress,
+  chevron,
 }: {
   tone: string;
   label: string;
@@ -567,13 +757,15 @@ export function StatTile({
   foot: string;
   span?: boolean;
   onPress?: () => void;
+  chevron?: boolean;
 }) {
   const t = useTheme();
+  const showChevron = chevron ?? Boolean(onPress);
   return (
     <Block tone={tone} onPress={onPress} style={{ flex: span ? undefined : 1, width: span ? "100%" : undefined, gap: 9 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Text style={{ flex: 1, fontSize: 13, fontWeight: "700", color: t.colors.onB }}>{label}</Text>
-        <Icon name="chev" s={13} w={2.2} c={t.colors.onB2} />
+        {showChevron ? <Icon name="chev" s={13} w={2.2} c={t.colors.onB2} /> : null}
       </View>
       <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
         <Text style={{ fontSize: 34, fontWeight: "800", letterSpacing: -1, color: t.colors.onB, fontVariant: ["tabular-nums"] }}>
@@ -646,18 +838,25 @@ export function SwipeRow({
     : undefined;
 
   return (
-    <Swipeable
-      ref={ref}
-      renderRightActions={renderRight}
-      renderLeftActions={renderLeft}
-      overshootRight={false}
-      overshootLeft={false}
-      rightThreshold={40}
-      leftThreshold={40}
-      friction={2}
-    >
-      {children}
-    </Swipeable>
+    // Swipeable's container is overflow:hidden with SQUARE bounds, which used
+    // to clip the row card's shadow into a visible gray box. The shadow lives
+    // on this outer rounded wrapper instead (outside the clip), and the
+    // Swipeable clips to the same rounded shape so revealed actions match.
+    <View style={[{ borderRadius: t.r, backgroundColor: t.colors.card }, t.shadowCard]}>
+      <Swipeable
+        ref={ref}
+        containerStyle={{ borderRadius: t.r, overflow: "hidden" }}
+        renderRightActions={renderRight}
+        renderLeftActions={renderLeft}
+        overshootRight={false}
+        overshootLeft={false}
+        rightThreshold={40}
+        leftThreshold={40}
+        friction={2}
+      >
+        {children}
+      </Swipeable>
+    </View>
   );
 }
 
@@ -672,76 +871,44 @@ export function confirmDelete(opts: { title: string; message?: string; deleteLab
   ]);
 }
 
-
-// ── TabBar (floating cobalt capsule) ────────────────────────────────────────
-export type TabId = "today" | "phrases" | "speak" | "topics" | "sessions";
-export function TabBar({ tab, go }: { tab: TabId; go: (id: TabId) => void }) {
-  const t = useTheme();
-  const insets = useSafeAreaInsets();
-  const item = (id: TabId, icon: IconName, label: string) => {
-    const on = tab === id;
-    return (
-      <Pressable
-        key={id}
-        onPress={() => go(id)}
-        style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 3, minHeight: 44 }}
-      >
-        <Icon name={icon} s={22} w={on ? 2 : 1.7} c={on ? "#fff" : "rgba(255,255,255,0.55)"} />
-        <Text style={{ fontSize: 11, fontWeight: "600", color: on ? "#fff" : "rgba(255,255,255,0.55)" }}>{label}</Text>
-      </Pressable>
-    );
-  };
-  return (
-    <View
-      style={[
-        {
-          position: "absolute",
-          left: 22,
-          right: 22,
-          bottom: Math.max(insets.bottom, 12),
-          height: 64,
-          borderRadius: 9999,
-          backgroundColor: t.colors.pill,
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 14,
-        },
-        styles.tabShadow,
-      ]}
-    >
-      {item("today", "sun", "Today")}
-      {item("phrases", "bank", "Phrases")}
-      <Pressable
-        onPress={() => go("speak")}
-        style={[
-          {
-            width: 52,
-            height: 52,
-            borderRadius: 26,
-            backgroundColor: t.colors.acc,
-            alignItems: "center",
-            justifyContent: "center",
-            marginHorizontal: 6,
-            borderWidth: tab === "speak" ? 3 : 0,
-            borderColor: "rgba(255,255,255,0.35)",
-          },
-          styles.tabShadow,
-        ]}
-      >
-        <Icon name="mic" s={24} w={1.9} c="#fff" />
-      </Pressable>
-      {item("topics", "map", "Topics")}
-      {item("sessions", "wave2", "Sessions")}
-    </View>
+// Native iOS text field alert (Alert.prompt). Cancel leaves the previous
+// state; Save returns a trimmed note, which may be empty.
+export function promptFeedbackNote(opts: {
+  title: string;
+  message?: string;
+  onSave: (note: string) => void;
+  onCancel?: () => void;
+}) {
+  const prompt = (Alert as typeof Alert & {
+    prompt?: (
+      title: string,
+      message?: string,
+      callbackOrButtons?: { text: string; style?: "cancel" | "default" | "destructive"; onPress?: (value?: string) => void }[],
+      type?: "plain-text",
+    ) => void;
+  }).prompt;
+  if (typeof prompt !== "function") {
+    Alert.alert(opts.title, opts.message, [
+      { text: "Cancel", style: "cancel", onPress: opts.onCancel },
+      { text: "Save", onPress: () => opts.onSave("") },
+    ]);
+    return;
+  }
+  prompt(
+    opts.title,
+    opts.message,
+    [
+      { text: "Cancel", style: "cancel", onPress: opts.onCancel },
+      {
+        text: "Save",
+        onPress: (value?: string) => opts.onSave((value ?? "").replace(/\s+/g, " ").trim().slice(0, 500)),
+      },
+    ],
+    "plain-text",
   );
 }
 
-const styles = StyleSheet.create({
-  tabShadow: {
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-});
+
+// The tab bar is native now (expo-router NativeTabs in src/app/(app)/_layout);
+// only the shared tab id type remains here so screens keep a single import.
+export type TabId = "today" | "phrases" | "speak" | "topics" | "sessions";

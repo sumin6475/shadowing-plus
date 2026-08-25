@@ -83,7 +83,8 @@
           "defaultChannel": "practice-reminders"
         }
       ],
-      "./plugins/with-local-reminders-only.js"
+      "./plugins/with-local-reminders-only.js",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

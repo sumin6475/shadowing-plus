@@ -8,7 +8,9 @@ export interface PhraseSpeechAudio {
 const pendingRequests = new Map<string, Promise<PhraseSpeechAudio>>();
 
 /** Resolve or generate private AI pronunciation for an owned Phrase Bank row. */
-export async function fetchPhraseSpeech(phraseId: string): Promise<PhraseSpeechAudio> {
+export async function fetchPhraseSpeech(
+  phraseId: string,
+): Promise<PhraseSpeechAudio> {
   const current = pendingRequests.get(phraseId);
   if (current) return current;
 
@@ -19,7 +21,8 @@ export async function fetchPhraseSpeech(phraseId: string): Promise<PhraseSpeechA
     }>("phrase-tts", { body: { phrase_id: phraseId } });
     if (error) throw new Error(error.message || "Couldn’t load the AI voice.");
     const audioUrl = data?.audio_url?.trim() ?? "";
-    if (!audioUrl.startsWith("https://")) throw new Error("The AI voice returned an invalid audio URL.");
+    if (!audioUrl.startsWith("https://"))
+      throw new Error("The AI voice returned an invalid audio URL.");
     return { audioUrl, cached: Boolean(data?.cached) };
   })();
 

@@ -3,7 +3,7 @@
 
 const PROMPTS: Record<string, string> = {
   "something i learned":
-    "Something you picked up recently — a trick, a fact, an insight. Example: I learned that people remember the ending more than the beginning.",
+    "Something you picked up recently: a trick, a fact, an insight. Example: I learned that people remember the ending more than the beginning.",
   "what i do":
     "What you actually spend your days on. Example: I help people get comfortable speaking English out loud.",
   "my startup":
@@ -13,7 +13,7 @@ const PROMPTS: Record<string, string> = {
   "my future plans":
     "Where you’re heading next, even if it’s still fuzzy. Example: I want to work somewhere I can use English every day.",
   background:
-    "Where you come from — hometown, school, the path that led here. Example: I grew up in Seoul and moved here for work.",
+    "Where you come from: hometown, school, the path that led here. Example: I grew up in Seoul and moved here for work.",
   strengths:
     "What you’re good at, in your own words. Example: I stay calm when things get messy, and I ask good questions.",
   "future goals":
@@ -37,7 +37,7 @@ const PROMPTS: Record<string, string> = {
     "What a good Saturday looks like for you. Example: Slow coffee, a long walk, and cooking something I don’t have a recipe for.",
   ai: "What you think about AI, in your own words. Example: I use it to draft, then I say the idea out loud until it sounds like me.",
   education:
-    "How you learned — school, or the long way around. Example: I learned more from teaching others than from any class I sat in.",
+    "How you learned: school, or the long way around. Example: I learned more from teaching others than from any class I sat in.",
   design:
     "How you think about making things. Example: I care more about how something feels to use than how it looks in a screenshot.",
 };

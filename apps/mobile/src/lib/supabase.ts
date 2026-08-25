@@ -1,6 +1,7 @@
 import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
+import { Platform } from "react-native";
 
 /**
  * React Native Supabase client (anon key, RLS-scoped).
@@ -26,11 +27,20 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const configuredSupabaseUrl = supabaseUrl;
 const configuredSupabaseAnonKey = supabaseAnonKey;
 
+/** Expo Router SSR runs this module in Node. RN AsyncStorage's web impl reads `window`. */
+const isWebSsr = Platform.OS === "web" && typeof window === "undefined";
+
+const authStorage = {
+  getItem: (key: string) => (isWebSsr ? Promise.resolve(null) : AsyncStorage.getItem(key)),
+  setItem: (key: string, value: string) => (isWebSsr ? Promise.resolve() : AsyncStorage.setItem(key, value)),
+  removeItem: (key: string) => (isWebSsr ? Promise.resolve() : AsyncStorage.removeItem(key)),
+};
+
 export const supabase = createClient(configuredSupabaseUrl, configuredSupabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
+    storage: authStorage,
+    autoRefreshToken: !isWebSsr,
+    persistSession: !isWebSsr,
     // No URL to parse on native — OAuth redirects are handled explicitly later.
     detectSessionInUrl: false,
   },

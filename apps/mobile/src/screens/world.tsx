@@ -1,21 +1,26 @@
-// world.tsx — Topics tab (Speaking World): map + Domain, Story, Message,
-// Recommendations. Backed by the real tree (migration 020, @/lib/speaking-world).
-// Recording + AI recs are later phases; "Talk" opens the (still-mock) mirror.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, View } from "react-native";
+// world.tsx — Studio tab: folio donut + topics, then a topic's story list,
+// Story folio (versions / phrases / sessions), and a Version outline that talks.
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Reanimated, { Easing as REasing, useAnimatedProps, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
+import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Path } from "react-native-svg";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Circle } from "react-native-svg";
 
 import { deleteTalkSessionAudio, talkAudioUri } from "@/lib/talk-audio";
 import { prepareTalkRecordingPlayback } from "@/lib/talk-audio-session";
-import { useTheme, type Theme } from "@/design/theme";
-import { Avatar, BackBar, Card, Chip as InputChip, Header, Icon, Pill, Screen, Sect, Serif, SwipeRow, confirmDelete, toneColor } from "@/design/ui";
+import { useTheme } from "@/design/theme";
+import { Avatar, BackBar, Card, Chip as InputChip, EnterStagger, ExpandableCopy, Header, Icon, Pill, Screen, Sect, Serif, Stagger, SwipeRow, confirmDelete, toneColor } from "@/design/ui";
+import { fetchSessionPhraseMemory, fetchStoryPhrases, type PhraseItem, type SessionPhraseLink } from "@/lib/phrases";
+import { RowIconButton } from "./phrases";
+import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
 import {
-  archiveStory,
   createBeat,
   createMessage,
+  createStory,
   deleteBeat,
   deleteTalkSession,
   ensureStoryDomain,
@@ -24,7 +29,10 @@ import {
   fetchMessages,
   fetchStories,
   fetchStory,
+  fetchStudioCollection,
   fetchTalkSessions,
+  isLiveStory,
+  archiveStory,
   setBeatPositions,
   updateBeat,
   updateStoryDomain,
@@ -33,51 +41,136 @@ import {
   type Domain,
   type Story,
   type StoryMessage,
+  type StudioDomain,
   type TalkSession,
 } from "@/lib/speaking-world";
 import { storyPromptFor } from "@/lib/story-prompts";
 import type { Nav } from "./nav";
 
-// Map slots (size + position) cycled across the user's domains.
-const MAP_SLOTS = [
-  { size: 116, x: 14, y: 36 },
-  { size: 152, x: 198, y: 8 },
-  { size: 108, x: 6, y: 210 },
-  { size: 124, x: 214, y: 200 },
-  { size: 112, x: 76, y: 348 },
-  { size: 124, x: 208, y: 344 },
-];
 const TONES = ["sage", "sky", "blush", "butter"];
+const VERSION_PRESETS = [
+  { label: "30-second version", seconds: 30 },
+  { label: "Interview version", seconds: 90 },
+  { label: "For a friend", seconds: 60 },
+  { label: "The short version", seconds: 45 },
+] as const;
 
-function statusChip(t: Theme, status: string): { label: string; bg: string; fg: string; dashed?: boolean } {
-  switch (status) {
-    case "ready":
-      return { label: "Ready", bg: t.colors.sage, fg: t.colors.onB };
-    case "shaping":
-      return { label: "Shaping", bg: t.colors.butter, fg: t.colors.onB };
-    default:
-      return { label: "Draft", bg: "transparent", fg: t.colors.ink3, dashed: true };
-  }
+function storyIdeasFor(domainName?: string | null): string[] {
+  const name = (domainName ?? "").toLocaleLowerCase("en");
+  if (name.includes("about")) return ["My design background", "What I believe", "How I got here", "A thing I’m proud of"];
+  if (name.includes("work") || name.includes("study")) return ["Current project", "Why this role", "A win at work", "What I’m learning"];
+  if (name.includes("experience")) return ["Moving abroad", "A hard season", "A trip that stayed", "A mistake I still use"];
+  if (name.includes("daily")) return ["Morning routine", "How I rest", "A usual weekend", "Something I cook"];
+  if (name.includes("idea")) return ["Something I learned", "A take on AI", "How I design", "A book that shifted me"];
+  return ["My design background", "Current project", "A recent challenge", "Something I learned"];
 }
-function Chip({ label, bg, fg, dashed, style }: { label: string; bg: string; fg: string; dashed?: boolean; style?: object }) {
-  const t = useTheme();
+
+const FOLIO_RING: Record<string, string> = {
+  sage: "#8FB56A",
+  sky: "#3B6EE1",
+  blush: "#C9A0C4",
+  butter: "#E0B85C",
+};
+
+function folioRing(tone: string, index: number): string {
+  return FOLIO_RING[tone] ?? Object.values(FOLIO_RING)[index % 4];
+}
+
+const AnimatedRing = Reanimated.createAnimatedComponent(Circle);
+
+// One donut slice that reveals itself as the shared sweep (0→C, clockwise
+// from 12 o'clock) passes over its arc — so slices light up in order, like a
+// chart drawing itself.
+function DonutSlice({
+  cx,
+  r,
+  stroke,
+  color,
+  start,
+  len,
+  c,
+  progress,
+}: {
+  cx: number;
+  r: number;
+  stroke: number;
+  color: string;
+  start: number;
+  len: number;
+  c: number;
+  progress: { value: number };
+}) {
+  const animatedProps = useAnimatedProps(() => {
+    const sweep = progress.value * c;
+    const visible = Math.min(Math.max(sweep - start, 0), len);
+    return { strokeDasharray: [visible, c] };
+  });
   return (
-    <View
-      style={[
-        { backgroundColor: bg, borderRadius: 999, paddingHorizontal: dashed ? 9 : 10, paddingVertical: dashed ? 3 : 4, borderWidth: dashed ? 1.5 : 0, borderColor: t.colors.ink3, borderStyle: dashed ? "dashed" : "solid" },
-        style,
-      ]}
-    >
-      <Text style={{ color: fg, fontSize: 11, fontWeight: "700" }}>{label}</Text>
-    </View>
+    <AnimatedRing
+      cx={cx}
+      cy={cx}
+      r={r}
+      stroke={color}
+      strokeWidth={stroke}
+      fill="none"
+      strokeDashoffset={-start}
+      strokeLinecap="butt"
+      animatedProps={animatedProps}
+      transform={`rotate(-90 ${cx} ${cx})`}
+    />
   );
 }
-function Tile({ tone = "sky", glyph = "text", s = 40 }: { tone?: string; glyph?: import("@/design/icon").IconName; s?: number }) {
-  const t = useTheme();
+
+function FolioDonut({
+  segments,
+  track,
+  size = 176,
+  stroke = 22,
+  animKey = 0,
+}: {
+  segments: { color: string; value: number }[];
+  track: string;
+  size?: number;
+  stroke?: number;
+  /** Bump to replay the clockwise fill (e.g. on tab focus). */
+  animKey?: number;
+}) {
+  const cx = size / 2;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const total = segments.reduce((sum, seg) => sum + seg.value, 0);
+  const gap = segments.length > 1 ? Math.min(10, c * 0.018) : 0;
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = 0;
+    progress.value = withDelay(180, withTiming(1, { duration: 900, easing: REasing.out(REasing.cubic) }));
+  }, [animKey, total, progress]);
+  let offset = 0;
   return (
-    <View style={{ width: s, height: s, borderRadius: s * 0.36, backgroundColor: toneColor(t, tone), alignItems: "center", justifyContent: "center" }}>
-      <Icon name={glyph} s={s * 0.45} c={t.colors.onB} />
-    </View>
+    <Svg width={size} height={size}>
+      <Circle cx={cx} cy={cx} r={r} stroke={track} strokeWidth={stroke} fill="none" />
+      {total > 0
+        ? segments.map((seg, index) => {
+            const raw = (seg.value / total) * c;
+            const len = Math.max(0, raw - gap);
+            const node = (
+              <DonutSlice
+                key={`${seg.color}-${index}`}
+                cx={cx}
+                r={r}
+                stroke={stroke}
+                color={seg.color}
+                start={offset}
+                len={len}
+                c={c}
+                progress={progress}
+              />
+            );
+            offset += raw;
+            return node;
+          })
+        : null}
+    </Svg>
   );
 }
 
@@ -102,17 +195,456 @@ function ErrorCard({ msg, onRetry }: { msg: string; onRetry: () => void }) {
   );
 }
 
+function StudioSheet({
+  open,
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={open} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={onClose}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              backgroundColor: t.colors.bg,
+              borderTopLeftRadius: 32,
+              borderTopRightRadius: 32,
+              paddingHorizontal: 22,
+              paddingTop: 12,
+              paddingBottom: Math.max(insets.bottom, 16) + 8,
+            }}
+          >
+            <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 16 }} />
+            <Serif style={{ fontSize: 24, color: t.colors.ink, textAlign: "center" }}>{title}</Serif>
+            {subtitle ? (
+              <Text style={{ fontSize: 13.5, color: t.colors.ink3, textAlign: "center", marginTop: 6, marginBottom: 14, lineHeight: 19 }}>{subtitle}</Text>
+            ) : (
+              <View style={{ height: 14 }} />
+            )}
+            {children}
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function DraftChip() {
+  const t = useTheme();
+  return (
+    <View
+      style={{
+        borderRadius: 999,
+        borderWidth: 1,
+        borderStyle: "dashed",
+        borderColor: t.colors.ink3,
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+      }}
+    >
+      <Text style={{ fontSize: 11, fontWeight: "600", color: t.colors.ink3 }}>Draft</Text>
+    </View>
+  );
+}
+
+function StoryListRow({
+  story,
+  onPress,
+  onArchive,
+}: {
+  story: Story;
+  onPress: () => void;
+  onArchive: () => void;
+}) {
+  const t = useTheme();
+  const live = isLiveStory(story);
+  return (
+    <SwipeRow
+      onDelete={() =>
+        confirmDelete({
+          title: "Archive this story?",
+          message: "It will leave this topic. Versions and talks stay attached if you restore it later.",
+          deleteLabel: "Archive",
+          onConfirm: onArchive,
+        })
+      }
+    >
+      <Card onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+          <Icon name="sparkle" s={18} c={t.colors.accD} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+              {story.title}
+            </Text>
+            {live ? null : <DraftChip />}
+          </View>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>
+            {story.messageCount} version{story.messageCount === 1 ? "" : "s"}
+          </Text>
+        </View>
+        <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+      </Card>
+    </SwipeRow>
+  );
+}
+
+function NewStorySheet({
+  open,
+  domainId,
+  domainName,
+  domains,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  domainId?: string | null;
+  domainName?: string | null;
+  domains: Domain[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const t = useTheme();
+  const [title, setTitle] = useState("");
+  const [picked, setPicked] = useState<string | null>(domainId ?? null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ideas = storyIdeasFor(domainName ?? domains.find((d) => d.id === picked)?.name);
+  const locked = Boolean(domainId);
+
+  useEffect(() => {
+    if (!open) return;
+    setTitle("");
+    setPicked(domainId ?? null);
+    setError(null);
+  }, [open, domainId]);
+
+  const save = async (nextTitle: string) => {
+    const name = nextTitle.trim();
+    const topic = domainId ?? picked;
+    if (!name || !topic || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createStory(topic, name);
+      onCreated();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t create the story.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <StudioSheet
+      open={open}
+      title="New story"
+      subtitle={locked ? `In ${domainName ?? "this part of your life"}` : "A drawer to keep shaping."}
+      onClose={onClose}
+    >
+      <Card lg style={{ padding: 8 }}>
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="e.g. My design background"
+          placeholderTextColor={t.colors.ink3}
+          autoFocus={open}
+          style={{ fontSize: 17, fontWeight: "600", padding: 12, color: t.colors.ink }}
+        />
+      </Card>
+      <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+        {ideas.map((idea) => (
+          <InputChip
+            key={idea}
+            active={title === idea}
+            onPress={() => {
+              if (!locked && !picked) {
+                setError("Pick a part of your life first.");
+                return;
+              }
+              void save(idea);
+            }}
+          >
+            {idea}
+          </InputChip>
+        ))}
+      </View>
+      {locked ? null : (
+        <>
+          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.accD, marginTop: 16, marginBottom: 8 }}>WHICH PART OF YOUR LIFE?</Text>
+          <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
+            {domains.map((d) => (
+              <InputChip key={d.id} active={picked === d.id} onPress={() => setPicked(d.id)}>
+                {d.name}
+              </InputChip>
+            ))}
+          </View>
+        </>
+      )}
+      {error ? <Text style={{ fontSize: 13, color: "#E5484D", marginTop: 10 }}>{error}</Text> : null}
+      <Pill
+        full
+        icon="plus"
+        onPress={() => void save(title)}
+        style={{ opacity: title.trim() && (domainId || picked) && !saving ? 1 : 0.45, marginTop: 16 }}
+      >
+        {saving ? <ActivityIndicator color="#fff" /> : "Add to studio"}
+      </Pill>
+    </StudioSheet>
+  );
+}
+
+function NewVersionSheet({
+  open,
+  storyId,
+  storyTitle,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  storyId: string;
+  storyTitle?: string;
+  onClose: () => void;
+  onCreated: (id: string, label: string) => void;
+}) {
+  const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const t = useTheme();
+
+  const pick = async (label: string, seconds?: number) => {
+    if (saving) return;
+    setSaving(label);
+    setError(null);
+    try {
+      const id = await createMessage(storyId, label, seconds);
+      if (!id) throw new Error("Couldn’t create the version.");
+      onCreated(id, label);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t create the version.");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <StudioSheet
+      open={open}
+      title="New version"
+      subtitle={storyTitle ? `How you’ll tell “${storyTitle}”` : "Pick a situation. We’ll open the outline."}
+      onClose={onClose}
+    >
+      <View style={{ gap: 8 }}>
+        {VERSION_PRESETS.map((preset) => (
+          <Pressable
+            key={preset.label}
+            onPress={() => void pick(preset.label, preset.seconds)}
+            style={({ pressed }) => ({
+              minHeight: 52,
+              borderRadius: 16,
+              paddingHorizontal: 16,
+              backgroundColor: pressed ? t.colors.soft : t.colors.card,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              opacity: saving && saving !== preset.label ? 0.5 : 1,
+            })}
+          >
+            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }}>{preset.label}</Text>
+            {saving === preset.label ? <ActivityIndicator color={t.colors.acc} /> : <Text style={{ fontSize: 13, color: t.colors.ink3 }}>~{preset.seconds}s</Text>}
+          </Pressable>
+        ))}
+      </View>
+      {error ? <Text style={{ fontSize: 13, color: "#E5484D", marginTop: 10 }}>{error}</Text> : null}
+    </StudioSheet>
+  );
+}
+
 export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
-  const [domains, setDomains] = useState<Domain[] | null>(null);
+  const [collection, setCollection] = useState<StudioDomain[] | null>(null);
+  const [recent, setRecent] = useState<TalkSession | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Native tabs keep this screen mounted, so replay the entrance cascade +
+  // donut fill every time the tab regains focus.
+  const [enterKey, setEnterKey] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setEnterKey((k) => k + 1);
+    }, []),
+  );
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const [groups, sessions] = await Promise.all([fetchStudioCollection(), fetchTalkSessions(1)]);
+      setCollection(groups);
+      setRecent(sessions[0] ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t load your studio.");
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const groups = collection ?? [];
+  const topicCount = groups.length;
+  const storyCount = groups.reduce((n, group) => n + group.stories.length, 0);
+  const donutSegments = groups.map((group, i) => {
+    const tone = group.domain.color ?? TONES[i % TONES.length];
+    return { color: folioRing(tone, i), value: Math.max(group.stories.length, 0) };
+  });
+
+  return (
+    <Screen>
+      <View style={{ paddingHorizontal: 2, paddingTop: 4, paddingBottom: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 44 }}>
+        <Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>My Studio</Serif>
+        <Avatar onPress={() => nav.push("settings")} />
+      </View>
+
+      {collection === null && !error ? (
+        <Loading />
+      ) : error ? (
+        <ErrorCard msg={error} onRetry={load} />
+      ) : (
+        <>
+          <EnterStagger key={`folio-${enterKey}`} i={0}>
+          <Card lg style={{ paddingVertical: 20 }}>
+            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Speaking folio</Text>
+            <View style={{ alignItems: "center", marginTop: 8 }}>
+              <View style={{ width: 176, height: 176, alignItems: "center", justifyContent: "center" }}>
+                <FolioDonut segments={donutSegments.filter((seg) => seg.value > 0)} track={t.colors.soft} animKey={enterKey} />
+                <View style={{ position: "absolute", alignItems: "center" }}>
+                  <Text style={{ fontSize: 20, fontWeight: "800", color: t.colors.ink }}>
+                    {topicCount} Topic{topicCount === 1 ? "" : "s"}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: t.colors.ink2, marginTop: 2 }}>
+                    {storyCount} stor{storyCount === 1 ? "y" : "ies"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </Card>
+          </EnterStagger>
+
+          <EnterStagger key={`insight-${enterKey}`} i={1}>
+          <Pressable onPress={() => nav.push("studio")} style={t.shadowCard}>
+            <LinearGradient
+              colors={["#3D6FE0", "#6C9BF2"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ borderRadius: t.r, paddingVertical: 15, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}>
+                <Icon name="globe" s={21} c="#fff" />
+              </View>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "800", color: "#fff" }}>Speaking insight</Text>
+              <Icon name="chev" s={16} c="rgba(255,255,255,0.9)" />
+            </LinearGradient>
+          </Pressable>
+          </EnterStagger>
+
+          <EnterStagger key={`topics-${enterKey}`} i={2} style={{ gap: t.gap }}>
+          <Pressable
+            onPress={() => nav.push("topicsList")}
+            hitSlop={6}
+            style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 2, paddingTop: 6 }}
+          >
+            <Serif style={{ fontSize: 22, color: t.colors.ink }}>Topics</Serif>
+            <Icon name="chev" s={15} w={2.4} c={t.colors.ink3} />
+          </Pressable>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            // Vertical breathing room inside the clip bounds, so card shadows
+            // (reach ≈ 18pt) aren't cut at the strip's edges.
+            style={{ marginHorizontal: -18, marginVertical: -20 }}
+            contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 20, gap: 10 }}
+          >
+            {groups.map((group, i) => {
+              const tone = group.domain.color ?? TONES[i % TONES.length];
+              const n = group.stories.length;
+              return (
+                <Pressable
+                  key={group.domain.id}
+                  onPress={() => nav.push("domain", { id: group.domain.id, name: group.domain.name })}
+                  style={({ pressed }) => [
+                    {
+                      width: 150,
+                      height: 150,
+                      borderRadius: 22,
+                      padding: 16,
+                      backgroundColor: toneColor(t, tone),
+                      justifyContent: "space-between",
+                      opacity: pressed ? 0.88 : 1,
+                    },
+                    t.shadowCard,
+                  ]}
+                >
+                  <Text style={{ fontSize: 18, fontWeight: "800", color: t.colors.onB }} numberOfLines={3}>
+                    {group.domain.name}
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.onB2 }}>
+                    {n > 0 ? `${n} stor${n === 1 ? "y" : "ies"}` : "Empty drawer"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          </EnterStagger>
+
+          {recent ? (
+            <EnterStagger key={`recent-${enterKey}`} i={3} style={{ gap: t.gap }}>
+              <Pressable
+                onPress={() => nav.push("sessionsList")}
+                hitSlop={6}
+                style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 2, paddingTop: 6 }}
+              >
+                <Serif style={{ fontSize: 22, color: t.colors.ink }}>Recently recorded</Serif>
+                <Icon name="chev" s={15} w={2.4} c={t.colors.ink3} />
+              </Pressable>
+              <SessionRow
+                session={recent}
+                onOpen={() => nav.push("session", { session: recent })}
+                onConfirmDelete={() => {
+                  deleteTalkSession(recent.id)
+                    .then(() => void load())
+                    .catch((e) => Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again."));
+                }}
+              />
+            </EnterStagger>
+          ) : null}
+        </>
+      )}
+    </Screen>
+  );
+}
+
+export function TopicsListScreen({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const [collection, setCollection] = useState<StudioDomain[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setDomains(await fetchDomains());
+      setCollection(await fetchStudioCollection());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t load your Speaking World.");
+      setError(e instanceof Error ? e.message : "Couldn’t load topics.");
     }
   }, []);
   useEffect(() => {
@@ -121,46 +653,40 @@ export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
 
   return (
     <Screen>
-      <Header
-        eyebrow="Topics"
-        title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Your{"\n"}Speaking World</Serif>}
-        sub="It grows every time you talk."
-        right={<Avatar onPress={() => nav.push("settings")} />}
-      />
-
-      {domains === null && !error ? (
+      <BackBar onBack={nav.pop} />
+      <Stagger>
+        <Header title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Topics</Serif>} />
+      </Stagger>
+      {collection === null && !error ? (
         <Loading />
       ) : error ? (
         <ErrorCard msg={error} onRetry={load} />
       ) : (
-        <View style={{ height: 486, marginTop: 2 }}>
-          <Svg viewBox="0 0 357 486" width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
-            <Path d="M128 94 L200 84 M74 152 L74 210 M262 160 L272 200 M112 268 L128 350 M258 320 L184 372 M130 130 L226 208" fill="none" stroke={t.colors.sep} strokeWidth={2} strokeDasharray="1 8" strokeLinecap="round" />
-            <Circle cx={164} cy={89} r={3} fill={t.colors.acc} opacity={0.45} />
-            <Circle cx={196} cy={176} r={3} fill={t.colors.acc} opacity={0.35} />
-            <Circle cx={120} cy={308} r={3} fill={t.colors.acc} opacity={0.35} />
-          </Svg>
-          {(domains ?? []).slice(0, 6).map((d, i) => {
-            const slot = MAP_SLOTS[i % MAP_SLOTS.length];
-            const tone = d.color ?? TONES[i % TONES.length];
-            return (
-              <Card
-                key={d.id}
-                onPress={() => nav.push("domain", { id: d.id, name: d.name })}
-                style={{ position: "absolute", left: slot.x, top: slot.y, width: slot.size, height: slot.size, borderRadius: slot.size / 2, padding: 10, backgroundColor: toneColor(t, tone), alignItems: "center", justifyContent: "center", gap: 3 }}
-              >
-                <Text style={{ fontSize: slot.size > 130 ? 16 : 14.5, fontWeight: "800", color: t.colors.onB, textAlign: "center" }}>{d.name}</Text>
-                <Text style={{ fontSize: 12, fontWeight: "600", color: t.colors.onB2 }}>
-                  {d.storyCount} {d.storyCount === 1 ? "story" : "stories"}
+        <Stagger startIndex={1}>
+        {(collection ?? []).map((group, i) => {
+          const tone = group.domain.color ?? TONES[i % TONES.length];
+          const n = group.stories.length;
+          return (
+            <Card
+              key={group.domain.id}
+              onPress={() => nav.push("domain", { id: group.domain.id, name: group.domain.name })}
+              style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
+            >
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: toneColor(t, tone) }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>{group.domain.name}</Text>
+                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>
+                  {n > 0 ? `${n} stor${n === 1 ? "y" : "ies"}` : "No stories yet"}
                 </Text>
-              </Card>
-            );
-          })}
-          <Pill icon="plus" onPress={() => nav.push("newIsland")} style={{ position: "absolute", right: 6, bottom: 26, width: 54, height: 54, paddingHorizontal: 0 }} />
-        </View>
+              </View>
+              <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+            </Card>
+          );
+        })}
+        </Stagger>
       )}
-
-      <Card onPress={() => nav.push("recs")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <EnterStagger i={1 + (collection?.length ?? 0)}>
+      <Card onPress={() => nav.push("recs")} style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 }}>
         <View style={{ width: 38, height: 38, borderRadius: 16, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
           <Icon name="sparkle" s={18} c={t.colors.accD} />
         </View>
@@ -170,6 +696,7 @@ export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
         </View>
         <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
       </Card>
+      </EnterStagger>
     </Screen>
   );
 }
@@ -252,7 +779,7 @@ function SessionRow({
   );
 }
 
-export function SessionsScreen({ nav }: { nav: Nav }) {
+export function SessionsScreen({ nav, stacked }: { nav: Nav; stacked?: boolean }) {
   const t = useTheme();
   const [sessions, setSessions] = useState<TalkSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -288,12 +815,15 @@ export function SessionsScreen({ nav }: { nav: Nav }) {
 
   return (
     <Screen>
-      <Header
-        eyebrow="Sessions"
-        title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Your sessions</Serif>}
-        sub={total > 0 ? `${total} time${total === 1 ? "" : "s"} you sat down and talked.` : "Every self-talk session lands here — across all topics."}
-        right={<Avatar onPress={() => nav.push("settings")} />}
-      />
+      {stacked ? <BackBar onBack={nav.pop} /> : null}
+      <Stagger>
+        <Header
+          eyebrow={stacked ? undefined : "Sessions"}
+          title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Your sessions</Serif>}
+          sub={total > 0 ? `${total} time${total === 1 ? "" : "s"} you sat down and talked.` : "Every self-talk session lands here."}
+          right={stacked ? undefined : <Avatar onPress={() => nav.push("settings")} />}
+        />
+      </Stagger>
 
       {sessions === null && !error ? (
         <Loading />
@@ -313,14 +843,16 @@ export function SessionsScreen({ nav }: { nav: Nav }) {
           </Pill>
         </Card>
       ) : (
-        (sessions ?? []).map((s) => (
-          <SessionRow
-            key={s.id}
-            session={s}
-            onOpen={() => nav.push("session", { session: s })}
-            onConfirmDelete={() => removeSession(s.id)}
-          />
-        ))
+        <Stagger startIndex={1}>
+          {(sessions ?? []).map((s) => (
+            <SessionRow
+              key={s.id}
+              session={s}
+              onOpen={() => nav.push("session", { session: s })}
+              onConfirmDelete={() => removeSession(s.id)}
+            />
+          ))}
+        </Stagger>
       )}
     </Screen>
   );
@@ -331,9 +863,25 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
   // Hooks run unconditionally (before any early return). The recording, if any,
   // is a local file resolved from the session's audio_key.
   const [deleted, setDeleted] = useState(false);
+  const [memory, setMemory] = useState<{ used: SessionPhraseLink[]; recommended: SessionPhraseLink[] } | null>(null);
   const audioUri = session && !deleted ? talkAudioUri(session.audioKey) : null;
   const player = useAudioPlayer(audioUri);
   const status = useAudioPlayerStatus(player);
+
+  useEffect(() => {
+    if (!session?.id) return;
+    let active = true;
+    fetchSessionPhraseMemory(session.id)
+      .then((result) => {
+        if (active) setMemory(result);
+      })
+      .catch(() => {
+        if (active) setMemory({ used: [], recommended: [] });
+      });
+    return () => {
+      active = false;
+    };
+  }, [session?.id]);
 
   if (!session) {
     return (
@@ -377,6 +925,7 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
   return (
     <Screen>
       <BackBar title={session.storyTitle ?? "Free talk"} onBack={nav.pop} />
+      <Stagger>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 2, paddingTop: 2 }}>
         <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>{fmtDur(session.durationSeconds)}</Text>
         <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: t.colors.ink3 }} />
@@ -418,15 +967,36 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
 
       <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>WHAT YOU SAID</Text>
       <Card>
-        {session.transcript?.trim() ? (
-          <Text style={{ fontSize: 16, lineHeight: 25, color: t.colors.ink }}>{session.transcript}</Text>
-        ) : (
-          <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, fontStyle: "italic" }}>No words were captured this time.</Text>
-        )}
+        <ExpandableCopy text={session.transcript ?? ""} style={{ fontSize: 16, lineHeight: 25 }} />
       </Card>
+      {memory && (memory.used.length || memory.recommended.length) ? (
+        <>
+          {memory.used.length ? (
+            <>
+              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>PHRASES YOU USED</Text>
+              {memory.used.map((item) => (
+                <Card key={`used-${item.id ?? item.text}`}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{item.text}</Text>
+                </Card>
+              ))}
+            </>
+          ) : null}
+          {memory.recommended.length ? (
+            <>
+              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 2 }}>RECOMMENDED FOR THIS SESSION</Text>
+              {memory.recommended.map((item) => (
+                <Card key={`rec-${item.id ?? item.text}`}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{item.text}</Text>
+                </Card>
+              ))}
+            </>
+          ) : null}
+        </>
+      ) : null}
       <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: session.storyTitle ?? "Free talk", storyId: session.storyId, from: "topics" })} style={{ marginTop: 4 }}>
         Talk again
       </Pill>
+      </Stagger>
     </Screen>
   );
 }
@@ -435,6 +1005,7 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
   const t = useTheme();
   const [stories, setStories] = useState<Story[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -448,71 +1019,78 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
     load();
   }, [load]);
 
-  // Swipe-delete archives the story (soft): it leaves the list but its messages,
-  // beats, and sessions survive. Optimistic, with rollback on failure.
-  const removeStory = useCallback(async (storyId: string) => {
-    let prev: Story[] | null = null;
-    setStories((xs) => {
-      prev = xs;
-      return (xs ?? []).filter((s) => s.id !== storyId);
-    });
-    try {
-      await archiveStory(storyId);
-    } catch (e) {
-      setStories(prev);
-      Alert.alert("Couldn’t remove", e instanceof Error ? e.message : "Try again.");
-    }
-  }, []);
+  const removeStory = useCallback(
+    async (storyId: string) => {
+      let prev: Story[] | null = null;
+      setStories((xs) => {
+        prev = xs;
+        return (xs ?? []).filter((s) => s.id !== storyId);
+      });
+      try {
+        await archiveStory(storyId);
+      } catch (e) {
+        setStories(prev);
+        Alert.alert("Couldn’t archive", e instanceof Error ? e.message : "Try again.");
+      }
+    },
+    [],
+  );
 
   return (
     <Screen>
       <BackBar onBack={nav.pop} />
+      <Stagger>
       <View style={{ paddingHorizontal: 2, paddingTop: 4 }}>
-        <Serif style={{ fontSize: 32, lineHeight: 35, color: t.colors.ink }}>{name ?? "Domain"}</Serif>
-        <Text style={{ fontSize: 14.5, color: t.colors.ink2, marginTop: 8, lineHeight: 21 }}>The stories you want to be able to tell in this part of your life.</Text>
+        <Serif style={{ fontSize: 32, lineHeight: 35, color: t.colors.ink }}>{name ?? "This part of life"}</Serif>
+        <Text style={{ fontSize: 14.5, color: t.colors.ink2, marginTop: 8, lineHeight: 21 }}>
+          The stories you want to be able to tell in this part of your life.
+        </Text>
       </View>
-      <Sect title="Stories" action="+ New story" onAction={() => nav.push("newIsland", { domainId: id, domainName: name })} />
+      <Sect title="Stories" action="+ New story" onAction={() => setSheetOpen(true)} />
+      </Stagger>
       {stories === null && !error ? (
         <Loading />
       ) : error ? (
         <ErrorCard msg={error} onRetry={load} />
       ) : !stories || stories.length === 0 ? (
-        <Card style={{ alignItems: "center", paddingVertical: 28 }}>
-          <Serif style={{ fontSize: 20, color: t.colors.ink }}>No stories yet</Serif>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>Add a story you want to be able to tell here.</Text>
-        </Card>
+        <Pressable
+          onPress={() => setSheetOpen(true)}
+          style={{
+            marginTop: 8,
+            minHeight: 100,
+            borderRadius: 22,
+            borderWidth: 1.5,
+            borderStyle: "dashed",
+            borderColor: t.colors.ink3,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 18,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.ink3, textAlign: "center" }}>
+            An empty drawer. Tap to start a story.
+          </Text>
+        </Pressable>
       ) : (
-        stories.map((s, i) => {
-          const chip = statusChip(t, s.status);
-          return (
-            <SwipeRow
+        <Stagger startIndex={2}>
+          {stories.map((s) => (
+            <StoryListRow
               key={s.id}
-              onDelete={() =>
-                confirmDelete({
-                  title: "Remove this story?",
-                  message: "It leaves this list. Its messages and any sessions are kept.",
-                  deleteLabel: "Remove",
-                  onConfirm: () => removeStory(s.id),
-                })
-              }
-            >
-              <Card onPress={() => nav.push("story", { id: s.id, title: s.title, domainId: id, domainName: name })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <Tile tone={TONES[i % TONES.length]} glyph="sparkle" />
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }}>{s.title}</Text>
-                    <Chip {...chip} />
-                  </View>
-                  <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>
-                    {s.messageCount} {s.messageCount === 1 ? "message" : "messages"}
-                  </Text>
-                </View>
-                <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-              </Card>
-            </SwipeRow>
-          );
-        })
+              story={s}
+              onPress={() => nav.push("story", { id: s.id, title: s.title, domainId: id, domainName: name })}
+              onArchive={() => void removeStory(s.id)}
+            />
+          ))}
+        </Stagger>
       )}
+      <NewStorySheet
+        open={sheetOpen}
+        domainId={id}
+        domainName={name}
+        domains={[]}
+        onClose={() => setSheetOpen(false)}
+        onCreated={() => void load()}
+      />
     </Screen>
   );
 }
@@ -570,19 +1148,7 @@ function StoryDescription({
   }
 
   return (
-    <View
-      style={{
-        backgroundColor: t.colors.soft,
-        borderRadius: t.r,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: t.dark ? "rgba(255,255,255,0.06)" : "rgba(60,60,67,0.08)",
-        shadowColor: t.colors.ink,
-        shadowOpacity: 0.04,
-        shadowRadius: 18,
-        shadowOffset: { width: 0, height: 2 },
-      }}
-    >
+    <View style={{ backgroundColor: t.colors.soft, borderRadius: t.r, overflow: "hidden" }}>
       <TextInput
         value={text}
         onChangeText={setText}
@@ -731,21 +1297,31 @@ export function StoryScreen({
   const [domains, setDomains] = useState<Domain[] | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [savingMove, setSavingMove] = useState(false);
+  const [versionSheet, setVersionSheet] = useState(false);
+  const [phrases, setPhrases] = useState<{ id: string; text: string; translation: string | null }[] | null>(null);
+  const phraseSpeech = usePhraseSpeech();
 
   const load = useCallback(async () => {
     setError(null);
     try {
       setMessages(await fetchMessages(id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t load messages.");
+      setError(e instanceof Error ? e.message : "Couldn’t load versions.");
     }
   }, [id]);
-  // Sessions load on their own — a failure here shouldn't hide the messages.
+  // Sessions load on their own — a failure here shouldn't hide the versions.
   const loadSessions = useCallback(async () => {
     try {
       setSessions(await fetchTalkSessions(100, id));
     } catch {
       setSessions([]);
+    }
+  }, [id]);
+  const loadPhrases = useCallback(async () => {
+    try {
+      setPhrases(await fetchStoryPhrases(id));
+    } catch {
+      setPhrases([]);
     }
   }, [id]);
   const loadStory = useCallback(async () => {
@@ -781,7 +1357,8 @@ export function StoryScreen({
     load();
     loadSessions();
     loadStory();
-  }, [load, loadSessions, loadStory]);
+    loadPhrases();
+  }, [load, loadSessions, loadStory, loadPhrases]);
 
   // Optimistically drop the row, then delete; restore it if the delete fails.
   const removeSession = useCallback(async (sid: string) => {
@@ -857,6 +1434,7 @@ export function StoryScreen({
           </Pressable>
         }
       />
+      <Stagger>
       <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
         <Serif style={{ fontSize: 30, lineHeight: 33, color: t.colors.ink }}>{storyTitle}</Serif>
       </View>
@@ -866,19 +1444,31 @@ export function StoryScreen({
         <View style={{ minHeight: 28 }} />
       )}
 
-      <Sect title="Messages" action="+ New message" onAction={() => nav.push("newMessage", { storyId: id, storyTitle })} />
+      <Sect title="Versions" action="+ New version" onAction={() => setVersionSheet(true)} />
       {messages === null && !error ? (
         <Loading />
       ) : error ? (
         <ErrorCard msg={error} onRetry={load} />
       ) : !messages || messages.length === 0 ? (
-        <Card style={{ alignItems: "center", paddingVertical: 26 }}>
-          <Serif style={{ fontSize: 20, color: t.colors.ink }}>No messages yet</Serif>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>A message is one way to tell this story — a 30-second version, a version for a friend…</Text>
-          <Pill icon="plus" onPress={() => nav.push("newMessage", { storyId: id, storyTitle })} style={{ marginTop: 16, alignSelf: "center" }}>
-            New message
-          </Pill>
-        </Card>
+        <Pressable
+          onPress={() => setVersionSheet(true)}
+          style={{
+            marginTop: 8,
+            minHeight: 108,
+            borderRadius: 22,
+            borderWidth: 1.5,
+            borderStyle: "dashed",
+            borderColor: t.colors.ink3,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 18,
+          }}
+        >
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink3, textAlign: "center" }}>Start a version</Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
+            A 30-second take, an interview take, a version for a friend.
+          </Text>
+        </Pressable>
       ) : (
         messages.map((m) => (
           <Card key={m.id} onPress={() => nav.push("message", { id: m.id, label: m.label, storyId: id, storyTitle })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -894,15 +1484,52 @@ export function StoryScreen({
         ))
       )}
 
-      <Sect title="Sessions" />
+      <Sect title="Useful phrases" style={{ marginTop: 6 }} />
+      {phrases === null ? (
+        <Loading />
+      ) : phrases.length === 0 ? (
+        <View style={{ minHeight: 84, borderRadius: 22, borderWidth: 1.5, borderStyle: "dashed", borderColor: t.colors.ink3, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
+          <Text style={{ fontSize: 13.5, color: t.colors.ink3, lineHeight: 20, textAlign: "center" }}>
+            Phrases you catch while talking this story will land here.
+          </Text>
+        </View>
+      ) : (
+        phrases.map((p) => (
+          <Card key={p.id} style={{ paddingVertical: 12, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{p.text}</Text>
+              {p.translation ? <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>{p.translation}</Text> : null}
+            </View>
+            <RowIconButton
+              label={phraseSpeech.speakingId === p.id ? "Stop voice" : "Play AI voice"}
+              icon={phraseSpeech.speakingId === p.id ? "pause" : "speaker"}
+              active={phraseSpeech.speakingId === p.id}
+              loading={phraseSpeech.loadingId === p.id}
+              onPress={() => phraseSpeech.toggle(p.id, p.text)}
+            />
+            <RowIconButton
+              label="Practice this phrase"
+              icon="mic"
+              // Quick Rehearsal only reads id/text/translation, so the story's
+              // slim phrase row is enough.
+              onPress={() => {
+                phraseSpeech.stop();
+                nav.push("rehearsal", { item: p as PhraseItem });
+              }}
+            />
+          </Card>
+        ))
+      )}
+
+      <Sect title="Sessions" style={{ marginTop: 6 }} />
       {sessions === null ? (
         <Loading />
       ) : sessions.length === 0 ? (
-        <Card style={{ alignItems: "center", paddingVertical: 22 }}>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, textAlign: "center", lineHeight: 19, paddingHorizontal: 8 }}>
-            No sessions yet. Tap “Talk about this story” below and just speak — every time you do, it lands here.
+        <View style={{ minHeight: 84, borderRadius: 22, borderWidth: 1.5, borderStyle: "dashed", borderColor: t.colors.ink3, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
+          <Text style={{ fontSize: 13.5, color: t.colors.ink3, lineHeight: 20, textAlign: "center" }}>
+            No sessions yet. Open a version and talk.
           </Text>
-        </Card>
+        </View>
       ) : (
         sessions.map((s) => (
           <SessionRow
@@ -915,11 +1542,22 @@ export function StoryScreen({
         ))
       )}
 
-      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: storyTitle, from: "topics", storyId: id })} style={{ marginTop: 6 }}>
-        Talk about this story
+      <Pill full icon="mic" onPress={() => nav.startTalk({ ctx: storyTitle, from: "topics", storyId: id })} style={{ marginTop: 10 }}>
+        Talk this story
       </Pill>
-      <Text style={{ textAlign: "center", fontSize: 13, color: t.colors.ink3, marginTop: -4 }}>Start a self-talk session</Text>
+      <Text style={{ textAlign: "center", fontSize: 13, color: t.colors.ink3, marginTop: -4 }}>Rambling is welcome.</Text>
+      </Stagger>
     </Screen>
+    <NewVersionSheet
+      open={versionSheet}
+      storyId={id}
+      storyTitle={storyTitle}
+      onClose={() => setVersionSheet(false)}
+      onCreated={(vid, vlabel) => {
+        void load();
+        nav.push("message", { id: vid, label: vlabel, storyId: id, storyTitle });
+      }}
+    />
     <Modal visible={moveOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => { if (!savingMove) setMoveOpen(false); }}>
       <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={() => { if (!savingMove) setMoveOpen(false); }}>
         <Pressable
@@ -1059,10 +1697,10 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
 
   return (
     <Screen scrollEnabled={!scrollLocked}>
-      <BackBar title={label ?? "Message"} onBack={nav.pop} />
+      <BackBar title={label ?? "Version"} onBack={nav.pop} />
       <View style={{ paddingHorizontal: 2, paddingTop: 4 }}>
-        <Serif style={{ fontSize: 22, color: t.colors.ink }}>Your message</Serif>
-        <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>The key points you want to communicate — your outline. Tap to edit.</Text>
+        <Serif style={{ fontSize: 22, color: t.colors.ink }}>Your outline</Serif>
+        <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>The points you want to hit. Tap to edit, then talk it.</Text>
       </View>
 
       {beats === null && !error ? (
@@ -1072,7 +1710,7 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
       ) : list.length === 0 ? (
         <Card style={{ alignItems: "center", paddingVertical: 24 }}>
           <Serif style={{ fontSize: 20, color: t.colors.ink }}>No outline yet</Serif>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>Add the key points below — one per idea.</Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>Add the key points below.</Text>
         </Card>
       ) : (
         <Card style={{ paddingVertical: 2, overflow: "visible" }}>
@@ -1132,7 +1770,7 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
         })}
         style={{ marginTop: 4 }}
       >
-        Talk with this message
+        Talk this version
       </Pill>
     </Screen>
   );
@@ -1140,52 +1778,53 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
 
 export function MessageCreate({ storyId, storyTitle, nav }: { storyId?: string; storyTitle?: string; nav: Nav }) {
   const t = useTheme();
-  const [label, setLabel] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const ideas = ["The 30-second version", "For a friend", "In an interview", "The short version"];
 
-  const canSave = !!label.trim() && !!storyId && !saving;
-  const save = async () => {
-    if (!canSave || !storyId) return;
-    setSaving(true);
+  const pick = async (label: string, seconds?: number) => {
+    if (!storyId || saving) return;
+    setSaving(label);
     setError(null);
     try {
-      await createMessage(storyId, label);
+      const id = await createMessage(storyId, label, seconds);
+      if (!id) throw new Error("Couldn’t create the version.");
       nav.pop();
+      nav.push("message", { id, label, storyId, storyTitle });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t create the message.");
-      setSaving(false);
+      setError(e instanceof Error ? e.message : "Couldn’t create the version.");
+      setSaving(null);
     }
   };
 
   return (
     <Screen>
-      <BackBar title="New message" onBack={nav.pop} />
+      <BackBar title="New version" onBack={nav.pop} />
       <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
-        <Serif style={{ fontSize: 28, lineHeight: 32, color: t.colors.ink }}>One way to tell{"\n"}this story</Serif>
+        <Serif style={{ fontSize: 28, lineHeight: 32, color: t.colors.ink }}>How you’ll tell{"\n"}this story</Serif>
         {storyTitle ? <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 8 }}>in “{storyTitle}”</Text> : null}
       </View>
-      <Card lg style={{ padding: 8 }}>
-        <TextInput
-          value={label}
-          onChangeText={setLabel}
-          placeholder="e.g. The 30-second version"
-          placeholderTextColor={t.colors.ink3}
-          style={{ fontSize: 17, fontWeight: "600", padding: 12, color: t.colors.ink }}
-        />
-      </Card>
-      <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
-        {ideas.map((x) => (
-          <InputChip key={x} active={label === x} onPress={() => setLabel(x)}>
-            {x}
-          </InputChip>
+      <View style={{ gap: 8, marginTop: 8 }}>
+        {VERSION_PRESETS.map((preset) => (
+          <Pressable
+            key={preset.label}
+            onPress={() => void pick(preset.label, preset.seconds)}
+            style={({ pressed }) => ({
+              minHeight: 52,
+              borderRadius: 16,
+              paddingHorizontal: 16,
+              backgroundColor: pressed ? t.colors.soft : t.colors.card,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              opacity: saving && saving !== preset.label ? 0.5 : 1,
+            })}
+          >
+            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }}>{preset.label}</Text>
+            {saving === preset.label ? <ActivityIndicator color={t.colors.acc} /> : <Text style={{ fontSize: 13, color: t.colors.ink3 }}>~{preset.seconds}s</Text>}
+          </Pressable>
         ))}
       </View>
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingHorizontal: 4 }}>{error}</Text> : null}
-      <Pill full icon="plus" onPress={save} style={{ opacity: canSave ? 1 : 0.45, marginTop: 4 }}>
-        {saving ? <ActivityIndicator color="#fff" /> : "Create message"}
-      </Pill>
+      {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingHorizontal: 4, marginTop: 10 }}>{error}</Text> : null}
     </Screen>
   );
 }
@@ -1195,6 +1834,7 @@ export function RecsScreen({ nav }: { nav: Nav }) {
   return (
     <Screen>
       <BackBar onBack={nav.pop} />
+      <Stagger>
       <View style={{ paddingHorizontal: 2, paddingTop: 2 }}>
         <Serif style={{ fontSize: 30, letterSpacing: -0.3, color: t.colors.ink }}>Recommendations</Serif>
         <Text style={{ fontSize: 14.5, color: t.colors.ink2, marginTop: 7 }}>Ideas to grow your speaking world</Text>
@@ -1208,6 +1848,7 @@ export function RecsScreen({ nav }: { nav: Nav }) {
           Once you’ve talked through a few stories, AI will spot the empty areas of your world and suggest stories worth adding.
         </Text>
       </Card>
+      </Stagger>
     </Screen>
   );
 }

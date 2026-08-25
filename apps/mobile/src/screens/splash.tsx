@@ -40,7 +40,7 @@ const ph = (p: number, a: number, b: number, ease?: (t: number) => number) => {
   return ease ? ease(t) : t;
 };
 
-export function SplashIntro({ onDone }: { onDone: () => void }) {
+export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = Dimensions.get("window");
   const k = W / 1080; // the design canvas is 1080 wide
@@ -102,7 +102,8 @@ export function SplashIntro({ onDone }: { onDone: () => void }) {
   const subSize = 46 * k;
   const btnH = 172 * k;
   const btnW = W - 48;
-  const btnBottom = insets.bottom + 20;
+  const loginH = onLogIn ? 34 + 34 * k : 0;
+  const btnBottom = insets.bottom + 20 + loginH;
   const headBottom = btnBottom + btnH + 44 * k;
   const loopW = 900 * k;
   const loopH = 760 * k;
@@ -234,6 +235,29 @@ export function SplashIntro({ onDone }: { onDone: () => void }) {
           />
         </View>
       </Pressable>
+
+      {onLogIn ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onLogIn}
+          disabled={btnP <= 0}
+          hitSlop={10}
+          style={{
+            position: "absolute",
+            left: 24,
+            right: 24,
+            bottom: insets.bottom + 18,
+            minHeight: 34,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: clamp(btnP * 1.8, 0, 1),
+          }}
+        >
+          <Text style={{ fontFamily: "Inter-Medium", fontSize: 40 * k, color: C.sub }}>
+            Already have an account? <Text style={{ fontFamily: "Inter-SemiBold", color: C.pale, textDecorationLine: "underline" }}>Log in</Text>
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

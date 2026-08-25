@@ -6,6 +6,8 @@ import type { TabId } from "@/design/ui";
 export type ViewName =
   | "phrase"
   | "review"
+  | "practiceHub"
+  | "rehearsal"
   | "island"
   | "newIsland"
   | "domain"
@@ -19,7 +21,16 @@ export type ViewName =
   | "capture"
   | "settings"
   | "editProfile"
-  | "reminders";
+  | "firstLanguage"
+  | "englishLevel"
+  | "themePref"
+  | "feedbackFocus"
+  | "phrasesPerDay"
+  | "reminders"
+  | "privacy"
+  | "studio"
+  | "topicsList"
+  | "sessionsList";
 
 export interface TalkCtx {
   ctx?: string;
