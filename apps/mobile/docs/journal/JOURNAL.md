@@ -550,4 +550,14 @@
 - **수정**: 두 함수 배포 → 무인증 프로브 404→401 확인. 08-25 기기 E2E 통과(삭제·사인아웃 정상). 08-21 커밋 이후 전체 작업 트리와 함께 커밋 완료(08-25).
 - **산출물**: [postmortems/2026-08-24-delete-account-404.md](postmortems/2026-08-24-delete-account-404.md)
 
+### 2026-08-25 · 백필 · 비밀번호 재설정 플로우 (auth.tsx + reset-password)
+- **무엇**: 이메일 비밀번호 재설정 — `resetPassword()`가 재설정 링크 발송(딥링크 콜백), `auth/callback?type=recovery` URL을 `Linking.getInitialURL`(콜드 스타트) + `url` 이벤트(웜 포그라운드) 양쪽에서 처리해 세션 생성 후 `passwordRecovery` 모드 진입, `updatePassword()`/`cancelPasswordRecovery()`로 마무리. 부수: `maybeCompleteAuthSession()`에 SSR 가드(web+window undefined 스킵 — 08-24 SSR 포스트모템과 같은 뿌리).
+- **원리**: OAuth는 `openAuthSessionAsync`가 콜백 URL을 스스로 소비하지만 **이메일 링크는 리스너로 들어오므로** 두 경로를 분리해야 함. 만료/재사용 링크는 조용히 무시(로그인 화면 유지).
+- **검증**: `tsc --noEmit` 통과, 0b7c936으로 커밋. 기기 링크 E2E는 별도 기록 없음 — 제출 전 데모 계정과 함께 한 번 확인 권장.
+
+### 2026-08-25 · 수정 · 제출 전 감사 후속 3건 (마이크 거부 복구 · 권한 문구 · 샘플 문구)
+- **무엇**: ①Talk 마이크/음성인식 권한 거부 시 — 라이브 상태 필을 "Mic is off · nothing is being recorded · tap to fix" 행동형 필로 교체, Finish는 가짜 "session complete"(빈 전사 세션 저장) 대신 복구 Alert(Not now / Try again / Open Settings)로 차단. ②app.json 카메라·사진 권한 문구에 프로필 사진 업로드(avatars 버킷, 026) 반영 — 기존 "learning photos are not stored"가 아바타 업로드와 모순. ③SAMPLE_PHRASE의 한국어 뜻 제거(N:1 위반) — 렌더 전부 null 가드라 `translation: null`로; 도달 불가능한 타입 채움 폴백이라 L1 맵 대신 정직한 null.
+- **원리**: 권한 거부는 조용한 실패가 아니라 **상태**다 — iOS는 거부 후 재프롬프트하지 않으므로 복구 경로(Settings 링크 + 재시도)를 UI가 제공해야 한다. 권한 문구는 실제 데이터 흐름과 문장 단위로 일치해야 심사를 통과한다.
+- **검증**: `tsc --noEmit` 통과. 마이크 거부 경로는 실기기 확인 필요(iOS 설정에서 Saylo 마이크 차단 → Talk 진입) — 시뮬레이터는 권한이 항상 허용이라 재현 불가. 감사 문서의 HIGH 3번·4번, MEDIUM(샘플 문구) 종결.
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
