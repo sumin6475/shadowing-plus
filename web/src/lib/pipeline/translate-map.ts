@@ -3,8 +3,10 @@ export const TRANSLATION_FAILED = "[translation failed]";
 
 /**
  * Align model output to a batch of N source lines. Prefers the returned `n`
- * (1-based) so a dropped/reordered entry doesn't shift every later line;
- * falls back to array position when `n` is omitted.
+ * (1-based) so a dropped/reordered entry doesn't shift every later line.
+ * Positional zip is allowed only when every item omits `n` AND the array
+ * length matches the batch — a short unnumbered list would otherwise slide
+ * later Korean onto the wrong English lines.
  */
 export function mapBatchTranslations(
   items: Array<{ n?: number; translation?: string }>,
@@ -16,13 +18,18 @@ export function mapBatchTranslations(
     const t = typeof it?.translation === "string" ? it.translation : "";
     if (n !== undefined && t.trim() && !byNum.has(n)) byNum.set(n, t);
   }
-  const keyed = byNum.size > 0;
-  return Array.from({ length: batchLength }, (_, k) => {
-    if (keyed) return byNum.get(k + 1) ?? TRANSLATION_FAILED;
-    const positional = items[k]?.translation;
-    return typeof positional === "string" && positional.trim()
-      ? positional
-      : TRANSLATION_FAILED;
+  if (byNum.size > 0) {
+    return Array.from(
+      { length: batchLength },
+      (_, k) => byNum.get(k + 1) ?? TRANSLATION_FAILED,
+    );
+  }
+  if (items.length !== batchLength) {
+    return Array.from({ length: batchLength }, () => TRANSLATION_FAILED);
+  }
+  return items.map((it) => {
+    const t = typeof it?.translation === "string" ? it.translation : "";
+    return t.trim() ? t : TRANSLATION_FAILED;
   });
 }
 

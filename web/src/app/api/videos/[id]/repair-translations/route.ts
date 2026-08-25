@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { repairVideoTranslations } from "@/lib/pipeline/repair-translations";
+import { repairVideoTranslations, type RepairMode } from "@/lib/pipeline/repair-translations";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(
   req: Request,
@@ -17,8 +17,11 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const body = (await req.json().catch(() => null)) as { mode?: unknown } | null;
+  const mode: RepairMode = body?.mode === "all" ? "all" : "missing";
+
   try {
-    const updates = await repairVideoTranslations(supabaseAdmin(), userId, id);
+    const updates = await repairVideoTranslations(supabaseAdmin(), userId, id, mode);
     return NextResponse.json({ updates });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Repair failed.";

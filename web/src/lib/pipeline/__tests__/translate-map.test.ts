@@ -20,9 +20,18 @@ describe("mapBatchTranslations", () => {
     ]);
   });
 
-  it("falls back to position when n is omitted", () => {
+  it("falls back to position when n is omitted and counts match", () => {
     const items = [{ translation: "가" }, { translation: "나" }];
     expect(mapBatchTranslations(items, 2)).toEqual(["가", "나"]);
+  });
+
+  it("does not zip a short unnumbered list onto later lines", () => {
+    const items = Array.from({ length: 19 }, (_, i) => ({
+      translation: `줄 ${i + 1}`,
+    }));
+    const out = mapBatchTranslations(items, 20);
+    expect(out).toHaveLength(20);
+    expect(out.every((t) => t === TRANSLATION_FAILED)).toBe(true);
   });
 
   it("treats empty strings as missing", () => {

@@ -66,6 +66,8 @@ interface Props {
   targetLang: string;
   englishOnly: boolean;
   onEnglishOnlyChange: (next: boolean) => void;
+  onRetranslate?: () => void;
+  retranslating?: boolean;
 }
 
 function formatTime(s: number): string {
@@ -126,6 +128,8 @@ export default function MobileClip({
   targetLang,
   englishOnly,
   onEnglishOnlyChange,
+  onRetranslate,
+  retranslating,
 }: Props) {
   const router = useRouter();
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -325,6 +329,8 @@ export default function MobileClip({
                 englishOnly={englishOnly}
                 onEnglishOnlyChange={onEnglishOnlyChange}
                 variant="mobile"
+                onRetranslate={onRetranslate}
+                retranslating={retranslating}
               />
             </div>
           </div>

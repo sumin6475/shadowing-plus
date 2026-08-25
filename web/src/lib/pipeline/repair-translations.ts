@@ -10,15 +10,19 @@ const REPAIR_BATCH = 10;
 const REPAIR_CHAR_BUDGET = 2800;
 
 export type TranslationUpdate = { id: string; translation: string };
+export type RepairMode = "missing" | "all";
 
 /**
- * Re-translate segments on an already-persisted clip that came out empty,
- * failed, or far too short. Ownership is `video.user_id === userId`.
+ * Re-translate segments on an already-persisted clip.
+ * `missing` (default) only fills empty / failed / far-too-short lines.
+ * `all` overwrites every line so a shifted batch can be realigned.
+ * Ownership is `video.user_id === userId`.
  */
 export async function repairVideoTranslations(
   db: SupabaseClient,
   userId: string,
   videoId: string,
+  mode: RepairMode = "missing",
 ): Promise<TranslationUpdate[]> {
   const { data: video, error: videoError } = await db
     .from("videos")
@@ -35,21 +39,22 @@ export async function repairVideoTranslations(
     .order("index");
   if (segError) throw segError;
   const segments = rows ?? [];
-  const missing = segments.filter((s) =>
-    translationNeedsRetry(s.text, s.translation),
-  );
-  if (missing.length === 0) return [];
+  const target =
+    mode === "all"
+      ? segments
+      : segments.filter((s) => translationNeedsRetry(s.text, s.translation));
+  if (target.length === 0) return [];
 
   const pair = languagePairForJob(video);
   const packs = packTranslateBatches(
-    missing.map((s) => s.text.length),
+    target.map((s) => s.text.length),
     REPAIR_BATCH,
     REPAIR_CHAR_BUDGET,
   );
   const updates: TranslationUpdate[] = [];
 
   for (const { start, count } of packs) {
-    const batch = missing.slice(start, start + count);
+    const batch = target.slice(start, start + count);
     const firstIdx = segments.findIndex((s) => s.id === batch[0].id);
     const lastIdx = segments.findIndex((s) => s.id === batch[batch.length - 1].id);
     const translations = await translateLines(

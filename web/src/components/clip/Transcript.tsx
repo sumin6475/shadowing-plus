@@ -26,6 +26,8 @@ interface Props {
   targetLang: string;
   englishOnly: boolean;
   onEnglishOnlyChange: (next: boolean) => void;
+  onRetranslate?: () => void;
+  retranslating?: boolean;
 }
 
 export default function Transcript({
@@ -39,6 +41,8 @@ export default function Transcript({
   targetLang,
   englishOnly,
   onEnglishOnlyChange,
+  onRetranslate,
+  retranslating,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const lineTap = useLineTap(onSelect);
@@ -113,6 +117,8 @@ export default function Transcript({
             segments={segments}
             englishOnly={englishOnly}
             onEnglishOnlyChange={onEnglishOnlyChange}
+            onRetranslate={onRetranslate}
+            retranslating={retranslating}
           />
         </div>
       </div>

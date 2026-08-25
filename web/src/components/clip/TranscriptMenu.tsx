@@ -16,6 +16,8 @@ interface Props {
   englishOnly: boolean;
   onEnglishOnlyChange: (next: boolean) => void;
   variant?: "desktop" | "mobile";
+  onRetranslate?: () => void;
+  retranslating?: boolean;
 }
 
 export default function TranscriptMenu({
@@ -25,6 +27,8 @@ export default function TranscriptMenu({
   englishOnly,
   onEnglishOnlyChange,
   variant = "desktop",
+  onRetranslate,
+  retranslating = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -110,6 +114,19 @@ export default function TranscriptMenu({
           <button type="button" role="menuitem" onClick={printPdf}>
             PDF
           </button>
+          {onRetranslate ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={retranslating}
+              onClick={() => {
+                setOpen(false);
+                onRetranslate();
+              }}
+            >
+              {retranslating ? "Retranslating…" : "Retranslate"}
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitemcheckbox"

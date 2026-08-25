@@ -11,11 +11,33 @@ import { recordUsage } from "@/lib/usage";
 // dedup, context fetch, insert, and AI explanation live here.
 
 const MODEL = "gpt-4o-mini";
-const MEANING_MAX = 80;
+const SHORT_MEANING_MAX = 80;
+const LONG_MEANING_MAX = 240;
+/** Word/short-idiom cutoff. Longer selections get a full rendering, not a slogan. */
+const SHORT_SELECTION_WORDS = 6;
 
-/** Prompt for the lookup popover / Phrase Bank explainer. meaning is a short
- *  L1 gloss of this sense; usage_note is the English-in-context nuance. */
+export function englishWordCount(text: string): number {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (!trimmed) return 0;
+  return trimmed.split(" ").length;
+}
+
+export function isShortSelection(phrase: string): boolean {
+  return englishWordCount(phrase) <= SHORT_SELECTION_WORDS;
+}
+
+export function meaningCapFor(phrase: string): number {
+  return isShortSelection(phrase) ? SHORT_MEANING_MAX : LONG_MEANING_MAX;
+}
+
+/** Prompt for the lookup popover / Phrase Bank explainer.
+ *  Short selections get a dictionary gloss; longer spans get a complete rendering. */
 export function buildExplainPrompt(phrase: string, lang: string, transcript: string): string {
+  const short = isShortSelection(phrase);
+  const meaningRule = short
+    ? `- meaning: the exact ${lang} equivalent of the selected expression in this sense. A word or short dictionary gloss (typically 1–6 words). Never a sentence. Never restate, excerpt, or paraphrase the surrounding subtitle or its ${lang} translation — if that translation is a long clause, extract only the bit that matches the selection (e.g. English "avenue" → the ${lang} word for path/way, not the whole clause).`
+    : `- meaning: a complete ${lang} rendering of the selected span in this context. Cover the whole selection. Do not compress it to a slogan or a 2–3 word gist.`;
+
   return `Explain one English expression for a learner whose first language is ${lang}. The learner selected: "${phrase}"
 
 It appears in this local video transcript:
@@ -25,7 +47,7 @@ Return JSON only:
 {"kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"${lang} gloss of THIS sense","usage_note":"English nuance"}
 
 Rules:
-- meaning: the exact ${lang} equivalent of the selected expression in this sense. A word or short dictionary gloss (typically 1–6 words). Never a sentence. Never restate, excerpt, or paraphrase the surrounding subtitle or its ${lang} translation — if that translation is a long clause, extract only the bit that matches the selection (e.g. English "avenue" → the ${lang} word for path/way, not the whole clause).
+${meaningRule}
 - usage_note: brief English explanation of the nuance or grammar in this context (max 24 words). This part MUST stay in English.
 - Do not give a generic dictionary entry that ignores the supplied context. Pick the one sense that fits.`;
 }
@@ -106,7 +128,7 @@ async function explainPhrase(input: {
   return {
     kind: (PHRASE_KINDS as readonly string[]).includes(kind) ? kind : "phrase",
     // `meaning` is the current JSON key; `meaning_ko` tolerates an older reply.
-    meaning: asPhraseText(parsed.meaning ?? parsed.meaning_ko, MEANING_MAX),
+    meaning: asPhraseText(parsed.meaning ?? parsed.meaning_ko, meaningCapFor(input.phrase)),
     note: asPhraseText(parsed.usage_note, 500),
   };
 }

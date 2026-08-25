@@ -107,6 +107,7 @@ export default function PlayerPage({
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED_IDX);
+  const [retranslating, setRetranslating] = useState(false);
 
   const playerRef = useRef<AudioPlayerHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -291,6 +292,39 @@ export default function PlayerPage({
       cancelled = true;
     };
   }, [videoId, loading, segments.length]);
+
+  const applyTranslationUpdates = useCallback(
+    (updates: { id: string; translation: string }[]) => {
+      if (updates.length === 0) return;
+      const byId = new Map(updates.map((u) => [u.id, u.translation]));
+      setSegments((prev) =>
+        prev.map((s) =>
+          byId.has(s.id) ? { ...s, translation: byId.get(s.id)! } : s,
+        ),
+      );
+    },
+    [],
+  );
+
+  const retranslateAll = useCallback(async () => {
+    if (retranslating) return;
+    setRetranslating(true);
+    try {
+      const res = await fetch(`/api/videos/${videoId}/repair-translations`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "all" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        updates?: { id: string; translation: string }[];
+      };
+      if (res.ok && data.updates?.length) applyTranslationUpdates(data.updates);
+    } catch {
+      // Non-fatal: existing lines stay on screen.
+    } finally {
+      setRetranslating(false);
+    }
+  }, [videoId, retranslating, applyTranslationUpdates]);
 
   // Lazy-fetch the `words` array for the currently-focused segment only.
   // Initial fetch above strips words to keep the payload small; word-level
@@ -1012,6 +1046,8 @@ export default function PlayerPage({
             targetLang={targetLang}
             englishOnly={exportEnglishOnly}
             onEnglishOnlyChange={setExportEnglishOnly}
+            onRetranslate={retranslateAll}
+            retranslating={retranslating}
           />
         </div>
 
@@ -1090,6 +1126,8 @@ export default function PlayerPage({
         targetLang={targetLang}
         englishOnly={exportEnglishOnly}
         onEnglishOnlyChange={setExportEnglishOnly}
+        onRetranslate={retranslateAll}
+        retranslating={retranslating}
       />
 
       <TranscriptPrint

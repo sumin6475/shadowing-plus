@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { normalizePhrase, asPhraseText, phraseInSubtitle, buildExplainPrompt } from "../phrases";
+import {
+  normalizePhrase,
+  asPhraseText,
+  phraseInSubtitle,
+  buildExplainPrompt,
+  isShortSelection,
+  meaningCapFor,
+} from "../phrases";
 
 describe("normalizePhrase", () => {
   it("lowercases, collapses whitespace, and trims", () => {
@@ -49,20 +56,32 @@ describe("phraseInSubtitle — containment guard", () => {
 });
 
 describe("buildExplainPrompt", () => {
-  const prompt = buildExplainPrompt(
+  const shortPrompt = buildExplainPrompt(
     "avenue",
     "Korean",
     "1. had an avenue to prioritize what they thought was important.\n   Korean: 자신이 중요하다고 생각하는 것에 우선순위를 둘 수 있는 경로",
   );
 
-  it("asks for a short L1 gloss, not a sentence restating the subtitle", () => {
-    expect(prompt).toMatch(/Never a sentence/);
-    expect(prompt).toMatch(/not the whole clause/);
-    expect(prompt).not.toMatch(/one short sentence/);
+  it("asks for a short L1 gloss on a word, not a sentence restating the subtitle", () => {
+    expect(isShortSelection("avenue")).toBe(true);
+    expect(meaningCapFor("avenue")).toBe(80);
+    expect(shortPrompt).toMatch(/Never a sentence/);
+    expect(shortPrompt).toMatch(/not the whole clause/);
+    expect(shortPrompt).not.toMatch(/one short sentence/);
+  });
+
+  it("asks for a complete rendering when the selection is a clause", () => {
+    const span = "they don't wanna be the ones that are saying, 'We shouldn't do this.'";
+    expect(isShortSelection(span)).toBe(false);
+    expect(meaningCapFor(span)).toBe(240);
+    const longPrompt = buildExplainPrompt(span, "Korean", "1. " + span);
+    expect(longPrompt).toMatch(/complete Korean rendering/);
+    expect(longPrompt).toMatch(/Do not compress/);
+    expect(longPrompt).not.toMatch(/Never a sentence/);
   });
 
   it("keeps the contextual nuance in English", () => {
-    expect(prompt).toMatch(/This part MUST stay in English/);
-    expect(prompt).toMatch(/usage_note/);
+    expect(shortPrompt).toMatch(/This part MUST stay in English/);
+    expect(shortPrompt).toMatch(/usage_note/);
   });
 });
