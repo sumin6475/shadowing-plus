@@ -2,7 +2,7 @@
 // Phases: live → done → moment → retry. The web original uses radial
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -143,6 +143,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   // On-device speech recognition for the live session (ADR 0003).
   const speech = useSpeechSession();
   const startedRef = useRef(false);
+  // True when mic/speech permission was denied — recognition never started, so
+  // nothing was heard and finish() must not save a "completed" session.
+  const [micDenied, setMicDenied] = useState(false);
   // Recording persistence: the session id (from createTalkSession) and the audio
   // uri (from the audioend event) arrive independently after finish; move+link
   // the file once both are ready, exactly once.
@@ -199,7 +202,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   useEffect(() => {
     if (phase !== "live" || startedRef.current) return;
     startedRef.current = true;
-    void speech.start({ onDevice: true });
+    speech.start({ onDevice: true }).then((ok) => {
+      if (!ok) setMicDenied(true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
@@ -283,7 +288,27 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       });
   };
 
+  // Recovery when mic/speech access was denied: iOS won't re-prompt, so offer
+  // Settings plus a retry once the learner has allowed access there.
+  const retryMic = () => {
+    void speech.start({ onDevice: true }).then((ok) => setMicDenied(!ok));
+  };
+  const micBlockedAlert = () =>
+    Alert.alert(
+      "Microphone is off",
+      "Saylo can’t hear you until you allow microphone and speech access in iOS Settings. Nothing from this session is recorded.",
+      [
+        { text: "Not now", style: "cancel" },
+        { text: "Try again", onPress: retryMic },
+        { text: "Open Settings", onPress: () => void Linking.openSettings() },
+      ],
+    );
+
   const finish = () => {
+    if (micDenied) {
+      micBlockedAlert(); // nothing was recorded — don't save a fake session
+      return;
+    }
     const text = speech.stop();
     setTranscript(text);
     setDur(sec);
@@ -886,7 +911,15 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         <>
           {/* Recording status pill */}
           <View style={{ position: "absolute", top: insets.top + (subPill ? 84 : 56), left: 0, right: 0, alignItems: "center", zIndex: 12 }}>
-            {speech.error ? (
+            {micDenied ? (
+              <Pressable
+                onPress={micBlockedAlert}
+                style={{ backgroundColor: "rgba(20,22,28,0.7)", borderRadius: 999, paddingVertical: 8, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#F0453A" }} />
+                <Text style={{ fontSize: 14, color: "#FFC9C9", fontWeight: "600" }}>Mic is off · nothing is being recorded · tap to fix</Text>
+              </Pressable>
+            ) : speech.error ? (
               <View style={{ backgroundColor: "rgba(20,22,28,0.7)", borderRadius: 999, paddingVertical: 8, paddingHorizontal: 15 }}>
                 <Text style={{ fontSize: 13, color: "#FFC9C9", fontWeight: "600" }}>{speech.error}</Text>
               </View>

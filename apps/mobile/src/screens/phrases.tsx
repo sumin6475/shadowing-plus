@@ -27,11 +27,13 @@ const PHRASE_KINDS: { value: PhraseKind; label: string }[] = [
   { value: "word", label: "Word" },
 ];
 
-// Fallback for mock callers (e.g. the Today tab still pushes a phrase by id).
+// Last-resort placeholder so detail/review still render if a caller pushes the
+// screen without an item (live nav always passes a full PhraseItem). English
+// content only — no L1 gloss, per the N:1 rule (see first-language.ts).
 const SAMPLE_PHRASE: PhraseItem = {
   id: "sample",
   text: "take the plunge",
-  translation: "망설이다가 큰맘 먹고 실행하다",
+  translation: null,
   kind: "phrase",
   status: "Practicing",
   source: "Sample clip",
