@@ -8,6 +8,244 @@
 
 ## 항목
 
+### 2026-08-24 · 기능 · iOS 탭바 + My Studio 허브
+- **무엇**: 하단바는 blur + SF Symbols. Today / Phrases / Studio, 가운데 mic(Phrases에선 + 추가 리스트). Today는 중앙 히어로·주간 그래프·남은 리뷰만. Studio는 스토리 비중 도넛, Open studio, 토픽 카드. 토픽 안은 스토리 리스트로 복귀. 프로필 Open studio 배너 제거.
+- **검증**: `npm --prefix apps/mobile run typecheck`
+- **산출물**: [decisions/0020-studio-tab-ios-shell.md](decisions/0020-studio-tab-ios-shell.md)
+
+### 2026-08-24 · 실패 · PostHog 미설정 red screen
+- **무엇**: 위저드가 `EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN` 없으면 throw. 기존 `.env`는 `EXPO_PUBLIC_POSTHOG_API_KEY`. 둘 다 받고, 없으면 warn만.
+- **검증**: 코드 경로 — 게이트가 children을 그대로 렌더.
+
+### 2026-08-24 · 실패 · Expo start SSR window
+- **무엇**: `expo start`가 웹 SSR에서 Supabase AsyncStorage `getItem` → `window is not defined`로 프로세스 종료. SSR에서만 세션 storage를 건너뜀.
+- **검증**: `npm --prefix apps/mobile run typecheck`. Metro 재시작 후 SSR 로그 확인 필요.
+- **산출물**: [postmortems/2026-08-24-expo-start-ssr-window.md](postmortems/2026-08-24-expo-start-ssr-window.md)
+
+### 2026-08-23 · 기능 · Topics Bento folio / Version
+- **무엇**: Topics 노드 그래프를 Domain별 Bento 컬렉션으로 교체. Draft는 점선, Active는 톤 카드. New story / New version은 바텀 시트. Story 상세는 Versions · Useful phrases · Sessions 족보. 화면 카피만 Message → Version (`messages` 테이블 유지).
+- **검증**: `npm --prefix apps/mobile run typecheck`
+- **산출물**: [decisions/0019-topics-bento-folio-and-version.md](decisions/0019-topics-bento-folio-and-version.md)
+
+### 2026-08-23 · 기능 · Phrase History 별 칩
+- **무엇**: History 필터에 스와이프 별과 같은 `favorite` Starred 칩(별 아이콘만). 비어 있으면 “Swipe a phrase right to star it.”
+- **검증**: `npm --prefix apps/mobile run typecheck`
+- **산출물**: [decisions/0017-phrase-history-stage-filters.md](decisions/0017-phrase-history-stage-filters.md)
+
+### 2026-08-23 · 기능 · Home / Phrases / studio dashboard
+- **무엇**: Home hero는 Speaking 하나. Recent story는 마지막 talk session. Bring these back는 `todaysPhrases()` 큐를 ReviewFlow로 바로 시작, 끝나면 “You’ve finished for today!”. Phrases 차트는 포커스 때 한 번 grow-in. History 칩은 Recognize / Use with help / Use on my own / Need refresh. Profile “Your speaking world”는 studio 대시보드. 프로필 사진.
+- **검증**: `npm --prefix apps/mobile run typecheck` PASS. SQL Editor에 `026_avatars_bucket.sql` 실행 필요. TestFlight는 올리지 않음.
+- **산출물**: [decisions/0017-phrase-history-stage-filters.md](decisions/0017-phrase-history-stage-filters.md), [decisions/0018-speaking-world-studio-dashboard.md](decisions/0018-speaking-world-studio-dashboard.md)
+
+### 2026-08-23 · 결정 · Phrase History 단계 필터
+- **무엇**: New·Favorites 칩 제거. 단계 언어 3개 + due overlay Need refresh. 랭킹/stage-prompt 규칙은 그대로.
+- **산출물**: [decisions/0017-phrase-history-stage-filters.md](decisions/0017-phrase-history-stage-filters.md)
+
+### 2026-08-23 · 결정 · Your speaking world studio 지표
+- **무엇**: 히어로는 `talk_sessions` 합산 시간. Active topics/stories는 메시지 또는 세션이 있는 것만. Phrase insights는 단계 + due. 맵은 보조.
+- **산출물**: [decisions/0018-speaking-world-studio-dashboard.md](decisions/0018-speaking-world-studio-dashboard.md)
+
+### 2026-08-23 · 결정 · Daily Phrase 1/3/7/30 랭킹
+- **무엇**: 하루 N개를 고정하는 복습 큐. 단계·저장 나이·최근 복습·self-talk `used`·명시적 tomorrow pin. 단계는 매번 묻지 않음.
+- **산출물**: [decisions/0016-daily-phrase-ranking.md](decisions/0016-daily-phrase-ranking.md)
+
+### 2026-08-23 · 기능 · Self-talk × Phrase Bank 하이브리드 RAG v1
+- **무엇**: `phrase_items.embedding` + `match_owned_phrases` + `phrase-embed`. 추천은 벡터 Top-K와 confidence 80. 거절 30일 정책 상수, Story는 1등 근처 tie-break, `used`는 시간 감쇠. 같은 응답에 `used[]`. 로컬 결과 화면에 “You used N saved phrases”.
+- **검증**: SQL 18/18 embed. `phrase-embed`·`talk-phrase-suggest` 배포 후 비인증 POST JSON 401. TestFlight 옛 빌드에는 used 줄 없음 — 로컬 앱 확인 남음.
+- **산출물**: [.agents/plans/phrase-rag-ranking-backlog.md](../../../../.agents/plans/phrase-rag-ranking-backlog.md)
+
+### 2026-08-23 · 결정 · Phrase RAG 랭킹 v1 / 백로그
+- **무엇**: 추천됨≠도움이 됨을 유지. v1은 거절 30일을 정책 상수로, Story 가산은 벡터 1등 근처(0.05)에서만, `used`는 시간 감쇠. 선택형 거절 사유·무추천 로그·탐색 슬롯·대시보드는 미룸.
+- **산출물**: [.agents/plans/phrase-rag-ranking-backlog.md](../../../../.agents/plans/phrase-rag-ranking-backlog.md)
+
+### 2026-08-22 · 기능 · PostHog를 모바일 앱에 연결
+- **무엇**: `posthog-react-native` + `PostHogProvider`. 로그인 identify, expo-router 화면, 앱 수명주기, JS 에러. Session replay 끔. 대화 원문은 보내지 않음. 위저드 TUI는 이 환경에서 raw stdin이 없어 실패.
+- **검증**: `npm run typecheck` PASS. `.env`와 EAS production에 `EXPO_PUBLIC_POSTHOG_API_KEY` 필요.
+
+### 2026-08-21 · 기능 · Self-talk 평점에 이유 텍스트
+- **무엇**: Like는 바로 저장. Dislike / Not sure / Doesn’t fit은 iOS `Alert.prompt`로 한 문장 이유를 받음. 코칭은 `talk_suggestion_feedback.verdict_note`, Phrase Bank는 `phrase_events.evidence.reason`.
+- **검증**: `npm run typecheck` PASS. SQL Editor에 `025_talk_suggestion_verdict_note.sql` 실행 필요. TestFlight는 올리지 않음.
+
+### 2026-08-21 · 배포 · Phrase Bank 추천 분리 TestFlight 17
+- **무엇**: iOS production build 17을 EAS에서 빌드하고 App Store Connect에 업로드. Apple 처리 대기.
+- **검증**: release config, typecheck, iOS export, EAS build/submit PASS.
+- **품질**: [quality/2026-08-21-talk-phrase-suggest-testflight.md](quality/2026-08-21-talk-phrase-suggest-testflight.md)
+
+### 2026-08-21 · 기능 · Self-talk Phrase Bank 추천 분리
+- **무엇**: Focus 코칭(`talk-diagnose`)에서 Phrase Bank 조회를 빼고, 별도 `talk-phrase-suggest`가 저장된 표현 한 개만 고른다. 생성 fallback 없음. 피드백 아래 `From your Phrase Bank` 카드, Try this phrase / Doesn’t fit. 이벤트는 `suggested → accepted/rejected → used`.
+- **검증**: typecheck PASS. iOS export 1,919 modules PASS. 두 함수 배포 후 비인증 POST JSON 401. TestFlight `1.0.0 (17)` 업로드 완료, Apple 처리 대기.
+- **산출물**: [quality/2026-08-21-talk-phrase-suggest-testflight.md](quality/2026-08-21-talk-phrase-suggest-testflight.md)
+
+### 2026-08-21 · AI · Self-talk 단일 전문 코칭 계약
+- **무엇**: `talk-diagnose`를 진짜 문제 1개, 진단 태그 1개, `I would suggest…`, 2–3문장 근거, 개선문 1개로 변경. 자연스러운 도메인 용어·과도한 고급어 교정 금지, Focus별 동일 구간 재사용 허용. Second recommendation 제거. Phrase Bank 문장 불일치와 malformed AI 응답의 false praise 방어.
+- **검증**: 모바일 typecheck, 수정 파일 lint, 배포 번들 PASS. production route JSON 401 확인. 로그인 상태 4-focus smoke test 필요.
+
+### 2026-08-21 · 배포 · Phrase capture / Profile / Self-talk build 16
+- **무엇**: iOS production build 16을 EAS에서 빌드하고 App Store Connect에 업로드. Apple 처리 대기.
+- **검증**: release config, typecheck, iOS export, EAS build/submit PASS. 기존 React refs lint 오류 11개는 별도 부채.
+- **품질**: [quality/2026-08-21-phrase-capture-profile-feedback-testflight.md](quality/2026-08-21-phrase-capture-profile-feedback-testflight.md)
+
+### 2026-08-21 · UI · Self-talk AI 피드백 팔레트 통일
+- **무엇**: 실제 Self-talk의 You may have meant 카드도 Speaking World 코발트–스카이 그라데이션, 밝은 테두리, 은은한 glow로 통일.
+- **검증**: `npm run typecheck` PASS.
+
+### 2026-08-21 · 카피 · Intermediate용 Feedback focus 예시
+- **무엇**: Grammar, Structure, Advanced words, Pattern 예시를 비즈니스 스피킹의 시제·논리·정확한 어휘·강조 프레임으로 교체. You said 오류는 코랄 inline highlight, AI 제안은 Indigo–Purple–Blue 테두리와 glow로 구분.
+- **검증**: `npm run typecheck` PASS.
+
+### 2026-08-21 · 기능 · Selftalk Save as phrase → 캡처 화면
+- **무엇**: 피드백 Save as phrase가 바로 Phrase Bank에 넣지 않고 Add a phrase 화면으로. 제안 문장은 Context, AI가 Phrase to keep을 추출.
+- **검증**: `npm run typecheck` PASS.
+
+### 2026-08-21 · 기능 · Profile 하위 화면 분리
+- **무엇**: Edit profile은 Name/Goal만. First language, Feedback focus는 각각 화면. 칩 선택은 바로 저장.
+- **검증**: `npm run typecheck` PASS.
+
+### 2026-08-21 · 기능 · Phrase 저장 화면 필드 정리
+- **무엇**: 사진 OCR은 Detected text, Context는 예문만. Phrase는 Required. How it's used는 AI 용법, Your note는 `learner_note`. Where it belongs와 Note는 More. Context 번역은 타이핑 중 유지.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS. SQL Editor에 `024_phrase_learner_note.sql` 실행 필요.
+- **산출물**: `apps/mobile/src/screens/capture.tsx`, `src/screens/phrases.tsx`, `src/lib/phrases.ts`, `supabase/migrations/024_phrase_learner_note.sql`
+
+### 2026-08-21 · 수정 · Phrase 검색창 잘림
+- **무엇**: Phrase Bank 검색. 전체 스크롤 캡처에서 검색창이 Dynamic Island 밑으로 올라가고 아래가 빈 화면으로 이어지던 것. 검색창을 페이지 스크롤 밖에 고정. placeholder는 Search.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS. 실기기: Phrases → 검색 → 키보드, 검색창이 상태바 아래 그대로인지.
+- **산출물**: [postmortems/2026-08-21-phrase-search-bar-clip](postmortems/2026-08-21-phrase-search-bar-clip.md)
+
+### 2026-08-20 · 기능 · self-talk 추천마다 Fits/Forced
+- **무엇**: 각 생성(want / example) 아래에 Like · Dislike · Not sure. 보여준 추천은 전부 `talk_suggestion_feedback`에 남고, 평가는 같은 행을 갱신. 나중에 프롬프트/랭커에 쓸 로그. 모델 학습은 아직 없음.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS. 테이블은 SQL Editor에서 `023_talk_suggestion_feedback.sql` 실행 필요.
+- **산출물**: `supabase/migrations/023_talk_suggestion_feedback.sql`, `apps/mobile/src/lib/talk-feedback.ts`, `src/screens/talk.tsx`
+
+### 2026-08-20 · 배포 · Talk focus 근거 + topic 이동 TestFlight 14
+- **무엇**: `talk-diagnose` 배포(근거 필드·Advanced words 프롬프트). EAS `1.0.0 (14)` STORE 빌드 후 App Store Connect 업로드. Apple 처리 대기.
+- **검증**: 함수 비인증 POST JSON 401 · release config PASS · typecheck PASS · EAS build/submit FINISHED.
+- **산출물**: [.agents/deploys/2026-08-20-talk-focus-grounds-testflight](../../../.agents/deploys/2026-08-20-talk-focus-grounds-testflight.md)
+
+### 2026-08-20 · 기능 · self-talk 피드백에 Focus 칩과 추천 근거
+- **무엇**: Great job / moment 화면에 이번 세션 Focus(예: Advanced words) 칩. 각 추천 아래 `why`/`exampleWhy` 한 문장. Advanced words는 문법 정리 말고 더 정확한 단어·콜로케이션을 고르도록 프롬프트 강화.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS. `talk-diagnose` Edge Function은 배포해야 근거 문장이 나옴.
+- **산출물**: `apps/mobile/src/screens/talk.tsx`, `src/types/api.ts`, `supabase/functions/talk-diagnose/index.ts`
+
+### 2026-08-20 · 수정 · topic 칩에 ▼, 옮기기는 하단 시트
+- **무엇**: 스토리 칩이 `Ideas ▼`처럼 드롭다운처럼 보이게. 탭하면 새 화면 대신 하단 시트(Move story)에서 topic을 고름. 고른 줄에 체크, Cancel/배경 탭으로 닫힘.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS.
+- **산출물**: `apps/mobile/src/screens/world.tsx`, `src/screens/nav.ts`, `src/shell.tsx`
+
+### 2026-08-20 · 기능 · 스토리 topic 칩으로 다른 영역으로 옮김
+- **무엇**: 칩 탭이 형제 스토리가 아니라 Move story 화면. New story와 같은 `WHICH PART OF YOUR LIFE?` 칩. 고르면 `domain_id`만 바꾸고 돌아옴. 같은 topic을 다시 누르면 저장 없이 pop.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS.
+- **산출물**: `apps/mobile/src/screens/world.tsx`, `src/lib/speaking-world.ts`, `src/screens/nav.ts`, `src/shell.tsx`
+
+### 2026-08-20 · 수정 · 고아 스토리는 Ideas로, 칩은 형제 스토리로
+- **무엇**: 매핑 안 되는 제목(Write my own 등)도 Ideas에 붙임. `domain_id` null을 남기지 않음. topic 칩은 Domain에서 왔으면 pop, Today 등에서 왔으면 Domain push.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS.
+- **산출물**: `apps/mobile/src/lib/speaking-world.ts`, `src/screens/world.tsx`, `src/shell.tsx`
+
+### 2026-08-20 · 수정 · 온보딩 첫 스토리를 Ideas 등 topic에 붙임
+- **무엇**: “Something I learned”는 온보딩에서 만들어져 `domain_id`가 null이었다. Ideas로 붙이고, 화면을 열면 고아 스토리를 기본 topic에 연결. 이후 온보딩도 topic 없이 만들지 않음.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS.
+- **산출물**: `apps/mobile/src/lib/speaking-world.ts`, `src/lib/onboarding.ts`, `src/screens/world.tsx`
+
+### 2026-08-20 · 기능 · Story 상단에 속한 topic 칩
+- **무엇**: 스토리 상세 BackBar 오른쪽에 이 스토리가 속한 topic(domain) 이름을 칩으로 표시. 탭하면 그 topic으로 이동. Today처럼 topic 없이 들어온 경우에도 `fetchStory`가 domain을 조인해서 채움.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS.
+- **산출물**: `apps/mobile/src/screens/world.tsx`, `src/lib/speaking-world.ts`, `src/shell.tsx`
+
+### 2026-08-20 · 수정 · outline 포인트는 스와이프 삭제
+- **무엇**: 30-second version에서 x를 없애고 Phrase처럼 밀어 삭제. 순서 바꾸기 핸들(=)은 유지.
+- **산출물**: `apps/mobile/src/screens/world.tsx`
+
+### 2026-08-20 · 수정 · 기본 스토리 설명은 회색 텍스트, 직접 만든 스토리만 흐린 박스
+- **무엇**: 시드/온보딩 스토리는 편집 없이 연한 회색 설명. 사용자가 만든 스토리만 description을 넣고, Messages 흰 카드가 아니라 `soft` 배경에 흐린 테두리 박스로 구분.
+- **산출물**: `apps/mobile/src/screens/world.tsx`
+
+### 2026-08-20 · 수정 · Profile 미출시 행 Coming soon 배지
+- **무엇**: 가짜 오른쪽 값(mirror 01 등)을 숨기고 Library BETA와 같은 칩으로 Coming soon을 붙임. 탭해도 화면 안 열림. Reminders / Feedback focus / First language / Edit profile / Library / Log out은 그대로.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS.
+- **산출물**: `apps/mobile/src/screens/settings.tsx`
+
+### 2026-08-20 · 수정 · Reminders 테스트 핑·카피 리뷰는 `__DEV__` only
+- **무엇**: 배너 카피 프리뷰와 “Send a test in 5 seconds”를 `__DEV__`로 가림. TestFlight/프로덕션에는 안 보이고, 시뮬레이터·dev-client에서는 카피 다듬을 때 그대로 씀. 실수로 출시 화면에 남기지 않으려고 가드만 넣음(코드는 삭제하지 않음).
+- **검증**: `cd apps/mobile && npm run typecheck` PASS.
+- **산출물**: `apps/mobile/src/screens/reminders.tsx`
+
+### 2026-08-20 · 기능 · Story 설명 카드와 outline 드래그 정렬
+- **무엇**: 30-second version에서 ↑↓ 대신 오른쪽 드래그 핸들로 순서를 바꾸고, 사용자 문구에서 beats를 outline/point로 바꿈. 스토리 상세는 제목 아래 스토리별 흰 설명 카드(탭하면 바로 수정, `stories.summary`에 저장)를 두고 Talk CTA를 Sessions 아래로 내림.
+- **배운/적용한 원칙**: 학습자가 실제로 말할 프롬프트를 넣고, 큐에서 익숙한 제스처를 쓴다. 카드는 페이지 배경과 한 단계 올린다.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS. 실기기 드래그/저장은 아직.
+- **산출물**: `apps/mobile/src/screens/world.tsx`, `src/lib/story-prompts.ts`, `speaking-world.ts`, `design/icon.tsx`, `design/ui.tsx`
+
+### 2026-08-20 · 배포 · Self-talk 리마인더 네이티브 빌드 13
+- **무엇**: `expo-notifications`가 Push entitlement를 넣어 빌드 11·12가 기존 App Store 프로필과 충돌. 로컬 알림만 쓰도록 entitlement를 제거한 뒤 `1.0.0 (13)` FINISHED.
+- **검증**: EAS build/submission FINISHED · Apple 처리 대기.
+- **산출물**: [.agents/deploys/2026-08-20-self-talk-reminders-testflight](../../../.agents/deploys/2026-08-20-self-talk-reminders-testflight.md)
+
+### 2026-08-20 · 기능 · Self-talking 로컬 리마인더 v1
+- **무엇**: Profile → Reminders 서브페이지. Self-talking만, Daily/Weekly + 요일 + 로컬 시각, AsyncStorage 저장, 켤 때만 iOS 알림 권한 요청, expo-notifications Daily/Weekly 반복 트리거. 끄면 고정 id로 취소.
+- **검증**: `npm run typecheck` PASS. 실기기 알림은 네이티브 모듈이 새 바이너리에 들어가야 함.
+- **산출물**: `apps/mobile/src/screens/reminders.tsx`, `apps/mobile/src/lib/reminders.ts`
+
+### 2026-08-20 · 수정 · Speak 피드백 포커스와 가독성
+- **무엇**: Profile에 Grammar / Structure / Advanced words / Pattern 중 하나 고르는 피드백 포커스를 넣고 AsyncStorage에 저장. Speak 종료 시 `talk-diagnose`에 `focus`를 보내고, 로컬 Edge Function 프롬프트가 Structure(전체 말의 뼈대)와 Grammar(문장)를 섞지 않게, Pattern은 온보딩의 “What I’m trying to do is…” 프레임을 쓰게 고침. 상세 화면 라벨 대비를 올리고, 검은 제안 박스에 `or` + `Second recommendation`을 넣었고, Retry CTA/`Back to the moment` Pill을 가운데 정렬.
+- **배운/적용한 원칙**: `text-3`/`ink3`(30% 불투명)은 섹션 제목에 쓰면 안 읽힌다. 비-`full` Pill은 `alignSelf: flex-start`라 부모 `alignItems: center`를 이긴다.
+- **검증**: `cd apps/mobile && npm run typecheck` PASS. 시뮬레이터 Speak 실기 + `talk-diagnose` 배포는 아직.
+- **산출물**: `apps/mobile/src/lib/talk-focus.ts`, `talk.tsx`, `edit-profile.tsx`, `settings.tsx`, `talk.ts`, `ui.tsx`, `supabase/functions/talk-diagnose/index.ts`
+
+### 2026-08-20 · 수정 · 클립 포커스 문장 전환 버벅임
+- **무엇**: 재생 중 prev/next가 seek 착지 전에 이전 문장으로 되돌리던 싸움을 끊고, 시각 틱은 진행 바에만 두고 포커스 문장은 120ms 페이드.
+- **배운/적용한 원칙**: 재생 위치 구독과 포커스 문장 state를 같은 트리에 두면 매 틱마다 문장이 다시 그려진다. 수동 선택은 착지할 때까지 핀한다.
+- **검증**: `npm run typecheck` PASS. 실기기 prev/next 왕복은 아직.
+- **산출물**: `apps/mobile/src/screens/library.tsx`
+
+### 2026-08-20 · 배포 · Library 클립 캡처 TestFlight 빌드
+- **무엇**: iOS production `1.0.0 (10)`를 생성하고 App Store Connect에 업로드. Apple 처리 대기.
+- **검증**: EAS build/submission FINISHED · archive에 미커밋 Library 독·clip-seed 캡처·로그인 스플래시 스킵 포함.
+- **산출물**: [.agents/deploys/2026-08-20-library-clip-capture-testflight](../../../.agents/deploys/2026-08-20-library-clip-capture-testflight.md)
+
+### 2026-08-20 · 수정 · Library 클립 독 고정과 Save phrase 캡처
+- **무엇**: 클립 화면의 Save phrase / 전후 버튼을 문장 길이 아래가 아니라 Transcript peek 위에 고정. Save phrase는 OCR과 같은 캡처 화면으로 가서 문장에서 표현을 뽑고, 클립 플레이어는 언마운트하지 않아 Done 후 그 문장에서 이어 재생.
+- **배운/적용한 원칙**: 플레이어 컨트롤은 콘텐츠 높이와 분리한다. 재생 위치를 복원하려면 seek보다 인스턴스를 유지하는 편이 맞다.
+- **스킬/도구**: Expo Video/Audio 인스턴스 유지, phrase-capture `context_text`, tsc PASS.
+- **산출물**: `apps/mobile/src/screens/library.tsx`, `capture.tsx`, `shell.tsx`
+
+### 2026-08-14 · 배포 · 온보딩 시각·가입 완료 TestFlight 빌드
+- **무엇**: 커밋 `96e277b`로 iOS production `1.0.0 (9)`를 생성하고 App Store Connect에 업로드. Apple 처리 대기.
+- **검증**: EAS build/submission FINISHED · archive 입력 확인 · IPA bundle ID/표시명/버전/암호화 선언/application identifier/코드 서명 PASS.
+- **산출물**: [.agents/deploys/2026-08-14-onboarding-visual-auth-completion-testflight](../../../.agents/deploys/2026-08-14-onboarding-visual-auth-completion-testflight.md)
+
+### 2026-08-13 · 수정+검증 · 온보딩 시각 위계·가입 완료 복구
+- **무엇**: 세로 레이아웃에서 `full` Pill이 남은 높이를 모두 차지하던 CTA를 56pt 고정 버튼으로 교체. messy notes의 기본 예시를 영어로 바꾸고 첫 화면 speaking-world 시각 요소와 Story 카드 톤을 목업 방향으로 정돈. Keep에는 Supabase에서 실제 활성화된 Google·email 가입만 표시하고, Apple은 provider 활성화 시 자동 노출되게 함. STT/전사 실패 시에도 초안을 잃지 않고 Keep과 가입으로 진행 가능.
+- **검증**: release config PASS · TypeScript PASS · ESLint error 0/warning 15(기존) · clean iOS Expo export PASS(1,870 modules) · Supabase provider flags 확인 · diff check PASS.
+- **산출물**: [quality/2026-08-13-onboarding-visual-auth-completion](quality/2026-08-13-onboarding-visual-auth-completion.md)
+
+### 2026-08-11 · 첫 베타 수정+검증 · iOS fetch 전송과 앱 아이콘 여백
+- **무엇**: 첫 TestFlight에서 Speak 완료 시 `talk_sessions` 저장과 `talk-diagnose`가 함께 `ExpoModulesCore/Promise.swift:56` 네트워크 오류로 실패한 현상을 SDK 57의 기본 `expo/fetch` 전송 계층으로 좁힘. 모든 EAS profile에 공식 RN fetch 폴백을 고정하고 내부 예외 원문 대신 사용자용 오류 문구를 표시. Saylo 아이콘은 내부 흰 모서리를 제거하고 14.5% 확대해 iOS 마스크가 배경을 꽉 채우도록 교체.
+- **검증/배포**: Edge Functions `talk-diagnose`/`talk-stuck` ACTIVE 및 비인증 401 응답 확인 · release config PASS · TypeScript PASS · ESLint PASS · iOS export PASS(1,841 modules) · 독립 리뷰 APPROVE · production IPA `1.0.0 (6)`의 bundle ID/서명/암호화 선언/생성 아이콘 PASS · EAS submission `e592493d-9d14-424f-bc35-7e8535d4c15a` FINISHED/App Store Connect 수락. Apple 처리 및 새 TestFlight 실기기 확인 대기.
+- **산출물**: [postmortems/2026-08-11-first-beta-expo-fetch-network-loss](postmortems/2026-08-11-first-beta-expo-fetch-network-loss.md) · [quality/2026-08-11-first-beta-network-icon-fix](quality/2026-08-11-first-beta-network-icon-fix.md) · [deploy record](../../../../.agents/deploys/2026-08-11-first-beta-network-icon-fix.md)
+
+### 2026-08-08 · 빌드+검증 · Saylo 첫 App Store distribution IPA
+- **무엇**: `feat/mobile-skeleton@ca0ea99`에서 EAS production build를 생성. Apple distribution certificate를 재사용하고 App Store provisioning profile을 생성해 `Saylo` 1.0.0 (5) STORE build를 완료. 추출 IPA에서 bundle ID·표시명·버전·암호화 선언·서명과 실제 blue/ice 더블루프 아이콘을 확인. 사용자 확인 후 같은 build ID를 App Store Connect/TestFlight에 업로드.
+- **실패/수정**: monorepo archive 업로드가 `write EPIPE`로 반복 중단해 `.easignore`로 inspect archive를 약 11.8 MB→3.1 MB로 축소. 첫 non-interactive submit은 API 키 미설정으로 시작 전 중단되어, 최소 권한 `APP_MANAGER` 키를 1회 생성·연결한 뒤 성공.
+- **검증**: EAS build `ef172c4d-277c-4af8-a92c-00fad1752ec2` FINISHED · IPA `codesign --verify --deep --strict` PASS · identity `com.shadowingplus.mobile`/`Saylo`/`1.0.0 (5)` PASS · submission `568cad46-0250-4459-86a5-b2a5c2c1574a` exit 0/App Store Connect accepted · Apple processing 대기.
+- **산출물**: [quality/2026-08-08-testflight-production-preflight](quality/2026-08-08-testflight-production-preflight.md) · [postmortems/2026-08-08-eas-build-upload-epipe](postmortems/2026-08-08-eas-build-upload-epipe.md) · [postmortems/2026-08-08-eas-submit-api-key-bootstrap](postmortems/2026-08-08-eas-submit-api-key-bootstrap.md)
+
+### 2026-08-08 · 검증+준비 · TestFlight production 프리플라이트
+- **무엇**: App Store Connect에 생성한 Saylo 레코드를 EAS production submit profile에 연결하고, development에만 있던 API/Supabase 공개 런타임 변수 3개를 production 환경에도 값 노출 없이 등록. 원본 `main`은 건드리지 않고 제출 전용 worktree에서만 진행.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15 · iOS export PASS(1,851 modules) · EAS production=store/remote credentials/auto-increment · production 변수 이름 3개 PASS · 코드리뷰 APPROVE. production build와 TestFlight 제출은 명시적 확인 전이라 미실행.
+- **실패/수정**: 첫 자동 복사가 미설치 `dotenv`에서 원격 변경 전 중단. 이미 설치된 `@expo/env` 로더로 교체해 성공.
+- **산출물**: [quality/2026-08-08-testflight-production-preflight](quality/2026-08-08-testflight-production-preflight.md) · [postmortems/2026-08-08-eas-production-env-loader](postmortems/2026-08-08-eas-production-env-loader.md)
+
+### 2026-08-08 · 결정+브랜딩 · Saylo 이름과 더블루프 앱 아이콘
+- **무엇**: App Store v1의 사용자 표시 이름을 `Shadowing+`에서 `Saylo`로 변경하고, 승인된 blue/ice 더블루프 PNG를 iOS 앱 아이콘과 공용 아이콘으로 연결. 로그인·온보딩·사진 처리 안내와 네이티브 권한 문구의 브랜드명도 함께 정렬. bundle identifier·scheme·EAS slug는 기존 기술 식별자로 유지.
+- **스토어 등록**: `Saylo` 단독명 중복을 확인한 뒤 경쟁 앱 메타데이터와 Apple 검색 가이드를 바탕으로 App Store 이름 `Saylo: English Speaking`, 부제 `Turn your stories into fluency`를 확정·저장. 생성된 App Store Connect Apple ID를 EAS production submit profile에 연결.
+- **검증**: resolved Expo config에서 name/icon/bundle identity PASS · TypeScript PASS · ESLint error 0/warning 15 · iOS export PASS(1,851 modules) · 독립 코드 리뷰 APPROVE · commit `a12a6b3`의 EAS iOS development build `b7b8fafb-42a0-4bec-9f02-28ccdb753d4c` FINISHED · 설치 아이콘/표시명 육안 확인 대기.
+- **산출물**: [decisions/0015-saylo-product-name-and-icon](decisions/0015-saylo-product-name-and-icon.md)
+
+### 2026-08-08 · 기준선 · App Store v1 자동 회귀 게이트
+- **무엇**: 실제 앱 worktree/branch를 원격에 백업하고, dependency pin을 유지한 채 TypeScript·경고 예산 ESLint·iOS export를 하나의 `npm run validate`로 고정. 전체 앱 여정을 Tier 1–3 안정 ID로 문서화하고 live Supabase schema/Edge Function inventory를 확인. 처음 비어 있던 EAS development 환경은 사용자 등록 후 필요한 변수 이름 3개를 값 노출 없이 재확인. 리뷰 후 두 계정 RLS 하네스와 사진의 Edge Function/OpenAI 원격 처리 사실을 기준선에 추가.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15 · iOS export PASS(1,851 modules) · RLS harness Node syntax/ESLint PASS(실계정 14개 검사는 대기) · Expo Doctor 기존 19/20·15 mismatch · commit `9d06776`의 EAS iOS development build `5d4ce725-38d7-41b4-8999-df3eff387982` FINISHED · 설치/실기기 matrix 대기.
+- **산출물**: [quality/2026-08-08-mobile-regression-baseline](quality/2026-08-08-mobile-regression-baseline.md) · [release regression matrix](../release/mobile-regression-baseline.md)
+
 ### 2026-08-07 · 재디자인+검증 · Phrase 상세 학습 행동 위계 + 편집 메뉴
 - **무엇**: Phrase 상세를 승인된 목업의 느낌으로 재구성. Phrase·뜻·TTS·kind·상태를 넉넉한 hero에 모으고, 원문·전체 해석·출처는 옅은 파란 `In context` 패널로 통합. note는 가벼운 section, proficiency는 하나의 흰색 Card로 분리해 반복되던 흰 박스/동일 제목 위계를 줄임. photo/manual의 어색한 `WHERE YOU FOUND IT` Card를 제거하고 실제 clip만 context에서 이동 가능하게 유지. 우측 overflow에서 Phrase·종류·뜻·usage note 편집과 삭제가 가능하며 상세의 전역 `+` FAB는 숨김. 실기기 피드백에 따라 hero는 context보다 약간 큰 높이를 유지하면서 `space-between`으로 콘텐츠를 배치해 칩 아래에만 몰리던 여백을 상하 균형으로 보정.
 - **검증**: TypeScript PASS · ESLint PASS · diff check PASS · iOS production export PASS(1,851 modules). 최종 실기기 시각/탭 확인은 사용자 확인 대기.
@@ -244,5 +482,72 @@
 - **배운/적용한 원칙**: RN은 oklch/멀티레이어 섀도우/CSS var가 없다 — 런타임 oklch 변환기로 팔레트 정확히 재현, 섀도우는 네이티브+헤어라인으로 근사.
 - **스킬/도구**: DesignSync(디자인 읽기), Expo SDK 57, react-native-svg
 - **산출물**: [decisions/0001-single-shell-navigation](decisions/0001-single-shell-navigation.md)
+
+### 2026-08-11 · 빌드+검증 · 첫 Story 온보딩 복원
+- **무엇**: 현재 Saylo 스플래시 뒤에 Welcome → Story → messy notes → editable beats → phrase → camera/mic Talk → Keep Story → sign-in/Home 흐름을 연결. 로그인 전 초안은 AsyncStorage에 보존하고 로그인 후 Story/Message/Beats/Phrase/Talk로 체크포인트 import.
+- **검증**: TypeScript, 변경 파일 ESLint, release config, clean iOS Expo export, diff check 통과. 실제 카메라/STT/인증 import는 물리 iPhone 검증 대기.
+- **산출물**: [quality/2026-08-11-first-story-onboarding](quality/2026-08-11-first-story-onboarding.md)
+
+### 2026-08-11 · 배포 · 첫 Story 온보딩 TestFlight 빌드
+- **무엇**: 커밋 `cc40d4e`로 iOS production build `1.0.0 (7)` 생성. EAS build `184e5027-f0e7-4888-ab37-05f84f45f89b` 완료.
+- **검증**: IPA의 bundle ID, 표시 이름, 버전/빌드, 비면제 암호화 설정과 코드 서명을 확인. EAS Submit으로 App Store Connect 업로드 성공; Apple 처리 대기.
+- **산출물**: [.agents/deploys/2026-08-11-first-story-onboarding-build](../../../.agents/deploys/2026-08-11-first-story-onboarding-build.md)
+
+### 2026-08-12 · 수정+검증 · 온보딩 회원가입·재진입 복구
+- **무엇**: 로그인 전용 막다른 화면에 계정 생성과 `Start onboarding again`을 추가. 이메일 확인 대기 중에도 첫 Story 초안을 보존하고, 로컬 reset 이벤트가 root gate에 즉시 반영되도록 연결.
+- **검증**: release config, TypeScript, 변경 파일 ESLint, 전체 source lint baseline, clean iOS Expo export 통과. 실기기 signup/이메일 확인은 다음 TestFlight smoke 대상.
+- **산출물**: [postmortems/2026-08-12-onboarding-auth-dead-end](postmortems/2026-08-12-onboarding-auth-dead-end.md) · [quality/2026-08-12-onboarding-signup-reentry](quality/2026-08-12-onboarding-signup-reentry.md)
+
+### 2026-08-12 · 배포 · 온보딩 signup·재진입 TestFlight 빌드
+- **무엇**: 커밋 `bc720cb`로 iOS production build `1.0.0 (8)` 생성 후 App Store Connect 업로드 성공. Apple 처리 대기.
+- **검증**: IPA bundle ID, 표시 이름, 버전/빌드, 비면제 암호화 설정, 코드 서명 확인.
+- **산출물**: [.agents/deploys/2026-08-12-onboarding-signup-reentry-build](../../../.agents/deploys/2026-08-12-onboarding-signup-reentry-build.md)
+
+### 2026-08-14 · 수정+검증 · Keep Story 바텀시트·Google 마크
+- **무엇**: 온보딩 마지막 인증 영역을 화면 하단에 붙는 바텀시트로 전환하고, Google 로그인 버튼을 공식 색상의 다색 G 마크로 교체. Apple provider 비활성 상태에서는 Google·이메일 선택지만 유지.
+- **검증**: release config, TypeScript, ESLint(기존 warning 15개·error 0), iOS Expo export, diff check 통과. 웹 smoke는 기존 AsyncStorage/Supabase SSR의 `window is not defined`로 실행 전 차단.
+- **산출물**: [quality/2026-08-14-keep-bottom-sheet-google-mark](quality/2026-08-14-keep-bottom-sheet-google-mark.md)
+
+### 2026-08-14 · 장애수정 · Google OAuth 모바일 복귀
+- **무엇**: Supabase Auth Redirect URLs에 빠져 있던 `shadowingplus://auth/callback`을 추가. 기존 localhost·Vercel URL은 보존.
+- **검증**: URL Configuration에서 허용 URL이 2개에서 3개로 증가하고 정확한 모바일 콜백이 저장된 것을 확인. 앱의 Expo scheme과 OAuth `redirectTo`는 이미 같은 주소를 생성하므로 새 바이너리는 불필요.
+- **산출물**: [postmortems/2026-08-14-google-oauth-web-fallback](postmortems/2026-08-14-google-oauth-web-fallback.md) · [quality/2026-08-14-google-oauth-mobile-redirect](quality/2026-08-14-google-oauth-mobile-redirect.md)
+
+### 2026-08-24 · 구현+검증 · 네이티브 iOS 탭바 전환 + Today/Studio 목업 반영
+- **무엇**: 커스텀 BlurView 탭바를 expo-router `NativeTabs`(unstable-native-tabs)로 교체 — Today/Phrases/Studio 3탭 + Talk을 `role="search"` 분리형 서클(mic.fill)로. AppShell을 `ShellProvider`(전역 detail stack/talkCtx/toast) + 탭별 `TabHost` 라우트 구조로 재작성, 디테일 푸시·Talk 진입 시 `hidden`으로 탭바 숨김. Talk 화면은 탭 포커스 중에만 마운트(백그라운드 마이크 방지). Phrases 탭에 + FAB(iOS 리스트 메뉴) 노출. Today: 주간 증감 서브라인(극단값은 N×)·중앙 큰 "N / M" 복습 카드. Studio 탭: Speaking folio 타이틀, Speaking insight 배너, Topics>/Recently recorded> 헤더, 가로 스크롤 토픽 카드. Card/Block/Pill/Hero/FAB에 스프링 press-scale, FAB에 코발트 그라디언트.
+- **원리**: 네이티브 탭바는 RN 오버레이로 덮을 수 없으므로 "디테일이 열리면 바를 숨긴다"는 기존 UX 규칙을 `NativeTabs hidden`으로 이식. safe-area inset이 네이티브 바 높이를 포함해 FAB/스크롤 여백이 자동 보정됨(Screen bottomPad 120→32).
+- **검증**: `tsc --noEmit` 통과, ESLint 기존 베이스라인(사전 존재 17 error) 유지, `expo export --platform ios` 성공. iOS 26.5 시뮬레이터(dev client, 재빌드 불필요)에서 4개 탭 스크린샷으로 리퀴드 글래스 바·분리형 mic 서클·탭바 숨김/복귀·Studio 목업 일치 확인. 실기기 Talk 녹음·디테일 푸시 제스처는 다음 smoke 대상.
+- **후속 11(같은 날)**: 온보딩 아트 미세 조정 — pain 칩을 B2+ 표현("in hindsight", "play it by ear")으로, method의 "→ active" 칩에서 화살표 제거 + 앰버(#F6C445/#5C4300) 액센트(iOS 팔레트가 코발트 모노라 노랑 계열은 명시 지정), collect 칩은 실표현 대신 "Phrase saved"로.
+- **후속 10(같은 날) · 온보딩 아트 다양화 + sign-in 리틴트**: ①이메일 sign-in 화면이 옛 웜(Cobalt 크림) 팔레트라 현행 iOS 그레이/코발트와 충돌 → useCobalt를 buildTheme 매핑으로 교체, 워드마크 Newsreader, 구 첫-스토리 카피 제거. ②슬라이드 아트를 단일 모티프에서 **6종 고유 구성**으로 재작성(공용 키트 ArtChip/ArtOrb/ArtTile) — pain: 표현 칩 산포("figure out" 등, 일부 페이드), method: passive 책 타일→점 경로→active 마이크 오브, collect: 스냅샷 타일 스택+카메라+포획 칩, speak: 미러 디스크+라이브 웨이브+자막 칩, review: 벨+9:00+알림 카드 스택, save: 스토리 타일+체크+Any device 칩. ③Get started 후 항상 슬라이드 1부터 시작(기존 awaiting_sign_in draft가 로그인 슬라이드로 점프하던 문제) — 이메일 왕복만 모듈 플래그로 마지막 슬라이드 재개. 6종 아트 시뮬레이터 프리뷰 확인.
+- **후속 9(같은 날) · 온보딩 전면 개편**: 첫-스토리 녹음 온보딩(story/notes/beats/phrase/talk/keep)을 **6장 슬라이드 온보딩**으로 교체 — ①페인포인트("You know English. / The words are in your head. They hide when you speak.") ②방법(passive→active: "Collect phrases you meet. Say them about your life.") ③카메라 권한(Collect) ④마이크 권한(Speak, 미러) ⑤알림 권한(Review) ⑥로그인(Apple/Google/이메일). 권한은 각 기능 설명과 함께 요청하고 "Not now"로 스킵 가능(거절해도 진행). 슬라이드 공통 레이아웃: 모티프(코발트 디스크+궤도+아이콘 오브+위성) + eyebrow + serif 타이틀 + 문장 단위 바디 + 점 진행 + 풀폭 CTA, 슬라이드마다 FadeIn 캐스케이드. SplashIntro(로고 draw-on 스프린트)에 "Already have an account? Log in" 링크 추가. draft 상태머신은 status만 사용(step 안 바꿔 기존 import 경로 자연 우회, awaiting_sign_in 복귀 시 마지막 슬라이드 재개, 소셜 로그인 도착 시 자동 완료). 시뮬레이터 프리뷰로 슬라이드 1·로그인 슬라이드 확인, tsc·export 통과. 실기기 E2E(권한 다이얼로그·소셜 로그인) 미검증.
+- **후속 8(같은 날)**: Story의 Useful phrases 행에 Phrases 탭과 동일한 아이콘 액션(스피커=AI 보이스, 마이크=Quick Rehearsal) 추가 — RowIconButton export 재사용, 리허설은 id/text/translation만 읽으므로 슬림 행 데이터로 충분. Topics 스트립~Recently recorded 사이에 남아 있던 경계선은 그림자 도달거리(28pt)가 클리핑 여유(16pt)보다 커서였음 → shadowCard를 y6/r12/0.09로 타이트하게 조정(도달 ≈18pt)하고 스트립·칩 여유 20pt로 정리(터치 오버랩 최소화). 시뮬레이터로 두 화면 모두 경계선 소멸 확인.
+- **후속 7(같은 날) · 사각 그림자 박스 버그 수정 + Phrases 리스트 UX**: 리스트 카드 주변에 "회색 사각 박스" 경계가 보이던 원인 진단 — gesture-handler Swipeable의 컨테이너가 `overflow:hidden`(사각)이라 카드 그림자가 네모로 잘려 코너에 어두운 사각 테두리처럼 남던 것(Swipeable 없는 Story 카드만 정상이라 특정). 수정: SwipeRow에서 그림자를 클립 밖의 둥근 래퍼로 이동 + Swipeable containerStyle에 borderRadius(액션도 둥글게 클리핑). 가로 ScrollView(토픽 스트립·필터 칩)도 마진/패딩 트릭으로 그림자 클리핑 해소. 추가: Phrases 검색을 인라인 확장(칩을 밀어내는 FadeIn 전환, X로 리마운트 없이 복귀)으로 교체, 리스트 행 간격 15pt, 10개 우선 렌더 + 스크롤 하단 근접 시 10개씩 추가(Screen에 onScroll 지원 추가). Story 빈 상태는 Versions와 같은 점선 박스로 통일.
+- **후속 6(같은 날) · Story 화면 정리 + 카피 스윕**: StoryScreen에서 설명 입력 박스의 테두리/그림자 제거(soft 배경만), Useful phrases·Sessions를 회색 통합 컨테이너에서 꺼내 Versions처럼 "Sect 제목 + 박스" 구조로 분리(빈 상태는 흰 카드). 앱 전반의 "— 뒤에 설명" 카피 패턴 일괄 제거/문장 분리 — Versions·Sessions 플레이스홀더, Today, Talk 피드백, Library, 온보딩, story-prompts, first-language 플레이스홀더(4개 언어), 스테이지 알림(: 로 변경) 등 20여 곳. 빈 값 "—" 표시·에러 상세 조인은 유지.
+- **후속 5(같은 날) · PhraseDetail 다듬기**: In context를 재구성 — 클립 출처면 틴트 박스 대신 **Library 행 컴포넌트가 그 자리를 대체**(LibraryClipRow, library.tsx에 export해 베타 기능과 함께 한 번에 제거 가능), Hear in context 버튼 삭제하고 행 탭 → 클립으로 이동해 바로 듣기. 인용문 있는 경우만 틴트 박스 유지. HOW IT'S USED/YOUR NOTE 카드를 In context와 같은 accS 틴트로 통일. Make it usable 스텝퍼의 세로선이 번호 원을 침범하던 문제 수정(선을 원 아래·위 4pt 갭으로 분리 + 원에 불투명 배경). Practice 허브 Quick Practice 버튼을 회색→코발트 틴트로.
+- **후속 4(같은 날) · Phrase 연습 플로우 개편**: ①복습(ReviewFlow)을 5단계 SRS 화면에서 **플래시카드 pageSheet 바텀시트**로 교체 — 앞면(표현+Hint 칩) → 힌트(usage note) → 탭하면 정답(코발트 카드+뜻+AI 보이스 스피커) → Practice/Next(마지막은 Done). X는 항상 "지금까지 한 건 저장됨" 확인 후 종료. 카드당 SRS verdict는 자동(힌트 사용 시 again, 아니면 good), shouldPromptStage 승격 프롬프트 유지. ②PhraseDetail: HOW IT'S USED+YOUR NOTE를 한 장의 틴트 카드로 통합, Practice 버튼 → **Practice 허브**(새 practice.tsx: 표현 카드+Quick Practice+Related stories(phrase_story_links)+Add story 바텀시트(Recents/All 검색)). ③**Quick Rehearsal**: 타깃 표현 카드+미러 서클+코치 문구 로테이션, useSpeechSession으로 녹음→표현이 실제로 나왔는지 감지(recordPhraseEvent used/retrieved). 리뷰 시트 안에서는 embedded(onDone)로 동작. lib에 fetchPhraseStories 추가. 시뮬레이터로 리뷰 시트·허브 렌더 확인, tsc·export 통과, ESLint 에러 17→11(구 ReviewFlow ref 경고 제거).
+- **후속 3(같은 날)**: 히어로를 좌측 정렬 26pt + 전폭 버튼으로 확정(중앙 정렬은 한 단어 줄바꿈이 어색해 회귀). 홈 CTA 스토리를 "최근 말한 스토리들 중 일 단위 로테이션"으로 변경. Today 헤더에서 회색 라벨 제거하고 날짜로 대체. Phrases 라인 차트를 스쿼시 → 좌→우 경로 드로우(정확한 폴리라인 길이 기반 dash-offset)로 교체, 면은 페이드 유지. Phrase 리스트를 한 줄 행(영어 표현 + 아이콘 액션 2개)으로 간소화 — 뜻/출처/상태칩은 상세로 이동.
+- **후속 2(같은 날)**: 히어로 타이틀 26→33pt 확대, 문구를 일 단위 결정적 로테이션 3종(`Your “{t}” story is waiting` / `Make “{t}” smoother today` / `One more take of “{t}”?`)으로 교체. `Stagger`(Children 자동 인덱싱, 딜레이 8캡) 추가 후 Today·Phrases(포커스 리플레이)·Topics 목록·Domain·Story·Sessions·Session 상세·Recs·Profile에 캐스케이드 적용. Talk/Review/캡처 폼은 의도적으로 제외. 히어로 스토리 선택 규칙 확인: 랜덤 아님 — 최근 40개 talk 세션 중 스토리 연결된 최신 세션의 스토리(fetchRecentTalkedStory).
+- **후속(같은 날)**: ①Today 히어로 버튼 중앙정렬 + 문구를 `Tell “{title}” again`으로 교체. ②StoryScreen Useful phrases/Sessions 컨테이너 깨짐 수정(gap 부재로 타이틀·카드 밀착, 마지막 카드 클리핑 → gap:10 + padding 정리; 임시 자동-푸시로 시뮬레이터 재현·확인 후 제거). ③FolioDonut을 reanimated `useAnimatedProps`(per-slice strokeDasharray)로 12시부터 시계방향 채움 애니메이션화, 탭 포커스마다 리플레이. ④`EnterStagger`(FadeInDown spring cascade)를 My Studio 탭과 Your speaking world에 상→하 순차 적용. ⑤딥링크로 탭 전환 시 전역 디테일 스택이 새 탭 위에 남는 엣지 케이스 발견 → 탭 포커스 변경 시 스택 초기화 가드(`onTabFocused`) 추가.
+
+### 2026-08-24 · 기능 · 프로필 Coming soon 4종 실기능화
+- **무엇**: ①English level — CEFR 4단계(A2~C1) 로컬 설정(lib/english-level.ts) + 라디오 화면, `talk-diagnose` 호출에 `level` 전달하고 엣지 함수 프롬프트에 levelGuide(레벨별 제안 난이도) 추가(구버전 앱은 level 생략 → b1 폴백). ②Theme — System/Light/Dark(lib/theme-pref.ts). `Appearance.setColorScheme`(RN 0.86, "unspecified"로 해제)이 윈도우 전체를 덮어 ThemeProvider·네이티브 탭바·상태바가 훅 배선 없이 함께 전환. ③Export my phrases — fetchPhrases → iOS 공유시트(텍스트, 표현+뜻). ④Help & feedback — mailto 링크. 두 설정 모두 루트 prefs 로드에 등록. 부수: Talk 힌트 시트의 Story beats 하단 "Today's phrases" 버튼 제거(상단 탭과 중복).
+- **원리**: 다크 강제는 RN 레벨 오버라이드 하나로 끝난다 — `useColorScheme`을 쓰는 모든 소비자(ThemeProvider, sign-in 팔레트, StatusBar)가 자동 추종하므로 별도 컨텍스트/구독을 만들지 않음.
+- **검증**: `tsc --noEmit` 통과(첫 시도에서 `setColorScheme` 타입이 null 아닌 "unspecified"임을 d.ts로 확인), ESLint 베이스라인 유지(11 error/25 warn). 시뮬레이터에서 임시 auto-push로 Profile 행(B1 · Intermediate/System), English level 화면, Theme 화면 + 다크 전면 전환 스크린샷 확인 후 TEMP 코드·다크 pref 원복(grep TEMP 0건). 엣지 함수는 배포 필요(`talk-diagnose`) — 배포 전에도 앱은 정상 동작.
+
+### 2026-08-24 · 기능+품질게이트 · Privacy 화면 + 제출 전 전체 감사
+- **무엇**: ①프로필 Privacy 행 실기능화 — 실제 데이터 관행(녹음 기기 보관·전사만 AI 전송·PostHog 사용·삭제 경로) 반영한 인앱 개인정보 화면(src/screens/privacy.tsx), 문의 mailto 포함. ②4개 병렬 에이전트로 제출 전 감사(보안/에러 처리/App Store 규정/구현 갭).
+- **결과**: BLOCKER 1(인앱 계정 삭제 부재, 5.1.1(v)) · HIGH 4(Apple provider 프로덕션 확인, Talk 권한 거부 복구 불가, 권한 문구-아바타 업로드 불일치, 정책 URL 부재) · MEDIUM 7 · LOW 6. 보안은 클린(비밀키 없음, edge functions 전부 JWT 검증, RLS FORCE, 딥링크 안전).
+- **검증**: `tsc --noEmit` 통과, lint 베이스라인 유지, Privacy 화면 시뮬레이터 렌더 확인, TEMP 검증 코드 전량 제거(grep 0건). 테스트 중 theme pref가 dark로 남는 사고 → Privacy 화면 임시 훅으로 system 복원 확인.
+- **산출물**: [quality/2026-08-24-appstore-preflight-audit.md](quality/2026-08-24-appstore-preflight-audit.md)
+
+### 2026-08-24 · 기능 · 인앱 계정 삭제 (제출 블로커 해소)
+- **무엇**: ①Edge Function `delete-account` — JWT 검증 → avatars 버킷·R2 phrase-tts 캐시(전 프롬프트 버전 프리픽스 탐색) best-effort 정리 → service role `auth.admin.deleteUser()`. 전 유저 테이블이 ON DELETE CASCADE라 단일 삭제로 DB 전체 정리, blob 정리 실패는 로그만 남기고 삭제는 진행. ②클라이언트 `lib/account.ts` — 함수 호출 성공 후 로컬 정리(speak/ 녹음 폴더, 예약 알림 해제, 온보딩 draft 리셋, `signOut({scope:"local"})`; 서버 세션은 이미 무효). ③Settings Account 그룹에 Delete account(danger) 행 + destructive 확인 Alert + PostHog capture/reset. ④Privacy 화면의 "이메일로 삭제 요청" 문구를 "Profile → Delete account"로 교체(Apple이 이메일 방식 불인정).
+- **검증**: `tsc --noEmit` 통과, lint 베이스라인 유지, edge function TS 문법 체크 통과(Deno 미설치라 deno check는 생략). **E2E는 함수 배포 후 버리는 계정으로 필요**: `supabase functions deploy delete-account` (+ 앞서 level 반영된 `talk-diagnose`도 재배포 대상).
+
+### 2026-08-24 · 포스트모템 · 계정 삭제 "Check your connection" — delete-account 함수 미배포
+- **증상**: 기기에서 계정 삭제 시 "We couldn't delete your account. Check your connection and try again." 네트워크는 정상.
+- **원인**: `delete-account` Edge Function이 작업 트리에만 존재, 미배포(404 NOT_FOUND). 클라이언트 폴백이 Supabase 404 body(`code`/`message` 스키마)를 파싱 못 해 "connection" 문구로 위장. `talk-diagnose` level 프롬프트도 로컬에만 있었음(같이 재배포).
+- **수정**: 두 함수 배포 → 무인증 프로브 404→401 확인. 08-25 기기 E2E 통과(삭제·사인아웃 정상). 08-21 커밋 이후 전체 작업 트리와 함께 커밋 완료(08-25).
+- **산출물**: [postmortems/2026-08-24-delete-account-404.md](postmortems/2026-08-24-delete-account-404.md)
 
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
