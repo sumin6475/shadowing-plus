@@ -27,6 +27,7 @@ import { LoopIcon } from "@/components/mobile/Icons";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { useMicRecorder } from "@/lib/useMicRecorder";
 import { usePracticeRecordings } from "@/lib/usePracticeRecordings";
+import { translationNeedsRetry } from "@/lib/pipeline/translate-map";
 
 import "./clip.css";
 
@@ -254,6 +255,42 @@ export default function PlayerPage({
       clearTimeout(timeoutId);
     };
   }, [videoId, loadAttempt]);
+
+  // Fill lines the original translate pass skipped or summarized. One attempt
+  // per clip per visit — a failed repair must not loop.
+  const repairTried = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || segments.length === 0) return;
+    if (repairTried.current === videoId) return;
+    if (!segments.some((s) => translationNeedsRetry(s.text, s.translation))) {
+      repairTried.current = videoId;
+      return;
+    }
+    repairTried.current = videoId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/videos/${videoId}/repair-translations`, {
+          method: "POST",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          updates?: { id: string; translation: string }[];
+        };
+        if (cancelled || !res.ok || !data.updates?.length) return;
+        const byId = new Map(data.updates.map((u) => [u.id, u.translation]));
+        setSegments((prev) =>
+          prev.map((s) =>
+            byId.has(s.id) ? { ...s, translation: byId.get(s.id)! } : s,
+          ),
+        );
+      } catch {
+        // Non-fatal: the English line still plays.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [videoId, loading, segments.length]);
 
   // Lazy-fetch the `words` array for the currently-focused segment only.
   // Initial fetch above strips words to keep the payload small; word-level

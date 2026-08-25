@@ -23,8 +23,10 @@ import { ChevronDownIcon } from "@/components/home/Icons";
 import { RecDotIcon, StopRecIcon } from "@/components/clip/Icons";
 import RecordingsPanel from "@/components/clip/RecordingsPanel";
 import TranscriptMenu from "@/components/clip/TranscriptMenu";
+import { useLineTap } from "@/components/clip/text-selection";
 import { formatExportTime } from "@/lib/transcript-export";
 import { isTranscriptLineVisible } from "@/lib/transcript-filter";
+import { visibleTranslation } from "@/lib/pipeline/translate-map";
 import type { PracticeRecording } from "@/lib/usePracticeRecordings";
 
 interface Props {
@@ -127,8 +129,10 @@ export default function MobileClip({
 }: Props) {
   const router = useRouter();
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const lineTap = useLineTap(onSelectSegment);
   const isVideo = video.media_type === "video" && !!video.video_url;
   const segment = segments[currentIndex] ?? null;
+  const focusKo = visibleTranslation(segment?.translation);
 
   // Focus card visibility. Seed lazily from localStorage (SSR-safe: window is
   // undefined on the server, so it defaults to visible and hydrates from the
@@ -283,8 +287,8 @@ export default function MobileClip({
                 unplayedClassName="m-word-unplayed"
               />
             </p>
-            {showTranslation && segment.translation && (
-              <p className="m-focus-ko">{segment.translation}</p>
+            {showTranslation && focusKo && (
+              <p className="m-focus-ko">{focusKo}</p>
             )}
           </div>
         )}
@@ -357,17 +361,20 @@ export default function MobileClip({
               </p>
             ) : visibleLines.map(({ seg, index: i }) => {
               const isBookmarked = bookmarkedIds.has(seg.id);
+              const ko = visibleTranslation(seg.translation);
               return (
                 <div
                   key={seg.id}
                   className={"m-line" + (i === currentIndex ? " is-current" : "")}
-                  onClick={() => onSelectSegment(i)}
+                  onPointerDown={lineTap.onPointerDown}
+                  onPointerMove={lineTap.onPointerMove}
+                  onClick={(e) => lineTap.onClick(e, i)}
                 >
                   <div className="m-line-time">{formatTime(seg.start_time)}</div>
                   <div style={{ minWidth: 0 }}>
                     <div className="m-line-en" data-seg-id={seg.id}>{seg.text}</div>
-                    {showTranslation && seg.translation && (
-                      <div className="m-line-ko">{seg.translation}</div>
+                    {showTranslation && ko && (
+                      <div className="m-line-ko">{ko}</div>
                     )}
                   </div>
                   <button

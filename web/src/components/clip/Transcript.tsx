@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Segment } from "@/lib/types";
 import { isTranscriptLineVisible } from "@/lib/transcript-filter";
+import { visibleTranslation } from "@/lib/pipeline/translate-map";
 import { BookmarkIcon, SearchIcon } from "./Icons";
 import TranscriptMenu from "./TranscriptMenu";
+import { useLineTap } from "./text-selection";
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -39,6 +41,7 @@ export default function Transcript({
   onEnglishOnlyChange,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
+  const lineTap = useLineTap(onSelect);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -152,14 +155,14 @@ export default function Transcript({
           visible.map(({ seg, index }) => {
             const isCurrent = index === currentIndex;
             const isBookmarked = bookmarkedIds.has(seg.id);
+            const ko = visibleTranslation(seg.translation);
             return (
               <div
                 key={seg.id}
                 className={"line" + (isCurrent ? " is-current" : "")}
-                onClick={(e) => {
-                  onSelect(index);
-                  e.currentTarget.blur();
-                }}
+                onPointerDown={lineTap.onPointerDown}
+                onPointerMove={lineTap.onPointerMove}
+                onClick={(e) => lineTap.onClick(e, index)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -172,13 +175,13 @@ export default function Transcript({
                 <div className="line-time">{formatTime(seg.start_time)}</div>
                 <div>
                   <div className="line-en" data-seg-id={seg.id}>{seg.text}</div>
-                  {seg.translation ? (
+                  {ko ? (
                     <div
                       className={
                         "line-ko" + (showTranslation ? "" : " is-hidden")
                       }
                     >
-                      {seg.translation}
+                      {ko}
                     </div>
                   ) : null}
                 </div>

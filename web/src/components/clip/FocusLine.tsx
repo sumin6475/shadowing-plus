@@ -2,6 +2,7 @@
 
 import type { Segment } from "@/lib/types";
 import WordText from "@/components/WordText";
+import { visibleTranslation } from "@/lib/pipeline/translate-map";
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -43,7 +44,7 @@ export default function FocusLine({
         ) : null}
       </div>
       <div className={"focus-ko" + (showTranslation ? "" : " is-hidden")}>
-        {segment?.translation ?? ""}
+        {visibleTranslation(segment?.translation) ?? ""}
       </div>
     </div>
   );

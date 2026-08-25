@@ -11,6 +11,24 @@ import { recordUsage } from "@/lib/usage";
 // dedup, context fetch, insert, and AI explanation live here.
 
 const MODEL = "gpt-4o-mini";
+const MEANING_MAX = 80;
+
+/** Prompt for the lookup popover / Phrase Bank explainer. meaning is a short
+ *  L1 gloss of this sense; usage_note is the English-in-context nuance. */
+export function buildExplainPrompt(phrase: string, lang: string, transcript: string): string {
+  return `Explain one English expression for a learner whose first language is ${lang}. The learner selected: "${phrase}"
+
+It appears in this local video transcript:
+${transcript}
+
+Return JSON only:
+{"kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"${lang} gloss of THIS sense","usage_note":"English nuance"}
+
+Rules:
+- meaning: the exact ${lang} equivalent of the selected expression in this sense. A word or short dictionary gloss (typically 1–6 words). Never a sentence. Never restate, excerpt, or paraphrase the surrounding subtitle or its ${lang} translation — if that translation is a long clause, extract only the bit that matches the selection (e.g. English "avenue" → the ${lang} word for path/way, not the whole clause).
+- usage_note: brief English explanation of the nuance or grammar in this context (max 24 words). This part MUST stay in English.
+- Do not give a generic dictionary entry that ignores the supplied context. Pick the one sense that fits.`;
+}
 
 /** Columns returned to any Phrase Bank client. Keep in sync with the UI types. */
 export const PHRASE_SELECT_COLUMNS =
@@ -71,7 +89,7 @@ async function explainPhrase(input: {
     response_format: { type: "json_object" },
     messages: [{
       role: "user",
-      content: `Explain one English expression for a learner whose first language is ${lang}. The learner selected: "${input.phrase}"\n\nIt appears in this local video transcript:\n${transcript}\n\nReturn JSON only:\n{"kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"natural ${lang} meaning in this context (one short sentence)","usage_note":"brief English explanation of the nuance or grammar in this context (max 24 words)"}\nDo not give a generic dictionary entry. Use the supplied surrounding context.`,
+      content: buildExplainPrompt(input.phrase, lang, transcript),
     }],
   });
   await recordUsage({
@@ -88,7 +106,7 @@ async function explainPhrase(input: {
   return {
     kind: (PHRASE_KINDS as readonly string[]).includes(kind) ? kind : "phrase",
     // `meaning` is the current JSON key; `meaning_ko` tolerates an older reply.
-    meaning: asPhraseText(parsed.meaning ?? parsed.meaning_ko, 500),
+    meaning: asPhraseText(parsed.meaning ?? parsed.meaning_ko, MEANING_MAX),
     note: asPhraseText(parsed.usage_note, 500),
   };
 }
