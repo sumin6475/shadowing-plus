@@ -481,6 +481,14 @@ export async function createStudioSituation(input: { topicId: string; title: str
   throw new Error(result.error?.message ?? "Couldn’t create this situation.");
 }
 
+/** Set (or clear) a situation's event date. Backs the "+ Date" chip on the
+ *  Situation header — the field shipped in migration 028 but nothing ever
+ *  wrote to it, so every situation read back null. */
+export async function setSituationEventDate(id: string, eventDate: string | null): Promise<void> {
+  const { error } = await supabase.from("stories").update({ event_date: eventDate }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 export async function saveAttemptPhraseCandidates(input: {
   talkSessionId: string;
   matches: { phraseItemId: string; said: string; score: number }[];

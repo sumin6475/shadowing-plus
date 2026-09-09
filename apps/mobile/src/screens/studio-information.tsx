@@ -34,6 +34,7 @@ import {
   fetchStudioTopics,
   linkPhraseToNote,
   pickCurrentNote,
+  setSituationEventDate,
   phraseChoices,
   quickTitleFromBody,
   unlinkPhraseFromNote,
@@ -792,9 +793,45 @@ export function StudioTopicScreen({ id, name, nav }: { id: string; name?: string
   );
 }
 
-function attemptDate(value: string): string {
-  const date = new Date(value);
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+// ── Situation detail ────────────────────────────────────────────────────────
+// Ported from Claude Design "Situation Detail.html" (2026-09-09, confirmed).
+// The design carries its own token set, close to but not identical with the
+// global theme: a lighter well/hairline and a distinct dark accent. Deriving
+// them here keeps the port faithful without moving tokens other screens use.
+function useSituationTokens() {
+  const t = useTheme();
+  const dark = t.dark;
+  return {
+    t,
+    dark,
+    card: t.colors.card,
+    ink: t.colors.ink,
+    sub: t.colors.ink2,
+    faint: dark ? "rgba(235,235,245,0.3)" : "rgba(60,60,67,0.33)",
+    hair: dark ? "rgba(235,235,245,0.13)" : "rgba(60,60,67,0.14)",
+    well: dark ? "rgba(120,120,128,0.14)" : "rgba(120,120,128,0.08)",
+    accent: dark ? "#5B8AF5" : "#3B6EE1",
+    accentSoft: dark ? "rgba(91,138,245,0.18)" : "rgba(59,110,225,0.11)",
+    onAccent: dark ? "#000" : "#fff",
+  };
+}
+
+type SituationTokens = ReturnType<typeof useSituationTokens>;
+
+// Cards sit at 16 from the frame edge, header and section rows at 20, while
+// Screen already pads 18 — so cards pull 2 out and text pushes 2 in.
+const CARD_PULL = -2;
+const TEXT_PUSH = 2;
+
+function situationCard(c: SituationTokens): ViewStyle {
+  return {
+    backgroundColor: c.card,
+    borderRadius: 26,
+    marginHorizontal: CARD_PULL,
+    borderWidth: hairline,
+    borderColor: c.hair,
+    overflow: "hidden",
+  };
 }
 
 const PHRASE_STATUS_LABEL: Record<string, string> = {
@@ -808,85 +845,268 @@ function phraseStatusLabel(status: string): string {
   return PHRASE_STATUS_LABEL[status] ?? status.replace(/_/g, " ");
 }
 
-// Section = header + one inset grouped card, spaced as a unit so the gap
-// between groups (Screen gap + marginTop) is visibly larger than the gap
-// between a header and its card. iOS motif: rows on a 52pt unit, hairline
-// separators, type on the 17/15/13/12/11 scale, controls as capsules.
-function Group({ title, action, onAction, first, children }: { title: string; action?: string; onAction?: () => void; first?: boolean; children: ReactNode }) {
+/** Badge tone ladder: New and Recognizing stay neutral, Practicing tints, Ready fills. */
+function PhraseBadge({ status, c }: { status: string; c: SituationTokens }) {
+  const label = phraseStatusLabel(status);
+  const filled = status === "ready";
+  const tinted = status === "practicing";
   return (
-    <View style={{ gap: 8, marginTop: first ? 4 : 10 }}>
-      <StudioSectionHeader title={title} action={action} onAction={onAction} chevron={false} />
-      {children}
-    </View>
-  );
-}
-
-function GroupEmpty({ children }: { children: ReactNode }) {
-  const t = useTheme();
-  return <Text style={{ paddingVertical: 16, fontSize: 13, lineHeight: 18, color: t.colors.ink3 }}>{children}</Text>;
-}
-
-// Notes are the situation's primary unit, so the current one gets its practice
-// affordance inside the list rather than a separate hero card above it. The
-// hero repeated the same note twice and pushed the list off the first screen.
-function SituationNoteRow({ note, first, primary, onPress, onPractice }: { note: SpeakingNote; first?: boolean; primary?: boolean; onPress: () => void; onPractice: () => void }) {
-  const t = useTheme();
-  const meta = [
-    note.goal || null,
-    note.phraseCount ? `${note.phraseCount} phrase${note.phraseCount === 1 ? "" : "s"}` : null,
-    note.attemptCount ? `${note.attemptCount} attempt${note.attemptCount === 1 ? "" : "s"}` : null,
-  ].filter(Boolean).join(" · ");
-  return (
-    <View style={{ minHeight: 52, borderTopWidth: first ? 0 : hairline, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center", gap: 12 }}>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`${note.title}. ${meta}`}
-        style={({ pressed }) => ({ flex: 1, paddingVertical: 10, opacity: pressed ? 0.6 : 1 })}
-      >
-        <Text style={{ fontSize: 17, fontWeight: "600", color: t.colors.ink }} numberOfLines={1}>{note.title}</Text>
-        {meta ? <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 2 }} numberOfLines={1}>{meta}</Text> : null}
-      </Pressable>
-      <Pressable
-        onPress={onPractice}
-        accessibilityRole="button"
-        accessibilityLabel={`Practice ${note.title}`}
-        hitSlop={8}
-        style={({ pressed }) => ({
-          width: 34,
-          height: 34,
-          borderRadius: 9999,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: primary ? t.colors.acc : t.colors.soft,
-          opacity: pressed ? 0.7 : 1,
-        })}
-      >
-        <Icon name="mic" s={16} w={2} c={primary ? "#fff" : t.colors.accD} />
-      </Pressable>
-    </View>
-  );
-}
-
-// A database-style two-column list: the phrase on the left, its learning state
-// on the right under a column header, which is what the PRD asks for.
-function PhraseTableRow({ phrase, first }: { phrase: NotePhrase; first?: boolean }) {
-  const t = useTheme();
-  return (
-    <View style={{ minHeight: 52, paddingVertical: 9, borderTopWidth: first ? 0 : hairline, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center", gap: 12 }}>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 15, fontWeight: "500", color: t.colors.ink }} numberOfLines={1}>{phrase.text}</Text>
-        {phrase.translation ? <Text style={{ fontSize: 12, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>{phrase.translation}</Text> : null}
-      </View>
-      <Text style={{ width: 88, textAlign: "right", fontSize: 13, fontWeight: "600", color: t.colors.ink2 }} numberOfLines={1}>
-        {phraseStatusLabel(phrase.learningStatus)}
+    <View
+      style={{
+        height: 24,
+        paddingHorizontal: 10,
+        borderRadius: 9999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: filled ? c.accent : tinted ? c.accentSoft : c.well,
+      }}
+    >
+      <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.33, color: filled ? c.onAccent : tinted ? c.accent : status === "new" ? c.faint : c.sub }}>
+        {label}
       </Text>
     </View>
   );
 }
 
+function SituationChip({ c, icon, label, dashed, onPress }: { c: SituationTokens; icon?: IconName; label: string; dashed?: boolean; onPress?: () => void }) {
+  const body = (
+    <View
+      style={{
+        height: 28,
+        paddingHorizontal: 12,
+        borderRadius: 9999,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        backgroundColor: dashed ? "transparent" : c.well,
+        borderWidth: dashed ? 1.5 : 0,
+        borderColor: dashed ? "rgba(120,120,128,0.45)" : "transparent",
+        borderStyle: dashed ? "dashed" : "solid",
+      }}
+    >
+      {icon ? <Icon name={icon} s={12} w={1.6} c={c.sub} /> : null}
+      <Text style={{ fontSize: 12.5, fontWeight: "500", color: c.sub }}>{label}</Text>
+    </View>
+  );
+  if (!onPress) return body;
+  return (
+    <Pressable onPress={onPress} hitSlop={6} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+      {body}
+    </Pressable>
+  );
+}
+
+/** Serif section title with an optional tinted capsule action on the right. */
+function SituationSection({ c, title, actionLabel, actionIcon, onAction }: { c: SituationTokens; title: string; actionLabel?: string; actionIcon?: IconName; onAction?: () => void }) {
+  return (
+    <View style={{ paddingHorizontal: TEXT_PUSH, marginTop: 28, marginBottom: 10, flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
+      <Serif style={{ fontSize: 20, color: c.ink }}>{title}</Serif>
+      {actionLabel ? (
+        <Pressable onPress={onAction} hitSlop={8}>
+          {({ pressed }) => (
+            <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 9999, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: c.accentSoft, opacity: pressed ? 0.65 : 1 }}>
+              {actionIcon ? <Icon name={actionIcon} s={12} w={1.8} c={c.accent} /> : null}
+              <Text style={{ fontSize: 13, fontWeight: "600", color: c.accent }}>{actionLabel}</Text>
+            </View>
+          )}
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function MicButton({ c, filled, label, onPress }: { c: SituationTokens; filled?: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        width: 44,
+        height: 44,
+        borderRadius: 9999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: filled ? c.accent : c.well,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Icon name="mic" s={16} w={1.7} c={filled ? c.onAccent : c.accent} />
+    </Pressable>
+  );
+}
+
+/** The first note of a situation is the one you are most likely to speak next,
+ *  so it gets the filled mic and slightly taller row (design variant A). */
+function SituationNoteRow({ c, note, first, hero, onPress, onPractice }: { c: SituationTokens; note: SpeakingNote; first?: boolean; hero?: boolean; onPress: () => void; onPractice: () => void }) {
+  const meta = `${note.phraseCount} phrase${note.phraseCount === 1 ? "" : "s"} · ${note.attemptCount} attempt${note.attemptCount === 1 ? "" : "s"}`;
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingLeft: 18,
+        paddingRight: 14,
+        paddingVertical: hero ? 18 : 14,
+        borderTopWidth: first ? 0 : hairline,
+        borderTopColor: c.hair,
+      }}
+    >
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${note.title}. ${meta}`} style={({ pressed }) => ({ flex: 1, minWidth: 0, opacity: pressed ? 0.6 : 1 })}>
+        <Text style={{ fontSize: hero ? 17 : 16, fontWeight: "600", lineHeight: hero ? 22 : 21, color: c.ink }}>{note.title}</Text>
+        {note.goal ? <Text style={{ fontSize: 13, lineHeight: 18, color: c.sub, marginTop: 3 }}>{note.goal}</Text> : null}
+        <Text style={{ fontSize: 12, color: c.faint, marginTop: 5 }}>{meta}</Text>
+      </Pressable>
+      <MicButton c={c} filled={hero} label={`Practice ${note.title}`} onPress={onPractice} />
+    </View>
+  );
+}
+
+function PhraseRow({ c, phrase, first, chevron, onPress }: { c: SituationTokens; phrase: NotePhrase; first?: boolean; chevron?: boolean; onPress?: () => void }) {
+  const inner = (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 18, paddingRight: 16, paddingVertical: 12, borderTopWidth: first ? 0 : hairline, borderTopColor: c.hair }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 14.5, lineHeight: 20, fontWeight: "400", color: c.ink }}>{phrase.text}</Text>
+        {phrase.translation ? <Text style={{ fontSize: 12.5, color: c.sub, marginTop: 4 }}>{phrase.translation}</Text> : null}
+      </View>
+      <PhraseBadge status={phrase.learningStatus} c={c} />
+      {chevron ? <Icon name="chev" s={12} w={1.8} c={c.faint} /> : null}
+    </View>
+  );
+  if (!onPress) return inner;
+  return <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>{inner}</Pressable>;
+}
+
+function MoreRow({ c, label, onPress }: { c: SituationTokens; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 11, borderTopWidth: hairline, borderTopColor: c.hair }}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: c.accent }}>{label}</Text>
+        <Icon name="chev" s={12} w={1.8} c={c.faint} />
+      </View>
+    </Pressable>
+  );
+}
+
+function attemptDuration(seconds: number | null): string {
+  const total = Math.max(0, Math.round(seconds ?? 0));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function AttemptRow({ c, date, note, duration, first, chevron, onPress }: { c: SituationTokens; date: string; note: string; duration: string; first?: boolean; chevron?: boolean; onPress?: () => void }) {
+  const inner = (
+    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 10, paddingHorizontal: 18, paddingVertical: 11, borderTopWidth: first ? 0 : hairline, borderTopColor: c.hair }}>
+      <Text style={{ width: 52, fontSize: 13.5, color: c.faint, fontVariant: ["tabular-nums"] }}>{date}</Text>
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: c.sub }} numberOfLines={1}>{note}</Text>
+      <Text style={{ fontSize: 13.5, color: c.faint, fontVariant: ["tabular-nums"] }}>{duration}</Text>
+      {chevron ? <Icon name="chev" s={12} w={1.8} c={c.faint} /> : null}
+    </View>
+  );
+  if (!onPress) return inner;
+  return <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>{inner}</Pressable>;
+}
+
+/** The one repair worth carrying forward, shown above the attempt list. */
+function RepairNote({ c, lead, body, inset }: { c: SituationTokens; lead: string; body: string; inset?: boolean }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 9, marginHorizontal: inset ? 0 : CARD_PULL, marginTop: 2, marginBottom: 12, paddingHorizontal: 16, paddingVertical: 13, borderRadius: 18, backgroundColor: c.accentSoft }}>
+      <Icon name="bulb" s={14} w={1.5} c={c.accent} />
+      <Text style={{ flex: 1, fontSize: 13, lineHeight: 19, color: c.sub }}>
+        {lead}
+        <Text style={{ color: c.ink, fontWeight: "600" }}>{body}</Text>
+      </Text>
+    </View>
+  );
+}
+
+function SituationEmpty({ c, title, body }: { c: SituationTokens; title?: string; body: string }) {
+  return (
+    <View style={{ paddingHorizontal: 20, paddingVertical: 22 }}>
+      {title ? <Text style={{ fontSize: 15, fontWeight: "600", color: c.ink }}>{title}</Text> : null}
+      <Text style={{ fontSize: 13, lineHeight: 19, color: c.sub, marginTop: title ? 4 : 0 }}>{body}</Text>
+    </View>
+  );
+}
+
+function BigCta({ c, icon, label, onPress }: { c: SituationTokens; icon: IconName; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, marginHorizontal: 16, marginTop: 16, marginBottom: 4 })}>
+      <View style={{ height: 50, borderRadius: 9999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: c.accent }}>
+        <Icon name={icon} s={14} w={1.8} c={c.onAccent} />
+        <Text style={{ fontSize: 16, fontWeight: "600", color: c.onAccent }}>{label}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Soft "+ Add phrase" affordance used by the empty phrase card. */
+function SoftAction({ c, label, onPress }: { c: SituationTokens; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ alignSelf: "flex-start", marginTop: 12, opacity: pressed ? 0.65 : 1 })}>
+      <View style={{ height: 34, paddingHorizontal: 16, borderRadius: 9999, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.accentSoft }}>
+        <Text style={{ fontSize: 13.5, fontWeight: "600", color: c.accent }}>{label}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function SituationCenter({ c, children }: { c: SituationTokens; children: ReactNode }) {
+  return <View style={{ alignItems: "center", justifyContent: "center", gap: 14, paddingHorizontal: 40, paddingVertical: 110 }}>{children}</View>;
+}
+
+function situationHeaderDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
+}
+
+function attemptDate(value: string): string {
+  const date = new Date(value);
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Minimal date capture behind the "+ Date" chip. situations.event_date shipped
+ *  in migration 028 but nothing ever wrote it, so every situation read null. */
+function EventDateSheet({ open, initial, onClose, onSave }: { open: boolean; initial: string | null; onClose: () => void; onSave: (value: string | null) => Promise<void> }) {
+  const [value, setValue] = useState(initial ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => { setValue(initial ?? ""); setError(null); }, 0);
+    return () => clearTimeout(timer);
+  }, [open, initial]);
+  const commit = async (next: string | null) => {
+    setSaving(true);
+    setError(null);
+    try { await onSave(next); onClose(); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t save the date."); }
+    finally { setSaving(false); }
+  };
+  const save = () => {
+    const trimmed = value.trim();
+    if (!trimmed) return void commit(null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed) || !Number.isFinite(new Date(trimmed).getTime())) {
+      setError("Use YYYY-MM-DD, for example 2026-09-18.");
+      return;
+    }
+    void commit(trimmed);
+  };
+  return (
+    <Sheet open={open} title="When is it?" subtitle="A date makes the situation easier to find later. Leave it blank to clear." onClose={onClose}>
+      <View style={{ paddingHorizontal: 22, gap: 14 }}>
+        <Field label="Date" value={value} onChangeText={setValue} placeholder="2026-09-18" />
+        {error ? <Text style={{ color: "#E5484D", fontSize: 13.5, lineHeight: 19 }}>{error}</Text> : null}
+        <Pill full onPress={saving ? undefined : save}>{saving ? "Saving…" : "Save date"}</Pill>
+      </View>
+    </Sheet>
+  );
+}
+
 export function StudioSituationScreen({ id, topicId, title, nav }: { id: string; topicId: string; title?: string; nav: Nav }) {
-  const t = useTheme();
+  const c = useSituationTokens();
   const [topics, setTopics] = useState<StudioTopic[]>([]);
   const [situations, setSituations] = useState<StudioSituation[]>([]);
   const [notes, setNotes] = useState<SpeakingNote[] | null>(null);
@@ -894,94 +1114,284 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
   const [attempts, setAttempts] = useState<PracticeAttempt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
-  const [showAllPhrases, setShowAllPhrases] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [allTopics, allSituations, linkedNotes, linkedPhrases, recentAttempts] = await Promise.all([fetchStudioTopics(), fetchStudioSituations(topicId), fetchSpeakingNotes({ situationId: id }), fetchSituationPhrases(id), fetchPracticeAttempts({ situationId: id, limit: 10 })]);
+      const [allTopics, allSituations, linkedNotes, linkedPhrases, recentAttempts] = await Promise.all([
+        fetchStudioTopics(),
+        fetchStudioSituations(topicId),
+        fetchSpeakingNotes({ situationId: id }),
+        fetchSituationPhrases(id),
+        fetchPracticeAttempts({ situationId: id, limit: 25 }),
+      ]);
       setTopics(allTopics); setSituations(allSituations); setNotes(linkedNotes); setPhrases(linkedPhrases); setAttempts(recentAttempts); setError(null);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load this situation."); }
   }, [id, topicId]);
   useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+
   const situation = situations.find((item) => item.id === id);
-  const when = situationDate(situation?.eventDate ?? null);
+  const when = situationHeaderDate(situation?.eventDate ?? null);
   const noteTitleById = useMemo(() => new Map((notes ?? []).map((note) => [note.id, note.title])), [notes]);
   const noteCount = notes?.length ?? 0;
-  const headerMeta = [
-    when,
-    `${noteCount} note${noteCount === 1 ? "" : "s"}`,
-    `${attempts.length} attempt${attempts.length === 1 ? "" : "s"}`,
-  ].filter(Boolean).join(" · ");
-  const visiblePhrases = showAllPhrases ? phrases : phrases.slice(0, 5);
-  const list: ViewStyle = { paddingVertical: 4 };
+  const lastRepair = attempts.find((attempt) => attempt.repairSuggestion)?.repairSuggestion ?? null;
+  const card = situationCard(c);
+
+  const header = (
+    <>
+      <BackBar onBack={nav.pop} />
+      <View style={{ paddingHorizontal: TEXT_PUSH }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent, marginTop: 14, marginBottom: 6 }}>
+          {(situation?.topicName ?? "Topic").toUpperCase()}
+        </Text>
+        <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>{situation?.title ?? title ?? "Situation"}</Serif>
+        {situation?.description ? <Text style={{ fontSize: 14, lineHeight: 20, color: c.sub, marginTop: 8 }}>{situation.description}</Text> : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          {when
+            ? <SituationChip c={c} icon="calendar" label={when} onPress={() => setDateOpen(true)} />
+            : <SituationChip c={c} dashed label="+ Date" onPress={() => setDateOpen(true)} />}
+          <SituationChip c={c} label={`${noteCount} note${noteCount === 1 ? "" : "s"}`} />
+          <SituationChip c={c} label={`${attempts.length} attempt${attempts.length === 1 ? "" : "s"}`} />
+        </View>
+      </View>
+    </>
+  );
+
+  if (notes === null && !error) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <SituationCenter c={c}><ActivityIndicator color={c.accent} /></SituationCenter>
+      </Screen>
+    );
+  }
+  if (error) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <SituationCenter c={c}>
+          <Serif style={{ fontSize: 20, color: c.ink }}>Couldn’t load this situation</Serif>
+          <Text style={{ fontSize: 13.5, lineHeight: 20, color: c.sub, textAlign: "center" }}>{error}</Text>
+          <Pill onPress={load}>Retry</Pill>
+        </SituationCenter>
+      </Screen>
+    );
+  }
+
   return (
     <>
-      <Screen bottomPad={40}>
-        <BackBar onBack={nav.pop} />
-        <Stagger>
-          <View style={{ paddingHorizontal: 2, paddingBottom: 6 }}>
-            <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.2, color: t.colors.accD }}>{situation?.topicName ?? "Topic"}</Text>
-            <Serif style={{ fontSize: 28, lineHeight: 33, color: t.colors.ink, marginTop: 4 }}>{situation?.title ?? title ?? "Situation"}</Serif>
-            {situation?.description ? <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.ink2, marginTop: 6 }}>{situation.description}</Text> : null}
-            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 8 }}>{headerMeta}</Text>
-          </View>
+      <Screen style={{ gap: 0 }} bottomPad={40}>
+        {header}
 
-          <Group title="Speaking notes" action="New" onAction={() => setQuickOpen(true)} first>
-            {notes === null && !error ? <Loading /> : error ? <ErrorCard message={error} retry={load} /> : (
-              <Card style={list}>
-                {(notes ?? []).map((note, index) => (
-                  <SituationNoteRow
-                    key={note.id}
-                    note={note}
-                    first={index === 0}
-                    primary={index === 0}
-                    onPress={() => nav.push("speakingNote", { id: note.id })}
-                    onPractice={() => startNotePractice(nav, note)}
-                  />
-                ))}
-                {!notes?.length ? <GroupEmpty>Add one clear thing you want to say.</GroupEmpty> : null}
-              </Card>
-            )}
-          </Group>
+        <SituationSection c={c} title="Speaking Notes" actionLabel={noteCount ? "New" : undefined} actionIcon="plus" onAction={() => setQuickOpen(true)} />
+        <View style={card}>
+          {noteCount ? (
+            (notes ?? []).map((note, index) => (
+              <SituationNoteRow
+                key={note.id}
+                c={c}
+                note={note}
+                first={index === 0}
+                hero={index === 0}
+                onPress={() => nav.push("speakingNote", { id: note.id })}
+                onPractice={() => startNotePractice(nav, note)}
+              />
+            ))
+          ) : (
+            <>
+              <SituationEmpty c={c} title="What will you need to say here?" body="Write one thing you’ll actually say in this situation — a sentence is enough. Practice starts from a note." />
+              <BigCta c={c} icon="plus" label="Write your first note" onPress={() => setQuickOpen(true)} />
+            </>
+          )}
+        </View>
 
-          <Group
-            title="Useful phrases"
-            action={phrases.length > 5 ? (showAllPhrases ? "Show less" : `All ${phrases.length}`) : undefined}
-            onAction={() => setShowAllPhrases((value) => !value)}
-          >
-            <Card style={list}>
-              {phrases.length ? (
-                <>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingTop: 6, paddingBottom: 4 }}>
-                    <Text style={{ flex: 1, fontSize: 11, fontWeight: "600", letterSpacing: 0.6, color: t.colors.ink3 }}>PHRASE</Text>
-                    <Text style={{ width: 88, textAlign: "right", fontSize: 11, fontWeight: "600", letterSpacing: 0.6, color: t.colors.ink3 }}>STATUS</Text>
-                  </View>
-                  {visiblePhrases.map((phrase) => <PhraseTableRow key={phrase.id} phrase={phrase} />)}
-                </>
-              ) : (
-                <GroupEmpty>Linked phrases from these notes will appear here.</GroupEmpty>
-              )}
-            </Card>
-          </Group>
+        <SituationSection c={c} title="Useful Phrases" />
+        <View style={card}>
+          {phrases.length ? (
+            <>
+              {phrases.slice(0, 5).map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />)}
+              {phrases.length > 5 ? (
+                <MoreRow c={c} label={`${phrases.length - 5} more phrases`} onPress={() => nav.push("situationPhrases", { id, topicId, title: situation?.title ?? title })} />
+              ) : null}
+            </>
+          ) : (
+            <View style={{ paddingHorizontal: 20, paddingVertical: 22 }}>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: c.sub }}>No phrases yet — collect expressions you want ready for this situation.</Text>
+              <SoftAction c={c} label="+ Add phrase" onPress={() => (notes?.[0] ? nav.push("speakingNote", { id: notes[0].id }) : setQuickOpen(true))} />
+            </View>
+          )}
+        </View>
 
-          {/* Same container as the sections above, so the screen keeps one
-              idiom; attempts read lighter through smaller type and secondary
-              color, not through a different kind of list. */}
-          <Group title="Recent attempts" action={attempts.length > 3 ? "All" : undefined} onAction={() => nav.push("sessionsList")}>
-            <Card style={list}>
-              {attempts.slice(0, 3).map((attempt, index) => (
-                <View key={attempt.id} style={{ minHeight: 44, paddingVertical: 8, borderTopWidth: index ? hairline : 0, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <Text style={{ width: 52, fontSize: 13, color: t.colors.ink3 }}>{attemptDate(attempt.createdAt)}</Text>
-                  <Text style={{ flex: 1, fontSize: 15, color: t.colors.ink2 }} numberOfLines={1}>{(attempt.noteId && noteTitleById.get(attempt.noteId)) || "Free talk"}</Text>
-                  <Text style={{ fontSize: 13, color: t.colors.ink3 }}>{Math.round(attempt.durationSeconds ?? 0)}s</Text>
-                </View>
-              ))}
-              {!attempts.length ? <GroupEmpty>Attempts stay a quiet history here.</GroupEmpty> : null}
-            </Card>
-          </Group>
-        </Stagger>
+        <SituationSection
+          c={c}
+          title="Recent Attempts"
+          actionLabel={attempts.length ? `All ${attempts.length}` : undefined}
+          onAction={() => nav.push("situationAttempts", { id, topicId, title: situation?.title ?? title })}
+        />
+        {lastRepair ? <RepairNote c={c} lead="Last time: " body={lastRepair} /> : null}
+        <View style={card}>
+          {attempts.length ? (
+            attempts.slice(0, 3).map((attempt, index) => (
+              <AttemptRow
+                key={attempt.id}
+                c={c}
+                first={index === 0}
+                date={attemptDate(attempt.createdAt)}
+                note={(attempt.noteId && noteTitleById.get(attempt.noteId)) || "Free talk"}
+                duration={attemptDuration(attempt.durationSeconds)}
+              />
+            ))
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 18, paddingRight: 14, paddingVertical: 14 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 16, fontWeight: "600", lineHeight: 21, color: c.ink }}>Start your first attempt</Text>
+                <Text style={{ fontSize: 13, lineHeight: 18, color: c.sub, marginTop: 3 }}>Free talk — you don’t need a note to begin.</Text>
+              </View>
+              <MicButton c={c} filled label="Start a free talk attempt" onPress={() => nav.startTalk({ ctx: situation?.title ?? title ?? "Free talk", from: "topics", storyId: id })} />
+            </View>
+          )}
+        </View>
       </Screen>
       <QuickNoteSheet open={quickOpen} nav={nav} topics={topics} situations={situations} initialTopicId={topicId} initialSituationId={id} onClose={() => setQuickOpen(false)} onSaved={() => void load()} />
+      <EventDateSheet
+        open={dateOpen}
+        initial={situation?.eventDate ?? null}
+        onClose={() => setDateOpen(false)}
+        onSave={async (value) => { await setSituationEventDate(id, value); nav.invalidateSpeakingData(); await load(); }}
+      />
     </>
+  );
+}
+
+const PHRASE_FILTER_ORDER = ["ready", "practicing", "recognizing", "new"] as const;
+
+/** Pushed full phrase list. Rows are tappable in the design's Phrase Detail
+ *  screen, which is not confirmed yet, so they stay inert here. */
+export function SituationPhrasesScreen({ id, title, nav }: { id: string; title?: string; nav: Nav }) {
+  const c = useSituationTokens();
+  const [phrases, setPhrases] = useState<NotePhrase[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try { setPhrases(await fetchSituationPhrases(id)); setError(null); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load these phrases."); }
+  }, [id]);
+  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+  const all = useMemo(() => phrases ?? [], [phrases]);
+  const counts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const phrase of all) map.set(phrase.learningStatus, (map.get(phrase.learningStatus) ?? 0) + 1);
+    return map;
+  }, [all]);
+  const visible = filter ? all.filter((phrase) => phrase.learningStatus === filter) : all;
+  return (
+    <Screen style={{ gap: 0 }} bottomPad={40}>
+      <BackBar onBack={nav.pop} />
+      <View style={{ paddingHorizontal: TEXT_PUSH }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent, marginTop: 14, marginBottom: 6 }} numberOfLines={1}>
+          {(title ?? "Situation").toUpperCase()}
+        </Text>
+        <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>Useful Phrases</Serif>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          <Pressable onPress={() => setFilter(null)} hitSlop={6}>
+            <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 9999, justifyContent: "center", backgroundColor: filter === null ? c.accent : c.well }}>
+              <Text style={{ fontSize: 12.5, fontWeight: "500", color: filter === null ? c.onAccent : c.sub }}>{`All ${all.length}`}</Text>
+            </View>
+          </Pressable>
+          {PHRASE_FILTER_ORDER.filter((status) => counts.get(status)).map((status) => (
+            <Pressable key={status} onPress={() => setFilter((current) => (current === status ? null : status))} hitSlop={6}>
+              <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 9999, justifyContent: "center", backgroundColor: filter === status ? c.accent : c.well }}>
+                <Text style={{ fontSize: 12.5, fontWeight: "500", color: filter === status ? c.onAccent : c.sub }}>{`${phraseStatusLabel(status)} ${counts.get(status)}`}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+      <View style={{ height: 20 }} />
+      {phrases === null && !error ? <SituationCenter c={c}><ActivityIndicator color={c.accent} /></SituationCenter> : error ? <ErrorCard message={error} retry={load} /> : (
+        <View style={situationCard(c)}>
+          {visible.length ? visible.map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />) : <SituationEmpty c={c} body="Nothing in this stage yet." />}
+        </View>
+      )}
+    </Screen>
+  );
+}
+
+function attemptBucket(value: string, now: number): string {
+  const days = Math.floor((now - new Date(value).getTime()) / 86400000);
+  if (days <= 7) return "This week";
+  if (days <= 14) return "Last week";
+  if (days <= 31) return "This month";
+  return "Earlier";
+}
+
+/** Pushed full attempt list for one situation, grouped by recency, with each
+ *  attempt's one repair suggestion inline under its row. */
+export function SituationAttemptsScreen({ id, title, nav }: { id: string; title?: string; nav: Nav }) {
+  const c = useSituationTokens();
+  const [attempts, setAttempts] = useState<PracticeAttempt[] | null>(null);
+  const [notes, setNotes] = useState<SpeakingNote[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  // Captured at fetch time so bucketing never calls Date.now() during render.
+  const [loadedAt, setLoadedAt] = useState(0);
+  const load = useCallback(async () => {
+    try {
+      const [list, linked] = await Promise.all([fetchPracticeAttempts({ situationId: id, limit: 100 }), fetchSpeakingNotes({ situationId: id })]);
+      setAttempts(list); setNotes(linked); setLoadedAt(Date.now()); setError(null);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load these attempts."); }
+  }, [id]);
+  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+  const noteTitleById = useMemo(() => new Map(notes.map((note) => [note.id, note.title])), [notes]);
+  const all = useMemo(() => attempts ?? [], [attempts]);
+  const totalMinutes = Math.round(all.reduce((sum, attempt) => sum + (attempt.durationSeconds ?? 0), 0) / 60);
+  const groups = useMemo(() => {
+    const out: { label: string; items: PracticeAttempt[] }[] = [];
+    for (const attempt of all) {
+      const label = attemptBucket(attempt.createdAt, loadedAt);
+      const last = out[out.length - 1];
+      if (last && last.label === label) last.items.push(attempt);
+      else out.push({ label, items: [attempt] });
+    }
+    return out;
+  }, [all, loadedAt]);
+  return (
+    <Screen style={{ gap: 0 }} bottomPad={40}>
+      <BackBar onBack={nav.pop} />
+      <View style={{ paddingHorizontal: TEXT_PUSH }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent, marginTop: 14, marginBottom: 6 }} numberOfLines={1}>
+          {(title ?? "Situation").toUpperCase()}
+        </Text>
+        <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>Attempts</Serif>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          <SituationChip c={c} label={`${all.length} attempt${all.length === 1 ? "" : "s"}`} />
+          <SituationChip c={c} label={`${totalMinutes} min total`} />
+        </View>
+      </View>
+      <View style={{ height: 20 }} />
+      {attempts === null && !error ? <SituationCenter c={c}><ActivityIndicator color={c.accent} /></SituationCenter> : error ? <ErrorCard message={error} retry={load} /> : (
+        <View style={situationCard(c)}>
+          {all.length ? groups.map((group, groupIndex) => (
+            <View key={`${group.label}-${groupIndex}`}>
+              <Text style={{ paddingHorizontal: 18, paddingTop: groupIndex === 0 ? 16 : 14, paddingBottom: 6, fontSize: 11, fontWeight: "700", letterSpacing: 0.77, color: c.sub }}>
+                {group.label.toUpperCase()}
+              </Text>
+              {group.items.map((attempt, index) => (
+                <View key={attempt.id}>
+                  <AttemptRow
+                    c={c}
+                    first={index === 0}
+                    chevron
+                    date={attemptDate(attempt.createdAt)}
+                    note={(attempt.noteId && noteTitleById.get(attempt.noteId)) || "Free talk"}
+                    duration={attemptDuration(attempt.durationSeconds)}
+                  />
+                  {attempt.repairSuggestion ? <RepairNote c={c} inset lead="" body={attempt.repairSuggestion} /> : null}
+                </View>
+              ))}
+            </View>
+          )) : <SituationEmpty c={c} body="Attempts stay a quiet history here." />}
+        </View>
+      )}
+    </Screen>
   );
 }
 

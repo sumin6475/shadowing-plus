@@ -28,7 +28,7 @@ import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
 import { SpeakingStudioScreen } from "@/screens/studio";
-import { SpeakingNoteScreen, StudioHomeScreen, StudioSituationScreen, StudioTopicScreen } from "@/screens/studio-information";
+import { SituationAttemptsScreen, SituationPhrasesScreen, SpeakingNoteScreen, StudioHomeScreen, StudioSituationScreen, StudioTopicScreen } from "@/screens/studio-information";
 import { EditProfileScreen, EnglishLevelScreen, FeedbackFocusScreen, FirstLanguageScreen, PhrasesPerDayScreen, DailySpeakingGoalScreen, ThemeScreen } from "@/screens/edit-profile";
 import { RemindersScreen } from "@/screens/reminders";
 import { PrivacyScreen } from "@/screens/privacy";
@@ -276,6 +276,8 @@ export function TabHost({ tab }: { tab: TabId }) {
     top?.name !== "studio" &&
     top?.name !== "studioTopic" &&
     top?.name !== "situation" &&
+    top?.name !== "situationPhrases" &&
+    top?.name !== "situationAttempts" &&
     top?.name !== "speakingNote";
 
   return (
@@ -392,6 +394,10 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <StudioTopicScreen nav={nav} id={p.id as string} name={p.name as string | undefined} />;
     case "situation":
       return <StudioSituationScreen nav={nav} id={p.id as string} topicId={p.topicId as string} title={p.title as string | undefined} />;
+    case "situationPhrases":
+      return <SituationPhrasesScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
+    case "situationAttempts":
+      return <SituationAttemptsScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "speakingNote":
       return <SpeakingNoteScreen nav={nav} id={p.id as string} />;
     case "topicsList":

@@ -639,4 +639,12 @@
 - **분리**: Speaking Note 상세(4절)는 연습 후 복귀(6절 `returnTo`)와 짝이라 다음 PR로 함께 미룸.
 - **산출물**: [quality/2026-09-09-studio-situation-detail.md](quality/2026-09-09-studio-situation-detail.md)
 
+### 2026-09-09 · 구현+검증 · Situation 상세 Claude Design 포팅
+- **무엇**: 컨펌된 `Situation Detail.html`을 그대로 구현. Full(light/dark)·empty·notes-only·loading·error 상태와 pushed 목록 2종(`situationPhrases`, `situationAttempts`) 신설. Hero 행은 디자인이 "현재"로 표기한 변형 A 채택. `Phrase 상세 — 리스트 행 탭`은 컨펌 제외라 미구현이고 phrase 행은 탭 불가로 남김.
+- **토큰**: 디자인의 well/hairline/dark-accent가 전역 테마와 미세하게 달라 `useSituationTokens()`로 이 화면 계열에서만 파생. 전역 토큰은 그대로 뒀다.
+- **덤으로 살린 것**: `+ Date` 칩 때문에 `setSituationEventDate()`를 추가 — `event_date`는 028에 있었지만 쓰는 코드가 없어 항상 null이었다. `repairSuggestion`도 내려오기만 하고 안 쓰던 걸 `Last time:` 노트로 노출.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(포팅 직후 19 → 4건 해소) · iOS export PASS · Simulator smoke PASS(상세 + Attempts 전체 목록).
+- **남은 것**: 다크 모드, phrases pushed 목록·필터 칩, `+ Date` 저장 경로, empty/notes-only 상태 미확인.
+- **산출물**: [quality/2026-09-09-situation-detail-design-port.md](quality/2026-09-09-situation-detail-design-port.md)
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->

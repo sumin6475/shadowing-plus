@@ -33,6 +33,8 @@ export type ViewName =
   | "studio"
   | "studioTopic"
   | "situation"
+  | "situationPhrases"
+  | "situationAttempts"
   | "speakingNote"
   | "topicsList"
   | "sessionsList";
