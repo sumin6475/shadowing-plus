@@ -19,10 +19,24 @@ Date: 2026-09-08
 - `npm run export:ios`: PASS. `tmp/export-ios` 내보내기 완료, Hermes 번들 6MB.
 - Scoped diff: `studio-information.tsx` +61 / `world.tsx` 1줄. NativeTabs 하단바 파일 변경 0건.
 
+## Simulator smoke (iOS 26.5, Saylo Dev)
+
+dev client + Metro 번들로 실기기 경로 그대로 확인. 모두 PASS.
+
+- Studio 홈 스크롤 → `Browse` 블록 렌더 확인. `Topics` 캡션이 실데이터 `5 topics`로 채워짐.
+- `Topics` → **새 `StudioTopicScreen`** 진입 확인 (`TOPIC` 라벨, `New note` / `New situation`, `Situations` + `Unsorted notes`). 옛 `DomainScreen`이 아님.
+- `All attempts` → 세션 목록 진입, 46건 렌더.
+- `Speaking stats` → 대시보드 복귀 확인 (`Your speaking world`, 1h 17m, 46 sessions recorded).
+- 각 화면에서 back으로 Studio 홈 복귀 정상. NativeTabs 하단바 유지.
+
 ## Not verified
 
-- **Simulator 런타임 확인 없음.** 정적 검사와 번들 빌드까지만 통과했다. 세 개의 Browse 행이 실제로 각 화면을 열고 되돌아오는지는 기기/시뮬레이터에서 눌러봐야 한다.
 - 원격 migration ledger 불일치(local 001–028 vs remote 020)는 그대로. 이번 변경은 DB를 건드리지 않는다.
+
+## Found while smoking (이번 PR 범위 밖)
+
+- **옛 용어가 남아 있다.** Topics 목록은 `5 stories`, 대시보드는 `Active stories` / `With stories you can speak` / `With talks or versions`, 세션 목록은 `Your sessions`. PRD 어휘(Situation / Note / Attempt)와 어긋난다. 스펙 2절 이후 화면 작업에서 함께 정리할 것.
+- **대시보드 `Last 7 days`가 `0 min spoken`으로 나온다.** 총계는 1h 17m / 46 sessions인데 주간 집계만 0이다. 이번 변경과 무관한 선행 버그로 보이며, 대시보드가 그동안 도달 불가였던 탓에 드러나지 않았을 가능성이 있다. 별도 조사 필요.
 
 ## Deferred
 
