@@ -79,6 +79,19 @@ const fmt2 = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${St
 export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const t = useTheme();
   const posthog = usePostHog();
+
+  // Every write in this flow is fire-and-forget, so a failing one leaves no
+  // symptom: the feedback still renders from memory and the user sees nothing.
+  // That is how migration 027 stayed missing while every AI feedback insert was
+  // throwing. Keep the dev warning, but report it too.
+  const reportTalkFailure = useCallback(
+    (operation: string, error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (__DEV__) console.warn(`Talk ${operation} failed`, error);
+      posthog?.capture("talk_persist_failed", { operation, message: message.slice(0, 300) });
+    },
+    [posthog],
+  );
   const insets = useSafeAreaInsets();
   const p0 = talkCtx ?? {};
 
@@ -222,11 +235,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         })
           .then(setSuggestionIds)
           .catch((e) => {
-            if (__DEV__) console.warn("Couldn’t log talk suggestions", e);
+            reportTalkFailure("log_suggestions", e);
           });
       })
       .catch((e) => {
-        if (__DEV__) console.warn("Talk diagnosis failed", e);
+        reportTalkFailure("diagnose", e);
         setDiagState("error");
         setDiagErr(ANALYSIS_ERROR_COPY);
       });
@@ -264,7 +277,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         setBankState("done");
       })
       .catch((e) => {
-        if (__DEV__) console.warn("Phrase Bank suggestion failed", e);
+        reportTalkFailure("phrase_suggestion", e);
         setBankSuggestion(null);
         setBankUsed([]);
         setBankState("error");
@@ -320,7 +333,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         nav.invalidateSpeakingData(); // Studio refresh after a successful save
       })
       .catch((e) => {
-        if (__DEV__) console.warn("Talk session save failed", e);
+        reportTalkFailure("save_session", e);
         setSaveState("error");
         setSaveErr(SESSION_SAVE_ERROR_COPY);
       });
@@ -390,7 +403,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     const id = suggestionIds[key];
     if (!id) return;
     void rateTalkSuggestion(id, verdict, note).catch((e) => {
-      if (__DEV__) console.warn("Couldn’t save suggestion rating", e);
+      reportTalkFailure("rate_suggestion", e);
     });
   };
 
@@ -485,7 +498,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         else delete next[match.phraseItemId];
         return next;
       });
-      if (__DEV__) console.warn("Couldn’t confirm phrase use", e);
+      reportTalkFailure("confirm_phrase_use", e);
       Alert.alert("Couldn’t save your answer", "Check your connection and try again.");
     });
   };

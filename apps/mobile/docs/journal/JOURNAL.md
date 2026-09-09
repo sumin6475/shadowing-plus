@@ -630,4 +630,40 @@
 - **남은 것**: Situations `See all` 토글은 dev-client 메뉴 간섭으로 탭 확인 실패. `pickCurrentNote` 단위 테스트는 apps/mobile에 러너가 없어 보류.
 - **산출물**: [quality/2026-09-08-studio-home-zones.md](quality/2026-09-08-studio-home-zones.md)
 
+### 2026-09-09 · 구현+검증 · Situation 상세 위계 재정렬
+- **무엇**: 스펙 3절. `Hero`를 없애고 연습 진입을 노트 목록 첫 행의 마이크 버튼으로 흡수. 헤더에 `날짜 · 노트 수 · 시도 수` 메타 추가, `+ New`를 섹션 헤더 액션으로 이동. Useful phrases를 `PHRASE`/`STATUS` 2열 테이블(5개 + `All N`)로, Recent attempts를 카드 없는 저강도 3줄로 축소.
+- **왜**: PRD는 Notes ≫ Phrases ≫ Attempts 위계를 요구하는데 구현은 셋 다 같은 `Sect` + `Card`로 동급이었다. 게다가 Hero가 같은 노트를 두 번 보여주며 목록을 첫 화면 밖으로 밀어냈다.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · iOS export PASS · Simulator smoke PASS(`Ideas / Something I learned`에서 세 섹션의 시각 무게 차이 확인).
+- **수정**: 첫 렌더가 iOS 모티프 스펙과 안 맞는다는 피드백(마진·패딩·타입 중간값·컨테이너 idiom 혼용)을 받고 `design-system/ios-motif-spec.md` 기준으로 재작업. 52pt 행, hairline, 17/15/13 스케일, 캡슐 컨트롤, 그룹 간격 분리.
+- **남은 것**: 노트 행 마이크 버튼 탭 미확인. phrase `All N` 토글은 표본이 1개뿐이라 미노출. 홈 화면 행에도 같은 중간값(16.5/12.5)이 남아 있어 별도 정리 필요.
+- **분리**: Speaking Note 상세(4절)는 연습 후 복귀(6절 `returnTo`)와 짝이라 다음 PR로 함께 미룸.
+- **산출물**: [quality/2026-09-09-studio-situation-detail.md](quality/2026-09-09-studio-situation-detail.md)
+
+### 2026-09-09 · 구현+검증 · Situation 상세 Claude Design 포팅
+- **무엇**: 컨펌된 `Situation Detail.html`을 그대로 구현. Full(light/dark)·empty·notes-only·loading·error 상태와 pushed 목록 2종(`situationPhrases`, `situationAttempts`) 신설. Hero 행은 디자인이 "현재"로 표기한 변형 A 채택. `Phrase 상세 — 리스트 행 탭`은 컨펌 제외라 미구현이고 phrase 행은 탭 불가로 남김.
+- **토큰**: 디자인의 well/hairline/dark-accent가 전역 테마와 미세하게 달라 `useSituationTokens()`로 이 화면 계열에서만 파생. 전역 토큰은 그대로 뒀다.
+- **덤으로 살린 것**: `+ Date` 칩 때문에 `setSituationEventDate()`를 추가 — `event_date`는 028에 있었지만 쓰는 코드가 없어 항상 null이었다. `repairSuggestion`도 내려오기만 하고 안 쓰던 걸 `Last time:` 노트로 노출.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(포팅 직후 19 → 4건 해소) · iOS export PASS · Simulator smoke PASS(상세 + Attempts 전체 목록).
+- **후속 확인(같은 날)**: 다크 모드 · phrases pushed 목록 · 상태 필터 칩 · 빈 상태 · notes-only 전부 실기기 PASS. 별도 테스트 데이터 없이 기존 상황들로 커버.
+- **드러난 것**: `+ Date` 저장이 `Could not find the 'event_date' column of 'stories'`로 실패. 원인은 코드가 아니라 **migration 028이 원격에 미적용**(local 001–028 vs remote 020). 읽기는 legacy fallback이 컬럼을 빼고 조회해 조용히 null이었고, 쓰기에서만 드러났다. 원격 DB는 건드리지 않았다.
+- **부수 수정**: `+ Date` 시트가 키보드에 가려 저장 버튼을 못 누르던 것 → `ScrollView`로 감쌈. `N more phrases` 행을 5개 이하일 때도 항상 노출(라벨 `All N phrases`).
+- **산출물**: [quality/2026-09-09-situation-detail-design-port.md](quality/2026-09-09-situation-detail-design-port.md)
+
+### 2026-09-09 · 진단+적용+검증 · 마이그레이션 이력 정리 (027·028)
+- **계기**: Situation 상세의 `+ Date` 저장이 `Could not find the 'event_date' column of 'stories'`로 실패.
+- **진단**: CLI ledger(`supabase_migrations.schema_migrations`)에 `020` 한 줄뿐인데 001–019는 명백히 적용된 상태 → **ledger는 적용 목록이 아니라 흔적**이고, 이전의 "원격은 020까지"는 여기서 나온 오해였다. 실제 스키마를 조회해 021–026 적용 / **027·028 미적용** 확정.
+- **드러난 라이브 버그**: 027 미적용 탓에 `saveTalkFeedback`이 `diagnosis_tag`/`action`/`explanation`/`schema_version`을 무조건 insert하고 `throw`해서 **AI 피드백이 하나도 저장되지 않고 있었다.** 읽기는 fallback이 있어 조용했다. attempt에 `repairSuggestion`이 전무했던 이유.
+- **적용**: 027 → 028 순서로 SQL Editor 실행, 둘 다 성공. 028 사전 점검 `messages_without_a_topic = 0`으로 `SET NOT NULL` 안전 확인 후 진행.
+- **검증**: 앱에서 `+ Date` 저장 성공, 칩이 날짜로 전환.
+- **저장 직후 발견한 버그**: `2026-09-18`을 넣었는데 칩이 `Sep 17`. `event_date`가 `DATE`라 `"2026-09-18"`로 오는데 `new Date()`가 UTC 자정으로 파싱해 UTC 뒤 타임존에서 하루 밀린다. `parseCalendarDate`로 로컬 자정 고정해 수정, `Sep 18` 확인.
+- **재발 방지**: `supabase/APPLIED.md` 신설. 적용 시 같은 커밋에서 갱신하는 규칙과 "ledger를 믿지 말 것"을 명시.
+- **산출물**: [.agents/plans/2026-09-09-migration-history-reconciliation.md](../../../../.agents/plans/2026-09-09-migration-history-reconciliation.md) · `supabase/APPLIED.md`
+
+### 2026-09-09 · 수정 · Talk 저장 실패를 관측 가능하게
+- **무엇**: `talk.tsx`의 fire-and-forget 저장 실패 6곳(`log_suggestions`, `diagnose`, `phrase_suggestion`, `save_session`, `rate_suggestion`, `confirm_phrase_use`)을 `reportTalkFailure` 헬퍼로 묶고 PostHog `talk_persist_failed` 이벤트를 남기도록 함. dev console.warn은 유지.
+- **왜**: 전부 `if (__DEV__) console.warn(...)` 하나로 끝나서 릴리스 빌드에선 완전 무음이었다. 화면은 메모리의 피드백을 그대로 렌더하므로 사용자 증상이 0이다. **migration 027 미적용으로 모든 AI 피드백 insert가 throw하던 것이 몇 주간 안 드러난 직접적 이유.**
+- **검증**: TypeScript PASS · ESLint error 0/warning 15 · iOS export PASS.
+- **미확인**: 이벤트가 실제로 발화하는지는 실패를 재현해야 확인 가능. 027 적용 후라 지금은 정상 경로다.
+- **막힌 것**: 027 복구의 end-to-end 확인(talk 세션 → 피드백 저장)은 **시뮬레이터에서 불가능**. `Failed to initialize recognizer` — iOS Simulator의 SFSpeechRecognizer 제약이라 실기기가 필요하다.
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
