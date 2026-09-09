@@ -21,14 +21,15 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Icon, type TabId } from "@/design/ui";
 import { useTheme } from "@/design/theme";
 import { TodayScreen } from "@/screens/today";
-import { PhrasesScreen, PhraseDetail, ReviewFlow } from "@/screens/phrases";
+import { PhrasesScreen, PhraseRoute, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
-import { SpeakingWorldScreen, DomainScreen, StoryScreen, MessageScreen, MessageCreate, RecsScreen, SessionsScreen, SessionDetail, TopicsListScreen } from "@/screens/world";
+import { DomainScreen, StoryScreen, MessageScreen, MessageCreate, RecsScreen, SessionsScreen, SessionDetail, SessionFeedbackDetail, TopicsListScreen } from "@/screens/world";
 import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
 import { SpeakingStudioScreen } from "@/screens/studio";
-import { EditProfileScreen, EnglishLevelScreen, FeedbackFocusScreen, FirstLanguageScreen, PhrasesPerDayScreen, ThemeScreen } from "@/screens/edit-profile";
+import { SpeakingNoteScreen, StudioHomeScreen, StudioSituationScreen, StudioTopicScreen } from "@/screens/studio-information";
+import { EditProfileScreen, EnglishLevelScreen, FeedbackFocusScreen, FirstLanguageScreen, PhrasesPerDayScreen, DailySpeakingGoalScreen, ThemeScreen } from "@/screens/edit-profile";
 import { RemindersScreen } from "@/screens/reminders";
 import { PrivacyScreen } from "@/screens/privacy";
 import { CaptureFab, PhraseCaptureScreen, type CaptureImageAsset, type ClipCaptureSeed } from "@/screens/capture";
@@ -90,6 +91,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [speakKey, setSpeakKey] = useState(0);
   const [notice, setNotice] = useState<{ message: string; shownAt: number } | null>(null);
   const [talkFocused, setTalkFocusedState] = useState(false);
+  const [speakingDataRevision, setSpeakingDataRevision] = useState(0);
 
   const notify = useCallback((message: string) => {
     setNotice({ message, shownAt: Date.now() });
@@ -110,6 +112,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const resetTalk = useCallback(() => {
     setTalkCtx(undefined);
     setSpeakKey((k) => k + 1);
+  }, []);
+
+  const invalidateSpeakingData = useCallback(() => {
+    setSpeakingDataRevision((r) => r + 1);
   }, []);
 
   const lastFocusedTab = useRef<TabId | null>(null);
@@ -139,8 +145,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         router.navigate(TAB_PATHS.speak);
       },
       notify,
+      speakingDataRevision,
+      invalidateSpeakingData,
     }),
-    [notify],
+    [notify, speakingDataRevision, invalidateSpeakingData],
   );
 
   const value = useMemo<ShellState>(
@@ -252,6 +260,7 @@ export function TabHost({ tab }: { tab: TabId }) {
   const showCaptureFab =
     focused &&
     tab !== "speak" &&
+    tab !== "topics" &&
     top?.name !== "capture" &&
     top?.name !== "phrase" &&
     top?.name !== "review" &&
@@ -262,8 +271,12 @@ export function TabHost({ tab }: { tab: TabId }) {
     top?.name !== "firstLanguage" &&
     top?.name !== "feedbackFocus" &&
     top?.name !== "phrasesPerDay" &&
+    top?.name !== "dailySpeakingGoal" &&
     top?.name !== "reminders" &&
-    top?.name !== "studio";
+    top?.name !== "studio" &&
+    top?.name !== "studioTopic" &&
+    top?.name !== "situation" &&
+    top?.name !== "speakingNote";
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
@@ -304,7 +317,7 @@ function renderTab(tab: TabId, nav: Nav): React.ReactNode {
       return <PhrasesScreen nav={nav} />;
     case "topics":
     case "sessions":
-      return <SpeakingWorldScreen nav={nav} />;
+      return <StudioHomeScreen nav={nav} />;
     case "speak":
       return null; // handled in TabHost (needs focus + key)
   }
@@ -314,7 +327,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
   const p = entry.props;
   switch (entry.name) {
     case "phrase":
-      return <PhraseDetail nav={nav} item={p.item as PhraseItem | undefined} />;
+      return <PhraseRoute nav={nav} item={p.item as PhraseItem | undefined} id={p.id as string | undefined} />;
     case "review":
       return <ReviewFlow nav={nav} item={p.item as PhraseItem | undefined} queue={p.queue as PhraseItem[] | undefined} />;
     case "practiceHub":
@@ -345,6 +358,8 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <RecsScreen nav={nav} />;
     case "session":
       return <SessionDetail nav={nav} session={p.session as TalkSession | undefined} />;
+    case "feedback":
+      return <SessionFeedbackDetail nav={nav} feedbackId={p.id as string | undefined} />;
     case "library":
       return <LibraryScreen nav={nav} />;
     case "libItem":
@@ -365,12 +380,20 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <FeedbackFocusScreen nav={nav} />;
     case "phrasesPerDay":
       return <PhrasesPerDayScreen nav={nav} />;
+    case "dailySpeakingGoal":
+      return <DailySpeakingGoalScreen nav={nav} />;
     case "reminders":
       return <RemindersScreen nav={nav} />;
     case "privacy":
       return <PrivacyScreen nav={nav} />;
     case "studio":
       return <SpeakingStudioScreen nav={nav} />;
+    case "studioTopic":
+      return <StudioTopicScreen nav={nav} id={p.id as string} name={p.name as string | undefined} />;
+    case "situation":
+      return <StudioSituationScreen nav={nav} id={p.id as string} topicId={p.topicId as string} title={p.title as string | undefined} />;
+    case "speakingNote":
+      return <SpeakingNoteScreen nav={nav} id={p.id as string} />;
     case "topicsList":
       return <TopicsListScreen nav={nav} />;
     case "sessionsList":

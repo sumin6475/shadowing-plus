@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { requireAiProcessingConsent } from "./ai-consent";
 
 export interface PhraseSpeechAudio {
   audioUrl: string;
@@ -15,6 +16,7 @@ export async function fetchPhraseSpeech(
   if (current) return current;
 
   const request = (async () => {
+    await requireAiProcessingConsent();
     const { data, error } = await supabase.functions.invoke<{
       audio_url?: string;
       cached?: boolean;

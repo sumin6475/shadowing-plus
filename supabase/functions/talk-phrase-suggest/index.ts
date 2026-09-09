@@ -326,10 +326,12 @@ Deno.serve(async (req: Request) => {
     transcript?: unknown;
     topic?: unknown;
     story_id?: unknown;
+    talk_session_id?: unknown;
   } | null;
   const transcript = clamp(body?.transcript, 4000);
   const topic = clamp(body?.topic, 200) || null;
   const storyId = clamp(body?.story_id, 80) || null;
+  const talkSessionId = clamp(body?.talk_session_id, 80) || null;
   if (!transcript) return json({ error: "Say something first." }, 400);
 
   const apiKey = Deno.env.get("OPENAI_API_KEY");
@@ -430,6 +432,7 @@ Deno.serve(async (req: Request) => {
         user_id: user.id,
         phrase_item_id: item.phraseItemId,
         story_id: storyId,
+        talk_session_id: talkSessionId,
         event: "retrieved",
         evidence: { transcript_quote: item.said, score: item.score, source: "talk_phrase_suggest" },
       })),
@@ -494,6 +497,7 @@ Deno.serve(async (req: Request) => {
     user_id: user.id,
     phrase_item_id: parsed.suggestion.phraseItemId,
     story_id: storyId,
+    talk_session_id: talkSessionId,
     event: "suggested",
     evidence: {
       transcript_quote: parsed.suggestion.said,

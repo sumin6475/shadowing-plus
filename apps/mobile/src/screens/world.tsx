@@ -7,14 +7,16 @@ import Reanimated, { Easing as REasing, useAnimatedProps, useSharedValue, withDe
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
 
 import { deleteTalkSessionAudio, talkAudioUri } from "@/lib/talk-audio";
-import { prepareTalkRecordingPlayback } from "@/lib/talk-audio-session";
+import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
+import { TalkFeedbackDetail } from "@/components/talk-feedback-detail";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, Chip as InputChip, EnterStagger, ExpandableCopy, Header, Icon, Pill, Screen, Sect, Serif, Stagger, SwipeRow, confirmDelete, toneColor } from "@/design/ui";
-import { fetchSessionPhraseMemory, fetchStoryPhrases, type PhraseItem, type SessionPhraseLink } from "@/lib/phrases";
+import { fetchSessionPhraseMemory, fetchStoryPhrases, type PhraseItem, type SessionPhraseLink, type SessionRecommendation } from "@/lib/phrases";
+import { fetchTalkFeedbackById, type TalkFeedbackRecord } from "@/lib/talk-feedback";
+import { TALK_FOCUS_LABEL, type TalkFocus } from "@/lib/talk-focus";
 import { RowIconButton } from "./phrases";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
 import {
@@ -25,13 +27,13 @@ import {
   deleteTalkSession,
   ensureStoryDomain,
   fetchBeats,
+  fetchAllStories,
   fetchDomains,
   fetchMessages,
   fetchStories,
   fetchStory,
   fetchStudioCollection,
   fetchTalkSessions,
-  isLiveStory,
   archiveStory,
   setBeatPositions,
   updateBeat,
@@ -240,24 +242,6 @@ function StudioSheet({
   );
 }
 
-function DraftChip() {
-  const t = useTheme();
-  return (
-    <View
-      style={{
-        borderRadius: 999,
-        borderWidth: 1,
-        borderStyle: "dashed",
-        borderColor: t.colors.ink3,
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-      }}
-    >
-      <Text style={{ fontSize: 11, fontWeight: "600", color: t.colors.ink3 }}>Draft</Text>
-    </View>
-  );
-}
-
 function StoryListRow({
   story,
   onPress,
@@ -265,10 +249,26 @@ function StoryListRow({
 }: {
   story: Story;
   onPress: () => void;
-  onArchive: () => void;
+  onArchive?: () => void;
 }) {
   const t = useTheme();
-  const live = isLiveStory(story);
+  const row = (
+    <Card onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+        <Icon name="sparkle" s={18} c={t.colors.accD} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+          {story.title}
+        </Text>
+        <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>
+          {story.messageCount} version{story.messageCount === 1 ? "" : "s"}
+        </Text>
+      </View>
+      <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+    </Card>
+  );
+  if (!onArchive) return row;
   return (
     <SwipeRow
       onDelete={() =>
@@ -280,23 +280,7 @@ function StoryListRow({
         })
       }
     >
-      <Card onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-          <Icon name="sparkle" s={18} c={t.colors.accD} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
-              {story.title}
-            </Text>
-            {live ? null : <DraftChip />}
-          </View>
-          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 3 }}>
-            {story.messageCount} version{story.messageCount === 1 ? "" : "s"}
-          </Text>
-        </View>
-        <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-      </Card>
+      {row}
     </SwipeRow>
   );
 }
@@ -476,30 +460,54 @@ function NewVersionSheet({
 export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
   const [collection, setCollection] = useState<StudioDomain[] | null>(null);
+  const [recentStories, setRecentStories] = useState<{ story: Story; domainName: string | null }[]>([]);
   const [recent, setRecent] = useState<TalkSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Native tabs keep this screen mounted, so replay the entrance cascade +
   // donut fill every time the tab regains focus.
   const [enterKey, setEnterKey] = useState(0);
-  useFocusEffect(
-    useCallback(() => {
-      setEnterKey((k) => k + 1);
-    }, []),
-  );
-
+  // Request token: an older in-flight response must never overwrite a newer
+  // one when focus + a save/delete revision fire close together.
+  const requestRef = useRef(0);
   const load = useCallback(async () => {
+    const request = ++requestRef.current;
     setError(null);
     try {
-      const [groups, sessions] = await Promise.all([fetchStudioCollection(), fetchTalkSessions(1)]);
+      const [groups, storyChoices, sessions] = await Promise.all([fetchStudioCollection(), fetchAllStories(), fetchTalkSessions(1)]);
+      if (requestRef.current !== request) return;
+      const storyById = new Map(groups.flatMap((group) => group.stories).map((story) => [story.id, story]));
       setCollection(groups);
+      setRecentStories(
+        storyChoices.slice(0, 3).flatMap((choice) => {
+          const story = storyById.get(choice.id);
+          return story ? [{ story, domainName: choice.domainName }] : [];
+        }),
+      );
       setRecent(sessions[0] ?? null);
     } catch (e) {
+      if (requestRef.current !== request) return;
       setError(e instanceof Error ? e.message : "Couldn’t load your studio.");
     }
   }, []);
+
+  // Focus covers the initial fetch and every tab refocus, so the old
+  // mount-only effect is gone (that was the NativeTabs stale-mount bug).
+  useFocusEffect(
+    useCallback(() => {
+      setEnterKey((k) => k + 1);
+      void load();
+    }, [load]),
+  );
+
+  // A successful create/delete elsewhere bumps the revision; reload then, but
+  // skip the initial value so the focus effect owns the first fetch.
+  const revision = nav.speakingDataRevision;
+  const handledRevision = useRef(revision);
   useEffect(() => {
-    load();
-  }, [load]);
+    if (handledRevision.current === revision) return;
+    handledRevision.current = revision;
+    void load();
+  }, [revision, load]);
 
   const groups = collection ?? [];
   const topicCount = groups.length;
@@ -523,8 +531,14 @@ export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
       ) : (
         <>
           <EnterStagger key={`folio-${enterKey}`} i={0}>
-          <Card lg style={{ paddingVertical: 20 }}>
-            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Speaking folio</Text>
+          <Card lg onPress={() => nav.push("studio")} style={{ paddingVertical: 20 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Speaking folio</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 2, paddingTop: 2 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.accD }}>More</Text>
+                <Icon name="chev" s={13} w={2.2} c={t.colors.accD} />
+              </View>
+            </View>
             <View style={{ alignItems: "center", marginTop: 8 }}>
               <View style={{ width: 176, height: 176, alignItems: "center", justifyContent: "center" }}>
                 <FolioDonut segments={donutSegments.filter((seg) => seg.value > 0)} track={t.colors.soft} animKey={enterKey} />
@@ -541,24 +555,7 @@ export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
           </Card>
           </EnterStagger>
 
-          <EnterStagger key={`insight-${enterKey}`} i={1}>
-          <Pressable onPress={() => nav.push("studio")} style={t.shadowCard}>
-            <LinearGradient
-              colors={["#3D6FE0", "#6C9BF2"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ borderRadius: t.r, paddingVertical: 15, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 }}
-            >
-              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}>
-                <Icon name="globe" s={21} c="#fff" />
-              </View>
-              <Text style={{ flex: 1, fontSize: 17, fontWeight: "800", color: "#fff" }}>Speaking insight</Text>
-              <Icon name="chev" s={16} c="rgba(255,255,255,0.9)" />
-            </LinearGradient>
-          </Pressable>
-          </EnterStagger>
-
-          <EnterStagger key={`topics-${enterKey}`} i={2} style={{ gap: t.gap }}>
+          <EnterStagger key={`topics-${enterKey}`} i={1} style={{ gap: t.gap }}>
           <Pressable
             onPress={() => nav.push("topicsList")}
             hitSlop={6}
@@ -607,27 +604,61 @@ export function SpeakingWorldScreen({ nav }: { nav: Nav }) {
           </ScrollView>
           </EnterStagger>
 
-          {recent ? (
-            <EnterStagger key={`recent-${enterKey}`} i={3} style={{ gap: t.gap }}>
-              <Pressable
-                onPress={() => nav.push("sessionsList")}
-                hitSlop={6}
-                style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 2, paddingTop: 6 }}
-              >
-                <Serif style={{ fontSize: 22, color: t.colors.ink }}>Recently recorded</Serif>
-                <Icon name="chev" s={15} w={2.4} c={t.colors.ink3} />
-              </Pressable>
+          <EnterStagger key={`stories-${enterKey}`} i={2} style={{ gap: t.gap }}>
+            <Pressable
+              onPress={() => nav.push("topicsList")}
+              hitSlop={6}
+              style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 2, paddingTop: 6 }}
+            >
+              <Serif style={{ fontSize: 22, color: t.colors.ink }}>Recent Stories</Serif>
+              <Icon name="chev" s={15} w={2.4} c={t.colors.ink3} />
+            </Pressable>
+            {recentStories.length > 0 ? (
+              recentStories.map(({ story, domainName }) => (
+                <StoryListRow
+                  key={story.id}
+                  story={story}
+                  onPress={() => nav.push("story", { id: story.id, title: story.title, domainId: story.domainId, domainName })}
+                />
+              ))
+            ) : (
+              <Card style={{ alignItems: "center", paddingVertical: 34 }}>
+                <Serif style={{ fontSize: 20, color: t.colors.ink }}>No stories yet</Serif>
+                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
+                  Open a topic to start a story you want to tell.
+                </Text>
+              </Card>
+            )}
+          </EnterStagger>
+
+          <EnterStagger key={`recent-${enterKey}`} i={3} style={{ gap: t.gap }}>
+            <Pressable
+              onPress={() => nav.push("sessionsList")}
+              hitSlop={6}
+              style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 2, paddingTop: 6 }}
+            >
+              <Serif style={{ fontSize: 22, color: t.colors.ink }}>Recently recorded</Serif>
+              <Icon name="chev" s={15} w={2.4} c={t.colors.ink3} />
+            </Pressable>
+            {recent ? (
               <SessionRow
                 session={recent}
                 onOpen={() => nav.push("session", { session: recent })}
                 onConfirmDelete={() => {
                   deleteTalkSession(recent.id)
-                    .then(() => void load())
+                    .then(() => nav.invalidateSpeakingData())
                     .catch((e) => Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again."));
                 }}
               />
-            </EnterStagger>
-          ) : null}
+            ) : (
+              <Card style={{ alignItems: "center", paddingVertical: 34 }}>
+                <Serif style={{ fontSize: 20, color: t.colors.ink }}>No sessions yet</Serif>
+                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
+                  Your latest self-talk session will appear here.
+                </Text>
+              </Card>
+            )}
+          </EnterStagger>
         </>
       )}
     </Screen>
@@ -781,6 +812,7 @@ function SessionRow({
 
 export function SessionsScreen({ nav, stacked }: { nav: Nav; stacked?: boolean }) {
   const t = useTheme();
+  const { invalidateSpeakingData } = nav;
   const [sessions, setSessions] = useState<TalkSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -805,11 +837,12 @@ export function SessionsScreen({ nav, stacked }: { nav: Nav; stacked?: boolean }
     });
     try {
       await deleteTalkSession(id);
+      invalidateSpeakingData();
     } catch (e) {
       setSessions(prev);
       Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
     }
-  }, []);
+  }, [invalidateSpeakingData]);
 
   const total = sessions?.length ?? 0;
 
@@ -858,15 +891,38 @@ export function SessionsScreen({ nav, stacked }: { nav: Nav; stacked?: boolean }
   );
 }
 
+// Local section wrapper so What You Said / Phrases You Used / Recommended share
+// one `t.gap` rhythm (equal label padding + card spacing).
+function SessionSection({ label, children }: { label: string; children: ReactNode }) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: t.gap }}>
+      <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2 }}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+
 export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Nav }) {
   const t = useTheme();
   // Hooks run unconditionally (before any early return). The recording, if any,
   // is a local file resolved from the session's audio_key.
   const [deleted, setDeleted] = useState(false);
-  const [memory, setMemory] = useState<{ used: SessionPhraseLink[]; recommended: SessionPhraseLink[] } | null>(null);
+  const [memory, setMemory] = useState<{ used: SessionPhraseLink[]; recommended: SessionRecommendation[] } | null>(null);
   const audioUri = session && !deleted ? talkAudioUri(session.audioKey) : null;
-  const player = useAudioPlayer(audioUri);
+  const player = useAudioPlayer(audioUri, { keepAudioSessionActive: true });
   const status = useAudioPlayerStatus(player);
+
+  // A Talk start can pause this session replay before taking the session.
+  useEffect(() => {
+    return registerPlaybackStopper(() => {
+      try {
+        player.pause();
+      } catch {
+        // Native player already released — nothing to pause.
+      }
+    });
+  }, [player]);
 
   useEffect(() => {
     if (!session?.id) return;
@@ -898,12 +954,11 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
       return;
     }
     if (status.duration > 0 && status.currentTime >= status.duration) player.seekTo(0);
-    // The speech recognizer leaves iOS in playAndRecord + measurement mode.
-    // Preserve the category (so we do not regress the next STT session), but
-    // restore normal output processing and default the built-in route to the
-    // loudspeaker before playback. A connected headset/Bluetooth route still
-    // wins over defaultToSpeaker.
-    await prepareTalkRecordingPlayback();
+    // Restore normal output processing and default the built-in route to the
+    // loudspeaker before playback while preserving the playAndRecord category
+    // (so we do not regress the next STT session). A connected headset/Bluetooth
+    // route still wins over defaultToSpeaker.
+    await prepareSpeakerPlayback();
     player.play();
   };
   const deleteRecording = () =>
@@ -965,31 +1020,36 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
         })()
       ) : null}
 
-      <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>WHAT YOU SAID</Text>
-      <Card>
-        <ExpandableCopy text={session.transcript ?? ""} style={{ fontSize: 16, lineHeight: 25 }} />
-      </Card>
+      <SessionSection label="WHAT YOU SAID">
+        <Card>
+          <ExpandableCopy text={session.transcript ?? ""} style={{ fontSize: 16, lineHeight: 25 }} />
+        </Card>
+      </SessionSection>
       {memory && (memory.used.length || memory.recommended.length) ? (
         <>
           {memory.used.length ? (
-            <>
-              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 4 }}>PHRASES YOU USED</Text>
+            <SessionSection label="PHRASES YOU USED">
               {memory.used.map((item) => (
-                <Card key={`used-${item.id ?? item.text}`}>
+                <Card key={`used-${item.id}`}>
                   <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{item.text}</Text>
                 </Card>
               ))}
-            </>
+            </SessionSection>
           ) : null}
           {memory.recommended.length ? (
-            <>
-              <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, paddingHorizontal: 2, paddingTop: 2 }}>RECOMMENDED FOR THIS SESSION</Text>
-              {memory.recommended.map((item) => (
-                <Card key={`rec-${item.id ?? item.text}`}>
-                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{item.text}</Text>
-                </Card>
-              ))}
-            </>
+            <SessionSection label="RECOMMENDED FOR THIS SESSION">
+              {memory.recommended.map((item) =>
+                item.kind === "phrase" ? (
+                  <Card key={`rec-phrase-${item.phraseItemId}`} onPress={() => nav.push("phrase", { id: item.phraseItemId })}>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{item.text}</Text>
+                  </Card>
+                ) : (
+                  <Card key={`rec-feedback-${item.feedbackId}`} onPress={() => nav.push("feedback", { id: item.feedbackId })}>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{item.text}</Text>
+                  </Card>
+                ),
+              )}
+            </SessionSection>
           ) : null}
         </>
       ) : null}
@@ -997,6 +1057,59 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
         Talk again
       </Pill>
       </Stagger>
+    </Screen>
+  );
+}
+
+export function SessionFeedbackDetail({ feedbackId, nav }: { feedbackId?: string; nav: Nav }) {
+  const [record, setRecord] = useState<TalkFeedbackRecord | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!feedbackId) return;
+    try {
+      const nextRecord = await fetchTalkFeedbackById(feedbackId);
+      setError(null);
+      setRecord(nextRecord);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t load this feedback.");
+    }
+  }, [feedbackId]);
+  useEffect(() => {
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
+  }, [load]);
+
+  const focusLabel = record && record.focus && record.focus in TALK_FOCUS_LABEL ? TALK_FOCUS_LABEL[record.focus as TalkFocus] : null;
+  const badge = focusLabel ? `Focus · ${focusLabel}` : null;
+
+  if (record === undefined && !error) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <Loading />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen bottomPad={40}>
+      <BackBar title={record?.momentLabel ?? "Feedback"} onBack={nav.pop} />
+      {error ? (
+        <ErrorCard msg={error} onRetry={load} />
+      ) : record ? (
+        <TalkFeedbackDetail
+          badge={badge}
+          said={record.said}
+          want={record.want}
+          diagnosisTag={record.diagnosisTag}
+          action={record.action}
+          explanation={record.explanation}
+          why={record.why}
+        />
+      ) : (
+        <ErrorCard msg="This feedback could not be found." onRetry={nav.pop} />
+      )}
     </Screen>
   );
 }
@@ -1046,7 +1159,7 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
           The stories you want to be able to tell in this part of your life.
         </Text>
       </View>
-      <Sect title="Stories" action="+ New story" onAction={() => setSheetOpen(true)} />
+      <Sect title="Stories" />
       </Stagger>
       {stories === null && !error ? (
         <Loading />
@@ -1083,6 +1196,9 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
           ))}
         </Stagger>
       )}
+      <Pill full icon="plus" onPress={() => setSheetOpen(true)} style={{ marginTop: 10 }}>
+        Add new
+      </Pill>
       <NewStorySheet
         open={sheetOpen}
         domainId={id}
@@ -1191,7 +1307,6 @@ function BeatRow({
   const t = useTheme();
   const [dy, setDy] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const active = useRef(false);
 
   const pan = useMemo(
     () =>
@@ -1199,21 +1314,18 @@ function BeatRow({
         .activateAfterLongPress(160)
         .runOnJS(true)
         .onStart(() => {
-          active.current = true;
           setDragging(true);
           onLockScroll(true);
         })
         .onUpdate((e) => {
           setDy(e.translationY);
         })
-        .onFinalize((e) => {
-          const was = active.current;
+        .onFinalize((e, success) => {
           const translation = e.translationY;
-          active.current = false;
           setDragging(false);
           setDy(0);
           onLockScroll(false);
-          if (was) onReorder(index, translation);
+          if (success) onReorder(index, translation);
         }),
     [index, onLockScroll, onReorder],
   );
@@ -1256,10 +1368,10 @@ function BeatRow({
           accessibilityLabel="Reorder"
           onTouchStart={() => onLockScroll(true)}
           onTouchEnd={() => {
-            if (!active.current) onLockScroll(false);
+            if (!dragging) onLockScroll(false);
           }}
           onTouchCancel={() => {
-            if (!active.current) onLockScroll(false);
+            if (!dragging) onLockScroll(false);
           }}
           style={{ width: 32, height: 36, alignItems: "center", justifyContent: "center" }}
         >
@@ -1285,6 +1397,7 @@ export function StoryScreen({
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const { invalidateSpeakingData } = nav;
   const [messages, setMessages] = useState<StoryMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<TalkSession[] | null>(null);
@@ -1369,11 +1482,12 @@ export function StoryScreen({
     });
     try {
       await deleteTalkSession(sid);
+      invalidateSpeakingData();
     } catch (e) {
       setSessions(prev);
       Alert.alert("Couldn’t delete", e instanceof Error ? e.message : "Try again.");
     }
-  }, []);
+  }, [invalidateSpeakingData]);
 
   const openMove = useCallback(() => {
     setMoveOpen(true);
@@ -1613,7 +1727,10 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
   const [scrollLocked, setScrollLocked] = useState(false);
   const heights = useRef<number[]>([]);
   const beatsRef = useRef<Beat[] | null>(null);
-  beatsRef.current = beats;
+
+  useEffect(() => {
+    beatsRef.current = beats;
+  }, [beats]);
 
   const load = useCallback(async () => {
     if (!id) {

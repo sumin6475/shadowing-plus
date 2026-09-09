@@ -13,8 +13,10 @@ import { deleteAccount } from "@/lib/account";
 import { useAuth } from "@/lib/auth";
 import { firstLanguage, L1_LABEL } from "@/lib/first-language";
 import { phrasesPerDay } from "@/lib/daily-phrases";
+import { dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
 import { englishLevel, ENGLISH_LEVEL_LABEL } from "@/lib/english-level";
 import { fetchPhrases } from "@/lib/phrases";
+import { openLegalUrl, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import { reminderSummary } from "@/lib/reminders";
 import { talkFocus, TALK_FOCUS_LABEL } from "@/lib/talk-focus";
 import { themePref, THEME_PREF_LABEL } from "@/lib/theme-pref";
@@ -210,7 +212,13 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Practice">
-        <SettingsRow t={t} icon="clock" label="Practice length" comingSoon />
+        <SettingsRow
+          t={t}
+          icon="clock"
+          label="Daily speaking goal"
+          detail={formatDailySpeakingGoal(dailySpeakingGoalMinutes(session?.user?.user_metadata))}
+          onPress={() => nav.push("dailySpeakingGoal")}
+        />
         <SettingsRow t={t} icon="bulb" label="Hints while speaking" comingSoon />
         <SettingsRow t={t} icon="text" label="Phrases per day" detail={String(phrasesPerDay())} onPress={() => nav.push("phrasesPerDay")} />
         <SettingsRow t={t} icon="gauge" label="Playback speed" comingSoon last />
@@ -225,6 +233,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         <SettingsRow t={t} icon="export" label="Export my phrases" detail={exporting ? "Preparing…" : undefined} onPress={() => void exportPhrases()} />
         <SettingsRow t={t} icon="help" label="Help & feedback" onPress={openFeedbackMail} />
         <SettingsRow t={t} icon="shield" label="Privacy" onPress={() => nav.push("privacy")} />
+        <SettingsRow t={t} icon="text" label="Terms of Service" onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)} />
         <SettingsRow t={t} label="Log out" danger onPress={() => signOut()} />
         <SettingsRow
           t={t}

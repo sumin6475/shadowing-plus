@@ -30,6 +30,7 @@ import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-
 import { statusStageLabel } from "@/lib/phrases";
 
 import { Icon, type IconName } from "./icon";
+import { Motif, TypeScale } from "./mobile-tokens";
 import { SERIF, hairline, statusColors, useTheme, type Theme } from "./theme";
 
 export { Icon } from "./icon";
@@ -346,7 +347,7 @@ export function Pill({
     tint: { bg: t.colors.soft, fg: t.colors.ink },
   };
   const tv = tones[tone];
-  const h = small ? 34 : 50;
+  const h = small ? Motif.buttonHeight.medium : Motif.buttonHeight.large;
   const fs = small ? 15 : 17;
   const fx = usePressFx(0.955);
   return (
@@ -357,7 +358,7 @@ export function Pill({
       style={[
         {
           height: h,
-          borderRadius: 9999,
+          borderRadius: Motif.radius.pill,
           paddingHorizontal: small ? 16 : 24,
           flexDirection: "row",
           alignItems: "center",
@@ -412,8 +413,8 @@ export function Chip({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          height: 34,
-          borderRadius: 9999,
+          height: Motif.buttonHeight.medium,
+          borderRadius: Motif.radius.pill,
           paddingHorizontal: icon && !children ? 10 : 15,
           flexDirection: "row",
           alignItems: "center",
@@ -444,7 +445,7 @@ export function Badge({ s, style }: { s: string; style?: StyleProp<ViewStyle> })
   const [bg, cl] = statusColors(t)[s] ?? [t.colors.soft, t.colors.ink2];
   return (
     <View
-      style={[{ backgroundColor: bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }, style]}
+      style={[{ backgroundColor: bg, borderRadius: Motif.radius.pill, paddingHorizontal: 10, paddingVertical: 4 }, style]}
     >
       <Text style={{ color: cl, fontSize: 11, fontWeight: "700", letterSpacing: 0.1 }}>{statusStageLabel(s)}</Text>
     </View>
@@ -501,7 +502,7 @@ export function Header({
             flexDirection: "row",
             justifyContent: "space-between",
             alignItems: "center",
-            minHeight: 44,
+            minHeight: Motif.tapTarget,
             marginBottom: 22,
           }}
         >
@@ -510,7 +511,7 @@ export function Header({
         </View>
       ) : null}
       {typeof title === "string" ? (
-        <Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>{title}</Serif>
+        <Serif style={{ fontSize: TypeScale.largeTitle, lineHeight: 37, color: t.colors.ink }}>{title}</Serif>
       ) : (
         title
       )}
@@ -531,14 +532,14 @@ export function BackBar({
 }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4, minHeight: 44 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4, minHeight: Motif.tapTarget }}>
       <Pressable
         onPress={onBack}
         style={[
           {
-            width: 44,
-            height: 44,
-            borderRadius: 22,
+            width: Motif.tapTarget,
+            height: Motif.tapTarget,
+            borderRadius: Motif.tapTarget / 2,
             backgroundColor: t.colors.card,
             alignItems: "center",
             justifyContent: "center",
@@ -551,13 +552,13 @@ export function BackBar({
         <Icon name="back" s={18} w={2.2} c={t.colors.ink} />
       </Pressable>
       {title ? (
-        <Text style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: TypeScale.headline, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
           {title}
         </Text>
       ) : (
         <View style={{ flex: 1 }} />
       )}
-      <View style={{ minWidth: 44, minHeight: 44, alignItems: "flex-end", justifyContent: "center" }}>{right}</View>
+      <View style={{ minWidth: Motif.tapTarget, minHeight: Motif.tapTarget, alignItems: "flex-end", justifyContent: "center" }}>{right}</View>
     </View>
   );
 }
@@ -727,7 +728,7 @@ export function Wave({
           key={i}
           style={{
             width: 3,
-            borderRadius: 9999,
+            borderRadius: Motif.radius.pill,
             backgroundColor: c,
             height: h,
             opacity: active ? 1 : 0.55,
@@ -768,7 +769,7 @@ export function StatTile({
         {showChevron ? <Icon name="chev" s={13} w={2.2} c={t.colors.onB2} /> : null}
       </View>
       <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
-        <Text style={{ fontSize: 34, fontWeight: "800", letterSpacing: -1, color: t.colors.onB, fontVariant: ["tabular-nums"] }}>
+        <Text style={{ fontSize: TypeScale.largeTitle, fontWeight: "800", letterSpacing: -1, color: t.colors.onB, fontVariant: ["tabular-nums"] }}>
           {value}
         </Text>
         <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.onB2 }}>{unit}</Text>

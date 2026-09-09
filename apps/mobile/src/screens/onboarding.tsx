@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/design/theme";
 import { Icon, Pill, Serif, Wave, toneColor, type IconName } from "@/design/ui";
 import { useAuth } from "@/lib/auth";
+import { openLegalUrl, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import { saveOnboardingDraft, type OnboardingDraft } from "@/lib/onboarding";
 
 type SlidePermission = "camera" | "microphone" | "notifications" | null;
@@ -266,6 +267,17 @@ export function Onboarding({
               <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Use email instead</Text>
             </Pressable>
             {authError ? <Text style={{ fontSize: 12.5, lineHeight: 17, textAlign: "center", color: "#c74444" }}>{authError}</Text> : null}
+            <Text style={{ fontSize: 11.5, lineHeight: 17, textAlign: "center", color: t.colors.ink3, paddingHorizontal: 12 }}>
+              By continuing, you agree to the{" "}
+              <Text style={{ color: t.colors.accD, fontWeight: "700" }} onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)}>
+                Terms
+              </Text>
+              {" and acknowledge the "}
+              <Text style={{ color: t.colors.accD, fontWeight: "700" }} onPress={() => void openLegalUrl(PRIVACY_POLICY_URL)}>
+                Privacy Policy
+              </Text>
+              .
+            </Text>
           </View>
         )}
       </View>
@@ -475,7 +487,7 @@ function AuthChoice({ kind, busy, disabled, onPress }: { kind: "apple" | "google
         },
       ]}
     >
-      {busy ? <ActivityIndicator color={apple ? "#fff" : t.colors.ink} /> : apple ? <Text style={[styles.authMark, { color: "#fff" }]}></Text> : <GoogleMark />}
+      {busy ? <ActivityIndicator color={apple ? "#fff" : t.colors.ink} /> : apple ? <Text style={[styles.authMark, { color: "#fff" }]}></Text> : <GoogleMark />}
       <Text style={{ fontSize: 15.5, fontWeight: "700", color: apple ? "#fff" : t.colors.ink }}>Continue with {apple ? "Apple" : "Google"}</Text>
     </Pressable>
   );

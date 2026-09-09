@@ -63,6 +63,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const [recentStory, setRecentStory] = useState<RecentTalkedStory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [statsAsOf, setStatsAsOf] = useState(0);
   // Replay the entrance cascade whenever the tab regains focus (native tabs
   // keep this screen mounted).
   const [enterKey, setEnterKey] = useState(0);
@@ -73,18 +74,20 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   );
 
   const load = useCallback(async () => {
-    setError(null);
     try {
       const [all, today] = await Promise.all([fetchPhrases(), todaysPhrases()]);
+      setError(null);
       setItems(all);
       setReviewToday(today);
+      setStatsAsOf(Date.now());
     } catch {
       setError("Your saved phrases are still safe. Check your connection and try again.");
     }
   }, []);
 
   useEffect(() => {
-    load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   useEffect(() => {
@@ -113,9 +116,9 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   }, [load]);
 
   const all = items ?? [];
-  const thisWeek = all.filter((p) => Date.now() - new Date(p.createdAt).getTime() < 7 * 86_400_000).length;
+  const thisWeek = all.filter((p) => statsAsOf - new Date(p.createdAt).getTime() < 7 * 86_400_000).length;
   const lastWeek = all.filter((p) => {
-    const age = Date.now() - new Date(p.createdAt).getTime();
+    const age = statsAsOf - new Date(p.createdAt).getTime();
     return age >= 7 * 86_400_000 && age < 14 * 86_400_000;
   }).length;
   const weekDelta = lastWeek > 0 && thisWeek !== lastWeek ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : null;

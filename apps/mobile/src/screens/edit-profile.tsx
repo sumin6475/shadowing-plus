@@ -9,6 +9,7 @@ import { hairline, useTheme } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { PHRASES_PER_DAY_OPTIONS, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
+import { DAILY_SPEAKING_GOAL_OPTIONS, dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
 import {
   ENGLISH_LEVEL_DETAIL,
   ENGLISH_LEVEL_OPTIONS,
@@ -438,6 +439,78 @@ export function ThemeScreen({ nav }: { nav: Nav }) {
             </Pressable>
           );
         })}
+      </Card>
+    </Screen>
+  );
+}
+
+export function DailySpeakingGoalScreen({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const { session } = useAuth();
+  const meta = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
+  const [goal, setGoal] = useState(dailySpeakingGoalMinutes(meta));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const choose = async (value: number) => {
+    if (saving || value === goal) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { daily_speaking_goal_minutes: value },
+      });
+      if (updateError) throw updateError;
+      setGoal(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t save your daily goal.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Screen bottomPad={40}>
+      <BackBar title="Daily speaking goal" onBack={nav.pop} />
+      <Card style={{ paddingVertical: 6, paddingHorizontal: 16 }}>
+        <Text style={[fieldLabel(t.colors.accD), { paddingTop: 10, paddingBottom: 4 }]}>DAILY GOAL</Text>
+        <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, paddingBottom: 8 }}>
+          The minutes of actual talking you aim for each day. Your studio rings fill toward this target.
+        </Text>
+        {DAILY_SPEAKING_GOAL_OPTIONS.map((value, index) => {
+          const selected = goal === value;
+          const last = index === DAILY_SPEAKING_GOAL_OPTIONS.length - 1;
+          return (
+            <Pressable
+              key={value}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              disabled={saving}
+              onPress={() => void choose(value)}
+              style={{
+                minHeight: 52,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                borderBottomWidth: last ? 0 : hairline,
+                borderBottomColor: t.colors.sep,
+                opacity: saving ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ flex: 1, fontSize: 16.5, fontWeight: selected ? "700" : "500", color: t.colors.ink }}>
+                {formatDailySpeakingGoal(value)}
+              </Text>
+              {selected ? (
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
+                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                </View>
+              ) : (
+                <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
+              )}
+            </Pressable>
+          );
+        })}
+        {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingVertical: 10 }}>{error}</Text> : null}
       </Card>
     </Screen>
   );

@@ -4,12 +4,16 @@
 // image, or saved after a Speak session.
 import type { Status } from "@/design/data";
 
+import { aiProcessingAllowed } from "./ai-consent";
 import { prewarmPhraseSpeech } from "./phrase-speech";
 import { supabase } from "./supabase";
 
 function prewarmPhraseEmbedding(phraseId: string): void {
-  void supabase.functions
-    .invoke("phrase-embed", { body: { phrase_id: phraseId } })
+  void aiProcessingAllowed()
+    .then((allowed) => {
+      if (!allowed) return;
+      return supabase.functions.invoke("phrase-embed", { body: { phrase_id: phraseId } });
+    })
     .catch(() => {});
 }
 
@@ -17,6 +21,7 @@ function prewarmPhraseEmbedding(phraseId: string): void {
 export async function backfillMissingPhraseEmbeddings(): Promise<{
   embedded: number;
 }> {
+  if (!(await aiProcessingAllowed())) return { embedded: 0 };
   const { data, error } = await supabase
     .from("phrase_items")
     .select("id")
@@ -325,6 +330,20 @@ export async function fetchPhrases(): Promise<PhraseItem[]> {
   const mapped = rows.map((row) => mapPhraseRow(row));
   void persistScheduleBackfill(rows);
   return mapped;
+}
+
+/** Load one phrase by id (used when a session recommendation opens the real
+ *  PhraseDetail from a bare id instead of an already-fetched object). */
+export async function fetchPhraseById(id: string): Promise<PhraseItem | null> {
+  if (!id || id === "sample") return null;
+  const { data, error } = await supabase
+    .from("phrase_items")
+    .select(`${PHRASE_SELECT_CORE}, learner_note, is_favorite, video:videos(id, title)`)
+    .eq("id", id)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const row = (data ?? [])[0] as PhraseRow | undefined;
+  return row ? mapPhraseRow(row) : null;
 }
 
 function mapPhraseRow(row: PhraseRow): PhraseItem {
@@ -901,17 +920,75 @@ export async function fetchLastSelfTalkUsedAt(): Promise<Record<string, string>>
 }
 
 export interface SessionPhraseLink {
-  id: string | null;
+  /** Stable `phrase_item_id` — never fall back to text when an id exists. */
+  id: string;
   text: string;
-  kind: "used" | "recommended";
 }
 
+export interface SessionFeedbackLink {
+  /** Stable `talk_suggestion_feedback.id`. */
+  feedbackId: string;
+  text: string;
+  said: string;
+  want: string;
+  label: string | null;
+  focus: string | null;
+  diagnosisTag: string | null;
+  action: string | null;
+  explanation: string | null;
+  why: string | null;
+}
+
+/** A recommendation is either a generated coaching feedback row (stable
+ *  `feedbackId`) or a saved-bank phrase (stable `phraseItemId`). The two never
+ *  share an id space, so the discriminated union can't be confused by text. */
+export type SessionRecommendation =
+  | { kind: "phrase"; phraseItemId: string; text: string }
+  | ({ kind: "feedback" } & SessionFeedbackLink);
+
 type LinkedPhrase = { id?: string; text?: string } | { id?: string; text?: string }[] | null;
+
+type FeedbackRow = {
+  id?: string;
+  said?: string;
+  suggestion?: string;
+  why?: string | null;
+  focus?: string | null;
+  moment_label?: string | null;
+  phrase_item_id?: string | null;
+  phrase_items?: LinkedPhrase;
+  diagnosis_tag?: string | null;
+  action?: string | null;
+  explanation?: string | null;
+};
+
+type FeedbackRowsResponse = { data: FeedbackRow[] | null; error: { message: string } | null };
+
+/** Fetch one session's suggestion rows, falling back to the legacy select when
+ *  the linked database predates migration 027 (no structured columns). */
+async function fetchSessionSuggestions(talkSessionId: string): Promise<FeedbackRowsResponse> {
+  const structured = "id, said, suggestion, why, focus, moment_label, phrase_item_id, phrase_items(id, text), diagnosis_tag, action, explanation";
+  const legacy = "id, said, suggestion, why, focus, moment_label, phrase_item_id, phrase_items(id, text)";
+  const first = await supabase
+    .from("talk_suggestion_feedback")
+    .select(structured)
+    .eq("talk_session_id", talkSessionId)
+    .order("moment_index", { ascending: true });
+  if (first.error && /diagnosis_tag|action|explanation/i.test(first.error.message)) {
+    const second = await supabase
+      .from("talk_suggestion_feedback")
+      .select(legacy)
+      .eq("talk_session_id", talkSessionId)
+      .order("moment_index", { ascending: true });
+    return second as unknown as FeedbackRowsResponse;
+  }
+  return first as unknown as FeedbackRowsResponse;
+}
 
 /** Phrases used or recommended on one self-talk session. */
 export async function fetchSessionPhraseMemory(talkSessionId: string): Promise<{
   used: SessionPhraseLink[];
-  recommended: SessionPhraseLink[];
+  recommended: SessionRecommendation[];
 }> {
   const [events, suggestions] = await Promise.all([
     supabase
@@ -919,15 +996,11 @@ export async function fetchSessionPhraseMemory(talkSessionId: string): Promise<{
       .select("event, phrase_item_id, phrase_items(id, text)")
       .eq("talk_session_id", talkSessionId)
       .order("created_at", { ascending: true }),
-    supabase
-      .from("talk_suggestion_feedback")
-      .select("suggestion, phrase_item_id, phrase_items(id, text)")
-      .eq("talk_session_id", talkSessionId)
-      .order("moment_index", { ascending: true }),
+    fetchSessionSuggestions(talkSessionId),
   ]);
 
   const used: SessionPhraseLink[] = [];
-  const recommended: SessionPhraseLink[] = [];
+  const recommended: SessionRecommendation[] = [];
   const seenUsed = new Set<string>();
   const seenRecommended = new Set<string>();
 
@@ -935,28 +1008,48 @@ export async function fetchSessionPhraseMemory(talkSessionId: string): Promise<{
     const linked = one(row.phrase_items as LinkedPhrase);
     const id = (linked?.id as string | undefined) ?? (row.phrase_item_id as string | null) ?? null;
     const text = (linked?.text as string | undefined)?.trim();
-    if (!text) continue;
-    const key = id ?? text;
+    if (!id || !text) continue;
     if (row.event === "used") {
-      if (seenUsed.has(key)) continue;
-      seenUsed.add(key);
-      used.push({ id, text, kind: "used" });
+      if (seenUsed.has(id)) continue;
+      seenUsed.add(id);
+      used.push({ id, text });
     } else if (row.event === "suggested" || row.event === "accepted" || row.event === "retrieved") {
-      if (seenRecommended.has(key)) continue;
-      seenRecommended.add(key);
-      recommended.push({ id, text, kind: "recommended" });
+      if (seenRecommended.has(id)) continue;
+      seenRecommended.add(id);
+      recommended.push({ kind: "phrase", phraseItemId: id, text });
     }
   }
 
   for (const row of suggestions.data ?? []) {
     const linked = one(row.phrase_items as LinkedPhrase);
+    const phraseId = (linked?.id as string | undefined) ?? (row.phrase_item_id as string | null) ?? null;
     const text = ((linked?.text as string | undefined) ?? (row.suggestion as string | undefined) ?? "").trim();
     if (!text) continue;
-    const id = (linked?.id as string | undefined) ?? (row.phrase_item_id as string | null) ?? null;
-    const key = id ?? text;
-    if (seenRecommended.has(key)) continue;
-    seenRecommended.add(key);
-    recommended.push({ id, text, kind: "recommended" });
+    const feedbackId = row.id as string;
+    if (phraseId) {
+      // Saved-bank suggestion backed by a real phrase row → open PhraseDetail.
+      if (seenRecommended.has(phraseId)) continue;
+      seenRecommended.add(phraseId);
+      recommended.push({ kind: "phrase", phraseItemId: phraseId, text });
+    } else {
+      // Generated coaching feedback has no phrase row → open feedback detail.
+      const key = `feedback:${feedbackId}`;
+      if (seenRecommended.has(key)) continue;
+      seenRecommended.add(key);
+      recommended.push({
+        kind: "feedback",
+        feedbackId,
+        text,
+        said: (row.said as string | undefined) ?? "",
+        want: (row.suggestion as string | undefined) ?? text,
+        label: (row.moment_label as string | undefined) ?? null,
+        focus: (row.focus as string | undefined) ?? null,
+        diagnosisTag: (row.diagnosis_tag as string | undefined) ?? null,
+        action: (row.action as string | undefined) ?? null,
+        explanation: (row.explanation as string | undefined) ?? null,
+        why: (row.why as string | undefined) ?? null,
+      });
+    }
   }
 
   return { used, recommended };

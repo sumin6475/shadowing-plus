@@ -7,6 +7,7 @@ import Svg, { Circle } from "react-native-svg";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, EnterStagger, Icon, Pill, Screen, Serif, StatTile } from "@/design/ui";
 import { useAuth } from "@/lib/auth";
+import { dailySpeakingGoalMinutes } from "@/lib/practice-length";
 import { fetchPhrases, phraseIsDue, type PhraseItem } from "@/lib/phrases";
 import {
   fetchStudioSnapshot,
@@ -74,39 +75,52 @@ function Donut({
 
 function WeekRings({
   days,
+  goalMinutes,
   accent,
   track,
   ink,
   ink3,
 }: {
   days: { date: string; seconds: number }[];
+  goalMinutes: number;
   accent: string;
   track: string;
   ink: string;
   ink3: string;
 }) {
   const today = days[days.length - 1]?.date;
-  const goal = 10 * 60;
+  const goal = goalMinutes * 60;
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 8 }}>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 10 }}>
       {days.map((day) => {
         const date = new Date(`${day.date}T12:00:00`);
         const label = WEEKDAYS[date.getDay()];
-        const progress = Math.min(1, day.seconds / goal);
+        // Visual arc caps at 100% but the accessibility label keeps real time.
+        const progress = Math.min(1, goal > 0 ? day.seconds / goal : 0);
+        const minutes = Math.round(day.seconds / 60);
         const r = 14;
         const c = 2 * Math.PI * r;
         const filled = progress * c;
         const isToday = day.date === today;
         return (
-          <View key={day.date} style={{ alignItems: "center", gap: 6 }}>
+          <View
+            key={day.date}
+            accessible
+            accessibilityLabel={`${label}, ${minutes} of ${goalMinutes} minutes spoken`}
+            style={{ alignItems: "center", gap: 6 }}
+          >
             <Svg width={36} height={36}>
-              <Circle cx={18} cy={18} r={r} stroke={track} strokeWidth={3.5} fill={isToday ? accent : "none"} />
+              {isToday ? (
+                // Today is marked by an accent outline, never a false solid fill.
+                <Circle cx={18} cy={18} r={r + 2.5} stroke={accent} strokeWidth={1.5} fill="none" />
+              ) : null}
+              <Circle cx={18} cy={18} r={r} stroke={track} strokeWidth={3.5} fill="none" />
               {progress > 0 ? (
                 <Circle
                   cx={18}
                   cy={18}
                   r={r}
-                  stroke={isToday ? "#fff" : accent}
+                  stroke={accent}
                   strokeWidth={3.5}
                   fill="none"
                   strokeDasharray={`${filled} ${c - filled}`}
@@ -115,7 +129,7 @@ function WeekRings({
                 />
               ) : null}
             </Svg>
-            <Text style={{ fontSize: 11, fontWeight: isToday ? "800" : "600", color: isToday ? ink : ink3 }}>{label}</Text>
+            <Text style={{ fontSize: 11, fontWeight: isToday ? "800" : "600", color: isToday ? accent : ink3 }}>{label}</Text>
           </View>
         );
       })}
@@ -128,15 +142,16 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
   const { session } = useAuth();
   const meta = (session?.user?.user_metadata ?? {}) as { display_name?: string };
   const name = meta.display_name?.trim() || session?.user?.email?.split("@")[0] || "You";
+  const goalMinutes = dailySpeakingGoalMinutes(session?.user?.user_metadata);
   const [studio, setStudio] = useState<StudioSnapshot | null>(null);
   const [phrases, setPhrases] = useState<PhraseItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    setError(null);
     try {
       const [snap, bank] = await Promise.all([fetchStudioSnapshot(), fetchPhrases()]);
+      setError(null);
       setStudio(snap);
       setPhrases(bank);
     } catch (caught) {
@@ -145,7 +160,8 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const onRefresh = useCallback(async () => {
@@ -166,6 +182,9 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
     color: TOPIC_TONES[index % TOPIC_TONES.length],
     value: item.seconds,
   }));
+  const weekSeconds = (studio?.lastSevenDays ?? []).reduce((sum, day) => sum + day.seconds, 0);
+  const weekMinutes = Math.round(weekSeconds / 60);
+  const plannedMinutes = goalMinutes * 7;
 
   return (
     <Screen
@@ -255,9 +274,16 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
 
           <EnterStagger i={3}>
           <Card>
-            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>This week</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
+              <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Last 7 days</Text>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: t.colors.ink3 }}>Daily goal · {goalMinutes} min</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 4 }}>
+              {weekMinutes} min spoken · {plannedMinutes} min planned
+            </Text>
             <WeekRings
               days={studio?.lastSevenDays ?? []}
+              goalMinutes={goalMinutes}
               accent={t.colors.acc}
               track={t.colors.soft}
               ink={t.colors.ink}

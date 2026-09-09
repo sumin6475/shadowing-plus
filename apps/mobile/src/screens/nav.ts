@@ -16,6 +16,7 @@ export type ViewName =
   | "newMessage"
   | "recs"
   | "session"
+  | "feedback"
   | "library"
   | "libItem"
   | "capture"
@@ -26,9 +27,13 @@ export type ViewName =
   | "themePref"
   | "feedbackFocus"
   | "phrasesPerDay"
+  | "dailySpeakingGoal"
   | "reminders"
   | "privacy"
   | "studio"
+  | "studioTopic"
+  | "situation"
+  | "speakingNote"
   | "topicsList"
   | "sessionsList";
 
@@ -54,6 +59,11 @@ export interface Nav {
   startTalk: (ctx: TalkCtx) => void;
   /** Show a brief confirmation that survives a pushed screen being popped. */
   notify: (message: string) => void;
+  /** Monotonic revision bumped after a successful create/delete of speaking
+   *  data. Studio reads it to refresh the stale NativeTabs mount. */
+  speakingDataRevision: number;
+  /** Bump `speakingDataRevision` after a successful create/delete mutation. */
+  invalidateSpeakingData: () => void;
 }
 
 export type { TabId };
