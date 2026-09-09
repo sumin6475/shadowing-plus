@@ -630,4 +630,12 @@
 - **남은 것**: Situations `See all` 토글은 dev-client 메뉴 간섭으로 탭 확인 실패. `pickCurrentNote` 단위 테스트는 apps/mobile에 러너가 없어 보류.
 - **산출물**: [quality/2026-09-08-studio-home-zones.md](quality/2026-09-08-studio-home-zones.md)
 
+### 2026-09-09 · 구현+검증 · Situation 상세 위계 재정렬
+- **무엇**: 스펙 3절. `Hero`를 없애고 연습 진입을 노트 목록 첫 행의 마이크 버튼으로 흡수. 헤더에 `날짜 · 노트 수 · 시도 수` 메타 추가, `+ New`를 섹션 헤더 액션으로 이동. Useful phrases를 `PHRASE`/`STATUS` 2열 테이블(5개 + `All N`)로, Recent attempts를 카드 없는 저강도 3줄로 축소.
+- **왜**: PRD는 Notes ≫ Phrases ≫ Attempts 위계를 요구하는데 구현은 셋 다 같은 `Sect` + `Card`로 동급이었다. 게다가 Hero가 같은 노트를 두 번 보여주며 목록을 첫 화면 밖으로 밀어냈다.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · iOS export PASS · Simulator smoke PASS(`Ideas / Something I learned`에서 세 섹션의 시각 무게 차이 확인).
+- **남은 것**: 노트 행 마이크 버튼 탭 미확인. phrase `All N` 토글은 표본이 1개뿐이라 미노출.
+- **분리**: Speaking Note 상세(4절)는 연습 후 복귀(6절 `returnTo`)와 짝이라 다음 PR로 함께 미룸.
+- **산출물**: [quality/2026-09-09-studio-situation-detail.md](quality/2026-09-09-studio-situation-detail.md)
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->

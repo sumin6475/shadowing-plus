@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { IconName } from "@/design/icon";
 import { useTheme } from "@/design/theme";
-import { AnimatedPressable, Avatar, BackBar, Card, Chip, EnterStagger, Hero, Icon, Pill, Screen, Sect, Serif, Stagger, usePressFx } from "@/design/ui";
+import { AnimatedPressable, Avatar, BackBar, Card, Chip, EnterStagger, Icon, Pill, Screen, Sect, Serif, Stagger, usePressFx } from "@/design/ui";
 import {
   createQuickNote,
   createStudioSituation,
@@ -796,6 +796,76 @@ function attemptDate(value: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+const PHRASE_STATUS_LABEL: Record<string, string> = {
+  new: "New",
+  recognizing: "Recognizing",
+  practicing: "Practicing",
+  ready: "Ready",
+};
+
+function phraseStatusLabel(status: string): string {
+  return PHRASE_STATUS_LABEL[status] ?? status.replace(/_/g, " ");
+}
+
+// Notes are the situation's primary unit, so the current one gets its practice
+// affordance inside the list rather than a separate hero card above it. The
+// hero repeated the same note twice and pushed the list off the first screen.
+function SituationNoteRow({ note, first, primary, onPress, onPractice }: { note: SpeakingNote; first?: boolean; primary?: boolean; onPress: () => void; onPractice: () => void }) {
+  const t = useTheme();
+  const meta = [
+    note.goal || null,
+    note.phraseCount ? `${note.phraseCount} phrase${note.phraseCount === 1 ? "" : "s"}` : null,
+    note.attemptCount ? `${note.attemptCount} attempt${note.attemptCount === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join("  ·  ");
+  return (
+    <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${note.title}. ${meta}`}
+        style={({ pressed }) => ({ flex: 1, minHeight: 68, paddingVertical: 12, opacity: pressed ? 0.65 : 1 })}
+      >
+        <Text style={{ fontSize: 16.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{note.title}</Text>
+        {meta ? <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 4 }} numberOfLines={1}>{meta}</Text> : null}
+      </Pressable>
+      <Pressable
+        onPress={onPractice}
+        accessibilityRole="button"
+        accessibilityLabel={`Practice ${note.title}`}
+        hitSlop={6}
+        style={({ pressed }) => ({
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: primary ? t.colors.acc : t.colors.accS,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <Icon name="mic" s={18} w={2} c={primary ? "#fff" : t.colors.accD} />
+      </Pressable>
+    </View>
+  );
+}
+
+// A database-style two-column list: the phrase on the left, its learning state
+// on the right under a column header, which is what the PRD asks for.
+function PhraseTableRow({ phrase, first }: { phrase: NotePhrase; first?: boolean }) {
+  const t = useTheme();
+  return (
+    <View style={{ minHeight: 52, paddingVertical: 10, borderTopWidth: first ? 0 : 1, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }} numberOfLines={1}>{phrase.text}</Text>
+        {phrase.translation ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>{phrase.translation}</Text> : null}
+      </View>
+      <Text style={{ width: 92, textAlign: "right", fontSize: 12, fontWeight: "700", color: t.colors.ink3 }} numberOfLines={1}>
+        {phraseStatusLabel(phrase.learningStatus)}
+      </Text>
+    </View>
+  );
+}
+
 export function StudioSituationScreen({ id, topicId, title, nav }: { id: string; topicId: string; title?: string; nav: Nav }) {
   const t = useTheme();
   const [topics, setTopics] = useState<StudioTopic[]>([]);
@@ -805,30 +875,92 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
   const [attempts, setAttempts] = useState<PracticeAttempt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [showAllPhrases, setShowAllPhrases] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [allTopics, allSituations, linkedNotes, linkedPhrases, recentAttempts] = await Promise.all([fetchStudioTopics(), fetchStudioSituations(topicId), fetchSpeakingNotes({ situationId: id }), fetchSituationPhrases(id), fetchPracticeAttempts({ situationId: id, limit: 5 })]);
+      const [allTopics, allSituations, linkedNotes, linkedPhrases, recentAttempts] = await Promise.all([fetchStudioTopics(), fetchStudioSituations(topicId), fetchSpeakingNotes({ situationId: id }), fetchSituationPhrases(id), fetchPracticeAttempts({ situationId: id, limit: 10 })]);
       setTopics(allTopics); setSituations(allSituations); setNotes(linkedNotes); setPhrases(linkedPhrases); setAttempts(recentAttempts); setError(null);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load this situation."); }
   }, [id, topicId]);
   useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
   const situation = situations.find((item) => item.id === id);
-  const current = notes?.[0] ?? null;
+  const when = situationDate(situation?.eventDate ?? null);
+  const noteTitleById = useMemo(() => new Map((notes ?? []).map((note) => [note.id, note.title])), [notes]);
+  const headerMeta = [
+    when,
+    `${notes?.length ?? 0} note${(notes?.length ?? 0) === 1 ? "" : "s"}`,
+    `${attempts.length} attempt${attempts.length === 1 ? "" : "s"}`,
+  ].filter(Boolean).join("  ·  ");
+  const visiblePhrases = showAllPhrases ? phrases : phrases.slice(0, 5);
   return (
     <>
-      <Screen>
+      <Screen bottomPad={40}>
         <BackBar onBack={nav.pop} />
         <Stagger>
-          <View style={{ paddingHorizontal: 2 }}><Text style={{ fontSize: 12.5, color: t.colors.accD, fontWeight: "700" }}>{situation?.topicName ?? "Topic"}</Text><Serif style={{ fontSize: 31, lineHeight: 35, color: t.colors.ink, marginTop: 5 }}>{situation?.title ?? title ?? "Situation"}</Serif>{situation?.description ? <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, marginTop: 10 }}>{situation.description}</Text> : null}</View>
-          {current ? <Hero onPress={() => startNotePractice(nav, current)}><Text style={{ fontSize: 12, color: "rgba(255,255,255,0.76)", fontWeight: "800", letterSpacing: 0.65 }}>CURRENT NOTE</Text><Serif style={{ fontSize: 25, color: "#fff", marginTop: 8 }}>{current.title}</Serif><Text style={{ color: "rgba(255,255,255,0.84)", marginTop: 7, lineHeight: 20 }}>{current.goal}</Text><Pill tone="white" icon="mic" small onPress={() => startNotePractice(nav, current)} style={{ marginTop: 16 }}>Continue practice</Pill></Hero> : null}
-          <Pill full icon="plus" onPress={() => setQuickOpen(true)}>New speaking note</Pill>
-          <Sect title="Speaking notes" />
+          <View style={{ paddingHorizontal: 2 }}>
+            <Text style={{ fontSize: 12.5, color: t.colors.accD, fontWeight: "700" }}>{situation?.topicName ?? "Topic"}</Text>
+            <Serif style={{ fontSize: 31, lineHeight: 35, color: t.colors.ink, marginTop: 5 }}>{situation?.title ?? title ?? "Situation"}</Serif>
+            {situation?.description ? <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, marginTop: 10 }}>{situation.description}</Text> : null}
+            <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.ink3, marginTop: 10 }}>{headerMeta}</Text>
+          </View>
+
+          <StudioSectionHeader title="Speaking notes" action="+ New" onAction={() => setQuickOpen(true)} />
         </Stagger>
-        {notes === null && !error ? <Loading /> : error ? <ErrorCard message={error} retry={load} /> : <View style={{ backgroundColor: t.colors.card, borderRadius: t.r, paddingHorizontal: 16, borderWidth: 1, borderColor: t.ring, ...t.shadowCard }}>{(notes ?? []).map((note) => <NoteRow key={note.id} note={note} onPress={() => nav.push("speakingNote", { id: note.id })} />)}{!notes?.length ? <Text style={{ paddingVertical: 26, textAlign: "center", color: t.colors.ink3 }}>Add one clear thing you want to say.</Text> : null}</View>}
-        <Sect title="Useful phrases" />
-        <Card style={{ paddingVertical: 4 }}>{phrases.map((phrase, index) => <View key={phrase.id} style={{ minHeight: 55, paddingVertical: 10, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center", gap: 10 }}><View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{phrase.text}</Text>{phrase.translation ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 3 }}>{phrase.translation}</Text> : null}</View><Text style={{ fontSize: 11.5, fontWeight: "700", color: t.colors.accD }}>{phrase.learningStatus.replace("_", " ")}</Text></View>)}{!phrases.length ? <Text style={{ paddingVertical: 22, color: t.colors.ink3, textAlign: "center" }}>Linked phrases from these notes will appear here.</Text> : null}</Card>
-        <Sect title="Recent attempts" />
-        <Card style={{ paddingVertical: 4 }}>{attempts.map((attempt, index) => <View key={attempt.id} style={{ minHeight: 54, paddingVertical: 10, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center" }}><Text style={{ flex: 1, fontSize: 14, color: t.colors.ink }}>{attemptDate(attempt.createdAt)}</Text><Text style={{ fontSize: 13, color: t.colors.ink3 }}>{Math.round(attempt.durationSeconds ?? 0)} sec</Text></View>)}{!attempts.length ? <Text style={{ paddingVertical: 22, color: t.colors.ink3, textAlign: "center" }}>Attempts stay a quiet history here.</Text> : null}</Card>
+        {notes === null && !error ? <Loading /> : error ? <ErrorCard message={error} retry={load} /> : (
+          <Card style={{ paddingVertical: 2 }}>
+            {(notes ?? []).map((note, index) => (
+              <SituationNoteRow
+                key={note.id}
+                note={note}
+                first={index === 0}
+                primary={index === 0}
+                onPress={() => nav.push("speakingNote", { id: note.id })}
+                onPractice={() => startNotePractice(nav, note)}
+              />
+            ))}
+            {!notes?.length ? <Text style={{ paddingVertical: 26, textAlign: "center", color: t.colors.ink3 }}>Add one clear thing you want to say.</Text> : null}
+          </Card>
+        )}
+
+        <StudioSectionHeader
+          title="Useful phrases"
+          action={phrases.length > 5 ? (showAllPhrases ? "Show less" : `All ${phrases.length}`) : undefined}
+          onAction={() => setShowAllPhrases((value) => !value)}
+        />
+        <Card style={{ paddingVertical: 2 }}>
+          {phrases.length ? (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingBottom: 7 }}>
+                <Text style={{ flex: 1, fontSize: 11, fontWeight: "800", letterSpacing: 0.7, color: t.colors.ink3 }}>PHRASE</Text>
+                <Text style={{ width: 92, textAlign: "right", fontSize: 11, fontWeight: "800", letterSpacing: 0.7, color: t.colors.ink3 }}>STATUS</Text>
+              </View>
+              {visiblePhrases.map((phrase) => <PhraseTableRow key={phrase.id} phrase={phrase} />)}
+            </>
+          ) : (
+            <Text style={{ paddingVertical: 22, color: t.colors.ink3, textAlign: "center" }}>Linked phrases from these notes will appear here.</Text>
+          )}
+        </Card>
+
+        {/* Quiet history: no card, no icons. Attempts support the notes, they
+            are not a third peer section. */}
+        <View style={{ paddingHorizontal: 2, paddingTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 13, fontWeight: "800", letterSpacing: 0.6, color: t.colors.ink3 }}>RECENT ATTEMPTS</Text>
+          {attempts.length > 3 ? (
+            <Pressable onPress={() => nav.push("sessionsList")} hitSlop={8}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.accD }}>All</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        <View style={{ paddingHorizontal: 2 }}>
+          {attempts.slice(0, 3).map((attempt, index) => (
+            <View key={attempt.id} style={{ minHeight: 40, paddingVertical: 9, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Text style={{ width: 58, fontSize: 13, fontWeight: "600", color: t.colors.ink3 }}>{attemptDate(attempt.createdAt)}</Text>
+              <Text style={{ flex: 1, fontSize: 13, color: t.colors.ink2 }} numberOfLines={1}>{(attempt.noteId && noteTitleById.get(attempt.noteId)) || "Free talk"}</Text>
+              <Text style={{ fontSize: 13, color: t.colors.ink3 }}>{Math.round(attempt.durationSeconds ?? 0)}s</Text>
+            </View>
+          ))}
+          {!attempts.length ? <Text style={{ paddingVertical: 14, color: t.colors.ink3, fontSize: 13 }}>Attempts stay a quiet history here.</Text> : null}
+        </View>
       </Screen>
       <QuickNoteSheet open={quickOpen} nav={nav} topics={topics} situations={situations} initialTopicId={topicId} initialSituationId={id} onClose={() => setQuickOpen(false)} onSaved={() => void load()} />
     </>
