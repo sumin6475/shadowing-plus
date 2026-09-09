@@ -259,15 +259,15 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
               label="Active topics"
               value={String(studio?.activeTopics ?? 0)}
               unit="topics"
-              foot="With stories you can speak"
+              foot="With situations you can speak"
             />
             <StatTile
               chevron={false}
               tone="sage"
-              label="Active stories"
+              label="Active situations"
               value={String(studio?.activeStories ?? 0)}
-              unit="stories"
-              foot="With talks or versions"
+              unit="situations"
+              foot="With notes or attempts"
             />
           </View>
           </EnterStagger>

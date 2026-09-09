@@ -707,7 +707,7 @@ export function TopicsListScreen({ nav }: { nav: Nav }) {
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>{group.domain.name}</Text>
                 <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>
-                  {n > 0 ? `${n} stor${n === 1 ? "y" : "ies"}` : "No stories yet"}
+                  {n > 0 ? `${n} situation${n === 1 ? "" : "s"}` : "No situations yet"}
                 </Text>
               </View>
               <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
@@ -852,8 +852,8 @@ export function SessionsScreen({ nav, stacked }: { nav: Nav; stacked?: boolean }
       <Stagger>
         <Header
           eyebrow={stacked ? undefined : "Sessions"}
-          title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Your sessions</Serif>}
-          sub={total > 0 ? `${total} time${total === 1 ? "" : "s"} you sat down and talked.` : "Every self-talk session lands here."}
+          title={<Serif style={{ fontSize: 34, lineHeight: 37, color: t.colors.ink }}>Your attempts</Serif>}
+          sub={total > 0 ? `${total} time${total === 1 ? "" : "s"} you practiced out loud.` : "Every practice attempt lands here."}
           right={stacked ? undefined : <Avatar onPress={() => nav.push("settings")} />}
         />
       </Stagger>

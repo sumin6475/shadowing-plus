@@ -623,4 +623,11 @@
 - **후속**: `SpeakingWorldScreen` 208줄 죽은 코드 삭제는 연쇄 정리(경고 15→20)가 커서 별도 작업으로 분리. smoke 중 발견: 옛 용어(stories/sessions) 잔존, 대시보드 `Last 7 days`가 0 min으로 표시되는 선행 버그.
 - **산출물**: [quality/2026-09-08-studio-route-restoration.md](quality/2026-09-08-studio-route-restoration.md) · 스펙 [.agents/plans/2026-09-08-studio-ia-redesign-spec.md](../../../../.agents/plans/2026-09-08-studio-ia-redesign-spec.md)
 
+### 2026-09-08 · 구현+검증 · Studio 홈 3-존 재구성
+- **무엇**: 스펙 2절. 홈을 연습/기록/정리 세 구역으로 정리. `Continue practicing`을 순수 함수 `pickCurrentNote`로 교체(최근 7일 attempt → phrase 있는 노트 → 최신 순), Recent notes 행에서 장식 아이콘을 빼고 상황·phrase·attempt 수를 실었으며(78→64pt), Situation 3분할 타일을 제목이 안 잘리는 세로 행으로 바꿈. 1절 smoke에서 발견한 옛 용어(stories/sessions)도 PRD 어휘로 교체.
+- **왜**: `updated_at`만 보던 선택 규칙 탓에 한 번도 말해보지 않은 노트가 계속 최상단을 차지했고, 홈의 리스트들이 자리만 쓰고 판단 근거를 주지 않았다.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · iOS export PASS · Simulator smoke PASS(선택 규칙이 phrase 1·attempt 2 노트를 올리는 것까지 확인).
+- **남은 것**: Situations `See all` 토글은 dev-client 메뉴 간섭으로 탭 확인 실패. `pickCurrentNote` 단위 테스트는 apps/mobile에 러너가 없어 보류.
+- **산출물**: [quality/2026-09-08-studio-home-zones.md](quality/2026-09-08-studio-home-zones.md)
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
