@@ -659,4 +659,11 @@
 - **재발 방지**: `supabase/APPLIED.md` 신설. 적용 시 같은 커밋에서 갱신하는 규칙과 "ledger를 믿지 말 것"을 명시.
 - **산출물**: [.agents/plans/2026-09-09-migration-history-reconciliation.md](../../../../.agents/plans/2026-09-09-migration-history-reconciliation.md) · `supabase/APPLIED.md`
 
+### 2026-09-09 · 수정 · Talk 저장 실패를 관측 가능하게
+- **무엇**: `talk.tsx`의 fire-and-forget 저장 실패 6곳(`log_suggestions`, `diagnose`, `phrase_suggestion`, `save_session`, `rate_suggestion`, `confirm_phrase_use`)을 `reportTalkFailure` 헬퍼로 묶고 PostHog `talk_persist_failed` 이벤트를 남기도록 함. dev console.warn은 유지.
+- **왜**: 전부 `if (__DEV__) console.warn(...)` 하나로 끝나서 릴리스 빌드에선 완전 무음이었다. 화면은 메모리의 피드백을 그대로 렌더하므로 사용자 증상이 0이다. **migration 027 미적용으로 모든 AI 피드백 insert가 throw하던 것이 몇 주간 안 드러난 직접적 이유.**
+- **검증**: TypeScript PASS · ESLint error 0/warning 15 · iOS export PASS.
+- **미확인**: 이벤트가 실제로 발화하는지는 실패를 재현해야 확인 가능. 027 적용 후라 지금은 정상 경로다.
+- **막힌 것**: 027 복구의 end-to-end 확인(talk 세션 → 피드백 저장)은 **시뮬레이터에서 불가능**. `Failed to initialize recognizer` — iOS Simulator의 SFSpeechRecognizer 제약이라 실기기가 필요하다.
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
