@@ -1096,11 +1096,12 @@ function EventDateSheet({ open, initial, onClose, onSave }: { open: boolean; ini
   };
   return (
     <Sheet open={open} title="When is it?" subtitle="A date makes the situation easier to find later. Leave it blank to clear." onClose={onClose}>
-      <View style={{ paddingHorizontal: 22, gap: 14 }}>
+      {/* Scrollable so the keyboard can't push the save action off-screen. */}
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 8, gap: 14 }}>
         <Field label="Date" value={value} onChangeText={setValue} placeholder="2026-09-18" />
         {error ? <Text style={{ color: "#E5484D", fontSize: 13.5, lineHeight: 19 }}>{error}</Text> : null}
         <Pill full onPress={saving ? undefined : save}>{saving ? "Saving…" : "Save date"}</Pill>
-      </View>
+      </ScrollView>
     </Sheet>
   );
 }
@@ -1209,9 +1210,13 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
           {phrases.length ? (
             <>
               {phrases.slice(0, 5).map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />)}
-              {phrases.length > 5 ? (
-                <MoreRow c={c} label={`${phrases.length - 5} more phrases`} onPress={() => nav.push("situationPhrases", { id, topicId, title: situation?.title ?? title })} />
-              ) : null}
+              {/* Always present, so the full list is reachable even when
+                  nothing is hidden — the label switches to "All N" then. */}
+              <MoreRow
+                c={c}
+                label={phrases.length > 5 ? `${phrases.length - 5} more phrases` : `All ${phrases.length} phrase${phrases.length === 1 ? "" : "s"}`}
+                onPress={() => nav.push("situationPhrases", { id, topicId, title: situation?.title ?? title })}
+              />
             </>
           ) : (
             <View style={{ paddingHorizontal: 20, paddingVertical: 22 }}>

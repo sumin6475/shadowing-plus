@@ -48,9 +48,46 @@ Date: 2026-09-09
 - Situation 상세: `IDEAS` / `Something I learned` / `+ Date`·`1 note`·`2 attempts` 칩 / `Speaking Notes` + `+ New` 캡슐 / hero 행의 채워진 44pt 마이크 / `Useful Phrases` 뱃지(`Recognizing`) / `Recent Attempts` + `All 2` — 디자인과 일치.
 - `All 2` → Attempts 전체 목록 진입 확인. `SOMETHING I LEARNED` / `Attempts` / `2 attempts`·`0 min total` 칩 / `THIS MONTH` 그룹 헤더 / 행에 chevron.
 
-## Not verified
+## Follow-up pass — 나머지 상태 전부 확인 (같은 날)
 
-- **다크 모드 미확인.** 토큰은 디자인 값대로 넣었으나 시뮬레이터에서 다크로 띄워보지 않았다.
-- Useful Phrases pushed 목록(`situationPhrases`)은 이 상황에 phrase가 1개뿐이라 `N more phrases` 행이 안 떠서 진입하지 못했다. 상태 필터 칩도 함께 미확인.
-- `+ Date` 시트의 저장 경로(`setSituationEventDate` → Supabase update) 미실행.
-- 빈 상태 / Notes only 프레임 미확인 (현재 데이터가 해당 상태가 아님).
+`+ more` 노출 조건 변경 후, 앞서 미확인이던 항목을 실기기 경로로 모두 확인했다. 별도 테스트 데이터는 만들지 않았다 — 기존 계정에 필요한 상태가 이미 다 있었다.
+
+| 항목 | 사용한 데이터 | 결과 |
+|---|---|---|
+| Phrases pushed 목록 | `Ideas / Something I learned` (phrase 1개) | PASS. `All 1 phrase` 행 → 목록 진입 |
+| 상태 필터 칩 | 같음 | PASS. `All 1` / `Recognizing 1`, 선택 시 accent 채움으로 토글 |
+| 빈 상태 | `Work / Study / Current project` (0 notes · 0 attempts) | PASS. 디자인 그대로 — `What will you need to say here?` + `Write your first note` CTA, `+ Add phrase`, `Start your first attempt` 행. 빈 상태에서 섹션 헤더의 `+ New`가 사라지는 것도 디자인과 일치 |
+| Notes only | `Work / Study / My research` (1 note · 0 phrases · 0 attempts) | PASS |
+| 다크 모드 | `simctl ui booted appearance dark` | PASS. accent가 `#5B8AF5`로 전환, 카드 `#1C1C1E`, hairline·뱃지·dashed 칩 모두 판독 가능. 확인 후 light로 복구 |
+| `+ Date` 저장 | `Something I learned` | **FAIL — 서버 오류. 아래 참조** |
+
+## `+ Date`는 원격 스키마 때문에 동작하지 않는다
+
+시트에서 `2026-09-18` 입력 후 저장하면 Supabase가 그대로 거절한다:
+
+```
+Could not find the 'event_date' column of 'stories' in the schema cache
+```
+
+**즉 원인은 "쓰는 코드가 없었다"가 아니라 컬럼이 원격에 아예 없다는 것이다.** 앞선 스냅샷의 기록대로 local migration은 001–028인데 원격 ledger는 020까지만 잡혀 있어 `028_studio_information_architecture.sql`이 적용되지 않았다. `fetchStudioSituations`의 legacy fallback이 `event_date`를 빼고 조회하기 때문에 읽기는 조용히 null로 넘어가고, 쓰기에서만 드러났다.
+
+- UI 동작 자체는 정상: 오류가 시트 안에 그대로 노출되고 앱이 죽지 않는다.
+- **원격 DB는 건드리지 않았다.** ledger 불일치 상태에서 028만 적용하면 미기록 선행 마이그레이션을 건너뛰게 되어 위험하다. 마이그레이션 이력을 먼저 정리해야 한다.
+- 그때까지 `+ Date` 칩은 눌러도 저장되지 않는다. 코드 되돌림 없이 남겨둔다 — 스키마가 맞춰지는 순간 동작한다.
+
+## 부수적으로 고친 것
+
+- **`+ Date` 시트에서 키보드가 올라오면 저장 버튼이 화면 밖으로 밀렸다.** 시트 본문을 `ScrollView`로 감쌌다 (`QuickNoteSheet`와 같은 방식). 이 버그 때문에 처음엔 저장을 눌러보지도 못했다.
+- **`N more phrases` 행을 항상 노출하도록 변경.** 5개 이하일 때 pushed 목록으로 갈 길이 없었다. 숨긴 게 없으면 라벨이 `All N phrases`로 바뀐다 — 디자인의 다크 프레임이 쓰던 문구다.
+
+## 재검증
+
+- `npm run typecheck`: PASS.
+- `npm run lint:baseline`: PASS. 0 errors / 15 warnings.
+- `npm run export:ios`: PASS.
+
+## 남은 미확인
+
+- 노트 행 마이크 버튼(연습 진입) 탭 — `startNotePractice`는 홈에서 쓰던 동일 경로.
+- Attempts pushed 목록의 주차 그룹 경계(`Last week` / `Earlier`) — 현재 데이터가 전부 한 버킷에 들어간다.
+- 각 attempt의 `repairSuggestion` 인라인 노출 — 현재 데이터에 repair가 붙은 attempt가 없다.

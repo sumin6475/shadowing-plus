@@ -644,7 +644,9 @@
 - **토큰**: 디자인의 well/hairline/dark-accent가 전역 테마와 미세하게 달라 `useSituationTokens()`로 이 화면 계열에서만 파생. 전역 토큰은 그대로 뒀다.
 - **덤으로 살린 것**: `+ Date` 칩 때문에 `setSituationEventDate()`를 추가 — `event_date`는 028에 있었지만 쓰는 코드가 없어 항상 null이었다. `repairSuggestion`도 내려오기만 하고 안 쓰던 걸 `Last time:` 노트로 노출.
 - **검증**: TypeScript PASS · ESLint error 0/warning 15(포팅 직후 19 → 4건 해소) · iOS export PASS · Simulator smoke PASS(상세 + Attempts 전체 목록).
-- **남은 것**: 다크 모드, phrases pushed 목록·필터 칩, `+ Date` 저장 경로, empty/notes-only 상태 미확인.
+- **후속 확인(같은 날)**: 다크 모드 · phrases pushed 목록 · 상태 필터 칩 · 빈 상태 · notes-only 전부 실기기 PASS. 별도 테스트 데이터 없이 기존 상황들로 커버.
+- **드러난 것**: `+ Date` 저장이 `Could not find the 'event_date' column of 'stories'`로 실패. 원인은 코드가 아니라 **migration 028이 원격에 미적용**(local 001–028 vs remote 020). 읽기는 legacy fallback이 컬럼을 빼고 조회해 조용히 null이었고, 쓰기에서만 드러났다. 원격 DB는 건드리지 않았다.
+- **부수 수정**: `+ Date` 시트가 키보드에 가려 저장 버튼을 못 누르던 것 → `ScrollView`로 감쌈. `N more phrases` 행을 5개 이하일 때도 항상 노출(라벨 `All N phrases`).
 - **산출물**: [quality/2026-09-09-situation-detail-design-port.md](quality/2026-09-09-situation-detail-design-port.md)
 
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
