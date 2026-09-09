@@ -649,4 +649,14 @@
 - **부수 수정**: `+ Date` 시트가 키보드에 가려 저장 버튼을 못 누르던 것 → `ScrollView`로 감쌈. `N more phrases` 행을 5개 이하일 때도 항상 노출(라벨 `All N phrases`).
 - **산출물**: [quality/2026-09-09-situation-detail-design-port.md](quality/2026-09-09-situation-detail-design-port.md)
 
+### 2026-09-09 · 진단+적용+검증 · 마이그레이션 이력 정리 (027·028)
+- **계기**: Situation 상세의 `+ Date` 저장이 `Could not find the 'event_date' column of 'stories'`로 실패.
+- **진단**: CLI ledger(`supabase_migrations.schema_migrations`)에 `020` 한 줄뿐인데 001–019는 명백히 적용된 상태 → **ledger는 적용 목록이 아니라 흔적**이고, 이전의 "원격은 020까지"는 여기서 나온 오해였다. 실제 스키마를 조회해 021–026 적용 / **027·028 미적용** 확정.
+- **드러난 라이브 버그**: 027 미적용 탓에 `saveTalkFeedback`이 `diagnosis_tag`/`action`/`explanation`/`schema_version`을 무조건 insert하고 `throw`해서 **AI 피드백이 하나도 저장되지 않고 있었다.** 읽기는 fallback이 있어 조용했다. attempt에 `repairSuggestion`이 전무했던 이유.
+- **적용**: 027 → 028 순서로 SQL Editor 실행, 둘 다 성공. 028 사전 점검 `messages_without_a_topic = 0`으로 `SET NOT NULL` 안전 확인 후 진행.
+- **검증**: 앱에서 `+ Date` 저장 성공, 칩이 날짜로 전환.
+- **저장 직후 발견한 버그**: `2026-09-18`을 넣었는데 칩이 `Sep 17`. `event_date`가 `DATE`라 `"2026-09-18"`로 오는데 `new Date()`가 UTC 자정으로 파싱해 UTC 뒤 타임존에서 하루 밀린다. `parseCalendarDate`로 로컬 자정 고정해 수정, `Sep 18` 확인.
+- **재발 방지**: `supabase/APPLIED.md` 신설. 적용 시 같은 커밋에서 갱신하는 규칙과 "ledger를 믿지 말 것"을 명시.
+- **산출물**: [.agents/plans/2026-09-09-migration-history-reconciliation.md](../../../../.agents/plans/2026-09-09-migration-history-reconciliation.md) · `supabase/APPLIED.md`
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->

@@ -142,9 +142,16 @@ function NoteRow({ note, onPress }: { note: SpeakingNote; onPress: () => void })
   );
 }
 
+// stories.event_date is a DATE, so it arrives as "2026-09-18". `new Date()`
+// reads a bare date as UTC midnight, which renders as the previous day in any
+// timezone behind UTC. Pin it to local midnight instead.
+function parseCalendarDate(value: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+}
+
 function situationDate(value: string | null): string | null {
   if (!value) return null;
-  const date = new Date(value);
+  const date = parseCalendarDate(value);
   return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
 }
 
@@ -1056,11 +1063,7 @@ function SituationCenter({ c, children }: { c: SituationTokens; children: ReactN
   return <View style={{ alignItems: "center", justifyContent: "center", gap: 14, paddingHorizontal: 40, paddingVertical: 110 }}>{children}</View>;
 }
 
-function situationHeaderDate(value: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
-}
+const situationHeaderDate = situationDate;
 
 function attemptDate(value: string): string {
   const date = new Date(value);
