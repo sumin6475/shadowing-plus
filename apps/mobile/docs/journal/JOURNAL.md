@@ -634,7 +634,8 @@
 - **무엇**: 스펙 3절. `Hero`를 없애고 연습 진입을 노트 목록 첫 행의 마이크 버튼으로 흡수. 헤더에 `날짜 · 노트 수 · 시도 수` 메타 추가, `+ New`를 섹션 헤더 액션으로 이동. Useful phrases를 `PHRASE`/`STATUS` 2열 테이블(5개 + `All N`)로, Recent attempts를 카드 없는 저강도 3줄로 축소.
 - **왜**: PRD는 Notes ≫ Phrases ≫ Attempts 위계를 요구하는데 구현은 셋 다 같은 `Sect` + `Card`로 동급이었다. 게다가 Hero가 같은 노트를 두 번 보여주며 목록을 첫 화면 밖으로 밀어냈다.
 - **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · iOS export PASS · Simulator smoke PASS(`Ideas / Something I learned`에서 세 섹션의 시각 무게 차이 확인).
-- **남은 것**: 노트 행 마이크 버튼 탭 미확인. phrase `All N` 토글은 표본이 1개뿐이라 미노출.
+- **수정**: 첫 렌더가 iOS 모티프 스펙과 안 맞는다는 피드백(마진·패딩·타입 중간값·컨테이너 idiom 혼용)을 받고 `design-system/ios-motif-spec.md` 기준으로 재작업. 52pt 행, hairline, 17/15/13 스케일, 캡슐 컨트롤, 그룹 간격 분리.
+- **남은 것**: 노트 행 마이크 버튼 탭 미확인. phrase `All N` 토글은 표본이 1개뿐이라 미노출. 홈 화면 행에도 같은 중간값(16.5/12.5)이 남아 있어 별도 정리 필요.
 - **분리**: Speaking Note 상세(4절)는 연습 후 복귀(6절 `returnTo`)와 짝이라 다음 PR로 함께 미룸.
 - **산출물**: [quality/2026-09-09-studio-situation-detail.md](quality/2026-09-09-studio-situation-detail.md)
 
