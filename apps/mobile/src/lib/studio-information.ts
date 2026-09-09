@@ -64,6 +64,8 @@ export interface StudioOverview {
   topics: StudioTopic[];
   situations: StudioSituation[];
   notes: SpeakingNote[];
+  /** Newest-first, across every note. Feeds the "Continue practicing" pick. */
+  recentAttempts: PracticeAttempt[];
 }
 
 export interface QuickNoteInput {
@@ -247,12 +249,44 @@ export async function fetchSpeakingNotes(input: {
 }
 
 export async function fetchStudioOverview(): Promise<StudioOverview> {
-  const [topics, situations, notes] = await Promise.all([
+  const [topics, situations, notes, recentAttempts] = await Promise.all([
     fetchStudioTopics(),
     fetchStudioSituations(),
     fetchSpeakingNotes({ limit: 30 }),
+    fetchPracticeAttempts({ limit: 25 }).catch(() => [] as PracticeAttempt[]),
   ]);
-  return { topics, situations, notes };
+  return { topics, situations, notes, recentAttempts };
+}
+
+const RECENT_PRACTICE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Which note "Continue practicing" should offer.
+ *
+ * Ordering by `updated_at` alone let a note that was just typed and never
+ * spoken sit at the top forever, so practice history comes first:
+ *   1. the note behind the most recent attempt in the last 7 days
+ *   2. else the most recently updated note that already has linked phrases
+ *   3. else the most recently updated note
+ * Pure so it can be unit tested; `notes` is expected newest-updated first and
+ * `attempts` newest first.
+ */
+export function pickCurrentNote(
+  notes: SpeakingNote[],
+  attempts: PracticeAttempt[],
+  now: number = Date.now(),
+): SpeakingNote | null {
+  const open = notes.filter((note) => note.status === "active" || note.status === "unsorted");
+  if (!open.length) return null;
+  const byId = new Map(open.map((note) => [note.id, note]));
+  const since = now - RECENT_PRACTICE_WINDOW_MS;
+  for (const attempt of attempts) {
+    const at = new Date(attempt.createdAt).getTime();
+    if (!Number.isFinite(at) || at < since) break;
+    const note = attempt.noteId ? byId.get(attempt.noteId) : undefined;
+    if (note) return note;
+  }
+  return open.find((note) => note.phraseCount > 0) ?? open[0];
 }
 
 export async function fetchSpeakingNote(id: string): Promise<SpeakingNote | null> {

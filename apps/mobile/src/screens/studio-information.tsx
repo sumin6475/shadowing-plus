@@ -32,6 +32,7 @@ import {
   fetchStudioSituations,
   fetchStudioTopics,
   linkPhraseToNote,
+  pickCurrentNote,
   phraseChoices,
   quickTitleFromBody,
   unlinkPhraseFromNote,
@@ -68,34 +69,41 @@ function Meta({ children }: { children: ReactNode }) {
   return <Text style={{ fontSize: 12.5, color: t.colors.ink3, fontWeight: "600" }}>{children}</Text>;
 }
 
-const STUDIO_NOTE_ICONS = ["pen", "bulb", "chat"] as const;
+function noteMeta(note: SpeakingNote): string {
+  const parts = [note.situationTitle ?? note.topicName ?? "Unsorted"];
+  if (note.phraseCount) parts.push(`${note.phraseCount} phrase${note.phraseCount === 1 ? "" : "s"}`);
+  if (note.attemptCount) parts.push(`${note.attemptCount} attempt${note.attemptCount === 1 ? "" : "s"}`);
+  return parts.join("  ·  ");
+}
 
-function StudioNoteRow({ note, index, onPress }: { note: SpeakingNote; index: number; onPress: () => void }) {
+// Home list row. The old row spent 78pt and a rotating decorative icon on no
+// information; this one is 64pt and carries where the note lives plus its
+// phrase/attempt counts, so five notes fit where three did.
+function StudioNoteRow({ note, onPress }: { note: SpeakingNote; onPress: () => void }) {
   const t = useTheme();
+  const unsorted = !note.situationId;
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${note.title}. ${noteMeta(note)}${unsorted ? ". Unsorted" : ""}`}
       style={({ pressed }) => ({
-        minHeight: 78,
-        paddingVertical: 13,
+        minHeight: 64,
+        paddingVertical: 11,
         borderBottomWidth: 1,
         borderBottomColor: t.colors.sep,
         flexDirection: "row",
         alignItems: "center",
-        gap: 13,
+        gap: 10,
         opacity: pressed ? 0.65 : 1,
       })}
     >
-      <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-        <Icon name={STUDIO_NOTE_ICONS[index % STUDIO_NOTE_ICONS.length]} s={20} c={t.colors.accD} />
-      </View>
+      {unsorted ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.colors.acc }} /> : null}
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{note.title}</Text>
-        <Text style={{ fontSize: 13.5, color: t.colors.ink2, marginTop: 5 }} numberOfLines={1}>
-          {note.situationTitle ?? note.topicName ?? "Unsorted"}
-        </Text>
+        <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 3 }} numberOfLines={1}>{noteMeta(note)}</Text>
       </View>
-      <Icon name="chev" s={15} w={2.2} c={t.colors.ink3} />
+      <Icon name="chev" s={14} w={2.2} c={t.colors.ink3} />
     </Pressable>
   );
 }
@@ -132,36 +140,44 @@ function NoteRow({ note, onPress }: { note: SpeakingNote; onPress: () => void })
   );
 }
 
-const SITUATION_ICONS = ["calendar", "bulb", "globe"] as const;
+function situationDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
+}
 
-function StudioSituationTile({ situation, index, onPress }: { situation: StudioSituation; index: number; onPress: () => void }) {
+// Three fixed-width tiles truncated every title and carried no counts, so they
+// gave nothing to choose on. A row fits the full title plus notes/attempts and
+// the event date when the situation has one.
+function StudioSituationRow({ situation, first, onPress }: { situation: StudioSituation; first?: boolean; onPress: () => void }) {
   const t = useTheme();
+  const when = situationDate(situation.eventDate);
+  const meta = `${situation.noteCount} note${situation.noteCount === 1 ? "" : "s"}  ·  ${situation.attemptCount} attempt${situation.attemptCount === 1 ? "" : "s"}`;
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => ([
-        {
-          flex: 1,
-          minWidth: 0,
-          height: 82,
-          borderRadius: t.r,
-          paddingHorizontal: 10,
-          backgroundColor: t.colors.card,
-          borderWidth: 1,
-          borderColor: t.ring,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-          opacity: pressed ? 0.72 : 1,
-        },
-        t.shadowCard,
-      ])}
+      accessibilityRole="button"
+      accessibilityLabel={`${situation.title}. ${meta}${when ? `. ${when}` : ""}`}
+      style={({ pressed }) => ({
+        minHeight: 62,
+        paddingVertical: 11,
+        borderTopWidth: first ? 0 : 1,
+        borderTopColor: t.colors.sep,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        opacity: pressed ? 0.65 : 1,
+      })}
     >
-      <Icon name={SITUATION_ICONS[index % SITUATION_ICONS.length]} s={20} c={t.colors.accD} />
-      <Text style={{ flexShrink: 1, fontSize: 13, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
-        {situation.title}
-      </Text>
+      <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+        <Icon name="calendar" s={18} c={t.colors.accD} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{situation.title}</Text>
+        <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>{meta}</Text>
+      </View>
+      {when ? <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.ink3 }}>{when}</Text> : null}
+      <Icon name="chev" s={14} w={2.2} c={t.colors.ink3} />
     </Pressable>
   );
 }
@@ -576,6 +592,7 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
   const [error, setError] = useState<string | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [showAllNotes, setShowAllNotes] = useState(false);
+  const [showAllSituations, setShowAllSituations] = useState(false);
   const load = useCallback(async () => {
     try { setData(await fetchStudioOverview()); setError(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load your Studio."); }
@@ -583,9 +600,9 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
   const revision = nav.speakingDataRevision;
   useFocusEffect(useCallback(() => { if (revision >= 0) void load(); }, [load, revision]));
 
-  const current = data?.notes.find((note) => note.status === "active" || note.status === "unsorted") ?? null;
-  const visibleNotes = (data?.notes ?? []).slice(0, showAllNotes ? 8 : 3);
-  const visibleSituations = (data?.situations ?? []).slice(0, 3);
+  const current = data ? pickCurrentNote(data.notes, data.recentAttempts) : null;
+  const visibleNotes = (data?.notes ?? []).slice(0, showAllNotes ? 8 : 5);
+  const visibleSituations = (data?.situations ?? []).slice(0, showAllSituations ? 8 : 3);
   const fabBottom = Math.max(insets.bottom, 12) + 12;
   return (
     <>
@@ -634,28 +651,32 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
             <EnterStagger i={1} style={{ gap: 9, marginTop: t.gap * 3 }}>
               <StudioSectionHeader
                 title="Recent notes"
-                action={(data?.notes.length ?? 0) > 3 ? (showAllNotes ? "Show less" : "See all") : undefined}
+                action={(data?.notes.length ?? 0) > 5 ? (showAllNotes ? "Show less" : "See all") : undefined}
                 onAction={() => setShowAllNotes((value) => !value)}
               />
               <View>
-                {visibleNotes.map((note, index) => <StudioNoteRow key={note.id} note={note} index={index} onPress={() => nav.push("speakingNote", { id: note.id })} />)}
+                {visibleNotes.map((note) => <StudioNoteRow key={note.id} note={note} onPress={() => nav.push("speakingNote", { id: note.id })} />)}
                 {!data?.notes.length ? <Text style={{ color: t.colors.ink3, fontSize: 13.5, lineHeight: 20, textAlign: "center", paddingVertical: 28 }}>Your notes will stay easy to scan here.</Text> : null}
               </View>
             </EnterStagger>
 
             <EnterStagger i={2} style={{ gap: 9, marginTop: t.gap * 3 }}>
-              <StudioSectionHeader title="Your situations" action="All" onAction={() => nav.push("topicsList")} />
+              <StudioSectionHeader
+                title="Your situations"
+                action={(data?.situations.length ?? 0) > 3 ? (showAllSituations ? "Show less" : "See all") : "All"}
+                onAction={() => ((data?.situations.length ?? 0) > 3 ? setShowAllSituations((value) => !value) : nav.push("topicsList"))}
+              />
               {visibleSituations.length ? (
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <Card style={{ paddingVertical: 2 }}>
                   {visibleSituations.map((situation, index) => (
-                    <StudioSituationTile
+                    <StudioSituationRow
                       key={situation.id}
                       situation={situation}
-                      index={index}
+                      first={index === 0}
                       onPress={() => nav.push("situation", { id: situation.id, topicId: situation.topicId, title: situation.title })}
                     />
                   ))}
-                </View>
+                </Card>
               ) : (
                 <Card onPress={() => nav.push("topicsList")} style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
                   <Icon name="map" s={22} c={t.colors.accD} />
