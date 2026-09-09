@@ -372,9 +372,15 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setBeatIdx(0);
     setDd(false);
   };
+  // Ending an attempt returns to whatever started it — the Speaking Note, in
+  // the practice loop — instead of clearing the detail stack onto a tab root.
+  const exitTalk = useCallback(() => {
+    if (p0.returnTo) nav.restore(p0.returnTo);
+    else nav.go(p0.from ?? "today");
+  }, [nav, p0.returnTo, p0.from]);
   const leave = () => {
     speech.stop();
-    nav.go(p0.from ?? "today");
+    exitTalk();
   };
   const mSel = moments[sel];
 
@@ -723,7 +729,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               Talk again
             </Pill>
           )}
-          <Pill full onPress={() => nav.go(p0.from ?? "today")}>
+          <Pill full onPress={exitTalk}>
             Done
           </Pill>
         </View>

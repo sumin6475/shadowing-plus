@@ -6,6 +6,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -265,6 +266,9 @@ function startNotePractice(nav: Nav, note: SpeakingNote) {
     from: "topics",
     storyId: note.situationId,
     messageId: note.id,
+    // Close the loop: ending the attempt lands back on this note with the new
+    // attempt open, so the next try starts from the repair you just read.
+    returnTo: { tab: "topics", stack: [{ name: "speakingNote", props: { id: note.id, justPracticed: true } }] },
   });
 }
 
@@ -820,6 +824,7 @@ function useSituationTokens() {
     accent: dark ? "#5B8AF5" : "#3B6EE1",
     accentSoft: dark ? "rgba(91,138,245,0.18)" : "rgba(59,110,225,0.11)",
     onAccent: dark ? "#000" : "#fff",
+    warn: dark ? "#FF453A" : "#FF3B30",
   };
 }
 
@@ -1037,9 +1042,9 @@ function SituationEmpty({ c, title, body }: { c: SituationTokens; title?: string
   );
 }
 
-function BigCta({ c, icon, label, onPress }: { c: SituationTokens; icon: IconName; label: string; onPress: () => void }) {
+function BigCta({ c, icon, label, onPress, style }: { c: SituationTokens; icon: IconName; label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, marginHorizontal: 16, marginTop: 16, marginBottom: 4 })}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1, marginHorizontal: 16, marginTop: 16, marginBottom: 4 }, style]}>
       <View style={{ height: 50, borderRadius: 9999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: c.accent }}>
         <Icon name={icon} s={14} w={1.8} c={c.onAccent} />
         <Text style={{ fontSize: 16, fontWeight: "600", color: c.onAccent }}>{label}</Text>
@@ -1048,11 +1053,13 @@ function BigCta({ c, icon, label, onPress }: { c: SituationTokens; icon: IconNam
   );
 }
 
-/** Soft "+ Add phrase" affordance used by the empty phrase card. */
-function SoftAction({ c, label, onPress }: { c: SituationTokens; label: string; onPress: () => void }) {
+/** Soft "+ Add phrase" affordance used by the empty phrase card and by the
+ *  Speaking Note action row (34pt — the middle of the three button heights). */
+function SoftAction({ c, icon, label, onPress, style }: { c: SituationTokens; icon?: IconName; label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ alignSelf: "flex-start", marginTop: 12, opacity: pressed ? 0.65 : 1 })}>
+    <Pressable onPress={onPress} style={({ pressed }) => [{ alignSelf: "flex-start", marginTop: 12, opacity: pressed ? 0.65 : 1 }, style]}>
       <View style={{ height: 34, paddingHorizontal: 16, borderRadius: 9999, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.accentSoft }}>
+        {icon ? <Icon name={icon} s={13} w={1.8} c={c.accent} /> : null}
         <Text style={{ fontSize: 13.5, fontWeight: "600", color: c.accent }}>{label}</Text>
       </View>
     </Pressable>
@@ -1430,8 +1437,32 @@ function PhrasePicker({ open, note, linked, onClose, onChanged }: { open: boolea
   );
 }
 
-export function SpeakingNoteScreen({ id, nav }: { id: string; nav: Nav }) {
-  const t = useTheme();
+/** Autosave cadence. Long enough that a normal typing burst is one write,
+ *  short enough that leaving the screen almost never has anything to flush. */
+const NOTE_SAVE_DEBOUNCE_MS = 800;
+
+type NoteDraft = { title: string; goal: string; body: string };
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+function SaveStatus({ c, state, onRetry }: { c: SituationTokens; state: SaveState; onRetry: () => void }) {
+  if (state === "idle") return null;
+  if (state === "error") {
+    return (
+      <Pressable onPress={onRetry} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: c.warn }}>Not saved · Retry</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <Text style={{ fontSize: 13, fontWeight: "500", color: state === "saving" ? c.faint : c.sub }}>
+      {state === "saving" ? "Saving…" : "Saved ✓"}
+    </Text>
+  );
+}
+
+export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav: Nav; justPracticed?: boolean }) {
+  const c = useSituationTokens();
+  const insets = useSafeAreaInsets();
   const bodyRef = useRef<TextInput>(null);
   const [note, setNote] = useState<SpeakingNote | null>(null);
   const [phrases, setPhrases] = useState<NotePhrase[]>([]);
@@ -1442,79 +1473,249 @@ export function SpeakingNoteScreen({ id, nav }: { id: string; nav: Nav }) {
   const [goal, setGoal] = useState("");
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
+  const [organizing, setOrganizing] = useState(false);
   const [nextTopicId, setNextTopicId] = useState<string | null>(null);
   const [nextSituationId, setNextSituationId] = useState<string | null>(null);
+  const [openAttempt, setOpenAttempt] = useState<string | null>(null);
+  const [allAttempts, setAllAttempts] = useState(false);
+  const [keyboardUp, setKeyboardUp] = useState(false);
+
+  // Autosave reads through refs so the debounce timer and the unmount flush
+  // always see the latest draft without re-subscribing on every keystroke.
+  // The ref is written from the edit handlers, never during render.
+  const draftRef = useRef<NoteDraft>({ title: "", goal: "", body: "" });
+  const savedRef = useRef<SpeakingNote | null>(null);
+  const editDraft = useCallback(<K extends keyof NoteDraft>(field: K, value: string) => {
+    draftRef.current = { ...draftRef.current, [field]: value };
+    if (field === "title") setTitle(value);
+    else if (field === "goal") setGoal(value);
+    else setBody(value);
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const found = await fetchSpeakingNote(id);
       if (!found) throw new Error("This note no longer exists.");
       const [linked, history, allTopics, allSituations] = await Promise.all([
         fetchNotePhrases(found),
-        fetchPracticeAttempts({ noteId: id, limit: 10 }),
+        fetchPracticeAttempts({ noteId: id, limit: 20 }),
         fetchStudioTopics(),
         fetchStudioSituations(),
       ]);
-      setNote(found); setTitle(found.title); setGoal(found.goal); setBody(found.body); setPhrases(linked); setAttempts(history); setTopics(allTopics); setSituations(allSituations); setError(null);
+      savedRef.current = found;
+      draftRef.current = { title: found.title, goal: found.goal, body: found.body };
+      setNote(found); setTitle(found.title); setGoal(found.goal); setBody(found.body);
+      setPhrases(linked); setAttempts(history); setTopics(allTopics); setSituations(allSituations); setError(null);
+      // Coming back from an attempt, the thing you want is the repair you just
+      // earned — open it rather than making the learner hunt for it.
+      if (justPracticed && history[0]) setOpenAttempt(history[0].id);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load this note."); }
-  }, [id]);
+  }, [id, justPracticed]);
   useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
-  const save = async () => {
-    if (!note || !title.trim() || !goal.trim() || !body.trim()) return;
-    setSaving(true);
-    try { await updateSpeakingNote(id, { title, goal, body, topicId: note.topicId, situationId: note.situationId }); setNote({ ...note, title: title.trim(), goal: goal.trim(), body: body.trim() }); nav.invalidateSpeakingData(); nav.notify("Note saved"); }
-    catch (caught) { Alert.alert("Couldn’t save note", caught instanceof Error ? caught.message : "Try again."); }
-    finally { setSaving(false); }
-  };
+
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardWillShow", () => setKeyboardUp(true));
+    const hide = Keyboard.addListener("keyboardWillHide", () => setKeyboardUp(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  const persist = useCallback(async () => {
+    const base = savedRef.current;
+    const draft = draftRef.current;
+    if (!base) return;
+    // A blank title would leave an unfindable row, so an empty field is treated
+    // as "still typing" rather than as a value to write.
+    if (!draft.title.trim()) return;
+    if (draft.title === base.title && draft.goal === base.goal && draft.body === base.body) return;
+    setSaveState("saving");
+    try {
+      await updateSpeakingNote(base.id, { title: draft.title, goal: draft.goal, body: draft.body, topicId: base.topicId, situationId: base.situationId });
+      const next = { ...base, title: draft.title.trim(), goal: draft.goal.trim(), body: draft.body.trim() };
+      savedRef.current = next;
+      setNote(next);
+      setSaveState("saved");
+      nav.invalidateSpeakingData();
+    } catch {
+      setSaveState("error");
+    }
+  }, [nav]);
+
+  const persistRef = useRef(persist);
+  useEffect(() => { persistRef.current = persist; });
+
+  useEffect(() => {
+    if (!note) return;
+    if (title === note.title && goal === note.goal && body === note.body) return;
+    const timer = setTimeout(() => void persistRef.current(), NOTE_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [title, goal, body, note]);
+
+  // Leaving the screen inside the debounce window must not lose the edit.
+  useEffect(() => () => { void persistRef.current(); }, []);
+
   const openOrganizer = () => {
     setNextTopicId(note?.topicId ?? null);
     setNextSituationId(note?.situationId ?? null);
     setOrganizeOpen(true);
   };
   const saveOrganizer = async () => {
-    if (!note || !nextTopicId) return;
+    const base = savedRef.current;
+    if (!base || !nextTopicId) return;
     const selectedSituation = situations.find((item) => item.id === nextSituationId);
-    setSaving(true);
+    setOrganizing(true);
     try {
       await updateSpeakingNote(id, { title, goal, body, topicId: nextTopicId, situationId: nextSituationId });
       const nextTopic = topics.find((item) => item.id === nextTopicId);
-      setNote({ ...note, topicId: nextTopicId, topicName: nextTopic?.name ?? null, situationId: nextSituationId, situationTitle: selectedSituation?.title ?? null, status: nextSituationId ? "active" : "unsorted" });
+      const next = { ...base, title: title.trim(), goal: goal.trim(), body: body.trim(), topicId: nextTopicId, topicName: nextTopic?.name ?? null, situationId: nextSituationId, situationTitle: selectedSituation?.title ?? null, status: nextSituationId ? "active" : "unsorted" } as SpeakingNote;
+      savedRef.current = next;
+      setNote(next);
       setOrganizeOpen(false);
       nav.invalidateSpeakingData();
       nav.notify(nextSituationId ? "Note organized" : "Saved to Unsorted");
     } catch (caught) {
       Alert.alert("Couldn’t organize note", caught instanceof Error ? caught.message : "Try again.");
     } finally {
-      setSaving(false);
+      setOrganizing(false);
     }
   };
-  if (!note && !error) return <Screen><BackBar onBack={nav.pop} /><Loading /></Screen>;
-  if (error || !note) return <Screen><BackBar onBack={nav.pop} /><ErrorCard message={error ?? "Note not found"} retry={load} /></Screen>;
+
+  if (!note && !error) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <SituationCenter c={c}><ActivityIndicator color={c.accent} /></SituationCenter>
+      </Screen>
+    );
+  }
+  if (error || !note) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <SituationCenter c={c}>
+          <Serif style={{ fontSize: 20, color: c.ink }}>Couldn’t open this note</Serif>
+          <Text style={{ fontSize: 13.5, lineHeight: 20, color: c.sub, textAlign: "center" }}>{error ?? "Note not found"}</Text>
+          <Pill onPress={load}>Retry</Pill>
+        </SituationCenter>
+      </Screen>
+    );
+  }
+
   const practice = () => startNotePractice(nav, { ...note, title, goal, body });
+  const crumb = `${note.topicName ?? "Topic"} / ${note.situationTitle ?? "Unsorted"}`;
+  const lastRepair = attempts.find((attempt) => attempt.repairSuggestion)?.repairSuggestion ?? null;
+  const shownAttempts = allAttempts ? attempts : attempts.slice(0, 3);
+  const card = situationCard(c);
+
   return (
     <>
-      <Screen bottomPad={44}>
-        <BackBar onBack={nav.pop} right={<Chip onPress={saving ? undefined : () => void save()} active={false}>{saving ? "Saving…" : "Save"}</Chip>} />
-        <Stagger>
-          <View style={{ paddingHorizontal: 2 }}><Pressable onPress={openOrganizer} style={{ flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start" }}><Text style={{ fontSize: 12.5, color: t.colors.accD, fontWeight: "700" }}>{note.topicName}{note.situationTitle ? ` / ${note.situationTitle}` : " / Unsorted"}</Text><Icon name="chev" s={10} w={2.4} c={t.colors.accD} /></Pressable><TextInput value={title} onChangeText={setTitle} multiline style={{ fontFamily: "Newsreader", fontSize: 31, lineHeight: 36, color: t.colors.ink, padding: 0, marginTop: 7 }} /></View>
-          <View style={{ gap: 7 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: t.colors.ink3 }}>SPEAKING GOAL</Text><TextInput value={goal} onChangeText={setGoal} multiline placeholder="What should the listener understand?" placeholderTextColor={t.colors.ink3} style={{ fontSize: 17, fontWeight: "600", lineHeight: 24, color: t.colors.ink, padding: 0 }} /></View>
-          <View style={{ minHeight: 180, paddingVertical: 6 }}><TextInput ref={bodyRef} value={body} onChangeText={setBody} multiline textAlignVertical="top" placeholder="Write freely…" placeholderTextColor={t.colors.ink3} style={{ minHeight: 170, fontSize: 16, lineHeight: 25, color: t.colors.ink, padding: 0 }} /></View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}><Chip icon="plus" onPress={() => bodyRef.current?.focus()}>Add thought</Chip><Chip icon="mic" onPress={practice}>Record idea</Chip><Chip icon="bank" onPress={() => setPickerOpen(true)}>Link phrase</Chip><Chip icon="search" onPress={() => setPickerOpen(true)}>How can I say this?</Chip></View>
-          <Sect title="Linked phrases" action="+ Link phrase" onAction={() => setPickerOpen(true)} />
-          <Card style={{ paddingVertical: 4 }}>{phrases.map((phrase, index) => <View key={phrase.id} style={{ minHeight: 57, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 10 }}><View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{phrase.text}</Text>{phrase.translation ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 3 }}>{phrase.translation}</Text> : null}</View><Chip>{phrase.learningStatus.replace("_", " ")}</Chip></View>)}{!phrases.length ? <Text style={{ paddingVertical: 22, textAlign: "center", color: t.colors.ink3 }}>Bring saved language into this note.</Text> : null}</Card>
-          <Sect title="Previous attempts" />
-          {attempts.slice(0, 3).map((attempt) => <Card key={attempt.id}><View style={{ flexDirection: "row", alignItems: "center" }}><Text style={{ flex: 1, fontSize: 14, fontWeight: "700", color: t.colors.ink }}>{attemptDate(attempt.createdAt)} · {Math.round(attempt.durationSeconds ?? 0)} sec</Text><Icon name="wave2" s={17} c={t.colors.accD} /></View>{attempt.repairSuggestion ? <Text style={{ fontSize: 13.5, color: t.colors.ink2, lineHeight: 20, marginTop: 9 }} numberOfLines={2}>{attempt.repairSuggestion}</Text> : null}</Card>)}
-          <Pill full icon="mic" onPress={practice}>Start practice</Pill>
-        </Stagger>
-      </Screen>
+      <View style={{ flex: 1 }}>
+        <Screen style={{ gap: 0 }} bottomPad={112}>
+          <BackBar onBack={nav.pop} right={<SaveStatus c={c} state={saveState} onRetry={() => void persist()} />} />
+
+          <View style={{ paddingHorizontal: TEXT_PUSH }}>
+            <Pressable onPress={openOrganizer} hitSlop={6} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: 14, marginBottom: 6, opacity: pressed ? 0.6 : 1 })}>
+              <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent }}>{crumb.toUpperCase()}</Text>
+              <Icon name="chev" s={11} w={2} c={c.accent} />
+            </Pressable>
+            <TextInput
+              value={title}
+              onChangeText={(value) => editDraft("title", value)}
+              multiline
+              placeholder="Untitled note"
+              placeholderTextColor={c.faint}
+              style={{ fontFamily: "Newsreader", fontSize: 31, lineHeight: 35, color: c.ink, padding: 0 }}
+            />
+            <TextInput
+              value={goal}
+              onChangeText={(value) => editDraft("goal", value)}
+              multiline
+              placeholder="What should the listener understand?"
+              placeholderTextColor={c.faint}
+              style={{ fontSize: 17, fontWeight: "600", lineHeight: 23, color: c.sub, padding: 0, marginTop: 8 }}
+            />
+            <View style={{ height: hairline, backgroundColor: c.hair, marginTop: 16 }} />
+            <TextInput
+              ref={bodyRef}
+              value={body}
+              onChangeText={(value) => editDraft("body", value)}
+              multiline
+              textAlignVertical="top"
+              placeholder="Write freely…"
+              placeholderTextColor={c.faint}
+              style={{ minHeight: 156, fontSize: 16, lineHeight: 25, color: c.ink, padding: 0, marginTop: 14 }}
+            />
+            {/* Two actions, not the spec's three: the sticky CTA below is the
+                same call as "Record idea" was, so the chip only competed with
+                it. What is left is one action per thing you can add. */}
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+              <SoftAction c={c} icon="plus" label="Add thought" onPress={() => bodyRef.current?.focus()} />
+              <SoftAction c={c} icon="bank" label="Link phrase" onPress={() => setPickerOpen(true)} />
+            </View>
+          </View>
+
+          <SituationSection c={c} title="Linked Phrases" actionLabel={phrases.length ? "Link" : undefined} actionIcon="plus" onAction={() => setPickerOpen(true)} />
+          <View style={card}>
+            {phrases.length ? (
+              phrases.map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />)
+            ) : (
+              <View style={{ paddingHorizontal: 20, paddingVertical: 22 }}>
+                <Text style={{ fontSize: 13, lineHeight: 19, color: c.sub }}>Bring saved language into this note, so practice has something to reach for.</Text>
+                <SoftAction c={c} label="+ Link phrase" onPress={() => setPickerOpen(true)} />
+              </View>
+            )}
+          </View>
+
+          <SituationSection c={c} title="Previous Attempts" />
+          {lastRepair ? <RepairNote c={c} lead="Last time: " body={lastRepair} /> : null}
+          <View style={card}>
+            {attempts.length ? (
+              <>
+                {shownAttempts.map((attempt, index) => (
+                  <View key={attempt.id}>
+                    <AttemptRow
+                      c={c}
+                      first={index === 0}
+                      date={attemptDate(attempt.createdAt)}
+                      note={attempt.repairSuggestion ? "One fix to try" : "No fix suggested"}
+                      duration={attemptDuration(attempt.durationSeconds)}
+                      chevron={Boolean(attempt.repairSuggestion)}
+                      onPress={attempt.repairSuggestion ? () => setOpenAttempt((current) => (current === attempt.id ? null : attempt.id)) : undefined}
+                    />
+                    {openAttempt === attempt.id && attempt.repairSuggestion ? (
+                      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+                        <RepairNote c={c} inset lead="" body={attempt.repairSuggestion} />
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+                {attempts.length > 3 && !allAttempts ? (
+                  <MoreRow c={c} label={`${attempts.length - 3} more attempts`} onPress={() => setAllAttempts(true)} />
+                ) : null}
+              </>
+            ) : (
+              <SituationEmpty c={c} title="No attempts yet" body="Say it out loud once. You get one thing to fix, then you say it again." />
+            )}
+          </View>
+        </Screen>
+
+        {/* Sticky, because the loop is say → fix → say again and the CTA has to
+            be reachable from anywhere in the note. Hidden while typing so it
+            never sits under the keyboard. */}
+        {!keyboardUp ? (
+          <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, paddingBottom: Math.max(insets.bottom, 14), backgroundColor: c.t.colors.bg, borderTopWidth: hairline, borderTopColor: c.hair }}>
+            <BigCta c={c} icon="mic" label="Start practice" onPress={practice} style={{ marginHorizontal: 0, marginTop: 0, marginBottom: 0 }} />
+          </View>
+        ) : null}
+      </View>
       <PhrasePicker open={pickerOpen} note={note} linked={phrases} onClose={() => setPickerOpen(false)} onChanged={() => void load()} />
       <Sheet open={organizeOpen} title="Organize note" subtitle="Topic is required. Situation can stay Unsorted until later." onClose={() => setOrganizeOpen(false)}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 12, gap: 16 }}>
-          <View style={{ gap: 8 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: t.colors.ink3 }}>TOPIC · REQUIRED</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{topics.map((topic) => <Chip key={topic.id} active={topic.id === nextTopicId} onPress={() => { setNextTopicId(topic.id); setNextSituationId(null); }}>{topic.name}</Chip>)}</View></View>
-          <View style={{ gap: 8 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: t.colors.ink3 }}>SITUATION · OPTIONAL</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}><Chip active={nextSituationId === null} onPress={() => setNextSituationId(null)}>Unsorted</Chip>{situations.filter((item) => item.topicId === nextTopicId).map((situation) => <Chip key={situation.id} active={situation.id === nextSituationId} onPress={() => setNextSituationId(situation.id)}>{situation.title}</Chip>)}</View></View>
-          <Pill full onPress={saving ? undefined : () => void saveOrganizer()}>{saving ? "Saving…" : "Save organization"}</Pill>
+          <View style={{ gap: 8 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: c.faint }}>TOPIC · REQUIRED</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{topics.map((topic) => <Chip key={topic.id} active={topic.id === nextTopicId} onPress={() => { setNextTopicId(topic.id); setNextSituationId(null); }}>{topic.name}</Chip>)}</View></View>
+          <View style={{ gap: 8 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: c.faint }}>SITUATION · OPTIONAL</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}><Chip active={nextSituationId === null} onPress={() => setNextSituationId(null)}>Unsorted</Chip>{situations.filter((item) => item.topicId === nextTopicId).map((situation) => <Chip key={situation.id} active={situation.id === nextSituationId} onPress={() => setNextSituationId(situation.id)}>{situation.title}</Chip>)}</View></View>
+          <Pill full onPress={organizing ? undefined : () => void saveOrganizer()}>{organizing ? "Saving…" : "Save organization"}</Pill>
         </ScrollView>
       </Sheet>
     </>

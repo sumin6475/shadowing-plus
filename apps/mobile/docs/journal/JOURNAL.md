@@ -667,3 +667,43 @@
 - **막힌 것**: 027 복구의 end-to-end 확인(talk 세션 → 피드백 저장)은 **시뮬레이터에서 불가능**. `Failed to initialize recognizer` — iOS Simulator의 SFSpeechRecognizer 제약이라 실기기가 필요하다.
 
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
+
+## 2026-09-09 — Speaking Note detail + the practice return loop (spec §4 + §6)
+
+**Built.** Rebuilt `SpeakingNoteScreen` on the confirmed Situation Detail design
+language, and closed the say → fix → say-again loop.
+
+- **Autosave.** 800ms debounce plus a flush on unmount; the manual `Save` chip
+  is gone and the BackBar right slot now only reports `Saving…` / `Saved ✓` /
+  `Not saved · Retry`. A blank title is treated as "still typing", never
+  written — a nameless note is unfindable.
+- **No form labels.** The `SPEAKING GOAL` caps label is gone; goal and body are
+  separated by position, weight and a hairline, per the PRD's "closer to Apple
+  Notes" framing.
+- **Chips 4 → 2.** `How can I say this?` opened the same `PhrasePicker` as
+  `Link phrase`, and `Record idea` is the same call as the new sticky CTA. What
+  is left is one action per thing you can add.
+- **Sticky `Start practice`**, hidden while the keyboard is up.
+- **`nav.restore(target)`** (new on the Nav contract): switch tabs *and* rebuild
+  a detail stack there. `TalkCtx.returnTo` carries it, so ending an attempt
+  started from a note lands back on that note instead of `nav.go` clearing the
+  stack onto the Studio root. A `seededTab` ref stops the tab-focus effect from
+  wiping the stack it was just handed.
+
+**Principle applied.** A loop is only a loop if the return leg exists. The
+attempt UI, the repair text and the note were all already built — the thing that
+made practice feel like a dead end was one `nav.go` that threw the stack away.
+
+**Verified on the simulator (iPhone 17 Pro, light + dark).** Typing the goal
+showed `Saved ✓` and survived a pop/re-enter round trip through Supabase;
+`Start practice` → back landed on the note, and back from there landed on the
+Studio root with the tab bar restored; a free talk with no `returnTo` still
+falls back to `nav.go("today")`.
+
+**Not verified.** The expanded-attempt row and the `justPracticed` auto-expand
+need an attempt that carries a `repairSuggestion`. Every existing attempt reads
+`No fix suggested` because migration 027 was missing until today, and the
+simulator can't record (`Failed to initialize recognizer` — `SFSpeechRecognizer`
+is device-only). Both need a real-device pass.
+
+Gates: typecheck PASS · lint 0 errors / 15 warnings (baseline) · `export:ios` PASS.
