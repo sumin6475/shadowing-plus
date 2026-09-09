@@ -707,3 +707,5 @@ simulator can't record (`Failed to initialize recognizer` — `SFSpeechRecognize
 is device-only). Both need a real-device pass.
 
 Gates: typecheck PASS · lint 0 errors / 15 warnings (baseline) · `export:ios` PASS.
+
+- 디자인 기획서: [Speaking Note 상세 (세부)](../product/speaking-note-design-brief.md) — 현재 화면의 시각적 실패 9가지, 실측 데이터, 상태 10종, 제약. PR #5로 들어간 구조는 유지하고 비주얼만 다시 잡기 위한 문서.
