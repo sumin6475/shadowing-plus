@@ -43,6 +43,8 @@ export type IconName =
   | "export"
   | "help"
   | "shield"
+  | "flask"
+  | "link"
   | "grip";
 
 interface IconProps {
@@ -75,6 +77,23 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
         <G {...common}>
           <Rect x="9" y="3" width="6" height="11" rx="3" />
           <Path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5" />
+        </G>
+      );
+      break;
+    case "flask":
+      body = (
+        <G {...common}>
+          <Path d="M9 3h6M10 3v6.2l-5.2 8.9A1.9 1.9 0 0 0 6.4 21h11.2a1.9 1.9 0 0 0 1.6-2.9L14 9.2V3" />
+          <Path d="M7.2 16h9.6" />
+        </G>
+      );
+      break;
+    case "link":
+      body = (
+        <G {...common}>
+          <Path d="M9.5 14.5l5-5" />
+          <Path d="M7.2 17.8l-1 .9a3.6 3.6 0 0 1-5.1-5.1l3.4-3.4a3.6 3.6 0 0 1 5.1 0" />
+          <Path d="M16.8 6.2l1-.9a3.6 3.6 0 0 1 5.1 5.1l-3.4 3.4a3.6 3.6 0 0 1-5.1 0" />
         </G>
       );
       break;

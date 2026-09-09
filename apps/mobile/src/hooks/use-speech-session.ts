@@ -8,7 +8,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
+  type ExpoSpeechRecognitionErrorCode,
 } from "expo-speech-recognition";
+
+import { prepareRecognitionSession, RECOGNITION_IOS_CATEGORY } from "@/lib/audio-session";
 
 export interface SpeechSession {
   /** True between a successful start() and the end/error event. */
@@ -19,6 +22,11 @@ export interface SpeechSession {
   finalTranscript: string;
   /** Last error message, if recognition failed. */
   error: string | null;
+  /** Structured native error code alongside the user-facing message. */
+  errorCode: ExpoSpeechRecognitionErrorCode | null;
+  /** True only when recognition was interrupted before ANY transcript was
+   *  heard — the one case safe to offer an automatic retry. */
+  startupInterrupted: boolean;
   /** Local file uri of the recorded audio, set after stop (recordingOptions
    *  persist writes a WAV to the cache dir). Null until `audioend` fires. */
   audioUri: string | null;
@@ -35,6 +43,8 @@ export function useSpeechSession(): SpeechSession {
   const [finalText, setFinalText] = useState("");
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<ExpoSpeechRecognitionErrorCode | null>(null);
+  const [startupInterrupted, setStartupInterrupted] = useState(false);
   const [audioUri, setAudioUri] = useState<string | null>(null);
   // finalRef mirrors finalText so stop() can read it synchronously; interimRef
   // mirrors the live interim so stop() can flush the last uncommitted words too.
@@ -60,8 +70,14 @@ export function useSpeechSession(): SpeechSession {
   });
 
   useSpeechRecognitionEvent("error", (event) => {
+    setErrorCode(event.error);
     setError(event.message || event.error || "Speech recognition failed.");
     setRecognizing(false);
+    // Only a handoff interruption that fired before ANY transcript is safe to
+    // retry automatically. A real Siri/call/alarm interruption after speech
+    // began must stay visible and must never be silently retried.
+    const heardNothing = !finalRef.current.trim() && !interimRef.current.trim();
+    setStartupInterrupted(event.error === "interrupted" && heardNothing);
   });
 
   const reset = useCallback(() => {
@@ -70,12 +86,18 @@ export function useSpeechSession(): SpeechSession {
     setFinalText("");
     setInterim("");
     setError(null);
+    setErrorCode(null);
+    setStartupInterrupted(false);
     setAudioUri(null);
   }, []);
 
   const start = useCallback<SpeechSession["start"]>(async (opts) => {
     reset();
     try {
+      // Stop app-owned playback and hand the shared session to the recognizer
+      // BEFORE requesting permission/starting, so a just-finished phrase or
+      // session replay cannot deactivate the session under STT.
+      await prepareRecognitionSession();
       const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perm.granted) {
         setError("Microphone / speech permission was not granted.");
@@ -87,6 +109,9 @@ export function useSpeechSession(): SpeechSession {
         continuous: true,
         requiresOnDeviceRecognition: opts?.onDevice ?? true,
         addsPunctuation: true,
+        // Explicit nonmixing playAndRecord + defaultToSpeaker + allowBluetooth
+        // category; see RECOGNITION_IOS_CATEGORY in lib/audio-session.ts.
+        iosCategory: RECOGNITION_IOS_CATEGORY,
         // Persist the audio so the learner can replay their self-talk. IMPORTANT:
         // pin the output to 16 kHz mono int16 WAV — the on-device recognizer runs
         // at 16 kHz, and letting persist drive the audio engine at the default
@@ -132,5 +157,16 @@ export function useSpeechSession(): SpeechSession {
 
   const transcript = [finalText, interim].filter(Boolean).join(" ").trim();
 
-  return { recognizing, transcript, finalTranscript: finalText, error, audioUri, start, stop, reset };
+  return {
+    recognizing,
+    transcript,
+    finalTranscript: finalText,
+    error,
+    errorCode,
+    startupInterrupted,
+    audioUri,
+    start,
+    stop,
+    reset,
+  };
 }

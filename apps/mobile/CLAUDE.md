@@ -24,10 +24,16 @@ production product is the web app in `../../web`; this app must never affect it.
 - Auth/data: `@supabase/supabase-js` v2 + AsyncStorage (session storage). RLS is
   ON — reads are `auth.uid()`-scoped; the web API enforces ownership on service-
   key routes.
-- Styling: `StyleSheet` + Cobalt Editorial tokens in `src/constants/cobalt.ts`
-  (ported from `design-system/tokens.json`). iOS geometry follows
-  `design-system/ios-motif-spec.md` — capsule controls, 52pt rows, cobalt
-  `#3B6EE1` accent, warm-paper `#fbf9f4` bg. Never Apple blue, never terracotta.
+- Styling: `StyleSheet` + a single canonical mobile token module in
+  `src/design/mobile-tokens.ts` (the iOS palette the app actually renders:
+  light `#F2F2F7` / dark `#000` base, cobalt `#3B6EE1` accent, Newsreader
+  serif, motif geometry + type scale). `src/design/theme.tsx` builds the
+  `Theme` object from it; `src/constants/cobalt.ts` is a compatibility shim
+  that re-exports `Motif`/`TypeScale` and keeps the unused legacy warm
+  Editorial port (`Cobalt`). `design-system/tokens.json` is the WEB (Cobalt
+  Editorial) baseline — do not force its warm-paper values onto mobile.
+  iOS geometry follows `design-system/ios-motif-spec.md` — capsule controls,
+  52pt rows, cobalt `#3B6EE1` accent, never Apple blue, never terracotta.
 
 ## Architecture (the choke points)
 

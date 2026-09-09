@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { requireAiProcessingConsent } from "./ai-consent";
 import type { PhraseKind } from "./phrases";
 
 export interface PhraseCaptureDraft {
@@ -45,6 +46,7 @@ async function invokePhraseCapture(
     | { phrase_text: string; context_text?: string },
   unavailableCopy: string,
 ): Promise<PhraseCaptureDraft> {
+  await requireAiProcessingConsent();
   const { data, error } = await supabase.functions.invoke<CaptureResponse>("phrase-capture", { body });
   if (error) throw new Error(await readFunctionError(error, unavailableCopy));
   return {

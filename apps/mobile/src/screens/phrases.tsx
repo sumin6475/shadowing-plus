@@ -11,7 +11,7 @@ import { usePostHog } from "posthog-react-native";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Badge, Card, Chip, Header, Icon, Pill, Screen, Serif, Stagger, StatTile, SwipeRow, confirmDelete, type IconName } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
-import { cumulativeSeries, deletePhrase, fetchPhrases, matchesStageFilter, nextReviewInterval, PHRASE_STAGE_FILTERS, phraseIsDue, setPhraseFavorite, setPhraseStage, submitVerdict, updatePhraseDetails, updatePhraseNote, type LearningStatus, type PhraseItem, type PhraseKind, type PhraseStageFilterId, type SrsVerdict } from "@/lib/phrases";
+import { cumulativeSeries, deletePhrase, fetchPhraseById, fetchPhrases, matchesStageFilter, nextReviewInterval, PHRASE_STAGE_FILTERS, phraseIsDue, setPhraseFavorite, setPhraseStage, submitVerdict, updatePhraseDetails, updatePhraseNote, type LearningStatus, type PhraseItem, type PhraseKind, type PhraseStageFilterId, type SrsVerdict } from "@/lib/phrases";
 import { promptPhraseStage, shouldPromptStage } from "@/lib/daily-phrases";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
 import { useSegmentPlayer } from "@/hooks/use-segment-player";
@@ -177,6 +177,7 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
   const [items, setItems] = useState<PhraseItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [statsAsOf, setStatsAsOf] = useState(0);
   const [q, setQ] = useState("");
   const [f, setF] = useState<PhraseStageFilterId>("all");
   const [searching, setSearching] = useState(false);
@@ -200,16 +201,19 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
   );
 
   const load = useCallback(async () => {
-    setError(null);
     try {
-      setItems(await fetchPhrases());
+      const nextItems = await fetchPhrases();
+      setError(null);
+      setItems(nextItems);
+      setStatsAsOf(Date.now());
     } catch {
       setError("Your saved phrases are still safe. Check your connection and try again.");
     }
   }, []);
 
   useEffect(() => {
-    load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const onRefresh = useCallback(async () => {
@@ -266,7 +270,7 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
   const dueNow = all.filter(phraseIsDue).length;
   const ready = all.filter((p) => p.learningStatus === "ready").length;
   const practiced = all.filter((p) => p.lastReviewedAt).length;
-  const thisWeek = all.filter((p) => Date.now() - new Date(p.createdAt).getTime() < 7 * 86_400_000).length;
+  const thisWeek = all.filter((p) => statsAsOf - new Date(p.createdAt).getTime() < 7 * 86_400_000).length;
   const chart = cumulativeSeries(all.map((p) => p.createdAt));
 
   const rows = (
@@ -457,6 +461,53 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
 }
 
 // ── Phrase detail ───────────────────────────────────────────────────────────
+/** Opens PhraseDetail from a full item OR a bare id (session recommendation).
+ *  Fetches the real row by id so the detail never renders SAMPLE_PHRASE. */
+export function PhraseRoute({ item, id, nav }: { item?: PhraseItem; id?: string; nav: Nav }) {
+  const t = useTheme();
+  const [phrase, setPhrase] = useState<PhraseItem | null>(item ?? null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (item || !id) return;
+    let active = true;
+    fetchPhraseById(id)
+      .then((p) => {
+        if (!active) return;
+        setPhrase(p);
+        if (!p) setError("This phrase couldn’t be found.");
+      })
+      .catch(() => {
+        if (!active) return;
+        setError("Couldn’t load this phrase.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [item, id]);
+
+  if (phrase) return <PhraseDetail item={phrase} nav={nav} />;
+  if (error) {
+    return (
+      <Screen bottomPad={54}>
+        <BackBar title="Phrase" onBack={nav.pop} />
+        <Card style={{ alignItems: "center", paddingVertical: 26 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>This phrase couldn’t be opened.</Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
+        </Card>
+      </Screen>
+    );
+  }
+  return (
+    <Screen bottomPad={54}>
+      <BackBar title="Phrase" onBack={nav.pop} />
+      <View style={{ paddingVertical: 48, alignItems: "center" }}>
+        <ActivityIndicator color={t.colors.acc} />
+      </View>
+    </Screen>
+  );
+}
+
 export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -498,10 +549,11 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
         : p.source === "Pasted text"
           ? "From pasted text"
           : "Added manually";
+  const prepareSpeech = speech.prepare;
 
   useEffect(() => {
-    if (canEdit) void speech.prepare(p.id);
-  }, [canEdit, p.id, speech.prepare]);
+    if (canEdit) void prepareSpeech(p.id);
+  }, [canEdit, p.id, prepareSpeech]);
 
   const saveMemo = async () => {
     if (!canEdit || !memoDirty) return;
@@ -1005,6 +1057,17 @@ export function ReviewFlow({ item, queue, nav }: { item?: PhraseItem; queue?: Ph
     setIdx((current) => current + 1);
   };
 
+  // Question ↔ answer is reversible; the hint stays sticky until Next so a
+  // learner can peek, check the answer, then come back without losing it.
+  const flip = () => {
+    if (phase === "answer") {
+      speech.stop();
+      setPhase("front");
+    } else {
+      setPhase("answer");
+    }
+  };
+
   const hint = p.usageNote ?? (p.context ? `“${p.context}”` : null);
 
   return (
@@ -1039,8 +1102,8 @@ export function ReviewFlow({ item, queue, nav }: { item?: PhraseItem; queue?: Ph
           <View style={{ flex: 1, justifyContent: "center", paddingVertical: 12 }}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={phase === "answer" ? "Phrase card" : "Tap to see the answer"}
-              onPress={phase === "answer" ? undefined : () => setPhase("answer")}
+              accessibilityLabel={phase === "answer" ? "Return to the question" : "Show the answer"}
+              onPress={flip}
               style={({ pressed }) => [
                 {
                   minHeight: 400,
@@ -1049,7 +1112,7 @@ export function ReviewFlow({ item, queue, nav }: { item?: PhraseItem; queue?: Ph
                   backgroundColor: phase === "answer" ? t.colors.acc : t.colors.card,
                   alignItems: "center",
                   justifyContent: "center",
-                  opacity: pressed && phase !== "answer" ? 0.92 : 1,
+                  opacity: pressed ? 0.92 : 1,
                 },
                 t.shadowLg,
               ]}

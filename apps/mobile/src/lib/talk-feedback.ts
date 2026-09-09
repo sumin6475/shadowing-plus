@@ -33,6 +33,12 @@ export async function logTalkSuggestions(input: {
       source: moment.source,
       phrase_item_id: moment.phraseItemId,
       model: input.model ?? "gpt-4o-mini",
+      // Structured coaching (migration 027). Legacy rows keep null and the
+      // client falls back to `why`.
+      diagnosis_tag: moment.diagnosisTag?.trim() || null,
+      action: moment.action?.trim() || null,
+      explanation: moment.explanation?.trim() || null,
+      schema_version: 2,
     };
   });
   if (!rows.length) return {};
@@ -43,6 +49,51 @@ export async function logTalkSuggestions(input: {
     ids[suggestionKey(row.moment_index as number, row.slot as SuggestionSlot)] = row.id as string;
   }
   return ids;
+}
+
+export interface TalkFeedbackRecord {
+  id: string;
+  said: string;
+  want: string;
+  why: string | null;
+  focus: string | null;
+  momentLabel: string | null;
+  diagnosisTag: string | null;
+  action: string | null;
+  explanation: string | null;
+}
+
+type FeedbackRowLoose = Record<string, unknown>;
+
+/** Load one saved coaching feedback row by its stable id (historical detail).
+ *  Tries the structured columns first; falls back to the legacy select when the
+ *  linked database has not applied migration 027 yet. */
+export async function fetchTalkFeedbackById(id: string): Promise<TalkFeedbackRecord | null> {
+  const selectStructured = "id, said, suggestion, why, focus, moment_label, diagnosis_tag, action, explanation";
+  const selectLegacy = "id, said, suggestion, why, focus, moment_label";
+
+  const first = await supabase.from("talk_suggestion_feedback").select(selectStructured).eq("id", id).limit(1);
+  let rows: { data: FeedbackRowLoose[] | null; error: { message: string } | null };
+  if (first.error && /diagnosis_tag|action|explanation/i.test(first.error.message)) {
+    const second = await supabase.from("talk_suggestion_feedback").select(selectLegacy).eq("id", id).limit(1);
+    rows = second as unknown as { data: FeedbackRowLoose[] | null; error: { message: string } | null };
+  } else {
+    rows = first as unknown as { data: FeedbackRowLoose[] | null; error: { message: string } | null };
+  }
+  if (rows.error) throw new Error(rows.error.message);
+  const row = (rows.data ?? [])[0];
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    said: (row.said as string) ?? "",
+    want: (row.suggestion as string) ?? "",
+    why: (row.why as string | null) ?? null,
+    focus: (row.focus as string | null) ?? null,
+    momentLabel: (row.moment_label as string | null) ?? null,
+    diagnosisTag: (row.diagnosis_tag as string | null) ?? null,
+    action: (row.action as string | null) ?? null,
+    explanation: (row.explanation as string | null) ?? null,
+  };
 }
 
 export async function rateTalkSuggestion(

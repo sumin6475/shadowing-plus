@@ -60,8 +60,12 @@ export async function getSocialProviderAvailability(): Promise<SocialProviderAva
   const settings = (await response.json()) as {
     external?: Partial<Record<keyof SocialProviderAvailability, boolean>>;
   };
+  const apple = settings.external?.apple === true;
   return {
-    apple: settings.external?.apple === true,
-    google: settings.external?.google === true,
+    apple,
+    // App Review Guideline 4.8 requires an equivalent Apple option whenever
+    // Google sign-in is offered. Keep email available and hide Google until
+    // the production Apple provider is genuinely enabled.
+    google: apple && settings.external?.google === true,
   };
 }

@@ -8,6 +8,17 @@
 
 ## 항목
 
+### 2026-08-25 · 검증 · TestFlight submit build 19
+- **무엇**: EAS build `5aea4b81` (1.0.0 / 19)를 App Store Connect에 업로드. 큐 ~42분 후 Apple에 전달됨.
+- **검증**: `npx eas-cli submit --platform ios --profile production --id 5aea4b81-9140-445b-a947-942996bb6f12 --non-interactive --wait` exit 0.
+- **산출물**: [EAS submission 8cc02bf0](https://expo.dev/accounts/suminkiim/projects/shadowing-plus-mobile/submissions/8cc02bf0-c3e8-4e45-8994-7cf3aba5cac8) · [TestFlight iOS](https://appstoreconnect.apple.com/apps/6799375053/testflight/ios)
+
+### 2026-08-25 · 검증 · iOS production EAS build 19
+- **무엇**: App Store 제출 전 픽스(마이크 거부 복구, permission 카피, sample phrase)를 production 프로파일로 빌드. `buildNumber` 18 → 19. 원격 iOS credentials 사용.
+- **원칙**: 제출 전 바이너리는 EAS가 끝난 뒤에만 “준비됨”으로 취급.
+- **검증**: `npx eas-cli build --platform ios --profile production --non-interactive --wait` exit 0 (~12 min).
+- **산출물**: [EAS build 5aea4b81](https://expo.dev/accounts/suminkiim/projects/shadowing-plus-mobile/builds/5aea4b81-9140-445b-a947-942996bb6f12)
+
 ### 2026-08-24 · 기능 · iOS 탭바 + My Studio 허브
 - **무엇**: 하단바는 blur + SF Symbols. Today / Phrases / Studio, 가운데 mic(Phrases에선 + 추가 리스트). Today는 중앙 히어로·주간 그래프·남은 리뷰만. Studio는 스토리 비중 도넛, Open studio, 토픽 카드. 토픽 안은 스토리 리스트로 복귀. 프로필 Open studio 배너 제거.
 - **검증**: `npm --prefix apps/mobile run typecheck`
@@ -559,5 +570,57 @@
 - **무엇**: ①Talk 마이크/음성인식 권한 거부 시 — 라이브 상태 필을 "Mic is off · nothing is being recorded · tap to fix" 행동형 필로 교체, Finish는 가짜 "session complete"(빈 전사 세션 저장) 대신 복구 Alert(Not now / Try again / Open Settings)로 차단. ②app.json 카메라·사진 권한 문구에 프로필 사진 업로드(avatars 버킷, 026) 반영 — 기존 "learning photos are not stored"가 아바타 업로드와 모순. ③SAMPLE_PHRASE의 한국어 뜻 제거(N:1 위반) — 렌더 전부 null 가드라 `translation: null`로; 도달 불가능한 타입 채움 폴백이라 L1 맵 대신 정직한 null.
 - **원리**: 권한 거부는 조용한 실패가 아니라 **상태**다 — iOS는 거부 후 재프롬프트하지 않으므로 복구 경로(Settings 링크 + 재시도)를 UI가 제공해야 한다. 권한 문구는 실제 데이터 흐름과 문장 단위로 일치해야 심사를 통과한다.
 - **검증**: `tsc --noEmit` 통과. 마이크 거부 경로는 실기기 확인 필요(iOS 설정에서 Saylo 마이크 차단 → Talk 진입) — 시뮬레이터는 권한이 항상 허용이라 재현 불가. 감사 문서의 HIGH 3번·4번, MEDIUM(샘플 문구) 종결.
+
+### 2026-08-25 · 수정 · 모바일 9개 회귀 방지 수선 완료 (mobile-nine-regression-repairs 전 이행)
+- **무엇**: #4 Review 카드 양방향 전환 · #9 FAB 고체 disc · #1/#3 공유 오디오 코디네이터(`lib/audio-session.ts`)+`keepAudioSessionActive`+명시적 `iosCategory` · #2 공유 `MirrorPreview`+Quick take 재생 · #5 `speakingDataRevision`+request token Studio 갱신 · #7 섹션 간격 균일화+`TalkFeedbackDetail`+`feedback`/`phrase` 라우트+`fetchPhraseById` · #7c 마이그레이션 027(구조화 feedback 필드)+Edge `talk_session_id`+정확한 세션 ID 대기 · #8 계정 범위 `Daily speaking goal`+`Last 7 days` 링. 순서대로 원자 수정 후 정적 게이트 반복.
+- **원리**: AVAudioSession은 프로세스 전역 → 코디네이터가 핸드오프를 소유(플레이어 정지→명시적 카테고리→setActive). 데이터는 실패가 아니라 상태로 판별(에러 코드+전사 0건, request token, 성공 후에만 revision emit). 추천은 `feedbackId`/`phraseItemId` 분별 union으로 라우팅(텍스트 매핑 금지). 목표는 Auth metadata(계정 간 누출 없는 `daily_speaking_goal_minutes`).
+- **검증**: `tsc --noEmit` PASS · `verify:release-config` PASS · `expo export --platform ios` PASS · `git diff --check` OK · lint 베이스라인 유지(11 error/25 warn, 신규 0). Simulator는 이 환경에서 미실행(pending), 오디오/카메라/마이그레이션은 device/NEEDS-HUMAN 대기.
+- **산출물**: [quality/2026-08-25-mobile-nine-regressions.md](quality/2026-08-25-mobile-nine-regressions.md) · [postmortems/2026-08-25-mobile-audio-session-handoff.md](postmortems/2026-08-25-mobile-audio-session-handoff.md) · `supabase/migrations/027_talk_feedback_detail_contract.sql`
+
+### 2026-08-25 · 수정 · 9개 회귀 방지 수선 #1·#2·#9 + 오디오 세션 통합 (mobile-nine-regression-repairs)
+- **무엇**: ①Review 카드 양방향 전환(answer↔front, 답 숨김 시 speech.stop, hint sticky 유지) ②CaptureFab 고체 disc(t.colors.acc)로 — gradient/반투명 border/overflow clip 제거해 halo·좌우 클립 해소 ③공유 오디오 코디네이터 `lib/audio-session.ts` 신설 — `prepareRecognitionSession`(앱 내 플레이어 정지 + doNotMix + 명시적 nonmixing `iosCategory` + setActive), `prepareSpeakerPlayback`(playAndRecord·defaultToSpeaker·allowBluetooth·measurement→default), `registerPlaybackStopper`/`stopRegisteredPlayback`. ④phrase/segment/Library/Session 플레이어 전부 `keepAudioSessionActive:true` + 재생 직전 await로 이전. ⑤STT 에러 코드 보존 + zero-transcript startup interruption만 tap-to-retry 노출. `talk-audio-session.ts` 삭제(참조 0).
+- **원리**: AVAudioSession은 프로세스 전역 — 플레이어의 지연된 pause/finish deactivation이 방금 시작된 STT를 중단시키는 레이스를, `keepAudioSessionActive` + 명시적 핸드오프로 코디네이터가 소유한다. 실패는 타이밍 슬립이 아니라 상태(에러 코드 + 전사 0건)로 판별.
+- **검증**: `tsc --noEmit` 통과, `lint:baseline` 기존 11 error/25 warn 유지(신규 0), `expo export --platform ios` 성공. 실기기 오디오(외부 음악→Talk, speaker/receiver, Bluetooth, Siri/call 복구)는 deferred batch 대기.
+
+### 2026-08-28 · 구조 · 모바일 디자인 토큰 통합 (mobile-tokens.ts)
+- **무엇**: 실제 렌더링 토큰을 단일 `src/design/mobile-tokens.ts`(iOS 팔레트 + motif geometry + TypeScale + shadow + SERIF)로 통합. `theme.tsx`는 이 모듈에서 Theme 조립(buildTheme public API 유지), `constants/cobalt.ts`는 `Motif`/`TypeScale` re-export shim + 미사용 웹 Cobalt Editorial 포트를 legacy로 명시, `ui.tsx`의 하드코딩(9999/34/50/44/34)을 토큰으로 치환(1:1). `Cobalt`/`useCobalt`/`warm` palette는 런타임 미사용으로 legacy 표시(삭제 안 함). CLAUDE.md·ios-motif-spec의 "모바일도 tokens.json 단일 소스" 오개념을 현재 구조(모바일 = iOS 팔레트)로 수정.
+- **원리**: 웹(tokens.json, warm editorial)과 모바일(iOS system palette)은 별도 기준 — 값을 강제하지 않고 각 소스를 문서화. 토큰은 한 곳에만 정의(재사용은 re-export).
+- **검증**: `tsc --noEmit` PASS · `lint:baseline` 11 error/25 warning 그대로(신규 0) · `expo export --platform ios` PASS · `git diff --check` OK. 추가로 git HEAD 대비 **ALL color slots(ios+warm × light+dark) 바이트 동일**, Motif·TypeScale·geometry·shadow 동일값임을 평가 비교로 증명 — 시각 회귀 없음.
+
+### 2026-09-01 · 수정+검증+배포 · 외부 TestFlight 후보 build 21
+- **무엇**: build 19 이후 최신 worktree 변경의 React Compiler 린트 오류 11개를 수선하고 경고를 허용 기준 15개로 복구. EAS CLI 23.2.0으로 iOS production `1.0.0 (21)`을 빌드하고 App Store Connect에 제출.
+- **검증**: release config, TypeScript, ESLint(error 0/warning 15), iOS Expo export, EAS Build/Submit 통과. Apple 처리 결과 `VALID`; TestFlight 외부 상태 `READY_FOR_BETA_SUBMISSION`.
+- **후속**: `expo install --check` 기준 SDK 57 권장 패치 업데이트 24개는 네이티브 변경·추가 EAS 빌드가 필요해 이번 후보와 분리.
+- **산출물**: [quality/2026-09-01-external-testflight-candidate](quality/2026-09-01-external-testflight-candidate.md)
+
+### 2026-09-01 · 수정 · Studio 탐색과 최근 목록 정리
+- **무엇**: 기존 `Card`/`Pill`/`Serif`/`Icon`과 테마 토큰만 사용해 Speaking folio 전체를 insight 진입점으로 통합하고 기존 별도 insight 배너를 제거. Topics 아래 Recent Stories 목록과 Stories/Sessions 빈 상태를 추가. Topic 상세의 Draft 칩을 제거하고 목록 아래에 기존 full accent Pill 스타일의 `Add new`를 배치.
+- **검증**: `tsc --noEmit` PASS · ESLint error 0/warning 15(기존 기준 유지) · iOS Expo export PASS(2,107 modules, Hermes 5.9 MB) · Simulator 개발 번들 실행. Simulator가 로그아웃 상태라 인증 후 Studio 화면의 수동 시각 확인은 남음.
+- **산출물**: [quality/2026-09-01-studio-navigation-lists.md](quality/2026-09-01-studio-navigation-lists.md)
+
+### 2026-09-07 · 구현+검증 · Studio 정보 구조 개편
+- **무엇**: Studio를 Topic → Situation → Speaking Note → Practice Attempt 구조로 재편하고 Quick Note, 노트 정리, Phrase 연결, 연습 후 Phrase 사용 확인을 추가. 물리 테이블은 호환성을 위해 유지하고 migration 028에서 새 계약·RLS·백필을 정의.
+- **보존**: 기존 Expo Router `NativeTabs` 파일 변경 0건. Studio 홈의 Liquid Glass 하단 바와 상세 화면의 숨김/복귀 동작을 그대로 유지.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · release config PASS · iOS export PASS(2,111 modules) · iOS 26.5 Simulator 렌더 PASS · scoped diff check PASS. 원격 migration ledger가 local 001–028과 불일치(remote 020만 기록)하여 DB 적용은 안전상 보류.
+- **산출물**: [quality/2026-09-07-studio-information-architecture.md](quality/2026-09-07-studio-information-architecture.md)
+
+### 2026-09-07 · 디자인+검증 · Studio 홈 목업 레이아웃 적용
+- **무엇**: 승인된 이미지 목업의 간격, 목록 리듬, 아이콘 배치, 카드 내 CTA 크기를 Studio 탭 홈에 적용. 홈 전용 컴포넌트로 범위를 제한하고 기존 데이터·동작을 유지.
+- **보존**: 모바일 폰트·색상·26pt 카드 radius·캡슐 버튼과 Expo Router 네이티브 하단바 파일은 변경하지 않음.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · release config PASS · iOS export PASS(2,111 modules) · diff check PASS.
+- **산출물**: [quality/2026-09-07-studio-home-mockup-layout.md](quality/2026-09-07-studio-home-mockup-layout.md)
+
+### 2026-09-07 · 수정+검증 · Studio 고정 Quick note FAB와 Quick Capture 시트
+- **무엇**: Studio의 Quick note를 스크롤 콘텐츠에서 분리해 Today FAB와 같은 고정 위치/offset으로 이동. Quick Capture를 전체 화면 오버레이 기반 바텀시트로 재구성하고 승인된 블루 목업의 입력·Situation·Linked Phrases·CTA 구조를 적용.
+- **보존**: NativeTabs 하단바와 Quick Note 저장 계약은 유지. 숨겨진 goal 값은 입력한 발화 내용의 첫 문장으로 생성.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · release config PASS · iOS export PASS(2,111 modules) · diff check PASS.
+- **산출물**: [quality/2026-09-07-studio-quick-capture-sheet.md](quality/2026-09-07-studio-quick-capture-sheet.md)
+
+### 2026-09-08 · 수정+검증 · Studio 끊긴 라우트 복구
+- **무엇**: Studio 홈 하단에 `Browse` 블록(Topics / All attempts / Speaking stats)을 추가하고, `Your situations` 헤더에 상시 `All` 액션을 붙임. `TopicsListScreen`의 목적지를 legacy `domain`에서 새 `studioTopic`으로 변경.
+- **원인**: 탭 라우팅이 `StudioHomeScreen`으로 바뀌며 `SpeakingWorldScreen`이 shell에서 import조차 되지 않는 고아가 됐고, 그 화면이 유일한 진입점이던 `studio` / `sessionsList` / `studioTopic`이 진입점 0이 됨. 코드 삭제가 아니라 경로 소실.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · iOS export PASS · iOS 26.5 Simulator smoke PASS(Browse 3개 행 모두 진입·복귀, Topics가 새 `StudioTopicScreen`으로 연결됨을 확인).
+- **후속**: `SpeakingWorldScreen` 208줄 죽은 코드 삭제는 연쇄 정리(경고 15→20)가 커서 별도 작업으로 분리. smoke 중 발견: 옛 용어(stories/sessions) 잔존, 대시보드 `Last 7 days`가 0 min으로 표시되는 선행 버그.
+- **산출물**: [quality/2026-09-08-studio-route-restoration.md](quality/2026-09-08-studio-route-restoration.md) · 스펙 [.agents/plans/2026-09-08-studio-ia-redesign-spec.md](../../../../.agents/plans/2026-09-08-studio-ia-redesign-spec.md)
 
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->

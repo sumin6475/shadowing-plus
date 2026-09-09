@@ -10,7 +10,6 @@ import { usePostHog } from "posthog-react-native";
 import { useTheme } from "@/design/theme";
 import { AnimatedPressable, BackBar, Card, Chip, Icon, Pill, Screen, usePressFx } from "@/design/ui";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { extractPhraseFromImage, extractPhraseFromText, fillPhraseDetails, type PhraseCaptureDraft } from "@/lib/phrase-capture";
 import { createPhrase, fetchPhrasesForCaptureContext, updatePhraseDetails, type PhraseKind } from "@/lib/phrases";
 import { fetchAllStories, type StoryChoice } from "@/lib/speaking-world";
@@ -195,6 +194,9 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
   return (
     <>
       <PhraseAddMenu open={open} onClose={() => setOpen(false)} nav={nav} anchorBottom={fabBottom + 64} />
+      {/* Solid disc keeps the shadow on the same view and drops the gradient,
+          translucent border, and overflow clip that combined into a halo with
+          left/right cropping. */}
       <AnimatedPressable
         accessibilityRole="button"
         accessibilityLabel={open ? "Close add phrase menu" : "Add a phrase"}
@@ -209,25 +211,15 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
             width: 52,
             height: 52,
             borderRadius: 26,
-            overflow: "hidden",
             alignItems: "center",
             justifyContent: "center",
             zIndex: 50,
-            borderWidth: 2,
-            borderColor: "rgba(255,255,255,0.75)",
+            backgroundColor: t.colors.acc,
           },
           t.shadowLg,
           { transform: [{ scale: fx.scale }] },
         ]}
       >
-        {/* Same cobalt ramp as the Hero card, so the FAB reads as a lit, floating
-            control instead of a flat disc. */}
-        <LinearGradient
-          colors={t.dark ? ["#4C7EF0", "#2E56BC"] : ["#5B8CFF", "#2F62E8"]}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.9, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
         <Icon name={open ? "x" : "plus"} s={24} w={2.4} c="#fff" />
       </AnimatedPressable>
     </>
@@ -263,7 +255,6 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [detectedSelection, setDetectedSelection] = useState({ start: 0, end: 0 });
   const [confidence, setConfidence] = useState<number | null>(null);
-  const [detailedPhrase, setDetailedPhrase] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const [stories, setStories] = useState<StoryChoice[]>([]);
   const [storyId, setStoryId] = useState<string | null>(clipSeed?.storyId ?? null);
@@ -302,7 +293,6 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     setMeaning(draft.meaning);
     setUsageNote(draft.usageNote);
     setConfidence(draft.confidence);
-    setDetailedPhrase(draft.suggestedPhrase);
   }, []);
 
   const hydrateSavedPhrases = useCallback(async (contextText: string) => {
@@ -476,7 +466,6 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       setKind(draft.kind);
       setMeaning(draft.meaning);
       setUsageNote(draft.usageNote);
-      setDetailedPhrase(phrase);
       if (draft.contextTranslation) {
         setContextTranslation(draft.contextTranslation);
         setContextTranslatedFrom(context.trim());
@@ -493,7 +482,6 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     setMeaning("");
     setUsageNote("");
     setKind("phrase");
-    setDetailedPhrase("");
     setSelection({ start: 0, end: 0 });
     setError(null);
   };

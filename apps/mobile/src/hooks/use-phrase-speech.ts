@@ -1,8 +1,9 @@
 // Cloud AI pronunciation first; device TTS remains an offline/error fallback.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Speech from "expo-speech";
 
+import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
 import { fetchPhraseSpeech } from "@/lib/phrase-speech";
 
 const ENGLISH_LOCALE = "en-US";
@@ -10,7 +11,7 @@ type PendingAudio = { id: string; text: string; url: string; request: number };
 
 export function usePhraseSpeech() {
   const [audioUrl, setAudioUrl] = useState<string | undefined>(undefined);
-  const player = useAudioPlayer(audioUrl, { downloadFirst: true });
+  const player = useAudioPlayer(audioUrl, { downloadFirst: true, keepAudioSessionActive: true });
   const status = useAudioPlayerStatus(player);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -28,9 +29,21 @@ export function usePhraseSpeech() {
     playerRef.current = player;
   }, [player]);
 
+  // Register with the process-wide coordinator so a Talk start can pause this
+  // hook's cloud player + device TTS before the recognizer takes the session.
+  useEffect(() => {
+    return registerPlaybackStopper(() => {
+      try {
+        playerRef.current.pause();
+      } catch {
+        // Native player already released — nothing to pause.
+      }
+      Speech.stop().catch(() => {});
+    });
+  }, []);
+
   useEffect(() => {
     let active = true;
-    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
     Speech.getAvailableVoicesAsync()
       .then((voices) => {
         if (!active) return;
@@ -74,6 +87,7 @@ export function usePhraseSpeech() {
       setLoadingId(null);
       setSpeakingId(id);
       try {
+        await prepareSpeakerPlayback();
         player.play();
       } catch {
         // Player released between load and play — treat as a miss; the caller's
@@ -83,7 +97,7 @@ export function usePhraseSpeech() {
     [player],
   );
 
-  const startDeviceFallback = useCallback((id: string, text: string, request: number) => {
+  const startDeviceFallback = useCallback(async (id: string, text: string, request: number) => {
     if (requestRef.current !== request) return;
     modeRef.current = "device";
     setFallbackId(id);
@@ -95,6 +109,8 @@ export function usePhraseSpeech() {
         setSpeakingId(null);
       }
     };
+    await prepareSpeakerPlayback();
+    if (requestRef.current !== request) return;
     Speech.speak(text, {
       language: ENGLISH_LOCALE,
       voice: voiceRef.current,

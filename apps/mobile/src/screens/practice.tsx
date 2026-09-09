@@ -5,7 +5,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
+import { MirrorPreview } from "@/components/mirror-preview";
+import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
 import { useTheme } from "@/design/theme";
 import { BackBar, Badge, Card, Icon, Pill, Screen, Sect, Serif, Stagger, Wave } from "@/design/ui";
 import {
@@ -339,6 +342,20 @@ export function QuickRehearsalScreen({
   const [hit, setHit] = useState(false);
   const p = item;
 
+  // Local replay of the most recent take. `speech.audioUri` is cleared by the
+  // speech hook whenever a new take starts, so the player follows take-by-take.
+  const replay = useAudioPlayer(speech.audioUri, { keepAudioSessionActive: true });
+  const replayStatus = useAudioPlayerStatus(replay);
+  useEffect(() => {
+    return registerPlaybackStopper(() => {
+      try {
+        replay.pause();
+      } catch {
+        // Native player already released — nothing to pause.
+      }
+    });
+  }, [replay]);
+
   const toggleRecord = async () => {
     if (!p) return;
     if (speech.recognizing) {
@@ -348,8 +365,27 @@ export function QuickRehearsalScreen({
       if (usedPhrase(text, p.text)) setHit(true);
       return;
     }
+    // Starting another take pauses + rewinds the previous one before the speech
+    // hook clears its URI.
+    try {
+      replay.pause();
+    } catch {
+      // Native player already released — nothing to pause.
+    }
+    replay.seekTo(0).catch(() => {});
     setLastTake(null);
     await speech.start();
+  };
+
+  const toggleReplay = async () => {
+    if (!replayStatus.isLoaded) return;
+    if (replayStatus.playing) {
+      replay.pause();
+      return;
+    }
+    if (replayStatus.duration > 0 && replayStatus.currentTime >= replayStatus.duration) replay.seekTo(0);
+    await prepareSpeakerPlayback();
+    replay.play();
   };
 
   const done = () => {
@@ -396,20 +432,21 @@ export function QuickRehearsalScreen({
               width: 250,
               height: 250,
               borderRadius: 125,
-              backgroundColor: speech.recognizing ? t.colors.accS : t.colors.soft,
+              overflow: "hidden",
+              backgroundColor: "#000",
               alignItems: "center",
               justifyContent: "center",
-              gap: 12,
             },
             speech.recognizing ? t.shadowLg : null,
           ]}
         >
+          <MirrorPreview scrim />
           {speech.recognizing ? (
-            <Wave n={18} active h={40} />
+            <Wave n={18} active h={40} color="rgba(255,255,255,0.9)" />
           ) : (
             <>
-              <Icon name="mic" s={30} w={1.8} c={t.colors.ink3} />
-              <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.ink3 }}>Mirror</Text>
+              <Icon name="mic" s={30} w={1.8} c="rgba(255,255,255,0.85)" />
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>Mirror</Text>
             </>
           )}
         </View>
@@ -439,23 +476,52 @@ export function QuickRehearsalScreen({
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, paddingBottom: 6 }}>
-        <Pill tone="white" onPress={() => void toggleRecord()} style={{ minWidth: 132, justifyContent: "center" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <View
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: speech.recognizing ? 3 : 7,
-                backgroundColor: "#E5484D",
-              }}
-            />
-            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }}>{speech.recognizing ? "Stop" : "Record"}</Text>
-          </View>
-        </Pill>
-        <Pill onPress={done} style={{ minWidth: 132, justifyContent: "center" }}>
-          Done
-        </Pill>
+      <View style={{ gap: 10, paddingBottom: 6 }}>
+        {takes > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={replayStatus.playing ? "Pause your take" : "Play your take"}
+            disabled={!replayStatus.isLoaded}
+            onPress={() => void toggleReplay()}
+            style={({ pressed }) => ({
+              height: 52,
+              borderRadius: 18,
+              backgroundColor: t.colors.acc,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: 9,
+              opacity: !replayStatus.isLoaded ? 0.55 : pressed ? 0.85 : 1,
+            })}
+          >
+            {!replayStatus.isLoaded ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Icon name={replayStatus.playing ? "pause" : "play"} s={18} c="#fff" />
+            )}
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff" }}>
+              {!replayStatus.isLoaded ? "Preparing your take…" : replayStatus.playing ? "Pause" : "Play your take"}
+            </Text>
+          </Pressable>
+        ) : null}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <Pill tone="white" onPress={() => void toggleRecord()} style={{ minWidth: 132, justifyContent: "center" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: speech.recognizing ? 3 : 7,
+                  backgroundColor: "#E5484D",
+                }}
+              />
+              <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }}>{speech.recognizing ? "Stop" : "Record"}</Text>
+            </View>
+          </Pill>
+          <Pill onPress={done} style={{ minWidth: 132, justifyContent: "center" }}>
+            Done
+          </Pill>
+        </View>
       </View>
     </Screen>
   );

@@ -3,8 +3,9 @@
 // segment start, plays, and auto-pauses at the segment end. One player instance
 // per screen; `toggle` on the currently-playing id stops it.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
+import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
 import { fetchClipMedia, isPlayableUrl } from "@/lib/library";
 
 export interface PlayableSegment {
@@ -16,21 +17,34 @@ export interface PlayableSegment {
 
 export function useSegmentPlayer() {
   const [audioUrl, setAudioUrl] = useState<string | undefined>(undefined);
-  const player = useAudioPlayer(audioUrl);
+  const player = useAudioPlayer(audioUrl, { keepAudioSessionActive: true });
   const status = useAudioPlayerStatus(player);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const pending = useRef<PlayableSegment | null>(null);
   const endRef = useRef<number | null>(null);
   const cache = useRef<Map<string, string>>(new Map());
+  // Keep the latest player identity without re-registering the coordinator
+  // stopper on every source swap (which can release the old native player).
+  const playerRef = useRef(player);
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
 
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    return registerPlaybackStopper(() => {
+      try {
+        playerRef.current.pause();
+      } catch {
+        // Native player already released — nothing to pause.
+      }
+    });
   }, []);
 
   const startAt = useCallback(
-    (seg: PlayableSegment) => {
+    async (seg: PlayableSegment) => {
       endRef.current = seg.end > seg.start ? seg.end : seg.start + 4;
+      await prepareSpeakerPlayback();
       player.seekTo(seg.start).catch(() => {});
       player.play();
       setCurrentId(seg.id);

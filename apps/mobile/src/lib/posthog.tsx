@@ -53,16 +53,17 @@ function PostHogAuthBridgeInner() {
   const posthog = usePostHog();
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
-  const email = session?.user.email ?? null;
 
   useEffect(() => {
     if (!posthog) return;
     if (userId) {
-      posthog.identify(userId, email ? { email } : undefined);
+      // Opaque account id is enough to connect sessions. Do not duplicate the
+      // learner's email into the analytics processor.
+      posthog.identify(userId);
       return;
     }
     posthog.reset();
-  }, [posthog, userId, email]);
+  }, [posthog, userId]);
 
   return null;
 }

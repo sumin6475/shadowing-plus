@@ -2,10 +2,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useEvent } from "expo";
 
+import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
 import { deleteClip, fetchClipMedia, fetchLibrary, fetchSegments, formatDuration, isPlayableUrl, setClipFavorite, type ClipMedia, type LibraryEntry, type TranscriptLine } from "@/lib/library";
 import { useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Pill, Screen, Serif, SwipeRow, confirmDelete } from "@/design/ui";
@@ -53,16 +54,18 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    setError(null);
     try {
-      setEntries(await fetchLibrary());
+      const nextEntries = await fetchLibrary();
+      setError(null);
+      setEntries(nextEntries);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load your library.");
     }
   }, []);
 
   useEffect(() => {
-    load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const onRefresh = useCallback(async () => {
@@ -296,8 +299,11 @@ function AudioPlayButton({
     <Pressable
       onPress={() => {
         if (!playable) return;
-        if (status.playing) player.pause();
-        else player.play();
+        if (status.playing) {
+          player.pause();
+          return;
+        }
+        void prepareSpeakerPlayback().then(() => player.play());
       }}
       disabled={!playable}
       style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: accent, alignItems: "center", justifyContent: "center", opacity: playable ? 1 : 0.4 }}
@@ -320,7 +326,7 @@ function FocusCopy({
   ink: string;
   ink3: string;
 }) {
-  const opacity = useRef(new Animated.Value(1)).current;
+  const opacity = useMemo(() => new Animated.Value(1), []);
   const skip = useRef(true);
   useEffect(() => {
     if (skip.current) {
@@ -361,14 +367,20 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
   const audioSrc = !isVideo && media && isPlayableUrl(media.audioUrl) ? media.audioUrl : undefined;
   const isYoutube = !!media?.audioUrl?.startsWith("youtube://") || !!media?.videoUrl?.startsWith("youtube://");
 
-  const audioPlayer = useAudioPlayer(audioSrc);
+  const audioPlayer = useAudioPlayer(audioSrc, { keepAudioSessionActive: true });
   const videoPlayer = useVideoPlayer(videoSrc ?? null, (p) => {
     p.timeUpdateEventInterval = 0.5;
   });
 
+  // Let a Talk start pause both Library players before the recognizer takes
+  // the shared session. Re-register on player identity change so the stopper
+  // always holds the live instance (unregister does not touch the player).
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
-  }, []);
+    return registerPlaybackStopper(() => {
+      audioPlayer.pause();
+      videoPlayer.pause();
+    });
+  }, [audioPlayer, videoPlayer]);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -400,7 +412,7 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
   const playable = isVideo || !!audioSrc;
 
   const seekTo = (s: number) => {
-    if (isVideo) videoPlayer.currentTime = s;
+    if (isVideo) videoPlayer.seekBy(s - videoPlayer.currentTime);
     else audioPlayer.seekTo(s).catch(() => {});
   };
 
@@ -409,9 +421,15 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
   const pendingLineRef = useRef<number | null>(null);
   const pinUntilRef = useRef(0);
   const linesRef = useRef(lines);
-  linesRef.current = lines;
   const playableRef = useRef(playable);
-  playableRef.current = playable;
+
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
+  useEffect(() => {
+    playableRef.current = playable;
+  }, [playable]);
 
   // Pause under the capture overlay; restore play only if it was playing.
   // Depend only on `covered` so a player identity change while paused cannot

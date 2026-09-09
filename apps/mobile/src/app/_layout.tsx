@@ -9,6 +9,7 @@ import { useFonts } from "expo-font";
 import { usePostHog } from "posthog-react-native";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { AiProcessingConsentPrompt } from "@/lib/ai-consent";
 import { PostHogAuthBridge, PostHogGate, PostHogScreenTracker } from "@/lib/posthog";
 import { ThemeProvider, useTheme } from "@/design/theme";
 import { loadFirstLanguage } from "@/lib/first-language";
@@ -253,6 +254,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <PostHogGate>
           <AuthProvider>
+            <AiProcessingConsentPrompt />
             <PostHogAuthBridge />
             <PostHogScreenTracker />
             <RootNavigator />

@@ -18,6 +18,7 @@ import { Motif, TypeScale } from "@/constants/cobalt";
 import { useAuthPalette } from "@/design/auth-palette";
 import { SERIF } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
+import { openLegalUrl, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import { resetOnboardingDraft } from "@/lib/onboarding";
 import { GoogleMark } from "@/screens/onboarding";
 
@@ -290,6 +291,20 @@ export default function SignInScreen() {
                     </Text>
                   </Pressable>
                 </View>
+
+                {mode === "sign_up" ? (
+                  <Text style={[styles.legalNotice, { color: c.text3 }]}>
+                    By creating an account, you agree to the{" "}
+                    <Text style={{ color: c.accent, fontWeight: "700" }} onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)}>
+                      Terms
+                    </Text>
+                    {" and acknowledge the "}
+                    <Text style={{ color: c.accent, fontWeight: "700" }} onPress={() => void openLegalUrl(PRIVACY_POLICY_URL)}>
+                      Privacy Policy
+                    </Text>
+                    .
+                  </Text>
+                ) : null}
               </View>
             </>
           )}
@@ -334,7 +349,7 @@ function SocialButton({
       {busy ? (
         <ActivityIndicator color={apple ? "#fff" : c.text} />
       ) : apple ? (
-        <Text style={[styles.appleMark, { color: "#fff" }]}></Text>
+        <Text style={[styles.appleMark, { color: "#fff" }]}></Text>
       ) : (
         <GoogleMark />
       )}
@@ -421,6 +436,7 @@ const styles = StyleSheet.create({
   },
   switchText: { fontSize: TypeScale.footnote },
   switchLink: { fontSize: TypeScale.footnote, fontWeight: "700" },
+  legalNotice: { fontSize: 11.5, lineHeight: 17, textAlign: "center", paddingHorizontal: 12 },
   textButton: { alignSelf: "flex-start", paddingVertical: 8 },
   textButtonLabel: { fontSize: TypeScale.body, fontWeight: "700" },
   onboardingLink: { alignSelf: "center", padding: 8, marginTop: 12 },

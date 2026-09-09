@@ -1,5 +1,8 @@
 // auth-palette.ts — palette slots for the auth surfaces (sign-in, password
-// reset), mapped from the app theme so they match the iOS-gray design.
+// reset), derived from the canonical Theme (design/mobile-tokens.ts) so they
+// match the iOS-gray design. No token values are defined here: colors come
+// from buildTheme() and `danger` is a component-level functional red kept
+// inline by design (not part of the brand token ladder).
 import { useColorScheme } from "react-native";
 
 import { buildTheme } from "./theme";

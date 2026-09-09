@@ -4,10 +4,14 @@
 // changes what leaves the device (e.g., recording cloud sync in Phase 2).
 // App Store Connect also needs a hosted privacy policy URL; this screen is the
 // in-app companion, not a replacement.
-import { Alert, Linking, Text, View } from "react-native";
+import { useState } from "react";
+import { Alert, Linking, Switch, Text, View } from "react-native";
 
 import { useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Screen, Stagger } from "@/design/ui";
+import { aiProcessingConsentFromMetadata, setAiProcessingConsent } from "@/lib/ai-consent";
+import { useAuth } from "@/lib/auth";
+import { openLegalUrl, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
 
@@ -53,12 +57,27 @@ function Section({
 
 export function PrivacyScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const { session } = useAuth();
+  const [updatingAiConsent, setUpdatingAiConsent] = useState(false);
+  const aiConsent = aiProcessingConsentFromMetadata(session?.user.user_metadata);
 
   const contact = () => {
     const subject = encodeURIComponent("Saylo privacy question");
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}`).catch(() => {
       Alert.alert("No mail app", `Write to ${SUPPORT_EMAIL}.`);
     });
+  };
+
+  const updateAiConsent = async (allowed: boolean) => {
+    if (updatingAiConsent) return;
+    setUpdatingAiConsent(true);
+    try {
+      await setAiProcessingConsent(allowed);
+    } catch {
+      Alert.alert("Couldn’t save your choice", "Check your connection and try again.");
+    } finally {
+      setUpdatingAiConsent(false);
+    }
   };
 
   return (
@@ -74,9 +93,9 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           icon="shield"
           title="What we store"
           lines={[
-            "Your account email and profile (name, goal, photo).",
-            "Your saved phrases, stories, and practice history.",
-            "Everything is stored on secure servers and visible only to your account.",
+            "Your account email and profile (name, goal, and optional photo).",
+            "Your saved phrases, stories, session transcripts, and practice history.",
+            "Learning content is protected by your account. Profile photos are stored with Supabase for display in the app.",
           ]}
         />
 
@@ -94,17 +113,35 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           icon="sparkle"
           title="AI feedback"
           lines={[
-            "The text of your practice is sent to our AI provider to create your feedback.",
-            "It is processed for your session only and is not used to train AI models.",
+            "Only with your permission, the text or photo you choose is sent to OpenAI for feedback, phrase suggestions, language help, embeddings, or AI pronunciation.",
+            "Speaking recordings are not sent. OpenAI processes the selected content under its API data policy and does not use API data to train models by default.",
+            "You can turn this processing off below at any time. AI features stay off until you allow it again.",
           ]}
         />
+
+        <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }}>Allow OpenAI processing</Text>
+            <Text style={{ fontSize: 13, lineHeight: 18, color: t.colors.ink3, marginTop: 3 }}>
+              {aiConsent === "allowed" ? "On · selected text and photos can be processed" : "Off · no content is sent to OpenAI"}
+            </Text>
+          </View>
+          <Switch
+            value={aiConsent === "allowed"}
+            onValueChange={(allowed) => void updateAiConsent(allowed)}
+            disabled={updatingAiConsent}
+            trackColor={{ false: t.colors.soft, true: t.colors.accS }}
+            thumbColor={aiConsent === "allowed" ? t.colors.acc : undefined}
+          />
+        </Card>
 
         <Section
           icon="gauge"
           title="Usage analytics"
           lines={[
-            "We collect basic usage events, like which screens are used, to improve the app.",
-            "Analytics are tied to your account, not to your identity across other apps.",
+            "PostHog receives basic product interactions and crash diagnostics so we can improve the app.",
+            "Analytics use an internal account ID. We do not send your email, recordings, transcripts, phrase text, photos, or advertising identifiers.",
+            "We do not track you across other companies’ apps or websites.",
           ]}
         />
 
@@ -117,6 +154,18 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
             "Your whole account: Profile → Delete account. Everything is removed right away.",
           ]}
         />
+
+        <Card onPress={() => void openLegalUrl(PRIVACY_POLICY_URL)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Icon name="shield" s={20} w={1.8} c={t.colors.ink2} />
+          <Text style={{ flex: 1, fontSize: 15.5, fontWeight: "600", color: t.colors.ink }}>Full Privacy Policy</Text>
+          <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+        </Card>
+
+        <Card onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Icon name="text" s={20} w={1.8} c={t.colors.ink2} />
+          <Text style={{ flex: 1, fontSize: 15.5, fontWeight: "600", color: t.colors.ink }}>Terms of Service</Text>
+          <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+        </Card>
 
         <Card onPress={contact} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <Icon name="help" s={20} w={1.8} c={t.colors.ink2} />

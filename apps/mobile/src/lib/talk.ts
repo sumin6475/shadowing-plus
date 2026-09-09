@@ -7,6 +7,7 @@
 // user's Supabase JWT, so auth comes for free. The OpenAI key lives in the
 // function's Supabase secret, never in the bundle.
 import { supabase } from "./supabase";
+import { requireAiProcessingConsent } from "./ai-consent";
 import { englishLevel } from "./english-level";
 import { talkFocus, type TalkFocus } from "./talk-focus";
 import type { StuckHelp, TalkMoment, TalkPhraseSuggestion, TalkPhraseUsedMatch } from "../types/api";
@@ -29,6 +30,7 @@ export async function diagnoseTalk(input: {
   storyId?: string | null;
   focus?: TalkFocus | null;
 }): Promise<TalkMoment[]> {
+  await requireAiProcessingConsent();
   const focus = input.focus ?? talkFocus();
   const { data, error } = await supabase.functions.invoke<{ moments: TalkMoment[] }>("talk-diagnose", {
     body: {
@@ -52,7 +54,9 @@ export async function suggestTalkPhrase(input: {
   transcript: string;
   topic?: string | null;
   storyId?: string | null;
+  talkSessionId?: string | null;
 }): Promise<{ suggestion: TalkPhraseSuggestion | null; used: TalkPhraseUsedMatch[] }> {
+  await requireAiProcessingConsent();
   const { data, error } = await supabase.functions.invoke<{
     suggestion: TalkPhraseSuggestion | null;
     used?: TalkPhraseUsedMatch[];
@@ -61,6 +65,7 @@ export async function suggestTalkPhrase(input: {
       transcript: input.transcript,
       topic: input.topic ?? null,
       story_id: input.storyId ?? null,
+      talk_session_id: input.talkSessionId ?? null,
     },
   });
   if (error) throw new Error(error.message || "Couldn’t search your Phrase Bank.");
@@ -78,6 +83,7 @@ export async function diagnoseStuck(input: {
   stuckMoments: StuckMoment[];
   topic?: string | null;
 }): Promise<StuckHelp[]> {
+  await requireAiProcessingConsent();
   const { data, error } = await supabase.functions.invoke<{ help: StuckHelp[] }>("talk-stuck", {
     body: { stuckMoments: input.stuckMoments, topic: input.topic ?? null },
   });
