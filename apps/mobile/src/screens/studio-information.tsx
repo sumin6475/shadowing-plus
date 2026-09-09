@@ -17,6 +17,7 @@ import {
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import type { IconName } from "@/design/icon";
 import { useTheme } from "@/design/theme";
 import { AnimatedPressable, Avatar, BackBar, Card, Chip, EnterStagger, Hero, Icon, Pill, Screen, Sect, Serif, Stagger, usePressFx } from "@/design/ui";
 import {
@@ -161,6 +162,39 @@ function StudioSituationTile({ situation, index, onPress }: { situation: StudioS
       <Text style={{ flexShrink: 1, fontSize: 13, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>
         {situation.title}
       </Text>
+    </Pressable>
+  );
+}
+
+// Browse rows re-open the views that lost their entry point when the old
+// Speaking World home was removed: the stats dashboard, the attempts list, and
+// the Topic screen. PRD: organizing/browsing paths sit below the practice zone.
+function BrowseRow({ icon, label, caption, first, onPress }: { icon: IconName; label: string; caption: string; first?: boolean; onPress: () => void }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. ${caption}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 58,
+        paddingVertical: 11,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        borderTopWidth: first ? 0 : 1,
+        borderTopColor: t.colors.sep,
+        opacity: pressed ? 0.65 : 1,
+      })}
+    >
+      <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+        <Icon name={icon} s={18} c={t.colors.accD} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }}>{label}</Text>
+        <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }} numberOfLines={1}>{caption}</Text>
+      </View>
+      <Icon name="chev" s={14} w={2.2} c={t.colors.ink3} />
     </Pressable>
   );
 }
@@ -610,7 +644,7 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
             </EnterStagger>
 
             <EnterStagger i={2} style={{ gap: 9, marginTop: t.gap * 3 }}>
-              <StudioSectionHeader title="Your situations" />
+              <StudioSectionHeader title="Your situations" action="All" onAction={() => nav.push("topicsList")} />
               {visibleSituations.length ? (
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   {visibleSituations.map((situation, index) => (
@@ -629,6 +663,31 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
                   <Icon name="chev" s={14} w={2.2} c={t.colors.ink3} />
                 </Card>
               )}
+            </EnterStagger>
+
+            <EnterStagger i={3} style={{ gap: 9, marginTop: t.gap * 3 }}>
+              <StudioSectionHeader title="Browse" />
+              <Card style={{ paddingVertical: 2 }}>
+                <BrowseRow
+                  first
+                  icon="map"
+                  label="Topics"
+                  caption={`${data?.topics.length ?? 0} topics · organize situations and notes`}
+                  onPress={() => nav.push("topicsList")}
+                />
+                <BrowseRow
+                  icon="wave2"
+                  label="All attempts"
+                  caption="Every practice recording you have made"
+                  onPress={() => nav.push("sessionsList")}
+                />
+                <BrowseRow
+                  icon="gauge"
+                  label="Speaking stats"
+                  caption="Time spoken, weekly goal, phrase progress"
+                  onPress={() => nav.push("studio")}
+                />
+              </Card>
             </EnterStagger>
 
           </>

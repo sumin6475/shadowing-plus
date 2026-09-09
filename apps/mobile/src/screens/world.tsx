@@ -700,7 +700,7 @@ export function TopicsListScreen({ nav }: { nav: Nav }) {
           return (
             <Card
               key={group.domain.id}
-              onPress={() => nav.push("domain", { id: group.domain.id, name: group.domain.name })}
+              onPress={() => nav.push("studioTopic", { id: group.domain.id, name: group.domain.name })}
               style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
             >
               <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: toneColor(t, tone) }} />

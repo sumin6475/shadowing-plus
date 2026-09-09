@@ -616,4 +616,11 @@
 - **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · release config PASS · iOS export PASS(2,111 modules) · diff check PASS.
 - **산출물**: [quality/2026-09-07-studio-quick-capture-sheet.md](quality/2026-09-07-studio-quick-capture-sheet.md)
 
+### 2026-09-08 · 수정+검증 · Studio 끊긴 라우트 복구
+- **무엇**: Studio 홈 하단에 `Browse` 블록(Topics / All attempts / Speaking stats)을 추가하고, `Your situations` 헤더에 상시 `All` 액션을 붙임. `TopicsListScreen`의 목적지를 legacy `domain`에서 새 `studioTopic`으로 변경.
+- **원인**: 탭 라우팅이 `StudioHomeScreen`으로 바뀌며 `SpeakingWorldScreen`이 shell에서 import조차 되지 않는 고아가 됐고, 그 화면이 유일한 진입점이던 `studio` / `sessionsList` / `studioTopic`이 진입점 0이 됨. 코드 삭제가 아니라 경로 소실.
+- **검증**: TypeScript PASS · ESLint error 0/warning 15(기존 기준) · iOS export PASS. Simulator 런타임 확인은 남음.
+- **후속**: `SpeakingWorldScreen` 208줄 죽은 코드 삭제는 연쇄 정리(경고 15→20)가 커서 별도 작업으로 분리.
+- **산출물**: [quality/2026-09-08-studio-route-restoration.md](quality/2026-09-08-studio-route-restoration.md) · 스펙 [.agents/plans/2026-09-08-studio-ia-redesign-spec.md](../../../../.agents/plans/2026-09-08-studio-ia-redesign-spec.md)
+
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
