@@ -20,6 +20,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import { Icon, type TabId } from "@/design/ui";
 import { useTheme } from "@/design/theme";
+import { CaptureScope } from "@/design-capture/provider";
 import { TodayScreen } from "@/screens/today";
 import { PhrasesScreen, PhraseRoute, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
@@ -291,6 +292,7 @@ export function TabHost({ tab }: { tab: TabId }) {
     top?.name !== "speakingNote";
 
   return (
+    <CaptureScope active={focused}>
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
       {content}
       {swipeBackEnabled ? (
@@ -318,6 +320,7 @@ export function TabHost({ tab }: { tab: TabId }) {
         </View>
       ) : null}
     </View>
+    </CaptureScope>
   );
 }
 

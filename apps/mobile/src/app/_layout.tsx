@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { AiProcessingConsentPrompt } from "@/lib/ai-consent";
 import { PostHogAuthBridge, PostHogGate, PostHogScreenTracker } from "@/lib/posthog";
 import { ThemeProvider, useTheme } from "@/design/theme";
+import { CaptureProvider } from "@/design-capture/provider";
 import { loadFirstLanguage } from "@/lib/first-language";
 import { loadEnglishLevel } from "@/lib/english-level";
 import { loadReminders } from "@/lib/reminders";
@@ -251,17 +252,19 @@ export default function RootLayout() {
     // GestureHandlerRootView must sit at the very top for gesture-driven UI
     // (swipe-to-delete rows) to receive touches. flex:1 so it fills the screen.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <PostHogGate>
-          <AuthProvider>
-            <AiProcessingConsentPrompt />
-            <PostHogAuthBridge />
-            <PostHogScreenTracker />
-            <RootNavigator />
-            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-          </AuthProvider>
-        </PostHogGate>
-      </SafeAreaProvider>
+      <CaptureProvider>
+        <SafeAreaProvider>
+          <PostHogGate>
+            <AuthProvider>
+              <AiProcessingConsentPrompt />
+              <PostHogAuthBridge />
+              <PostHogScreenTracker />
+              <RootNavigator />
+              <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            </AuthProvider>
+          </PostHogGate>
+        </SafeAreaProvider>
+      </CaptureProvider>
     </GestureHandlerRootView>
   );
 }
