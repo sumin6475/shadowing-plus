@@ -910,11 +910,13 @@ function SituationChip({ c, icon, label, dashed, onPress }: { c: SituationTokens
   );
 }
 
-/** Serif section title with an optional tinted capsule action on the right. */
+/** Section title with an optional tinted capsule action on the right. Serif is
+ *  reserved for a screen's hero; section headers are system bold at 22/800,
+ *  matching Studio home so one flow reads as one heading idiom. */
 function SituationSection({ c, title, actionLabel, actionIcon, onAction }: { c: SituationTokens; title: string; actionLabel?: string; actionIcon?: IconName; onAction?: () => void }) {
   return (
     <View style={{ paddingHorizontal: TEXT_PUSH, marginTop: 28, marginBottom: 10, flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
-      <Serif style={{ fontSize: 20, color: c.ink }}>{title}</Serif>
+      <Text style={{ fontSize: 22, fontWeight: "800", color: c.ink }}>{title}</Text>
       {actionLabel ? (
         <Pressable onPress={onAction} hitSlop={8}>
           {({ pressed }) => (

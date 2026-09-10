@@ -748,3 +748,5 @@ switch. Not verified: the fix sheet and the accessory bar — no attempt carries
 `repairSuggestion` yet, and the simulator won't raise a software keyboard.
 
 - 디자인 기획서 업데이트: [Speaking Note 상세 (세부)](../product/speaking-note-design-brief.md) §12 — 결정 8건과 디자인에서 벗어난 3건.
+
+- 폰트 통일: Studio 플로우의 섹션 헤더를 Newsreader → 시스템 볼드 22/800으로. Studio 홈(`Recent notes`)과 같은 관용구가 되고, 세리프는 각 화면의 히어로 제목에만 남는다. `SituationSection` 하나만 바꾸면 Situation 상세·Speaking Note·푸시된 목록 화면이 함께 따라온다.
