@@ -45,7 +45,8 @@ export type IconName =
   | "shield"
   | "flask"
   | "link"
-  | "grip";
+  | "grip"
+  | "repeat";
 
 interface IconProps {
   name: IconName;
@@ -243,6 +244,17 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
           <Circle cx="12" cy="12" r="9" />
           <Circle cx="12" cy="12" r="3.4" />
           <Path d="M5.6 5.6l3.6 3.6M18.4 5.6l-3.6 3.6M18.4 18.4l-3.6-3.6M5.6 18.4l3.6-3.6" />
+        </G>
+      );
+      break;
+    case "repeat":
+      // Loop the current sentence / A–B range.
+      body = (
+        <G {...common}>
+          <Path d="M17 2l4 4-4 4" />
+          <Path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+          <Path d="M7 22l-4-4 4-4" />
+          <Path d="M21 13v1a4 4 0 0 1-4 4H3" />
         </G>
       );
       break;

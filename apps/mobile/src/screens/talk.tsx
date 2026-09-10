@@ -1,19 +1,22 @@
 // talk.tsx — Speak tab default: the mirror self-talk session (sp-talk.jsx).
 // Phases: live → done → moment → retry. The web original uses radial
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePostHog } from "posthog-react-native";
 
 import { MirrorPreview } from "@/components/mirror-preview";
 import { TalkFeedbackDetail } from "@/components/talk-feedback-detail";
-import { useTheme } from "@/design/theme";
+import { hairline, useTheme } from "@/design/theme";
+import type { IconName } from "@/design/icon";
 import { BackBar, Card, ExpandableCopy, Hero, Icon, Pill, Screen, Serif, Wave, promptFeedbackNote } from "@/design/ui";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
-import { saveTalkSessionAudio } from "@/lib/talk-audio";
+import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
+import { saveTalkSessionAudio, talkAudioUri } from "@/lib/talk-audio";
 import { recordPhraseEvent, setPhraseStage, type PhraseItem } from "@/lib/phrases";
 import { diagnoseTalk, suggestTalkPhrase } from "@/lib/talk";
 import { logTalkSuggestions, rateTalkSuggestion, suggestionKey, type SuggestionSlot, type SuggestionVerdict } from "@/lib/talk-feedback";
@@ -75,6 +78,81 @@ function RateRow({
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const fmt2 = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+/** "13 seconds" / "1 minute" / "2 minutes 4 seconds" — the result headline reads
+ *  as a sentence, so a clock format (0:13) would break it. */
+const durationPhrase = (s: number) => {
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  if (s < 60) return plural(s, "second");
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return r ? `${plural(m, "minute")} ${plural(r, "second")}` : plural(m, "minute");
+};
+/** Compact length for the transcript meta line ("13s" / "2:04"). */
+const shortDur = (s: number) => (s < 60 ? `${s}s` : fmt(s));
+
+/** Result-screen chip: quiet state (Focus, Saved, a verdict), never an action. */
+function ResultChip({
+  children,
+  tone = "accent",
+  icon,
+}: {
+  children: ReactNode;
+  tone?: "accent" | "gray";
+  icon?: IconName;
+}) {
+  const t = useTheme();
+  const fg = tone === "accent" ? t.colors.accD : t.colors.ink2;
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        height: 28,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        backgroundColor: tone === "accent" ? t.colors.accS : t.colors.soft,
+      }}
+    >
+      {icon ? <Icon name={icon} s={11} w={2.2} c={fg} /> : null}
+      <Text style={{ fontSize: 12, fontWeight: "600", color: fg }}>{children}</Text>
+    </View>
+  );
+}
+
+/** Serif section rule above a card. Matches the Speaking Note screen. */
+function ResultSect({ title }: { title: string }) {
+  const t = useTheme();
+  return (
+    <Serif style={{ fontSize: 20, color: t.colors.ink, paddingHorizontal: 2, marginTop: 13, marginBottom: -4 }}>{title}</Serif>
+  );
+}
+
+/** One line of coaching, tinted so it reads before the cards around it. */
+function Quote({ children, onPress }: { children: ReactNode; onPress?: () => void }) {
+  const t = useTheme();
+  const body = (
+    <>
+      <Icon name="bulb" s={14} w={1.8} c={t.colors.accD} />
+      <View style={{ flex: 1 }}>{children}</View>
+      {onPress ? <Icon name="chev" s={13} w={2.2} c={t.colors.accD} /> : null}
+    </>
+  );
+  const style = {
+    flexDirection: "row" as const,
+    alignItems: "flex-start" as const,
+    gap: 9,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: t.colors.accS,
+  };
+  if (!onPress) return <View style={style}>{body}</View>;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [style, { opacity: pressed ? 0.85 : 1 }]}>
+      {body}
+    </Pressable>
+  );
+}
 
 export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const t = useTheme();
@@ -124,6 +202,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const sessionPromiseRef = useRef<Promise<string | null> | null>(null);
   const audioUriRef = useRef<string | null>(null);
   const audioSavedRef = useRef(false);
+  // Playable uri for the result screen: the durable copy once the move lands,
+  // otherwise the recognizer's cache file (derived, so no setState in an effect).
+  const [movedUri, setMovedUri] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -188,14 +269,49 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     const uri = audioUriRef.current;
     if (!id || !uri || audioSavedRef.current) return;
     audioSavedRef.current = true;
-    saveTalkSessionAudio(id, uri).catch(() => {
-      audioSavedRef.current = false; // leave it for a later attempt
-    });
+    saveTalkSessionAudio(id, uri)
+      .then((key) => {
+        // The cache file was MOVED, so the recognizer's uri is now dangling:
+        // repoint playback at the durable copy or Play breaks mid-screen.
+        const moved = talkAudioUri(key);
+        if (moved) setMovedUri(moved);
+      })
+      .catch(() => {
+        audioSavedRef.current = false; // leave it for a later attempt
+      });
   };
   useEffect(() => {
     audioUriRef.current = speech.audioUri;
     if (speech.audioUri) persistAudioIfReady();
   }, [speech.audioUri]);
+  const playUri = movedUri ?? speech.audioUri;
+
+  // Play back what was just said, from the result screen. The recognizer has
+  // already stopped by then, so this never fights the shared audio session —
+  // but it still registers a stopper so a new attempt pauses it.
+  const player = useAudioPlayer(playUri, { keepAudioSessionActive: true });
+  const playStatus = useAudioPlayerStatus(player);
+  const playing = playStatus.playing;
+  useEffect(
+    () =>
+      registerPlaybackStopper(() => {
+        try {
+          player.pause();
+        } catch {
+          // Native player already released — nothing to pause.
+        }
+      }),
+    [player],
+  );
+  const togglePlayback = async () => {
+    if (playing) {
+      player.pause();
+      return;
+    }
+    if (playStatus.duration > 0 && playStatus.currentTime >= playStatus.duration) player.seekTo(0);
+    await prepareSpeakerPlayback();
+    player.play();
+  };
 
   // Ask the Edge Function to surface improvable moments from the real transcript. Runs
   // in parallel with the save; an empty/short transcript short-circuits to none.
@@ -347,6 +463,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     sessionPromiseRef.current = null;
     audioUriRef.current = null;
     audioSavedRef.current = false;
+    setMovedUri(null);
     setTranscript("");
     setSaveState("idle");
     setSaveErr(null);
@@ -509,93 +626,198 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     });
   };
 
-  // ── done ──
-  if (phase === "done")
+  // ── done — the session result (design: "Session Result") ──
+  // Editorial header (eyebrow · serif headline · one plain sentence), then the
+  // transcript, then coaching. Every block below the header is the same card
+  // language as the rest of the app; nothing here is decorative.
+  if (phase === "done") {
+    const said = transcript.trim();
+    const words = said ? said.split(/\s+/).length : 0;
+    const lead = moments[0] ?? null;
+    const rest = moments.slice(1);
+    const noWords = !said;
+    const resultSub =
+      diagState === "loading"
+        ? `Looking at ${TALK_FOCUS_LABEL[sessionFocus].toLowerCase()}…`
+        : noWords
+          ? "The attempt is saved — but the mic didn’t catch your words this time."
+          : diagState === "done" && moments.length
+            ? "Here’s where you could say it more naturally."
+            : bankState === "loading"
+              ? "Checking your Phrase Bank…"
+              : bankState === "done" && bankSuggestion
+                ? "You already saved something useful for this moment."
+                : bankState === "error"
+                  ? "Focus coaching is ready. Your Phrase Bank check needs another try."
+                  : diagState === "done"
+                    ? "You kept going the whole time."
+                    : "";
     return (
       <Screen bottomPad={40}>
-        <View style={{ alignItems: "center", paddingTop: 26, paddingBottom: 4 }}>
-          <Serif style={{ fontSize: 34, color: t.colors.ink }}>Great job!</Serif>
-          <Text style={{ fontSize: 16.5, fontWeight: "600", marginTop: 14, color: t.colors.ink }}>You spoke for {fmt(dur)}</Text>
-          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink, marginTop: 10, textAlign: "center" }}>
-            {diagState === "loading"
-              ? `Looking at ${TALK_FOCUS_LABEL[sessionFocus].toLowerCase()}…`
-              : diagState === "done" && moments.length
-                ? "Here’s where you could say it more naturally."
-                : bankState === "loading"
-                  ? "Checking your Phrase Bank…"
-                  : bankState === "done" && bankSuggestion
-                    ? "You already saved something useful for this moment."
-                    : bankState === "error"
-                      ? "Focus coaching is ready. Your Phrase Bank check needs another try."
-                : diagState === "done"
-                  ? "You kept going the whole time."
-                  : ""}
+        {/* Close — the result is a landing, not a trap. Same exit as Done. */}
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: -6 }}>
+          <Pressable
+            onPress={exitTalk}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: t.colors.soft, alignItems: "center", justifyContent: "center" }}
+          >
+            <Icon name="x" s={13} w={2} c={t.colors.ink2} />
+          </Pressable>
+        </View>
+
+        <View style={{ alignItems: "center", paddingHorizontal: 8 }}>
+          <Text
+            style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, textTransform: "uppercase", color: t.colors.accD }}
+            numberOfLines={1}
+          >
+            Attempt · {ctx}
           </Text>
-          {diagState === "loading" || diagState === "done" || diagState === "error" ? (
-            <View style={{ marginTop: 10, backgroundColor: t.colors.accS, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
-              <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>Focus · {TALK_FOCUS_LABEL[sessionFocus]}</Text>
+          <Serif style={{ fontSize: 34, lineHeight: 38, color: t.colors.ink, textAlign: "center", marginTop: 10 }}>
+            {`You spoke for\n${durationPhrase(dur)}.`}
+          </Serif>
+          {resultSub ? (
+            <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.ink2, marginTop: 8, textAlign: "center" }}>{resultSub}</Text>
+          ) : null}
+
+          {/* Save + focus state live as quiet chips, never as a banner. */}
+          {saveState === "saving" ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 }}>
+              <ActivityIndicator size="small" color={t.colors.ink3} />
+              <Text style={{ fontSize: 12, color: t.colors.ink3 }}>Saving your recording…</Text>
             </View>
+          ) : (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 14 }}>
+              {!noWords && (diagState === "loading" || diagState === "done" || diagState === "error") ? (
+                <ResultChip>Focus · {TALK_FOCUS_LABEL[sessionFocus]}</ResultChip>
+              ) : null}
+              {saveState === "saved" ? (
+                <ResultChip tone="gray" icon="check">
+                  Saved
+                </ResultChip>
+              ) : null}
+            </View>
+          )}
+          {saveState === "error" ? (
+            <Text style={{ fontSize: 13, lineHeight: 19, color: "#E5484D", fontWeight: "600", marginTop: 10, textAlign: "center" }}>
+              {saveErr ?? "Couldn’t save this session."}
+            </Text>
           ) : null}
         </View>
 
-        {/* Real transcript from on-device recognition. */}
-        <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2 }}>What you said</Text>
+        <ResultSect title="What you said" />
         <Card>
-          <ExpandableCopy text={transcript} />
-          <Text style={{ fontSize: 13, fontWeight: "600", color: saveState === "error" ? "#E5484D" : t.colors.ink2, marginTop: 10 }}>
-            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved as a practice attempt" : saveState === "error" ? (saveErr ?? "Couldn’t save") : ""}
-          </Text>
+          {noWords ? (
+            <>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>No words were captured.</Text>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, marginTop: 4 }}>
+                Hold the phone a little closer, or check that nothing is covering the mic. Your speaking time still counts.
+              </Text>
+            </>
+          ) : (
+            <>
+              <ExpandableCopy text={said} />
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+                <Text style={{ fontSize: 12, color: t.colors.ink3 }}>
+                  {words} {words === 1 ? "word" : "words"} · {shortDur(dur)}
+                </Text>
+                {playUri ? (
+                  <Pressable
+                    onPress={togglePlayback}
+                    accessibilityRole="button"
+                    accessibilityLabel={playing ? "Pause recording" : "Play recording"}
+                    hitSlop={8}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      height: 28,
+                      paddingHorizontal: 12,
+                      borderRadius: 999,
+                      backgroundColor: t.colors.soft,
+                    }}
+                  >
+                    <Icon name={playing ? "pause" : "play"} s={12} w={2} c={t.colors.ink} />
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: t.colors.ink }}>{playing ? "Pause" : "Play"}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </>
+          )}
         </Card>
 
-        {/* AI diagnosis: one highest-impact coaching moment from the real transcript. */}
+        {/* AI diagnosis: the highest-impact moment is promoted to a single line
+            of coaching; anything else stays a quiet row. */}
         {diagState === "loading" ? (
           <Card lg style={{ alignItems: "center", paddingVertical: 26, gap: 10 }}>
             <ActivityIndicator color={t.colors.accD} />
-            <Text style={{ fontSize: 13.5, color: t.colors.ink3 }}>Finding moments to level up…</Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3 }}>Finding moments to level up…</Text>
           </Card>
         ) : null}
 
         {diagState === "error" ? (
           <Card lg style={{ gap: 12 }}>
-            <Text style={{ fontSize: 14, color: "#E5484D", fontWeight: "600" }}>{diagErr ?? "Couldn’t analyze this session."}</Text>
-            <Pill tone="tint" onPress={() => runDiagnosis(transcript)}>
+            <Text style={{ fontSize: 15, color: "#E5484D", fontWeight: "600" }}>{diagErr ?? "Couldn’t analyze this session."}</Text>
+            <Pill tone="tint" small onPress={() => runDiagnosis(transcript)}>
               Try again
             </Pill>
           </Card>
         ) : null}
 
-        {diagState === "done"
-          ? moments.map((m, i) => (
-              <Card
-                key={i}
+        {lead ? (
+          <>
+            <ResultSect title="One thing to keep" />
+            <Quote
+              onPress={() => {
+                setSel(0);
+                setPhase("moment");
+              }}
+            >
+              <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2 }}>
+                When you said “{lead.said}” — <Text style={{ color: t.colors.ink, fontWeight: "600" }}>try “{lead.want}”.</Text>
+              </Text>
+            </Quote>
+          </>
+        ) : null}
+
+        {rest.length ? (
+          <Card style={{ paddingVertical: 0 }}>
+            {rest.map((m, i) => (
+              <Pressable
+                key={i + 1}
                 onPress={() => {
-                  setSel(i);
+                  setSel(i + 1);
                   setPhase("moment");
                 }}
-                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingVertical: 13,
+                  borderTopWidth: i ? hairline : 0,
+                  borderTopColor: t.colors.sep,
+                }}
               >
-                <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ fontSize: 16, fontWeight: "800", color: t.colors.accD }}>{i + 1}</Text>
-                </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{m.label}</Text>
-                  <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 2 }} numberOfLines={1}>
-                    {m.said}
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }} numberOfLines={1}>
+                    {m.label}
                   </Text>
-                  <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.accD, marginTop: 4 }} numberOfLines={1}>
-                    New suggestion: {m.want}
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, marginTop: 2 }} numberOfLines={1}>
+                    Try “{m.want}”
                   </Text>
                 </View>
                 <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-              </Card>
-            ))
-          : null}
+              </Pressable>
+            ))}
+          </Card>
+        ) : null}
 
-        {diagState === "done" && !moments.length ? (
+        {diagState === "done" && !moments.length && !noWords ? (
           <Card lg style={{ alignItems: "center", paddingVertical: 28 }}>
             <Wave n={20} h={26} />
             <Text style={{ fontSize: 15, fontWeight: "600", marginTop: 12, color: t.colors.ink }}>Smooth focus run.</Text>
-            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 4, textAlign: "center" }}>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3, marginTop: 4, textAlign: "center" }}>
               {bankState === "error"
                 ? "Nothing stood out in your Focus coaching. Retry the Phrase Bank check below."
                 : "Nothing stood out to fix. Keep going."}
@@ -604,31 +826,49 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         ) : null}
 
         {bankState === "done" && bankUsed.length ? (
-          <Card>
-            <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Did you use these saved phrases?</Text>
-            <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3, marginTop: 4 }}>
-              AI only found candidates. Your answer is the final evidence.
-            </Text>
-            {bankUsed.map((match, index) => {
-              const verdict = bankUsedVerdicts[match.phraseItemId];
-              return (
-                <View key={match.phraseItemId} style={{ paddingTop: 13, marginTop: index ? 4 : 0, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep }}>
-                  <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{match.text}</Text>
-                  <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 3 }} numberOfLines={2}>Heard: “{match.said}”</Text>
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                    <Pill small full tone={verdict === "used" ? "acc" : "tint"} icon="check" onPress={() => confirmUsedCandidate(match, true)}>Used</Pill>
-                    <Pill small full tone={verdict === "not_used" ? "dark" : "tint"} icon="x" onPress={() => confirmUsedCandidate(match, false)}>Not this time</Pill>
+          <>
+            <ResultSect title="Phrases you may have used" />
+            <Card style={{ paddingVertical: 0 }}>
+              {bankUsed.map((match, index) => {
+                const verdict = bankUsedVerdicts[match.phraseItemId];
+                return (
+                  <View
+                    key={match.phraseItemId}
+                    style={{ paddingVertical: 14, borderTopWidth: index ? hairline : 0, borderTopColor: t.colors.sep }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                      <Text style={{ flex: 1, fontSize: 15, lineHeight: 21, fontWeight: "600", color: t.colors.ink }}>{match.text}</Text>
+                      {verdict ? (
+                        <ResultChip tone={verdict === "used" ? "accent" : "gray"} icon={verdict === "used" ? "check" : "x"}>
+                          {verdict === "used" ? "Used it" : "Not this time"}
+                        </ResultChip>
+                      ) : null}
+                    </View>
+                    <Text style={{ fontSize: 12, lineHeight: 18, color: t.colors.ink3, marginTop: 3 }} numberOfLines={2}>
+                      Heard: “{match.said}”
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                      <Pill small full tone={verdict === "used" ? "acc" : "tint"} icon="check" onPress={() => confirmUsedCandidate(match, true)}>
+                        Used
+                      </Pill>
+                      <Pill small full tone={verdict === "not_used" ? "dark" : "tint"} icon="x" onPress={() => confirmUsedCandidate(match, false)}>
+                        Not this time
+                      </Pill>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </Card>
+                );
+              })}
+              <Text style={{ fontSize: 12, lineHeight: 18, color: t.colors.ink3, paddingBottom: 14 }}>
+                AI only found candidates. Your answer is the final evidence.
+              </Text>
+            </Card>
+          </>
         ) : null}
 
         {bankState === "loading" ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 20 }}>
             <ActivityIndicator color={t.colors.accD} />
-            <Text style={{ fontSize: 13.5, color: t.colors.ink3 }}>Checking your saved phrases for a strong fit…</Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3 }}>Checking your saved phrases for a strong fit…</Text>
           </Card>
         ) : null}
 
@@ -636,10 +876,10 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           <Card style={{ gap: 11 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
               <Icon name="bank" s={17} c="#E5484D" />
-              <Text style={{ flex: 1, fontSize: 14, color: "#E5484D", fontWeight: "700" }}>Couldn’t check your Phrase Bank.</Text>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: "#E5484D" }}>Couldn’t check your Phrase Bank.</Text>
             </View>
             <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>Your Focus coaching is still available above.</Text>
-            <Pill tone="tint" onPress={() => runBankSuggestion(transcript)}>
+            <Pill tone="tint" small onPress={() => runBankSuggestion(transcript)}>
               Try Phrase Bank again
             </Pill>
           </Card>
@@ -674,33 +914,31 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Icon name="bank" s={16} w={2} c="#FFFFFF" />
-              <Text style={{ flex: 1, fontSize: 11.5, fontWeight: "800", letterSpacing: 0.55, color: "rgba(255,255,255,0.88)" }}>
+              <Text style={{ flex: 1, fontSize: 11, fontWeight: "700", letterSpacing: 0.55, color: "rgba(255,255,255,0.88)" }}>
                 FROM YOUR PHRASE BANK
               </Text>
               {bankSuggestion.linkedToStory ? (
                 <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(255,255,255,0.16)" }}>
-                  <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#FFFFFF" }}>STORY MATCH</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#FFFFFF" }}>STORY MATCH</Text>
                 </View>
               ) : null}
             </View>
-            <Text style={{ fontSize: 12.5, fontWeight: "700", color: "rgba(255,255,255,0.72)", marginTop: 14 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.5, color: "rgba(255,255,255,0.72)", marginTop: 14 }}>
               WHEN YOU SAID
             </Text>
-            <Text style={{ fontSize: 14, lineHeight: 20, color: "rgba(255,255,255,0.84)", marginTop: 4 }}>“{bankSuggestion.said}”</Text>
-            <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 14 }} />
-            <Text style={{ fontSize: 18, lineHeight: 25, fontWeight: "800", color: "#FFFFFF" }}>“{bankSuggestion.text}”</Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: "rgba(255,255,255,0.84)", marginTop: 4 }}>“{bankSuggestion.said}”</Text>
+            <View style={{ height: hairline, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 14 }} />
+            <Text style={{ fontSize: 17, lineHeight: 24, fontWeight: "700", color: "#FFFFFF" }}>“{bankSuggestion.text}”</Text>
             {bankSuggestion.meaning ? (
-              <Text style={{ fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.78)", marginTop: 6 }}>{bankSuggestion.meaning}</Text>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: "rgba(255,255,255,0.78)", marginTop: 6 }}>{bankSuggestion.meaning}</Text>
             ) : null}
             {bankSuggestion.usageNote ? (
-              <Text style={{ fontSize: 12.5, lineHeight: 19, color: "rgba(255,255,255,0.72)", marginTop: 7 }}>
+              <Text style={{ fontSize: 12, lineHeight: 18, color: "rgba(255,255,255,0.72)", marginTop: 7 }}>
                 How you saved it · {bankSuggestion.usageNote}
               </Text>
             ) : null}
-            <Text style={{ fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.86)", marginTop: 11 }}>{bankSuggestion.why}</Text>
-            <Text style={{ fontSize: 11.5, fontWeight: "700", color: "rgba(255,255,255,0.66)", marginTop: 9 }}>
-              {bankSuggestion.sourceLabel}
-            </Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: "rgba(255,255,255,0.86)", marginTop: 11 }}>{bankSuggestion.why}</Text>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.66)", marginTop: 9 }}>{bankSuggestion.sourceLabel}</Text>
             <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
               <Pill tone="white" full icon="mic" onPress={tryBankPhrase} textStyle={{ color: t.colors.accD }}>
                 Try this phrase
@@ -712,29 +950,32 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           </LinearGradient>
         ) : null}
 
+        {/* Talking again is the point of the screen; when nothing was heard it
+            becomes the primary action instead of Done. */}
         <View style={{ flexDirection: "row", gap: t.gap, marginTop: 8 }}>
           {diagState === "done" && moments.length ? (
             <Pill
               tone="tint"
-              full
               onPress={() => {
                 setSel(0);
                 setPhase("moment");
               }}
+              style={{ flex: 1 }}
             >
               Review again
             </Pill>
           ) : (
-            <Pill tone="tint" full icon="mic" onPress={restart}>
+            <Pill tone={noWords ? "acc" : "tint"} icon="mic" onPress={restart} style={{ flex: 1 }}>
               Talk again
             </Pill>
           )}
-          <Pill full onPress={exitTalk}>
+          <Pill tone={noWords ? "tint" : "acc"} onPress={exitTalk} style={{ flex: noWords ? 1 : 1.4 }}>
             Done
           </Pill>
         </View>
       </Screen>
     );
+  }
 
   // ── moment ──
   if (phase === "moment" && mSel)
