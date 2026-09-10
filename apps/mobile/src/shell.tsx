@@ -119,9 +119,14 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const lastFocusedTab = useRef<TabId | null>(null);
+  // `nav.restore` seeds a stack *before* navigating, so the focus effect that
+  // normally clears the stack on a tab change would wipe it. The seed marks the
+  // tab it is meant for and is spent by the first focus there.
+  const seededTab = useRef<TabId | null>(null);
   const onTabFocused = useCallback((tab: TabId) => {
     if (lastFocusedTab.current !== null && lastFocusedTab.current !== tab) {
-      setStack([]);
+      if (seededTab.current === tab) seededTab.current = null;
+      else setStack([]);
     }
     lastFocusedTab.current = tab;
   }, []);
@@ -137,6 +142,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
           setSpeakKey((k) => k + 1);
         }
         router.navigate(TAB_PATHS[id]);
+      },
+      restore: ({ tab, stack: entries }) => {
+        seededTab.current = tab;
+        setStack(entries.map((entry) => ({ name: entry.name, props: entry.props ?? {} })));
+        router.navigate(TAB_PATHS[tab]);
       },
       startTalk: (ctx) => {
         setStack([]);
@@ -399,7 +409,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "situationAttempts":
       return <SituationAttemptsScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
     case "speakingNote":
-      return <SpeakingNoteScreen nav={nav} id={p.id as string} />;
+      return <SpeakingNoteScreen nav={nav} id={p.id as string} justPracticed={p.justPracticed === true} />;
     case "topicsList":
       return <TopicsListScreen nav={nav} />;
     case "sessionsList":
