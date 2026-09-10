@@ -709,3 +709,42 @@ is device-only). Both need a real-device pass.
 Gates: typecheck PASS · lint 0 errors / 15 warnings (baseline) · `export:ios` PASS.
 
 - 디자인 기획서: [Speaking Note 상세 (세부)](../product/speaking-note-design-brief.md) — 현재 화면의 시각적 실패 9가지, 실측 데이터, 상태 10종, 제약. PR #5로 들어간 구조는 유지하고 비주얼만 다시 잡기 위한 문서.
+
+## 2026-09-09 — Speaking Note detail, redesigned from `Speaking Note.html`
+
+Imported the returned design from Claude Design and rebuilt the surface. The IA
+from PR #5 is unchanged; every change below is visual or interaction.
+
+Nine visual failures named in the brief, and what the design did about each:
+
+| 문제 | 반영 |
+|---|---|
+| 본문 아래 빈 구멍 | 최소 높이 제거 — 내용에 맞춰 줄어든다 |
+| 본문이 편집 가능해 보이지 않음 | 카드로 감싸고 우측 상단 `Edit` |
+| 층이 2개로 읽힘 | 목표를 Newsreader 세리프로 — 시스템 본문과 서체로 갈림 |
+| 아래 절반이 균질 | 비어 있는 블록은 카드 대신 고스트 한 줄 |
+| Previous Attempts 정보 0 | `No fix suggested` 삭제, `—`만. 고스트가 설명 |
+| CTA가 제일 무거움 | 바+헤어라인 → 떠 있는 캡슐 + 그라디언트 frost |
+| 액센트를 부차적인 것에 다 씀 | 보조 액션 칩 2개 제거 |
+| placeholder가 콘텐츠처럼 보임 | faint로 낮추고 문구 교체 |
+| 저장 상태가 떠 있음 | BackBar 우측 고정 슬롯, `Saved`는 2초 후 사라짐 |
+
+New: a post-practice fix sheet (`justPracticed` + `repairSuggestion`), an
+`InputAccessoryView` bar saying "Autosaves as you type", and Previous Attempts
+promoted above Linked Phrases for the visit you arrive on from an attempt.
+
+**Fixed on the way through.** A live iOS appearance switch repainted `Text` but
+not `TextInput`, leaving the whole note dark-on-dark. The header block is now
+keyed on the scheme so it remounts. Pre-existing, not introduced here.
+
+**Reverted.** Registering `Newsreader36pt-Italic.ttf` for the design's italic
+goal line turned *every* serif in the app italic — iOS resolves a second file
+onto the same family regardless of the key it was registered under. The goal
+stays upright; serif-vs-system already separates it from the body.
+
+Gates: typecheck PASS · lint 0 errors / 15 warnings (baseline) · `export:ios` PASS.
+Verified on the simulator: light, dark (cold launch), and a live appearance
+switch. Not verified: the fix sheet and the accessory bar — no attempt carries a
+`repairSuggestion` yet, and the simulator won't raise a software keyboard.
+
+- 디자인 기획서 업데이트: [Speaking Note 상세 (세부)](../product/speaking-note-design-brief.md) §12 — 결정 8건과 디자인에서 벗어난 3건.

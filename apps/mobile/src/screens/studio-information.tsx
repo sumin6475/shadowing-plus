@@ -6,6 +6,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import {
   ActivityIndicator,
   Alert,
+  InputAccessoryView,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -16,6 +17,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -824,7 +826,7 @@ function useSituationTokens() {
     accent: dark ? "#5B8AF5" : "#3B6EE1",
     accentSoft: dark ? "rgba(91,138,245,0.18)" : "rgba(59,110,225,0.11)",
     onAccent: dark ? "#000" : "#fff",
-    warn: dark ? "#FF453A" : "#FF3B30",
+    warn: dark ? "#FF6961" : "#D70015",
   };
 }
 
@@ -1007,11 +1009,13 @@ function attemptDuration(seconds: number | null): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function AttemptRow({ c, date, note, duration, first, chevron, onPress }: { c: SituationTokens; date: string; note: string; duration: string; first?: boolean; chevron?: boolean; onPress?: () => void }) {
+function AttemptRow({ c, date, note, duration, first, chevron, highlight, quiet, strong, onPress }: { c: SituationTokens; date: string; note: string; duration: string; first?: boolean; chevron?: boolean; highlight?: boolean; quiet?: boolean; strong?: boolean; onPress?: () => void }) {
   const inner = (
     <View style={{ flexDirection: "row", alignItems: "baseline", gap: 10, paddingHorizontal: 18, paddingVertical: 11, borderTopWidth: first ? 0 : hairline, borderTopColor: c.hair }}>
-      <Text style={{ width: 52, fontSize: 13.5, color: c.faint, fontVariant: ["tabular-nums"] }}>{date}</Text>
-      <Text style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: c.sub }} numberOfLines={1}>{note}</Text>
+      <Text style={highlight
+        ? { fontSize: 13.5, fontWeight: "600", color: c.accent }
+        : { width: 52, fontSize: 13.5, color: c.faint, fontVariant: ["tabular-nums"] }}>{date}</Text>
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: quiet ? c.faint : strong ? c.ink : c.sub }} numberOfLines={1}>{note}</Text>
       <Text style={{ fontSize: 13.5, color: c.faint, fontVariant: ["tabular-nums"] }}>{duration}</Text>
       {chevron ? <Icon name="chev" s={12} w={1.8} c={c.faint} /> : null}
     </View>
@@ -1042,9 +1046,9 @@ function SituationEmpty({ c, title, body }: { c: SituationTokens; title?: string
   );
 }
 
-function BigCta({ c, icon, label, onPress, style }: { c: SituationTokens; icon: IconName; label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
+function BigCta({ c, icon, label, onPress }: { c: SituationTokens; icon: IconName; label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1, marginHorizontal: 16, marginTop: 16, marginBottom: 4 }, style]}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, marginHorizontal: 16, marginTop: 16, marginBottom: 4 })}>
       <View style={{ height: 50, borderRadius: 9999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: c.accent }}>
         <Icon name={icon} s={14} w={1.8} c={c.onAccent} />
         <Text style={{ fontSize: 16, fontWeight: "600", color: c.onAccent }}>{label}</Text>
@@ -1053,13 +1057,11 @@ function BigCta({ c, icon, label, onPress, style }: { c: SituationTokens; icon: 
   );
 }
 
-/** Soft "+ Add phrase" affordance used by the empty phrase card and by the
- *  Speaking Note action row (34pt — the middle of the three button heights). */
-function SoftAction({ c, icon, label, onPress, style }: { c: SituationTokens; icon?: IconName; label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
+/** Soft "+ Add phrase" affordance used by the empty phrase card. */
+function SoftAction({ c, label, onPress }: { c: SituationTokens; label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [{ alignSelf: "flex-start", marginTop: 12, opacity: pressed ? 0.65 : 1 }, style]}>
+    <Pressable onPress={onPress} style={({ pressed }) => ({ alignSelf: "flex-start", marginTop: 12, opacity: pressed ? 0.65 : 1 })}>
       <View style={{ height: 34, paddingHorizontal: 16, borderRadius: 9999, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.accentSoft }}>
-        {icon ? <Icon name={icon} s={13} w={1.8} c={c.accent} /> : null}
         <Text style={{ fontSize: 13.5, fontWeight: "600", color: c.accent }}>{label}</Text>
       </View>
     </Pressable>
@@ -1440,23 +1442,139 @@ function PhrasePicker({ open, note, linked, onClose, onChanged }: { open: boolea
 /** Autosave cadence. Long enough that a normal typing burst is one write,
  *  short enough that leaving the screen almost never has anything to flush. */
 const NOTE_SAVE_DEBOUNCE_MS = 800;
+/** How long `Saved ✓` stays before the slot goes quiet again. */
+const SAVED_BADGE_MS = 2000;
+const NOTE_ACCESSORY_ID = "speakingNoteAccessory";
 
 type NoteDraft = { title: string; goal: string; body: string };
 type SaveState = "idle" | "saving" | "saved" | "error";
+
+/** Transparent twin of a palette colour, so the CTA gradient fades into the
+ *  page instead of through grey. Handles both palettes' formats. */
+function clearOf(color: string): string {
+  if (color.startsWith("#")) {
+    const hex = color.length === 4
+      ? color.slice(1).split("").map((ch) => ch + ch).join("")
+      : color.slice(1, 7);
+    const n = parseInt(hex, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0)`;
+  }
+  const nums = color.match(/[\d.]+/g);
+  return nums && nums.length >= 3 ? `rgba(${nums[0]},${nums[1]},${nums[2]},0)` : "rgba(0,0,0,0)";
+}
 
 function SaveStatus({ c, state, onRetry }: { c: SituationTokens; state: SaveState; onRetry: () => void }) {
   if (state === "idle") return null;
   if (state === "error") {
     return (
       <Pressable onPress={onRetry} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-        <Text style={{ fontSize: 13, fontWeight: "600", color: c.warn }}>Not saved · Retry</Text>
+        <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 9999, backgroundColor: c.well, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: c.warn }}>Not saved · Retry</Text>
+        </View>
       </Pressable>
     );
   }
   return (
-    <Text style={{ fontSize: 13, fontWeight: "500", color: state === "saving" ? c.faint : c.sub }}>
-      {state === "saving" ? "Saving…" : "Saved ✓"}
+    <View style={{ height: 28, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 4 }}>
+      {state === "saved" ? <Icon name="check" s={11} w={1.8} c={c.faint} /> : null}
+      <Text style={{ fontSize: 12, fontWeight: "500", color: c.faint }}>{state === "saving" ? "Saving…" : "Saved"}</Text>
+    </View>
+  );
+}
+
+/** One quiet line of explanation where a card would be too much furniture. */
+function GhostLine({ c, children, top = 0 }: { c: SituationTokens; children: string; top?: number }) {
+  return (
+    <Text style={{ paddingHorizontal: TEXT_PUSH, paddingTop: 2, marginTop: top, fontSize: 13, lineHeight: 20, color: c.faint }}>
+      {children}
     </Text>
+  );
+}
+
+/** The body gets a card of its own — that container *is* the edit affordance.
+ *  Without it the open editor reads as static text. */
+function NoteBodyCard({ c, value, onChangeText, inputRef, onEdit }: { c: SituationTokens; value: string; onChangeText: (value: string) => void; inputRef: React.RefObject<TextInput | null>; onEdit: () => void }) {
+  return (
+    <View style={{ marginHorizontal: -4, marginTop: 18, paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: c.card, borderRadius: 22, borderWidth: hairline, borderColor: c.hair }}>
+      {value.trim() ? (
+        <Pressable onPress={onEdit} hitSlop={8} style={({ pressed }) => ({ alignSelf: "flex-end", marginBottom: 2, opacity: pressed ? 0.6 : 1 })}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Icon name="pen" s={11} w={1.8} c={c.accent} />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: c.accent }}>Edit</Text>
+          </View>
+        </Pressable>
+      ) : null}
+      <TextInput
+        ref={inputRef}
+        value={value}
+        onChangeText={onChangeText}
+        multiline
+        textAlignVertical="top"
+        inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
+        placeholder="Start with one line you’d actually say out loud."
+        placeholderTextColor={c.faint}
+        style={{ fontSize: 16, lineHeight: 25, color: c.ink, padding: 0 }}
+      />
+    </View>
+  );
+}
+
+/** The fix earned by the last attempt, shown under its row when expanded. */
+function RepairLine({ c, text }: { c: SituationTokens; text: string }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 8, paddingLeft: 80, paddingRight: 18, paddingTop: 2, paddingBottom: 13 }}>
+      <Icon name="bulb" s={14} w={1.5} c={c.accent} />
+      <Text style={{ flex: 1, fontSize: 13, lineHeight: 18, color: c.sub }}>{text}</Text>
+    </View>
+  );
+}
+
+/** Floating CTA over a gradient that fades into the page — no bar, no rule, so
+ *  the permanent control stays lighter than the content it sits over. */
+function PracticeCta({ c, label, bottom, onPress }: { c: SituationTokens; label: string; bottom: number; onPress: () => void }) {
+  const bg = c.t.colors.bg;
+  return (
+    <LinearGradient
+      colors={[clearOf(bg), bg, bg]}
+      locations={[0, 0.55, 1]}
+      pointerEvents="box-none"
+      style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 24, paddingTop: 12, paddingBottom: bottom }}
+    >
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+        <View style={[{ height: 50, borderRadius: 9999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: c.accent }, c.t.shadowCard]}>
+          <Icon name="mic" s={16} w={1.7} c={c.onAccent} />
+          <Text style={{ fontSize: 16, fontWeight: "600", color: c.onAccent }}>{label}</Text>
+        </View>
+      </Pressable>
+    </LinearGradient>
+  );
+}
+
+/** Coming back from an attempt, the fix arrives as its own sheet. One thing to
+ *  read, one button, and the note is underneath when it closes. */
+function FixSheet({ c, open, text, meta, onClose }: { c: SituationTokens; open: boolean; text: string | null; meta: string; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  if (!text) return null;
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
+        <Pressable onPress={onClose} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.3)" }} />
+        <View style={{ position: "absolute", left: 8, right: 8, bottom: 8, backgroundColor: c.card, borderRadius: 36, paddingTop: 12, paddingHorizontal: 20, paddingBottom: Math.max(insets.bottom, 14) }}>
+          <View style={{ alignSelf: "center", width: 36, height: 5, borderRadius: 9999, backgroundColor: c.well, marginBottom: 14 }} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Icon name="bulb" s={12} w={1.5} c={c.accent} />
+            <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.77, color: c.accent }}>THIS TIME, FIX ONE THING</Text>
+          </View>
+          <Serif style={{ fontSize: 19, lineHeight: 25, color: c.ink, marginTop: 7 }}>{text}</Serif>
+          <Text style={{ fontSize: 12, color: c.sub, marginTop: 8 }}>{meta}</Text>
+          <Pressable onPress={onClose} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, marginTop: 18 })}>
+            <View style={{ height: 50, borderRadius: 9999, alignItems: "center", justifyContent: "center", backgroundColor: c.accent }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: c.onAccent }}>Got it</Text>
+            </View>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1482,6 +1600,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
   const [openAttempt, setOpenAttempt] = useState<string | null>(null);
   const [allAttempts, setAllAttempts] = useState(false);
   const [keyboardUp, setKeyboardUp] = useState(false);
+  const [fixOpen, setFixOpen] = useState(false);
 
   // Autosave reads through refs so the debounce timer and the unmount flush
   // always see the latest draft without re-subscribing on every keystroke.
@@ -1505,13 +1624,20 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
         fetchStudioTopics(),
         fetchStudioSituations(),
       ]);
-      savedRef.current = found;
-      draftRef.current = { title: found.title, goal: found.goal, body: found.body };
-      setNote(found); setTitle(found.title); setGoal(found.goal); setBody(found.body);
+      // A Quick Note derives title and goal from the same sentence, so the two
+      // lines render as a stutter. Treat that goal as absent — the placeholder
+      // asks the better question. Nothing is written until a real edit.
+      const deduped = found.goal.trim() === found.title.trim() ? { ...found, goal: "" } : found;
+      savedRef.current = deduped;
+      draftRef.current = { title: deduped.title, goal: deduped.goal, body: deduped.body };
+      setNote(deduped); setTitle(deduped.title); setGoal(deduped.goal); setBody(deduped.body);
       setPhrases(linked); setAttempts(history); setTopics(allTopics); setSituations(allSituations); setError(null);
-      // Coming back from an attempt, the thing you want is the repair you just
-      // earned — open it rather than making the learner hunt for it.
-      if (justPracticed && history[0]) setOpenAttempt(history[0].id);
+      // Coming back from an attempt, the thing you want is the fix you just
+      // earned — present it, rather than making the learner hunt for it.
+      if (justPracticed && history[0]) {
+        setOpenAttempt(history[0].id);
+        if (history[0].repairSuggestion) setFixOpen(true);
+      }
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load this note."); }
   }, [id, justPracticed]);
   useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
@@ -1521,6 +1647,12 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
     const hide = Keyboard.addListener("keyboardWillHide", () => setKeyboardUp(false));
     return () => { show.remove(); hide.remove(); };
   }, []);
+
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const timer = setTimeout(() => setSaveState((current) => (current === "saved" ? "idle" : current)), SAVED_BADGE_MS);
+    return () => clearTimeout(timer);
+  }, [saveState]);
 
   const persist = useCallback(async () => {
     const base = savedRef.current;
@@ -1595,7 +1727,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
       <Screen>
         <BackBar onBack={nav.pop} />
         <SituationCenter c={c}>
-          <Serif style={{ fontSize: 20, color: c.ink }}>Couldn’t open this note</Serif>
+          <Serif style={{ fontSize: 20, color: c.ink }}>Couldn’t load this note</Serif>
           <Text style={{ fontSize: 13.5, lineHeight: 20, color: c.sub, textAlign: "center" }}>{error ?? "Note not found"}</Text>
           <Pill onPress={load}>Retry</Pill>
         </SituationCenter>
@@ -1604,112 +1736,142 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
   }
 
   const practice = () => startNotePractice(nav, { ...note, title, goal, body });
-  const crumb = `${note.topicName ?? "Topic"} / ${note.situationTitle ?? "Unsorted"}`;
-  const lastRepair = attempts.find((attempt) => attempt.repairSuggestion)?.repairSuggestion ?? null;
+  // Unsorted is the state worth naming; the Topic alone tells the learner
+  // nothing they can act on.
+  const crumb = note.situationTitle ? `${note.topicName ?? "Topic"} / ${note.situationTitle}` : "Unsorted";
   const shownAttempts = allAttempts ? attempts : attempts.slice(0, 3);
+  const hasRepairs = attempts.some((attempt) => attempt.repairSuggestion);
+  const newest = attempts[0] ?? null;
   const card = situationCard(c);
+
+  const phrasesBlock = (
+    <>
+      <SituationSection c={c} title="Linked Phrases" actionLabel="Link" actionIcon="plus" onAction={() => setPickerOpen(true)} />
+      {phrases.length ? (
+        <View style={card}>
+          {phrases.map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />)}
+        </View>
+      ) : (
+        <GhostLine c={c}>Pull in expressions you want ready when you say this.</GhostLine>
+      )}
+    </>
+  );
+
+  const attemptsBlock = (
+    <>
+      <SituationSection
+        c={c}
+        title="Previous Attempts"
+        actionLabel={attempts.length > 3 && !allAttempts ? "More" : undefined}
+        onAction={() => setAllAttempts(true)}
+      />
+      {attempts.length ? (
+        <>
+          <View style={card}>
+            {shownAttempts.map((attempt, index) => {
+              const repair = attempt.repairSuggestion;
+              const isNewest = attempt.id === newest?.id;
+              const expanded = openAttempt === attempt.id;
+              return (
+                <View key={attempt.id}>
+                  <AttemptRow
+                    c={c}
+                    first={index === 0}
+                    highlight={isNewest && Boolean(justPracticed)}
+                    date={isNewest && justPracticed ? "Just now" : attemptDate(attempt.createdAt)}
+                    note={repair ?? "—"}
+                    quiet={!repair}
+                    strong={Boolean(repair) && isNewest}
+                    duration={attemptDuration(attempt.durationSeconds)}
+                    onPress={repair ? () => setOpenAttempt((current) => (current === attempt.id ? null : attempt.id)) : undefined}
+                  />
+                  {expanded && repair ? <RepairLine c={c} text={repair} /> : null}
+                </View>
+              );
+            })}
+            {attempts.length > 3 && !allAttempts ? (
+              <MoreRow c={c} label={`${attempts.length - 3} more attempts`} onPress={() => setAllAttempts(true)} />
+            ) : null}
+          </View>
+          {!hasRepairs ? <GhostLine c={c} top={8}>After each practice, one thing to fix shows up here.</GhostLine> : null}
+        </>
+      ) : (
+        <GhostLine c={c}>None yet — your first practice lands here.</GhostLine>
+      )}
+    </>
+  );
 
   return (
     <>
       <View style={{ flex: 1 }}>
-        <Screen style={{ gap: 0 }} bottomPad={112}>
+        <Screen style={{ gap: 0 }} bottomPad={104}>
           <BackBar onBack={nav.pop} right={<SaveStatus c={c} state={saveState} onRetry={() => void persist()} />} />
 
-          <View style={{ paddingHorizontal: TEXT_PUSH }}>
+          {/* Keyed on the scheme: iOS repaints a live appearance switch for Text
+              but not for TextInput, which otherwise leaves the note dark on
+              dark. Remounting on that rare switch is cheaper than the bug. */}
+          <View key={c.dark ? "dark" : "light"} style={{ paddingHorizontal: TEXT_PUSH }}>
             <Pressable onPress={openOrganizer} hitSlop={6} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: 14, marginBottom: 6, opacity: pressed ? 0.6 : 1 })}>
-              <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent }}>{crumb.toUpperCase()}</Text>
-              <Icon name="chev" s={11} w={2} c={c.accent} />
+              <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: note.situationTitle ? c.accent : c.faint }}>{crumb.toUpperCase()}</Text>
+              <Icon name="chev" s={11} w={2} c={note.situationTitle ? c.accent : c.faint} />
             </Pressable>
             <TextInput
               value={title}
               onChangeText={(value) => editDraft("title", value)}
               multiline
+              inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
               placeholder="Untitled note"
               placeholderTextColor={c.faint}
-              style={{ fontFamily: "Newsreader", fontSize: 31, lineHeight: 35, color: c.ink, padding: 0 }}
+              style={{ fontFamily: "Newsreader", fontSize: 31, lineHeight: 35, letterSpacing: -0.31, color: c.ink, padding: 0 }}
             />
+            {/* Serif against the system-font body: the two lines read as
+                different kinds of text at a glance, without a form label. The
+                design asked for italic, but iOS resolves a second Newsreader
+                file onto the same family and turns every serif in the app
+                italic, so this stays upright. */}
             <TextInput
               value={goal}
               onChangeText={(value) => editDraft("goal", value)}
               multiline
-              placeholder="What should the listener understand?"
+              inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
+              placeholder="What should this sound like? One sentence."
               placeholderTextColor={c.faint}
-              style={{ fontSize: 17, fontWeight: "600", lineHeight: 23, color: c.sub, padding: 0, marginTop: 8 }}
+              style={{ fontFamily: "Newsreader", fontSize: 17, lineHeight: 23, color: c.sub, padding: 0, marginTop: 7 }}
             />
-            <View style={{ height: hairline, backgroundColor: c.hair, marginTop: 16 }} />
-            <TextInput
-              ref={bodyRef}
-              value={body}
-              onChangeText={(value) => editDraft("body", value)}
-              multiline
-              textAlignVertical="top"
-              placeholder="Write freely…"
-              placeholderTextColor={c.faint}
-              style={{ minHeight: 156, fontSize: 16, lineHeight: 25, color: c.ink, padding: 0, marginTop: 14 }}
-            />
-            {/* Two actions, not the spec's three: the sticky CTA below is the
-                same call as "Record idea" was, so the chip only competed with
-                it. What is left is one action per thing you can add. */}
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
-              <SoftAction c={c} icon="plus" label="Add thought" onPress={() => bodyRef.current?.focus()} />
-              <SoftAction c={c} icon="bank" label="Link phrase" onPress={() => setPickerOpen(true)} />
-            </View>
+            <NoteBodyCard c={c} value={body} onChangeText={(value) => editDraft("body", value)} inputRef={bodyRef} onEdit={() => bodyRef.current?.focus()} />
           </View>
 
-          <SituationSection c={c} title="Linked Phrases" actionLabel={phrases.length ? "Link" : undefined} actionIcon="plus" onAction={() => setPickerOpen(true)} />
-          <View style={card}>
-            {phrases.length ? (
-              phrases.map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />)
-            ) : (
-              <View style={{ paddingHorizontal: 20, paddingVertical: 22 }}>
-                <Text style={{ fontSize: 13, lineHeight: 19, color: c.sub }}>Bring saved language into this note, so practice has something to reach for.</Text>
-                <SoftAction c={c} label="+ Link phrase" onPress={() => setPickerOpen(true)} />
-              </View>
-            )}
-          </View>
-
-          <SituationSection c={c} title="Previous Attempts" />
-          {lastRepair ? <RepairNote c={c} lead="Last time: " body={lastRepair} /> : null}
-          <View style={card}>
-            {attempts.length ? (
-              <>
-                {shownAttempts.map((attempt, index) => (
-                  <View key={attempt.id}>
-                    <AttemptRow
-                      c={c}
-                      first={index === 0}
-                      date={attemptDate(attempt.createdAt)}
-                      note={attempt.repairSuggestion ? "One fix to try" : "No fix suggested"}
-                      duration={attemptDuration(attempt.durationSeconds)}
-                      chevron={Boolean(attempt.repairSuggestion)}
-                      onPress={attempt.repairSuggestion ? () => setOpenAttempt((current) => (current === attempt.id ? null : attempt.id)) : undefined}
-                    />
-                    {openAttempt === attempt.id && attempt.repairSuggestion ? (
-                      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-                        <RepairNote c={c} inset lead="" body={attempt.repairSuggestion} />
-                      </View>
-                    ) : null}
-                  </View>
-                ))}
-                {attempts.length > 3 && !allAttempts ? (
-                  <MoreRow c={c} label={`${attempts.length - 3} more attempts`} onPress={() => setAllAttempts(true)} />
-                ) : null}
-              </>
-            ) : (
-              <SituationEmpty c={c} title="No attempts yet" body="Say it out loud once. You get one thing to fix, then you say it again." />
-            )}
-          </View>
+          {/* Coming back from an attempt, the history is the reason you are
+              here — it outranks the phrase list for this visit. */}
+          {justPracticed ? <>{attemptsBlock}{phrasesBlock}</> : <>{phrasesBlock}{attemptsBlock}</>}
         </Screen>
 
-        {/* Sticky, because the loop is say → fix → say again and the CTA has to
-            be reachable from anywhere in the note. Hidden while typing so it
-            never sits under the keyboard. */}
         {!keyboardUp ? (
-          <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, paddingBottom: Math.max(insets.bottom, 14), backgroundColor: c.t.colors.bg, borderTopWidth: hairline, borderTopColor: c.hair }}>
-            <BigCta c={c} icon="mic" label="Start practice" onPress={practice} style={{ marginHorizontal: 0, marginTop: 0, marginBottom: 0 }} />
-          </View>
+          <PracticeCta
+            c={c}
+            label={justPracticed ? "Practice again" : "Start practice"}
+            bottom={Math.max(insets.bottom, 16)}
+            onPress={practice}
+          />
         ) : null}
       </View>
+      {Platform.OS === "ios" ? (
+        <InputAccessoryView nativeID={NOTE_ACCESSORY_ID}>
+          <View style={{ height: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, backgroundColor: c.t.colors.bg, borderTopWidth: hairline, borderTopColor: c.hair }}>
+            <Text style={{ fontSize: 13, color: c.faint }}>Autosaves as you type</Text>
+            <Pressable onPress={() => Keyboard.dismiss()} hitSlop={10}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: c.accent }}>Done</Text>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      ) : null}
+      <FixSheet
+        c={c}
+        open={fixOpen}
+        text={newest?.repairSuggestion ?? null}
+        meta={newest ? `Just now · ${attemptDuration(newest.durationSeconds)}` : ""}
+        onClose={() => setFixOpen(false)}
+      />
       <PhrasePicker open={pickerOpen} note={note} linked={phrases} onClose={() => setPickerOpen(false)} onChanged={() => void load()} />
       <Sheet open={organizeOpen} title="Organize note" subtitle="Topic is required. Situation can stay Unsorted until later." onClose={() => setOrganizeOpen(false)}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 12, gap: 16 }}>
