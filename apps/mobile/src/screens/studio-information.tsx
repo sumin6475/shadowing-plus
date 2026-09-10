@@ -1493,31 +1493,133 @@ function GhostLine({ c, children, top = 0 }: { c: SituationTokens; children: str
   );
 }
 
-/** The body gets a card of its own — that container *is* the edit affordance.
- *  Without it the open editor reads as static text. */
-function NoteBodyCard({ c, value, onChangeText, inputRef, onEdit }: { c: SituationTokens; value: string; onChangeText: (value: string) => void; inputRef: React.RefObject<TextInput | null>; onEdit: () => void }) {
+/** Four lines of body, whatever the note's real length is. The card is a
+ *  preview and not an editor: the full text lives in the modal, so the screen
+ *  keeps one shape and the sections below it never move. */
+const NOTE_PREVIEW_LINE = 25;
+const NOTE_PREVIEW_H = NOTE_PREVIEW_LINE * 4;
+/** Run-in of the fade that hides text sliding under the Edit chip, plus the
+ *  chip's own width. Wider than the chip so the last word dissolves rather
+ *  than stopping dead against it. */
+const NOTE_EDIT_FADE_W = 92;
+/** Yoga measures a text against the space it is given, so inside the clip box
+ *  every note reports as exactly fitting. Measuring inside a box far taller
+ *  than the clip is what makes "is this truncated?" answerable at all. */
+const NOTE_MEASURE_H = 4000;
+
+function NoteBodyCard({ c, value, onOpen }: { c: SituationTokens; value: string; onOpen: (editing: boolean) => void }) {
+  const [fullHeight, setFullHeight] = useState(0);
+  const filled = value.trim().length > 0;
+  const clipped = filled && fullHeight > NOTE_PREVIEW_H + 1;
   return (
-    <View style={{ marginHorizontal: -4, marginTop: 18, paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: c.card, borderRadius: 22, borderWidth: hairline, borderColor: c.hair }}>
-      {value.trim() ? (
-        <Pressable onPress={onEdit} hitSlop={8} style={({ pressed }) => ({ alignSelf: "flex-end", marginBottom: 2, opacity: pressed ? 0.6 : 1 })}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Icon name="pen" s={11} w={1.8} c={c.accent} />
-            <Text style={{ fontSize: 13, fontWeight: "600", color: c.accent }}>Edit</Text>
+    <Pressable onPress={() => onOpen(!filled)} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+      <View style={{ marginHorizontal: -4, marginTop: 18, paddingVertical: 16, paddingHorizontal: 18, backgroundColor: c.card, borderRadius: 22, borderWidth: hairline, borderColor: c.hair }}>
+        <View style={{ height: filled ? NOTE_PREVIEW_H : undefined, overflow: "hidden" }}>
+          <View style={filled ? { height: NOTE_MEASURE_H } : undefined}>
+            <Text
+              onLayout={(event) => setFullHeight(event.nativeEvent.layout.height)}
+              style={{ fontSize: 16, lineHeight: NOTE_PREVIEW_LINE, color: filled ? c.ink : c.faint }}
+            >
+              {filled ? value : "Start with one line you’d actually say out loud."}
+            </Text>
           </View>
-        </Pressable>
-      ) : null}
-      <TextInput
-        ref={inputRef}
-        value={value}
-        onChangeText={onChangeText}
-        multiline
-        textAlignVertical="top"
-        inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
-        placeholder="Start with one line you’d actually say out loud."
-        placeholderTextColor={c.faint}
-        style={{ fontSize: 16, lineHeight: 25, color: c.ink, padding: 0 }}
-      />
-    </View>
+          {filled ? (
+            <>
+              {/* The first line runs the full width and is faded back out under
+                  the chip — RN has no float, so the exclusion is optical. */}
+              <LinearGradient
+                colors={[clearOf(c.card), c.card, c.card]}
+                locations={[0, 0.62, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                pointerEvents="none"
+                style={{ position: "absolute", top: 0, right: 0, width: NOTE_EDIT_FADE_W, height: NOTE_PREVIEW_LINE }}
+              />
+              <Pressable onPress={() => onOpen(true)} hitSlop={10} style={({ pressed }) => ({ position: "absolute", top: 0, right: 0, height: NOTE_PREVIEW_LINE, justifyContent: "center", opacity: pressed ? 0.6 : 1 })}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Icon name="pen" s={11} w={1.8} c={c.accent} />
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: c.accent }}>Edit</Text>
+                </View>
+              </Pressable>
+            </>
+          ) : null}
+          {clipped ? (
+            <LinearGradient
+              colors={[clearOf(c.card), c.card]}
+              pointerEvents="none"
+              style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 30 }}
+            />
+          ) : null}
+        </View>
+        {clipped ? <Text style={{ fontSize: 13, color: c.faint, marginTop: 6 }}>… more</Text> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+/** The whole note, full screen. It opens as something to read; one tap on the
+ *  text turns it into something to write, and the check turns it back — so the
+ *  keyboard is never up unless the learner asked for it. */
+function NoteEditorModal({ c, open, value, editing, onEditingChange, onChangeText, onDone }: { c: SituationTokens; open: boolean; value: string; editing: boolean; onEditingChange: (editing: boolean) => void; onChangeText: (value: string) => void; onDone: () => void }) {
+  const insets = useSafeAreaInsets();
+  const inputRef = useRef<TextInput>(null);
+  // The mode lives with the opener, which already knows whether this was a tap
+  // on the body (read) or on Edit (write) — so no effect has to sync it back.
+  const setEditing = onEditingChange;
+  // Focus after the slide-in, or iOS opens the keyboard against a moving view.
+  useEffect(() => {
+    if (!open || !editing) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 90);
+    return () => clearTimeout(timer);
+  }, [open, editing]);
+  return (
+    <Modal visible={open} animationType="slide" onRequestClose={onDone}>
+      <View style={{ flex: 1, backgroundColor: c.t.colors.bg }}>
+        <View style={{ height: 52, marginTop: insets.top, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.72, color: c.faint }}>{editing ? "EDITING" : "NOTE"}</Text>
+          <Pressable
+            onPress={() => { if (editing) { setEditing(false); Keyboard.dismiss(); } else setEditing(true); }}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={editing ? "Done editing" : "Edit note"}
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+          >
+            <View style={{ width: 34, height: 34, borderRadius: 9999, alignItems: "center", justifyContent: "center", backgroundColor: editing ? c.accent : c.well }}>
+              <Icon name={editing ? "check" : "pen"} s={15} w={2} c={editing ? c.onAccent : c.accent} />
+            </View>
+          </Pressable>
+        </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          {editing ? (
+            <TextInput
+              ref={inputRef}
+              value={value}
+              onChangeText={onChangeText}
+              multiline
+              textAlignVertical="top"
+              placeholder="Start with one line you’d actually say out loud."
+              placeholderTextColor={c.faint}
+              style={{ flex: 1, paddingHorizontal: 24, paddingTop: 6, fontSize: 17, lineHeight: 27, color: c.ink }}
+            />
+          ) : (
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 6, paddingBottom: 24 }}>
+              <Pressable onPress={() => setEditing(true)}>
+                <Text style={{ fontSize: 17, lineHeight: 27, color: value.trim() ? c.ink : c.faint }}>
+                  {value.trim() ? value : "Start with one line you’d actually say out loud."}
+                </Text>
+              </Pressable>
+            </ScrollView>
+          )}
+          <View style={{ paddingHorizontal: 24, paddingTop: 10, paddingBottom: Math.max(insets.bottom, 14) }}>
+            <Pressable onPress={onDone} accessibilityRole="button" style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+              <View style={{ height: 50, borderRadius: 9999, alignItems: "center", justifyContent: "center", backgroundColor: c.accent }}>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: c.onAccent }}>Done</Text>
+              </View>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -1583,7 +1685,6 @@ function FixSheet({ c, open, text, meta, onClose }: { c: SituationTokens; open: 
 export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav: Nav; justPracticed?: boolean }) {
   const c = useSituationTokens();
   const insets = useSafeAreaInsets();
-  const bodyRef = useRef<TextInput>(null);
   const [note, setNote] = useState<SpeakingNote | null>(null);
   const [phrases, setPhrases] = useState<NotePhrase[]>([]);
   const [attempts, setAttempts] = useState<PracticeAttempt[]>([]);
@@ -1603,6 +1704,8 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
   const [allAttempts, setAllAttempts] = useState(false);
   const [keyboardUp, setKeyboardUp] = useState(false);
   const [fixOpen, setFixOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorEditing, setEditorEditing] = useState(false);
 
   // Autosave reads through refs so the debounce timer and the unmount flush
   // always see the latest draft without re-subscribing on every keystroke.
@@ -1840,7 +1943,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
               placeholderTextColor={c.faint}
               style={{ fontFamily: "Newsreader", fontSize: 17, lineHeight: 23, color: c.sub, padding: 0, marginTop: 7 }}
             />
-            <NoteBodyCard c={c} value={body} onChangeText={(value) => editDraft("body", value)} inputRef={bodyRef} onEdit={() => bodyRef.current?.focus()} />
+            <NoteBodyCard c={c} value={body} onOpen={(editing) => { setEditorEditing(editing); setEditorOpen(true); }} />
           </View>
 
           {/* Coming back from an attempt, the history is the reason you are
@@ -1867,6 +1970,15 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
           </View>
         </InputAccessoryView>
       ) : null}
+      <NoteEditorModal
+        c={c}
+        open={editorOpen}
+        value={body}
+        editing={editorEditing}
+        onEditingChange={setEditorEditing}
+        onChangeText={(value) => editDraft("body", value)}
+        onDone={() => { setEditorOpen(false); void persist(); }}
+      />
       <FixSheet
         c={c}
         open={fixOpen}

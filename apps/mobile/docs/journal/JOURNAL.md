@@ -750,3 +750,13 @@ switch. Not verified: the fix sheet and the accessory bar — no attempt carries
 - 디자인 기획서 업데이트: [Speaking Note 상세 (세부)](../product/speaking-note-design-brief.md) §12 — 결정 8건과 디자인에서 벗어난 3건.
 
 - 폰트 통일: Studio 플로우의 섹션 헤더를 Newsreader → 시스템 볼드 22/800으로. Studio 홈(`Recent notes`)과 같은 관용구가 되고, 세리프는 각 화면의 히어로 제목에만 남는다. `SituationSection` 하나만 바꾸면 Situation 상세·Speaking Note·푸시된 목록 화면이 함께 따라온다.
+
+- 노트 본문: 카드는 4줄 고정 프리뷰(미리보기 전용)로, 편집은 전체 화면 모달로 분리.
+  `Edit`는 첫 줄과 같은 라인에 절대배치하고, 그 아래로 가로 그라디언트를 깔아 칩
+  쪽으로 길어진 글자가 사라지게 했다(RN에 float가 없어 배제는 광학적으로 처리).
+  넘치면 하단이 세로로 페이드되고 아래에 옅은 회색 `… more`. 카드 아무 곳이나
+  누르면 읽기 모드 모달, `Edit`을 누르면 바로 편집 모드로 열린다. 모달은 오른쪽 위
+  토글(펜 ↔ 체크)로 읽기/쓰기를 바꾸고 하단 `Done`으로 닫는다.
+  **함정:** Yoga는 텍스트를 "주어진 공간" 기준으로 측정하므로 클립 박스(100pt) 안에서
+  재면 어떤 길이의 노트든 `layout.height === 100`으로 나와 잘림을 감지할 수 없다.
+  측정용 래퍼를 `height: 4000`으로 두고 그 안에서 재도록 바꿔서 해결.
