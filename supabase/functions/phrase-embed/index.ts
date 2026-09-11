@@ -1,6 +1,8 @@
 // Embed one or more owned Phrase Bank rows. MOBILE-ONLY.
 // The OpenAI key never reaches the app. Callers send ids only; RLS decides
 // which rows exist. learner_note is personal memo and is not embedded.
+// Reads phrase_items.meaning (was meaning_ko) — deploy only after migration
+// 030_phrase_meaning_rename_expand.sql is applied, or the select 42703s.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "text-embedding-3-small";
@@ -25,11 +27,11 @@ const asId = (value: unknown) => {
 
 function embedInput(row: {
   text: string;
-  meaning_ko: string | null;
+  meaning: string | null;
   usage_note: string | null;
 }) {
   const text = clamp(row.text, 240);
-  const meaning = clamp(row.meaning_ko, 500);
+  const meaning = clamp(row.meaning, 500);
   const note = clamp(row.usage_note, 500);
   return [
     `Phrase: ${text}`,
@@ -75,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: rows, error: loadError } = await supabase
     .from("phrase_items")
-    .select("id, text, meaning_ko, usage_note")
+    .select("id, text, meaning, usage_note")
     .eq("status", "ready")
     .in("id", ids);
   if (loadError) return json({ error: "Couldn’t load these phrases." }, 500);

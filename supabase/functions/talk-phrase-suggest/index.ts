@@ -1,6 +1,8 @@
 // Bank-only phrase retrieval after a Speak session. MOBILE-ONLY.
 // Vector Top-K narrows the owned bank; the model may choose one exact id
 // or return null. It cannot generate language outside the learner's Phrase Bank.
+// Reads phrase_items.meaning (was meaning_ko) — deploy only after migration
+// 030_phrase_meaning_rename_expand.sql is applied, or the select 42703s.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "gpt-4o-mini";
@@ -41,7 +43,7 @@ interface Candidate {
 interface PhraseRow {
   id: string;
   text: string;
-  meaning_ko: string | null;
+  meaning: string | null;
   usage_note: string | null;
   source_context: unknown;
   phrase_story_links?: unknown;
@@ -242,7 +244,7 @@ function rankRows(
       return {
         id: row.id,
         text: clamp(row.text, 240),
-        meaning: clamp(row.meaning_ko, 200),
+        meaning: clamp(row.meaning, 200),
         note: clamp(row.usage_note, 240),
         sourceLabel: sourceLabel(row.source_context),
         linkedToStory: linked,
@@ -338,7 +340,7 @@ Deno.serve(async (req: Request) => {
   if (!apiKey) return json({ error: "OpenAI is not configured." }, 500);
 
   const phraseSelect =
-    "id, text, meaning_ko, usage_note, source_context, phrase_story_links(story_id, source, used_count, last_used_at), phrase_events(event, story_id, created_at)";
+    "id, text, meaning, usage_note, source_context, phrase_story_links(story_id, source, used_count, last_used_at), phrase_events(event, story_id, created_at)";
 
   const loadByIds = async (ids: string[]): Promise<PhraseRow[]> => {
     if (!ids.length) return [];

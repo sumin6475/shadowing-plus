@@ -1,5 +1,10 @@
 // Private photo OCR or learner-triggered text drafting. Uploaded images and
 // supplied context are passed through for this request only and never stored.
+//
+// The gloss and the context translation come back in the LEARNER'S language,
+// not Korean. The app is N:1 (many first languages : one target, English), so
+// the client sends `first_language` — the server cannot look it up, because L1
+// lives on the device, not in a column.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "gpt-4o-mini";
@@ -11,6 +16,29 @@ const CORS: Record<string, string> = {
 
 const clean = (value: unknown, limit: number) =>
   (typeof value === "string" ? value : "").replace(/\s+/g, " ").trim().slice(0, limit);
+
+/** Learner first languages the app offers (mirror of src/lib/first-language.ts).
+ *  Keys are lowercased because the lookup lowercases: the client sends the L1
+ *  code verbatim and one of them is script-tagged (`zh-Hant`), so a
+ *  case-sensitive map would miss it and silently gloss in the fallback
+ *  language. */
+const L1_NAMES: Record<string, string> = {
+  en: "English",
+  ko: "Korean",
+  "zh-hant": "Traditional Chinese (as written in Taiwan)",
+  ja: "Japanese",
+  es: "Spanish",
+  ru: "Russian",
+};
+
+/** Back-compat: builds shipped before 2026-09 send no `first_language`, and
+ *  every one of those users is Korean. Drop this default once they age out. */
+const DEFAULT_L1 = "ko";
+
+function learnerLanguage(value: unknown): string {
+  const code = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return L1_NAMES[code] ?? L1_NAMES[DEFAULT_L1];
+}
 
 Deno.serve(async (req: Request) => {
   const json = (body: unknown, status = 200) =>
@@ -27,7 +55,8 @@ Deno.serve(async (req: Request) => {
   } = await supabase.auth.getUser();
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  const body = (await req.json().catch(() => null)) as { image_base64?: unknown; mime_type?: unknown; context_text?: unknown; phrase_text?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { image_base64?: unknown; mime_type?: unknown; context_text?: unknown; phrase_text?: unknown; first_language?: unknown } | null;
+  const lang = learnerLanguage(body?.first_language);
   const base64 = typeof body?.image_base64 === "string" ? body.image_base64 : "";
   const suppliedContext = clean(body?.context_text, 1600);
   const suppliedPhrase = clean(body?.phrase_text, 240);
@@ -51,8 +80,8 @@ Deno.serve(async (req: Request) => {
               content:
                 "Read the visible English learning text in this photo. Preserve the wording and line order. " +
                 "Choose one short reusable expression or sentence pattern that appears EXACTLY in the extracted text. " +
-                "Never invent missing words. Give a short Korean meaning and a brief English usage note. " +
-                "Translate the complete extracted context naturally into Korean without omitting clauses. " +
+                `Never invent missing words. Give a short ${lang} meaning and a brief English usage note. ` +
+                `Translate the complete extracted context naturally into ${lang} without omitting clauses. ` +
                 "If text is unclear, return what is legible and lower confidence. Return JSON only.",
             },
             {
@@ -60,7 +89,7 @@ Deno.serve(async (req: Request) => {
               content: [
                 {
                   type: "text",
-                  text: 'Return {"context_text":"all legible text","context_translation":"natural Korean translation of all context_text","suggested_phrase":"exact substring","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short Korean meaning","usage_note":"brief English nuance","confidence":0.0}.',
+                  text: `Return {"context_text":"all legible text","context_translation":"natural ${lang} translation of all context_text","suggested_phrase":"exact substring","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short ${lang} meaning","usage_note":"brief English nuance","confidence":0.0}.`,
                 },
                 { type: "image_url", image_url: { url: `data:${mime};base64,${base64}`, detail: "high" } },
               ],
@@ -73,14 +102,14 @@ Deno.serve(async (req: Request) => {
                 content:
                   "Draft learning details for the exact English phrase the learner chose. Never rewrite, correct, expand, or replace the phrase. " +
                   "Use the optional context only to disambiguate its meaning and usage. Classify it as word, phrasal_verb, pattern, idiom, or phrase. " +
-                  "Give a short Korean meaning and a brief English usage note. If context is supplied, translate all of it naturally into Korean. Return JSON only.",
+                  `Give a short ${lang} meaning and a brief English usage note. If context is supplied, translate all of it naturally into ${lang}. Return JSON only.`,
               },
               {
                 role: "user",
                 content:
                   'Phrase (return exactly): ' + suppliedPhrase +
                   (suppliedContext ? '\nContext: ' + suppliedContext : "") +
-                  '\nReturn {"context_text":"the supplied context or empty string","context_translation":"natural Korean translation of all context, or empty string","suggested_phrase":"the exact supplied phrase","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short Korean meaning","usage_note":"brief English nuance","confidence":1.0}.',
+                  `\nReturn {"context_text":"the supplied context or empty string","context_translation":"natural ${lang} translation of all context, or empty string","suggested_phrase":"the exact supplied phrase","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short ${lang} meaning","usage_note":"brief English nuance","confidence":1.0}.`,
               },
             ]
           : [
@@ -90,12 +119,12 @@ Deno.serve(async (req: Request) => {
                 "Help a learner capture useful English from text they supplied. Preserve their text exactly. " +
                 "Choose one short reusable expression or sentence pattern that appears EXACTLY in the supplied text. " +
                 "If the input is already a short expression, use the whole expression. Never rewrite or invent words. " +
-                "Give a short Korean meaning, a brief English usage note, and a natural Korean translation of the complete supplied text. Return JSON only.",
+                `Give a short ${lang} meaning, a brief English usage note, and a natural ${lang} translation of the complete supplied text. Return JSON only.`,
             },
             {
               role: "user",
               content:
-                'Text: ' + suppliedContext + '\nReturn {"context_text":"the supplied text","context_translation":"natural Korean translation of all supplied text","suggested_phrase":"exact substring","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short Korean meaning","usage_note":"brief English nuance","confidence":0.0}.',
+                'Text: ' + suppliedContext + `\nReturn {"context_text":"the supplied text","context_translation":"natural ${lang} translation of all supplied text","suggested_phrase":"exact substring","kind":"word|phrasal_verb|pattern|idiom|phrase","meaning":"short ${lang} meaning","usage_note":"brief English nuance","confidence":0.0}.`,
             },
             ],
     }),
