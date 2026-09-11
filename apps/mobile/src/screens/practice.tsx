@@ -53,6 +53,9 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
   const t = useTheme();
   const [stories, setStories] = useState<PhraseStoryRef[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Bumped on every open so the sheet below remounts: its search box, story list
+  // and in-flight link all start clean without a prop-to-state reset effect.
+  const [pickerSeq, setPickerSeq] = useState(0);
   const p = item;
 
   const load = useCallback(async () => {
@@ -67,7 +70,14 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
     }
   }, [p]);
   useEffect(() => {
-    void load();
+    // `load`'s no-phrase/sample branch calls setStories synchronously, which
+    // react-hooks/set-state-in-effect flags when the effect body invokes it
+    // directly. Yielding one microtask first keeps the same load, the same
+    // trigger and the same deps — only the render-phase setState is gone.
+    void (async () => {
+      await Promise.resolve();
+      await load();
+    })();
   }, [load]);
 
   if (!p) {
@@ -117,7 +127,14 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
             <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.accD }}>Quick Practice</Text>
           </Pressable>
 
-          <Sect title="Related stories" action="+ Add story" onAction={() => setPickerOpen(true)} />
+          <Sect
+            title="Related stories"
+            action="+ Add story"
+            onAction={() => {
+              setPickerSeq((n) => n + 1);
+              setPickerOpen(true);
+            }}
+          />
 
           {stories === null ? (
             <View style={{ paddingVertical: 28, alignItems: "center" }}>
@@ -157,7 +174,7 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
                       opacity: pressed ? 0.8 : 1,
                     })}
                   >
-                    <Icon name="mic" s={17} c="#fff" />
+                    <Icon name="mic" s={17} c={t.colors.onAcc} />
                   </Pressable>
                 </Card>
               ))}
@@ -169,6 +186,7 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
         </Stagger>
       </Screen>
       <AddStorySheet
+        key={pickerSeq}
         open={pickerOpen}
         phrase={p}
         linked={stories ?? []}
@@ -203,12 +221,27 @@ function AddStorySheet({
   const [q, setQ] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // No query reset here: the parent keys this sheet by open count, so each open
+  // is a fresh mount with q already "". That kills the one-frame flash of the
+  // previous query that a post-await setQ("") caused, and leaves this effect with
+  // nothing but the fetch — which commits only after `await`, in its own render.
+  // The trade: `all` is null on reopen, so the spinner shows for the refetch
+  // instead of the previous list. Correct either way (linked stories are filtered
+  // out by linkedIds), and the list can have changed since the last open.
   useEffect(() => {
     if (!open) return;
-    setQ("");
-    fetchAllStories()
-      .then(setAll)
-      .catch(() => setAll([]));
+    let alive = true;
+    void (async () => {
+      try {
+        const next = await fetchAllStories();
+        if (alive) setAll(next);
+      } catch {
+        if (alive) setAll([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [open]);
 
   const linkedIds = useMemo(() => new Set(linked.map((s) => s.id)), [linked]);
@@ -471,7 +504,7 @@ export function QuickRehearsalScreen({
             <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, textAlign: "center" }}>“{coach}”</Text>
           )}
           {speech.error ? (
-            <Text style={{ fontSize: 12.5, color: "#E5484D", textAlign: "center", marginTop: 6 }}>{speech.error}</Text>
+            <Text style={{ fontSize: 12.5, color: t.colors.warn, textAlign: "center", marginTop: 6 }}>{speech.error}</Text>
           ) : null}
         </View>
       </View>
@@ -495,18 +528,22 @@ export function QuickRehearsalScreen({
             })}
           >
             {!replayStatus.isLoaded ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={t.colors.onAcc} />
             ) : (
-              <Icon name={replayStatus.playing ? "pause" : "play"} s={18} c="#fff" />
+              <Icon name={replayStatus.playing ? "pause" : "play"} s={18} c={t.colors.onAcc} />
             )}
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff" }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.onAcc }}>
               {!replayStatus.isLoaded ? "Preparing your take…" : replayStatus.playing ? "Pause" : "Play your take"}
             </Text>
           </Pressable>
         ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
-          <Pill tone="white" onPress={() => void toggleRecord()} style={{ minWidth: 132, justifyContent: "center" }}>
+          <Pill tone="card" onPress={() => void toggleRecord()} style={{ minWidth: 132, justifyContent: "center" }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {/* Record dot: a 14px non-text fill, so it stays on the literal red
+                  rather than t.colors.warn. Non-text contrast only needs 3:1 and
+                  #E5484D already clears it at 3.91:1 — retinting would shift the
+                  design for no accessibility gain. Error TEXT uses the token. */}
               <View
                 style={{
                   width: 14,

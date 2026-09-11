@@ -63,6 +63,10 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
     }
   }, []);
 
+  // Kicked off in a later task, not in this body: load() itself commits nothing
+  // before its first await, but react-hooks/set-state-in-effect cannot see
+  // through an async callee, and load has to stay a callable function because
+  // pull-to-refresh awaits it. The timer costs one tick before the fetch starts.
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
@@ -310,7 +314,7 @@ function TransportButton({
 }) {
   const t = useTheme();
   const bg = primary || active ? t.colors.acc : t.colors.card;
-  const fg = primary || active ? "#fff" : t.colors.ink2;
+  const fg = primary || active ? t.colors.onAcc : t.colors.ink2;
   return (
     <Pressable
       accessibilityRole="button"
@@ -473,29 +477,45 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
     });
   }, [audioPlayer, videoPlayer]);
 
-  const load = useCallback(async () => {
-    if (!id) {
-      setLines([]);
-      setMedia({ audioUrl: null, videoUrl: null });
-      return;
-    }
-    setError(null);
-    try {
-      const [segs, m] = await Promise.all([
-        fetchSegments(id),
-        fetchClipMedia(id).catch(() => ({ audioUrl: null, videoUrl: null }) as ClipMedia),
-      ]);
-      setLines(segs);
-      setMedia(m);
-      setLine(0);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t load the transcript.");
-    }
-  }, [id]);
+  // Bumped by Retry to re-run the transcript load below.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
+  // Load the transcript + media. The fetch lives in the effect so every commit
+  // lands after `await`; the body itself sets no state, which is the cascading
+  // render the lint rule is about. Nothing is deferred — the requests start now.
+  // `alive` drops a response that lost its race with unmount or another Retry.
+  // There is no "no id" reset any more: the shell keys LibItem by clip id, so id
+  // never changes under a mounted instance, and a missing id simply leaves lines
+  // null — the render below treats that as the empty state rather than loading.
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!id) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const [segs, m] = await Promise.all([
+          fetchSegments(id),
+          fetchClipMedia(id).catch(() => ({ audioUrl: null, videoUrl: null }) as ClipMedia),
+        ]);
+        if (!alive) return;
+        setLines(segs);
+        setMedia(m);
+        setLine(0);
+        setError(null);
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : "Couldn’t load the transcript.");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [id, reloadNonce]);
+
+  // Retry is a press handler: clearing the error here is immediate (so the
+  // spinner comes back on the press) and cascades nothing.
+  const retryLoad = useCallback(() => {
+    setError(null);
+    setReloadNonce((n) => n + 1);
+  }, []);
 
   const total = lines && lines.length ? lines[lines.length - 1].end : null;
   const cur = lines && lines.length ? lines[Math.min(line, lines.length - 1)] : null;
@@ -671,7 +691,8 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
     });
   };
 
-  const mediaLoading = media === null;
+  // No id means there is nothing to fetch, so the media header skips loading.
+  const mediaLoading = !!id && media === null;
   const showDock = cur != null && lines != null && lines.length > 0;
 
   return (
@@ -713,7 +734,7 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
       </View>
 
       <View style={{ flex: 1, paddingHorizontal: 24, minHeight: 0 }}>
-        {lines === null && !error ? (
+        {!!id && lines === null && !error ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <ActivityIndicator color={t.colors.acc} />
           </View>
@@ -722,7 +743,7 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
             <Card style={{ alignItems: "center", paddingVertical: 24 }}>
               <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Couldn’t load the transcript</Text>
               <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
-              <Pill tone="tint" small onPress={load} style={{ marginTop: 14 }}>
+              <Pill tone="tint" small onPress={retryLoad} style={{ marginTop: 14 }}>
                 Retry
               </Pill>
             </Card>
@@ -761,13 +782,13 @@ export function LibItem({ id, nav, title, covered = false }: { id?: string; titl
               onPress={toggleLoop}
               accessibilityLabel={loopLine ? "Stop repeating this sentence" : "Repeat this sentence"}
             >
-              <Icon name="repeat" s={17} w={2} c={loopLine ? "#fff" : t.colors.ink2} />
+              <Icon name="repeat" s={17} w={2} c={loopLine ? t.colors.onAcc : t.colors.ink2} />
             </TransportButton>
             <TransportButton size={44} onPress={() => step(-1)} accessibilityLabel="Previous sentence">
               <Icon name="back" s={17} w={2.2} c={t.colors.ink2} />
             </TransportButton>
             <TransportButton size={64} primary disabled={!playable} onPress={togglePlay} accessibilityLabel={playing ? "Pause" : "Play"}>
-              <Icon name={playing ? "pause" : "play"} s={26} c="#fff" />
+              <Icon name={playing ? "pause" : "play"} s={26} c={t.colors.onAcc} />
             </TransportButton>
             <TransportButton size={44} onPress={() => step(1)} accessibilityLabel="Next sentence">
               <View style={{ transform: [{ scaleX: -1 }] }}>

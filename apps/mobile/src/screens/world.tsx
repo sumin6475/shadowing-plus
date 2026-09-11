@@ -10,8 +10,10 @@ import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import Svg, { Circle } from "react-native-svg";
 
 import { deleteTalkSessionAudio, talkAudioUri } from "@/lib/talk-audio";
+import { PREVIEW_FEATURES } from "@/lib/release-flags";
 import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
 import { TalkFeedbackDetail } from "@/components/talk-feedback-detail";
+import { BRAND } from "@/design/mobile-tokens";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, Chip as InputChip, EnterStagger, ExpandableCopy, Header, Icon, Pill, Screen, Sect, Serif, Stagger, SwipeRow, confirmDelete, toneColor } from "@/design/ui";
 import { fetchSessionPhraseMemory, fetchStoryPhrases, type PhraseItem, type SessionPhraseLink, type SessionRecommendation } from "@/lib/phrases";
@@ -67,9 +69,12 @@ function storyIdeasFor(domainName?: string | null): string[] {
   return ["My design background", "Current project", "A recent challenge", "Something I learned"];
 }
 
+// Folio donut rings. The blue slot follows the brand ramp, but BRAND.light
+// rather than acc — acc is near-black in light mode and would flatten the
+// three pastels beside it.
 const FOLIO_RING: Record<string, string> = {
   sage: "#8FB56A",
-  sky: "#3B6EE1",
+  sky: BRAND.light,
   blush: "#C9A0C4",
   butter: "#E0B85C",
 };
@@ -271,6 +276,7 @@ function StoryListRow({
   if (!onArchive) return row;
   return (
     <SwipeRow
+      deleteLabel="Archive"
       onDelete={() =>
         confirmDelete({
           title: "Archive this story?",
@@ -378,14 +384,14 @@ function NewStorySheet({
           </View>
         </>
       )}
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", marginTop: 10 }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, marginTop: 10 }}>{error}</Text> : null}
       <Pill
         full
         icon="plus"
         onPress={() => void save(title)}
         style={{ opacity: title.trim() && (domainId || picked) && !saving ? 1 : 0.45, marginTop: 16 }}
       >
-        {saving ? <ActivityIndicator color="#fff" /> : "Add to studio"}
+        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : "Add to studio"}
       </Pill>
     </StudioSheet>
   );
@@ -452,7 +458,7 @@ function NewVersionSheet({
           </Pressable>
         ))}
       </View>
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", marginTop: 10 }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, marginTop: 10 }}>{error}</Text> : null}
     </StudioSheet>
   );
 }
@@ -670,17 +676,26 @@ export function TopicsListScreen({ nav }: { nav: Nav }) {
   const [collection, setCollection] = useState<StudioDomain[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
+  const reload = useCallback(async () => {
     try {
       setCollection(await fetchStudioCollection());
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load topics.");
     }
   }, []);
+  // Split so the mount effect calls `reload` (first statement awaits) while the
+  // Retry/refresh path keeps clearing the error synchronously — ErrorCard has no
+  // spinner, so that clear is the only feedback a tap gives (set-state-in-effect).
+  const load = useCallback(async () => {
+    setError(null);
+    await reload();
+  }, [reload]);
   useEffect(() => {
-    load();
-  }, [load]);
+    void (async () => {
+      await reload();
+    })();
+  }, [reload]);
 
   return (
     <Screen>
@@ -716,6 +731,9 @@ export function TopicsListScreen({ nav }: { nav: Nav }) {
         })}
         </Stagger>
       )}
+      {/* Recommendations is still a "coming soon" placeholder — App Review
+          reads that as an incomplete app, so it ships only in dev/preview. */}
+      {PREVIEW_FEATURES ? (
       <EnterStagger i={1 + (collection?.length ?? 0)}>
       <Card onPress={() => nav.push("recs")} style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 }}>
         <View style={{ width: 38, height: 38, borderRadius: 16, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
@@ -728,6 +746,7 @@ export function TopicsListScreen({ nav }: { nav: Nav }) {
         <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
       </Card>
       </EnterStagger>
+      ) : null}
     </Screen>
   );
 }
@@ -816,17 +835,26 @@ export function SessionsScreen({ nav, stacked }: { nav: Nav; stacked?: boolean }
   const [sessions, setSessions] = useState<TalkSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
+  const reload = useCallback(async () => {
     try {
       setSessions(await fetchTalkSessions());
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load your sessions.");
     }
   }, []);
+  // Split so the mount effect calls `reload` (first statement awaits) while the
+  // Retry/refresh path keeps clearing the error synchronously — ErrorCard has no
+  // spinner, so that clear is the only feedback a tap gives (set-state-in-effect).
+  const load = useCallback(async () => {
+    setError(null);
+    await reload();
+  }, [reload]);
   useEffect(() => {
-    load();
-  }, [load]);
+    void (async () => {
+      await reload();
+    })();
+  }, [reload]);
 
   // Optimistically drop the row, then delete; restore it if the delete fails.
   const removeSession = useCallback(async (id: string) => {
@@ -998,7 +1026,7 @@ export function SessionDetail({ session, nav }: { session?: TalkSession; nav: Na
                   onPress={togglePlay}
                   style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}
                 >
-                  <Icon name={status.playing ? "pause" : "play"} s={22} c="#fff" />
+                  <Icon name={status.playing ? "pause" : "play"} s={22} c={t.colors.onAcc} />
                 </Pressable>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Your recording</Text>
@@ -1120,17 +1148,26 @@ export function DomainScreen({ id, name, nav }: { id: string; name?: string; nav
   const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setError(null);
+  const reload = useCallback(async () => {
     try {
       setStories(await fetchStories(id));
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load stories.");
     }
   }, [id]);
+  // Split so the mount effect calls `reload` (first statement awaits) while the
+  // Retry/refresh path keeps clearing the error synchronously — ErrorCard has no
+  // spinner, so that clear is the only feedback a tap gives (set-state-in-effect).
+  const load = useCallback(async () => {
+    setError(null);
+    await reload();
+  }, [reload]);
   useEffect(() => {
-    load();
-  }, [load]);
+    void (async () => {
+      await reload();
+    })();
+  }, [reload]);
 
   const removeStory = useCallback(
     async (storyId: string) => {
@@ -1403,7 +1440,12 @@ export function StoryScreen({
   const [sessions, setSessions] = useState<TalkSession[] | null>(null);
   const [storyTitle, setStoryTitle] = useState(title ?? "Story");
   const [summary, setSummary] = useState<string | null>(null);
-  const [summaryReady, setSummaryReady] = useState(false);
+  // Ready once the story fetch for THIS id has settled. Derived instead of a
+  // boolean the loader resets to false up front, because that reset was the
+  // mount effect's synchronous setState (react-hooks/set-state-in-effect). An id
+  // change now flips this back to false during render, same as the reset did.
+  const [summaryForId, setSummaryForId] = useState<string | null>(null);
+  const summaryReady = summaryForId === id;
   const [domainId, setDomainId] = useState<string | null>(domainIdProp ?? null);
   const [domainName, setDomainName] = useState<string | null>(domainNameProp ?? null);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -1414,14 +1456,20 @@ export function StoryScreen({
   const [phrases, setPhrases] = useState<{ id: string; text: string; translation: string | null }[] | null>(null);
   const phraseSpeech = usePhraseSpeech();
 
-  const load = useCallback(async () => {
-    setError(null);
+  const reload = useCallback(async () => {
     try {
       setMessages(await fetchMessages(id));
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load versions.");
     }
   }, [id]);
+  // Retry and the post-save refresh keep the synchronous error clear; the mount
+  // effect below calls `reload`, which touches no state before its first await.
+  const load = useCallback(async () => {
+    setError(null);
+    await reload();
+  }, [reload]);
   // Sessions load on their own — a failure here shouldn't hide the versions.
   const loadSessions = useCallback(async () => {
     try {
@@ -1438,7 +1486,6 @@ export function StoryScreen({
     }
   }, [id]);
   const loadStory = useCallback(async () => {
-    setSummaryReady(false);
     try {
       const story = await fetchStory(id);
       if (story) {
@@ -1463,15 +1510,14 @@ export function StoryScreen({
     } catch {
       // Title from nav is enough to show the built-in prompt.
     } finally {
-      setSummaryReady(true);
+      setSummaryForId(id);
     }
   }, [id]);
   useEffect(() => {
-    load();
-    loadSessions();
-    loadStory();
-    loadPhrases();
-  }, [load, loadSessions, loadStory, loadPhrases]);
+    void (async () => {
+      await Promise.all([reload(), loadSessions(), loadStory(), loadPhrases()]);
+    })();
+  }, [reload, loadSessions, loadStory, loadPhrases]);
 
   // Optimistically drop the row, then delete; restore it if the delete fails.
   const removeSession = useCallback(async (sid: string) => {
@@ -1732,21 +1778,32 @@ export function MessageScreen({ id, label, storyId, storyTitle, nav }: { id?: st
     beatsRef.current = beats;
   }, [beats]);
 
-  const load = useCallback(async () => {
+  const reload = useCallback(async () => {
     if (!id) {
+      // No outline to fetch — the empty state IS the answer here.
       setBeats([]);
       return;
     }
-    setError(null);
     try {
       setBeats(await fetchBeats(id));
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn’t load this outline.");
     }
   }, [id]);
+  // `load` stays async and keeps the synchronous error clear: the retry button
+  // and the three `await load()` recovery paths both depend on that. The mount
+  // effect calls `reload` instead, so nothing sets state before the fetch
+  // resolves (react-hooks/set-state-in-effect).
+  const load = useCallback(async () => {
+    setError(null);
+    await reload();
+  }, [reload]);
   useEffect(() => {
-    load();
-  }, [load]);
+    void (async () => {
+      await reload();
+    })();
+  }, [reload]);
 
   const editLocal = useCallback((beatId: string, text: string) => {
     setBeats((bs) => (bs ?? []).map((b) => (b.id === beatId ? { ...b, text } : b)));
@@ -1941,7 +1998,7 @@ export function MessageCreate({ storyId, storyTitle, nav }: { storyId?: string; 
           </Pressable>
         ))}
       </View>
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingHorizontal: 4, marginTop: 10 }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, paddingHorizontal: 4, marginTop: 10 }}>{error}</Text> : null}
     </Screen>
   );
 }

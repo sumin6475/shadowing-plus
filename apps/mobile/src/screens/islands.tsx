@@ -58,7 +58,11 @@ export function IslandDetail({ id, nav }: { id: string; nav: Nav }) {
             <Card key={p.id} onPress={() => nav.push("phrase", { id: p.id })} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{p.txt}</Text>
-                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>{p.ko}</Text>
+                {/* `mean` (an English gloss), not `ko`: the learner's first language is
+                    per-user (ko/zh-Hant/ja/es/ru/en — ADR 0022, src/lib/first-language.ts),
+                    so a Korean-only column can't be the subtitle. SP is mock data; when
+                    this screen moves to real rows the field is PhraseItem.translation. */}
+                <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>{p.mean}</Text>
               </View>
               <Badge s={p.status} />
             </Card>
@@ -153,7 +157,7 @@ export function IslandCreate({ domainId, domainName, nav }: { domainId?: string;
         </>
       )}
 
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingHorizontal: 4 }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, paddingHorizontal: 4 }}>{error}</Text> : null}
       <Pill full icon="sparkle" onPress={save} style={{ opacity: canSave ? 1 : 0.45, marginTop: 4 }}>
         {saving ? <ActivityIndicator color="#fff" /> : "Start this story"}
       </Pill>

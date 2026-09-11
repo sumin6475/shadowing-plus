@@ -274,10 +274,15 @@ export default function SignInScreen() {
                     },
                   ]}
                 >
+                  {/* Foreground follows the fill: `canSubmit` goes false while
+                      busy, so a fixed onAccent would hide the spinner for the
+                      whole auth round trip. */}
                   {busy ? (
-                    <ActivityIndicator color="#ffffff" />
+                    <ActivityIndicator color={canSubmit ? c.onAccent : c.onAccentSoft} />
                   ) : (
-                    <Text style={styles.buttonText}>{mode === "sign_up" ? "Create account" : "Sign in"}</Text>
+                    <Text style={[styles.buttonText, { color: canSubmit ? c.onAccent : c.onAccentSoft }]}>
+                      {mode === "sign_up" ? "Create account" : "Sign in"}
+                    </Text>
                   )}
                 </Pressable>
 
@@ -423,7 +428,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   buttonText: {
-    color: "#ffffff",
     fontSize: TypeScale.headline,
     fontWeight: "600",
   },

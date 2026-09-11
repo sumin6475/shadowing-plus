@@ -30,6 +30,7 @@ export type IconName =
   | "text"
   | "clip"
   | "star"
+  | "starOutline"
   | "life"
   | "wave2"
   | "globe"
@@ -47,6 +48,10 @@ export type IconName =
   | "link"
   | "grip"
   | "repeat";
+
+// One 5-point star sized to this set's own scale, so the filled and hollow
+// favorite states are the same shape and never jump when they swap.
+const STAR_D = "M12 3.4l2.29 5.45 5.89.49-4.47 3.87 1.35 5.75L12 15.9l-5.06 3.06 1.35-5.75L3.82 9.34l5.89-.49z";
 
 interface IconProps {
   name: IconName;
@@ -234,8 +239,9 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
       );
       break;
     case "star":
-      // Filled star — the favorite indicator. Fills with the passed colour.
-      body = <Path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill={c} stroke="none" />;
+    case "starOutline":
+      // Favorite indicator. Both states stroke at the set weight; only the fill differs.
+      body = <Path {...common} d={STAR_D} fill={name === "star" ? c : "none"} />;
       break;
     case "life":
       // Lifebuoy — the "Stuck / I need help" control.

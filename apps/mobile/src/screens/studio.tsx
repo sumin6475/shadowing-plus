@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
+import { BRAND } from "@/design/mobile-tokens";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, EnterStagger, Icon, Pill, Screen, Serif, StatTile } from "@/design/ui";
 import { useAuth } from "@/lib/auth";
@@ -17,7 +18,10 @@ import {
 import type { Nav } from "./nav";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
-const TOPIC_TONES = ["#3B6EE1", "#7BA7F6", "#C5D4A0", "#E8C37A", "#E7B8B4", "#A9C7FF"];
+// Donut slices. The first slot anchors the ring in brand navy; BRAND.light
+// rather than acc, because acc is near-black in light mode and would swallow
+// the five pastels it sits beside.
+const TOPIC_TONES = [BRAND.light, "#7BA7F6", "#C5D4A0", "#E8C37A", "#E7B8B4", "#A9C7FF"];
 
 function stageCounts(phrases: PhraseItem[]) {
   return {

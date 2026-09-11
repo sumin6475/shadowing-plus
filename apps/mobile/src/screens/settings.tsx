@@ -1,8 +1,11 @@
-// settings.tsx — Profile & Settings: a centered identity header, Library
-// (kept as a BETA entry, not a bottom-bar tab), then grouped preference rows.
-// Speaking-world metrics live on My Studio now. "Log out" stays wired to
-// the real Supabase sign-out. Unshipped rows hide their fake right-side
-// value and show a Coming soon chip (same as Library BETA).
+// settings.tsx — Profile & Settings: a centered identity header, then grouped
+// preference rows. Speaking-world metrics live on My Studio now. "Log out"
+// stays wired to the real Supabase sign-out.
+//
+// Nothing unshipped renders here: the "Coming soon" rows and their prop were
+// deleted, and Library is behind PREVIEW_FEATURES (its other entry point, the
+// clip link in phrases.tsx, is gated by the same flag). A placeholder reaching
+// the App Store binary is a Guideline 2.1 rejection — keep it that way.
 import { useState, type ReactNode } from "react";
 import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
 
@@ -17,6 +20,8 @@ import { dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practic
 import { englishLevel, ENGLISH_LEVEL_LABEL } from "@/lib/english-level";
 import { fetchPhrases } from "@/lib/phrases";
 import { openLegalUrl, TERMS_OF_SERVICE_URL } from "@/lib/legal";
+import { resetProductTour } from "@/lib/product-tour";
+import { PREVIEW_FEATURES } from "@/lib/release-flags";
 import { reminderSummary } from "@/lib/reminders";
 import { talkFocus, TALK_FOCUS_LABEL } from "@/lib/talk-focus";
 import { themePref, THEME_PREF_LABEL } from "@/lib/theme-pref";
@@ -39,7 +44,6 @@ function SettingsRow({
   detail,
   last,
   danger,
-  comingSoon,
   onPress,
 }: {
   t: Theme;
@@ -48,22 +52,19 @@ function SettingsRow({
   detail?: string;
   last?: boolean;
   danger?: boolean;
-  comingSoon?: boolean;
   onPress?: () => void;
 }) {
-  const fg = danger ? "#E5484D" : t.colors.ink;
+  // Destructive row LABEL is text, so it takes the AA-compliant theme slot.
+  // The 21px icon below stays on the raw red: at that size it is a
+  // non-text glyph, already past the 3:1 floor, so converting it would
+  // only shift the design. No danger row passes an icon today anyway.
+  const fg = danger ? t.colors.warn : t.colors.ink;
   const row = (
     <>
       {icon ? <Icon name={icon} s={21} w={1.8} c={danger ? "#E5484D" : t.colors.ink2} /> : null}
       <Text style={{ flex: 1, fontSize: 16.5, fontWeight: "500", color: fg }}>{label}</Text>
-      {comingSoon ? (
-        <StatusChip t={t} label="Coming soon" />
-      ) : (
-        <>
-          {detail ? <Text style={{ fontSize: 15, color: t.colors.ink3 }}>{detail}</Text> : null}
-          {danger ? null : <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />}
-        </>
-      )}
+      {detail ? <Text style={{ fontSize: 15, color: t.colors.ink3 }}>{detail}</Text> : null}
+      {danger ? null : <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />}
     </>
   );
   const style = {
@@ -74,7 +75,7 @@ function SettingsRow({
     borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
     borderBottomColor: t.colors.sep,
   };
-  if (onPress && !comingSoon) {
+  if (onPress) {
     return (
       <Pressable onPress={onPress} style={style}>
         {row}
@@ -194,20 +195,26 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         </Pressable>
       </View>
 
-      {/* Library — kept as a BETA entry (off the bottom bar for the first launch) */}
-      <Card onPress={() => nav.push("library")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <Icon name="book" s={22} w={1.8} c={t.colors.ink2} />
-        <Text style={{ fontSize: 16.5, fontWeight: "600", color: t.colors.ink }}>Library</Text>
-        <StatusChip t={t} label="BETA" />
-        <View style={{ flex: 1 }} />
-        <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-      </Card>
+      {/* Library is the personal/TestFlight surface only. It has TWO entry
+          points and both are flag-gated: this card, and the clip source row on
+          the phrase detail screen (phrases.tsx — "In context" → `libItem`), so
+          a release build has no route into it. Any new link to `library` or
+          `libItem` must be gated the same way, or the App Store build reaches
+          the unfinished screen (Guideline 2.1, App Completeness). */}
+      {PREVIEW_FEATURES ? (
+        <Card onPress={() => nav.push("library")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Icon name="book" s={22} w={1.8} c={t.colors.ink2} />
+          <Text style={{ fontSize: 16.5, fontWeight: "600", color: t.colors.ink }}>Library</Text>
+          <StatusChip t={t} label="BETA" />
+          <View style={{ flex: 1 }} />
+          <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
+        </Card>
+      ) : null}
 
       <SettingsGroup t={t} title="Preferences">
         <SettingsRow t={t} icon="translate" label="English level" detail={ENGLISH_LEVEL_LABEL[englishLevel()]} onPress={() => nav.push("englishLevel")} />
         <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("firstLanguage")} />
         <SettingsRow t={t} icon="sparkle" label="Feedback focus" detail={TALK_FOCUS_LABEL[talkFocus()]} onPress={() => nav.push("feedbackFocus")} />
-        <SettingsRow t={t} icon="mic" label="My mirror" comingSoon />
         <SettingsRow t={t} icon="contrast" label="Theme" detail={THEME_PREF_LABEL[themePref()]} onPress={() => nav.push("themePref")} last />
       </SettingsGroup>
 
@@ -219,19 +226,25 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
           detail={formatDailySpeakingGoal(dailySpeakingGoalMinutes(session?.user?.user_metadata))}
           onPress={() => nav.push("dailySpeakingGoal")}
         />
-        <SettingsRow t={t} icon="bulb" label="Hints while speaking" comingSoon />
-        <SettingsRow t={t} icon="text" label="Phrases per day" detail={String(phrasesPerDay())} onPress={() => nav.push("phrasesPerDay")} />
-        <SettingsRow t={t} icon="gauge" label="Playback speed" comingSoon last />
+        <SettingsRow t={t} icon="text" label="Phrases per day" detail={String(phrasesPerDay())} onPress={() => nav.push("phrasesPerDay")} last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Notifications">
-        <SettingsRow t={t} icon="bell" label="Reminders" detail={reminderSummary()} onPress={() => nav.push("reminders")} />
-        <SettingsRow t={t} icon="calendar" label="Weekly recap" comingSoon last />
+        <SettingsRow t={t} icon="bell" label="Reminders" detail={reminderSummary()} onPress={() => nav.push("reminders")} last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Account">
         <SettingsRow t={t} icon="export" label="Export my phrases" detail={exporting ? "Preparing…" : undefined} onPress={() => void exportPhrases()} />
         <SettingsRow t={t} icon="help" label="Help & feedback" onPress={openFeedbackMail} />
+        <SettingsRow
+          t={t}
+          icon="bulb"
+          label="Show tips again"
+          onPress={() => {
+            void resetProductTour();
+            Alert.alert("Tips are back on", "Open Today to see the walkthrough again.");
+          }}
+        />
         <SettingsRow t={t} icon="shield" label="Privacy" onPress={() => nav.push("privacy")} />
         <SettingsRow t={t} icon="text" label="Terms of Service" onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)} />
         <SettingsRow t={t} label="Log out" danger onPress={() => signOut()} />

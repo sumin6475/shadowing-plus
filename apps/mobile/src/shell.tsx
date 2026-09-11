@@ -29,7 +29,7 @@ import { IslandDetail, IslandCreate } from "@/screens/islands";
 import { LibraryScreen, LibItem } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
 import { SpeakingStudioScreen } from "@/screens/studio";
-import { SituationAttemptsScreen, SituationPhrasesScreen, SpeakingNoteScreen, StudioHomeScreen, StudioSituationScreen, StudioTopicScreen } from "@/screens/studio-information";
+import { AllSituationsScreen, SituationAttemptsScreen, SituationPhrasesScreen, SpeakingNoteScreen, StudioHomeScreen, StudioSituationScreen, StudioTopicScreen } from "@/screens/studio-information";
 import { EditProfileScreen, EnglishLevelScreen, FeedbackFocusScreen, FirstLanguageScreen, PhrasesPerDayScreen, DailySpeakingGoalScreen, ThemeScreen } from "@/screens/edit-profile";
 import { RemindersScreen } from "@/screens/reminders";
 import { PrivacyScreen } from "@/screens/privacy";
@@ -417,6 +417,8 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <TopicsListScreen nav={nav} />;
     case "sessionsList":
       return <SessionsScreen nav={nav} stacked />;
+    case "situationsList":
+      return <AllSituationsScreen nav={nav} initialFilter={p.filter as string | undefined} />;
   }
 }
 

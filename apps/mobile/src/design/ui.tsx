@@ -1,10 +1,11 @@
 // ui.tsx — shared primitives ported from sp-theme.jsx: Card, Hero, Block, Pill,
 // Chip, Badge, Avatar, Header, BackBar, Sect, Screen, Wave, StatTile, TabBar.
-import { Children as ReactChildren, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Children as ReactChildren, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
 import {
   Alert,
   Animated,
   Easing,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,15 +29,23 @@ import { Image } from "expo-image";
 import { useAuth } from "@/lib/auth";
 import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-photo";
 import { statusStageLabel } from "@/lib/phrases";
+import { firstLanguage } from "@/lib/first-language";
 
 import { Icon, type IconName } from "./icon";
-import { Motif, TypeScale } from "./mobile-tokens";
+import { BRAND, Gradients, Motif, TypeScale } from "./mobile-tokens";
 import { SERIF, hairline, statusColors, useTheme, type Theme } from "./theme";
 
 export { Icon } from "./icon";
 export type { IconName } from "./icon";
 
 export type Tone = "butter" | "sky" | "sage" | "blush" | "acc" | "accS" | "soft";
+
+/** LinearGradient's `colors` needs a >=2 tuple, but the shared `Gradients.*`
+ *  ramps are plain string[] — re-form the two required stops instead of casting. */
+export function gradientStops(colors: string[]): readonly [string, string, ...string[]] {
+  const [first, second, ...rest] = colors;
+  return [first, second, ...rest];
+}
 
 export function toneColor(t: Theme, name: string): string {
   const map: Record<string, string> = {
@@ -58,13 +67,64 @@ export function toneColor(t: Theme, name: string): string {
 // this only nudges the overall serif scale up.
 const SERIF_SCALE = 1.1;
 
+// Newsreader draws Latin only (564 glyphs). For text in another script, use a
+// serif that actually has the glyphs instead of letting iOS cascade that line
+// into the system SANS. Both faces below ship with iOS, so they cost no bundle
+// size. Korean and Chinese have no serif on iOS (a free one is 16–23 MB to
+// bundle), so they keep today's behavior: Newsreader, cascading to the system
+// font. Measured and decided in docs/release/first-language-readiness.md §3.4.
+const SERIF_SYSTEM = "ui-serif"; // New York: Latin, Cyrillic, Vietnamese
+const SERIF_MINCHO = "Hiragino Mincho ProN"; // Japanese
+const KANA = /[\u3040-\u30ff\u31f0-\u31ff]/;
+const CYRILLIC = /[\u0400-\u04ff]/;
+const HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
+interface SerifFace {
+  fontFamily: string;
+  /** Newsreader's small x-height needs SERIF_SCALE; the other faces don't. */
+  scale: number;
+  /** Negative tracking suits a Latin serif; it crowds CJK. */
+  tracking: boolean;
+}
+
+const NEWSREADER_FACE: SerifFace = { fontFamily: SERIF, scale: SERIF_SCALE, tracking: true };
+
+/** The serif that can draw `text`. Han without kana is ambiguous — Chinese and
+ *  Japanese share those code points but not their glyph shapes — so the
+ *  learner's first language decides. Mincho on Chinese text would show a
+ *  Taiwanese learner Japanese letterforms. */
+function serifFace(text: string): SerifFace {
+  if (Platform.OS !== "ios") return NEWSREADER_FACE;
+  if (KANA.test(text) || (HAN.test(text) && firstLanguage() === "ja")) {
+    return { fontFamily: SERIF_MINCHO, scale: 1, tracking: false };
+  }
+  if (CYRILLIC.test(text)) return { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true };
+  return NEWSREADER_FACE;
+}
+
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  return "";
+}
+
+/** Font family + tracking for a serif TextInput, following what the learner
+ *  types — a note title can be in any language. */
+export function serifInputFace(text: string, tracking: number): TextStyle {
+  const face = serifFace(text);
+  return { fontFamily: face.fontFamily, letterSpacing: face.tracking ? tracking : 0 };
+}
+
 export function Serif({ children, style, numberOfLines }: { children: ReactNode; style?: StyleProp<TextStyle>; numberOfLines?: number }) {
+  const face = serifFace(textOf(children));
   const flat = StyleSheet.flatten(style) as TextStyle | undefined;
   const scaled: TextStyle = {};
-  if (typeof flat?.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * SERIF_SCALE);
-  if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * SERIF_SCALE);
+  if (face.scale !== 1) {
+    if (typeof flat?.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * face.scale);
+    if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * face.scale);
+  }
   return (
-    <Text numberOfLines={numberOfLines} style={[{ fontFamily: SERIF, letterSpacing: -0.2 }, style, scaled]}>
+    <Text numberOfLines={numberOfLines} style={[{ fontFamily: face.fontFamily, letterSpacing: face.tracking ? -0.2 : 0 }, style, scaled]}>
       {children}
     </Text>
   );
@@ -229,16 +289,20 @@ export function Hero({
     borderRadius: t.r,
     padding: t.padc + 9,
     overflow: "hidden",
+    // Dark mode only: the navy ramp would otherwise melt into the #000 page.
+    ...(t.dark ? { borderWidth: hairline, borderColor: "rgba(255,255,255,0.10)" } : null),
     ...t.shadowLg,
   };
   const inner = (
     <>
       <LinearGradient
-        colors={t.dark ? ["#4C7EF0", "#2E56BC"] : ["#5B8CFF", "#2F62E8"]}
+        colors={gradientStops(Gradients.brand)}
         start={{ x: 0.1, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
+      {/* Bloom only — the old bottom-left navy lobe (#142878) sat between the
+          two brand darks and was invisible against them. */}
       <View
         style={{
           position: "absolute",
@@ -247,18 +311,7 @@ export function Hero({
           width: 160,
           height: 160,
           borderRadius: 80,
-          backgroundColor: "rgba(255,255,255,0.16)",
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          left: -28,
-          bottom: -48,
-          width: 120,
-          height: 120,
-          borderRadius: 60,
-          backgroundColor: "rgba(20,40,120,0.12)",
+          backgroundColor: "rgba(255,255,255,0.11)",
         }}
       />
       {children}
@@ -317,7 +370,12 @@ export function Block({
 }
 
 // ── Pill (capsule button) ──────────────────────────────────────────────────
-type PillTone = "acc" | "dark" | "soft" | "white" | "ghost" | "tint";
+type PillTone = "acc" | "dark" | "soft" | "white" | "card" | "ghost" | "tint";
+// Scheme-independent light capsule used by tone="white". Kept off the theme on
+// purpose: this capsule is drawn on the brand gradient, which is the same navy
+// ramp in light and dark, so its fill must not track the color scheme.
+const PILL_LIGHT_BG = "#FFFFFF";
+const PILL_LIGHT_FG = BRAND.dark;
 export function Pill({
   children,
   onPress,
@@ -339,10 +397,18 @@ export function Pill({
 }) {
   const t = useTheme();
   const tones: Record<PillTone, { bg: string; fg: string; shadow?: boolean }> = {
-    acc: { bg: t.colors.acc, fg: "#fff" },
+    acc: { bg: t.colors.acc, fg: t.colors.onAcc },
     dark: { bg: t.colors.pill, fg: "#fff" },
     soft: { bg: t.colors.accS, fg: t.colors.accD },
-    white: { bg: t.colors.card, fg: t.colors.ink, shadow: true },
+    // `white` means "a light capsule sitting on a brand surface" — it must NOT
+    // follow t.colors.card into dark mode (#1C1C1E), which measures 1.16:1 on
+    // the Hero's #0D1A3B end and 2.14:1 on its #344E91 end and simply vanishes.
+    // Fixed pair in both schemes: #FFFFFF fill (17.1:1 on #0D1A3B, 7.5:1 on
+    // #344E91) with BRAND.dark label on it (17.1:1).
+    white: { bg: PILL_LIGHT_BG, fg: PILL_LIGHT_FG, shadow: true },
+    // What `white` used to be. For a raised capsule on the ordinary page
+    // background, where a fixed #FFFFFF fill would shout in dark mode.
+    card: { bg: t.colors.card, fg: t.colors.ink, shadow: true },
     ghost: { bg: "transparent", fg: t.colors.ink2 },
     tint: { bg: t.colors.soft, fg: t.colors.ink },
   };
@@ -373,6 +439,9 @@ export function Pill({
         { transform: [{ scale: fx.scale }] },
       ]}
     >
+      {/* `tv.fg` reaches a string child only — RN does not cascade color across a
+          View. A non-string child must color itself, and must be re-checked when
+          a tone's foreground changes. */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
         {icon ? <Icon name={icon} s={small ? 15 : 17} w={2} c={tv.fg} /> : null}
         {typeof children === "string" ? (
@@ -605,6 +674,7 @@ export function Screen({
   refreshControl,
   scrollEnabled = true,
   onScroll,
+  scrollRef,
 }: {
   children: ReactNode;
   noPad?: boolean;
@@ -616,6 +686,9 @@ export function Screen({
   scrollEnabled?: boolean;
   /** Scroll events (throttled) — e.g. incremental list loading near the end. */
   onScroll?: ScrollViewProps["onScroll"];
+  /** Handle on the underlying ScrollView — e.g. the product tour scrolling a
+   *  coach-mark target into view. Purely additive; nothing else reads it. */
+  scrollRef?: Ref<ScrollView>;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -625,6 +698,7 @@ export function Screen({
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1, backgroundColor: t.colors.bg }}
         contentContainerStyle={[
           {
@@ -789,20 +863,30 @@ export function Row({ children, gap, style }: { children: ReactNode; gap?: numbe
 
 // ── SwipeRow ─────────────────────────────────────────────────────────────────
 // Wrap a list row (usually a <Card>) with iOS swipe actions:
-//   • right→left drag reveals a red Delete (onDelete)
-//   • left→right drag reveals a cobalt Favorite (onFavorite)
+//   • right→left drag reveals a red action, labelled "Delete" by default —
+//     pass `deleteLabel` when the handler is not destructive (e.g. "Archive"),
+//     so the panel's wording matches the confirm dialog that follows
+//   • left→right drag reveals a brand-accent Favorite (onFavorite)
 // Each side is opt-in — pass only the handlers a row supports. Tapping an action
 // closes the row first, then runs the handler. The wrapped child still taps
 // through for navigation. Requires GestureHandlerRootView (see _layout).
-const DELETE_RED = "#E5484D";
+// Deeper than the #E5484D used elsewhere, because this panel is the one place
+// red carries TEXT: white on #E5484D is 3.91:1, on #D70015 it is 5.38:1. The
+// panel itself stays above the 3:1 non-text floor on both grounds.
+const DELETE_RED = "#D70015";
 export function SwipeRow({
   children,
   onDelete,
+  deleteLabel = "Delete",
   onFavorite,
   favorited,
 }: {
   children: ReactNode;
   onDelete?: () => void;
+  /** Label on the red right-hand panel. Defaults to "Delete"; override it when
+   *  `onDelete` performs something softer (archive, hide) so the panel does not
+   *  promise a destructive action it will not take. */
+  deleteLabel?: string;
   onFavorite?: () => void;
   favorited?: boolean;
 }) {
@@ -818,7 +902,7 @@ export function SwipeRow({
         const scale = drag.interpolate({ inputRange: [-88, -32, 0], outputRange: [1, 0.85, 0.5], extrapolate: "clamp" });
         return (
           <Pressable onPress={() => run(onDelete)} style={{ width: 84, marginLeft: 8, borderRadius: t.r, backgroundColor: DELETE_RED, alignItems: "center", justifyContent: "center" }}>
-            <Animated.Text style={{ color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: -0.1, transform: [{ scale }] }}>Delete</Animated.Text>
+            <Animated.Text style={{ color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: -0.1, transform: [{ scale }] }}>{deleteLabel}</Animated.Text>
           </Pressable>
         );
       }
@@ -830,8 +914,8 @@ export function SwipeRow({
         return (
           <Pressable onPress={() => run(onFavorite)} style={{ width: 88, marginRight: 8, borderRadius: t.r, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
             <Animated.View style={{ alignItems: "center", transform: [{ scale }] }}>
-              <Icon name="star" s={19} c="#fff" />
-              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700", marginTop: 3 }}>{favorited ? "Unfave" : "Favorite"}</Text>
+              <Icon name="star" s={19} c={t.colors.onAcc} />
+              <Text style={{ color: t.colors.onAcc, fontSize: 11, fontWeight: "700", marginTop: 3 }}>{favorited ? "Unfave" : "Favorite"}</Text>
             </Animated.View>
           </Pressable>
         );

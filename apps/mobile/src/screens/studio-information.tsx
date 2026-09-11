@@ -23,10 +23,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { IconName } from "@/design/icon";
 import { hairline, useTheme } from "@/design/theme";
-import { AnimatedPressable, Avatar, BackBar, Card, Chip, EnterStagger, Icon, Pill, Screen, Sect, Serif, Stagger, usePressFx } from "@/design/ui";
+import { AnimatedPressable, Avatar, BackBar, Card, Chip, EnterStagger, Icon, Pill, Screen, Sect, Serif, Stagger, SwipeRow, confirmDelete, serifInputFace, usePressFx } from "@/design/ui";
 import {
+  addPhraseToSituation,
+  archiveStudioSituation,
+  archiveStudioTopic,
   createQuickNote,
   createStudioSituation,
+  createStudioTopic,
   fetchNotePhrases,
   fetchPracticeAttempts,
   fetchSituationPhrases,
@@ -38,8 +42,12 @@ import {
   linkPhraseToNote,
   pickCurrentNote,
   setSituationEventDate,
+  setSituationFavorite,
   phraseChoices,
   quickTitleFromBody,
+  removePhraseFromSituation,
+  renameStudioSituation,
+  renameStudioTopic,
   unlinkPhraseFromNote,
   updateSpeakingNote,
   type NotePhrase,
@@ -161,7 +169,7 @@ function situationDate(value: string | null): string | null {
 // Three fixed-width tiles truncated every title and carried no counts, so they
 // gave nothing to choose on. A row fits the full title plus notes/attempts and
 // the event date when the situation has one.
-function StudioSituationRow({ situation, first, onPress }: { situation: StudioSituation; first?: boolean; onPress: () => void }) {
+function StudioSituationRow({ situation, first, icon = "calendar", onPress }: { situation: StudioSituation; first?: boolean; icon?: IconName; onPress: () => void }) {
   const t = useTheme();
   const when = situationDate(situation.eventDate);
   const meta = `${situation.noteCount} note${situation.noteCount === 1 ? "" : "s"}  ·  ${situation.attemptCount} attempt${situation.attemptCount === 1 ? "" : "s"}`;
@@ -182,7 +190,7 @@ function StudioSituationRow({ situation, first, onPress }: { situation: StudioSi
       })}
     >
       <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
-        <Icon name="calendar" s={18} c={t.colors.accD} />
+        <Icon name={icon} s={18} c={t.colors.accD} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{situation.title}</Text>
@@ -227,9 +235,26 @@ function BrowseRow({ icon, label, caption, first, onPress }: { icon: IconName; l
   );
 }
 
-function SituationRow({ situation, onPress }: { situation: StudioSituation; onPress: () => void }) {
+/** One wording for archiving a situation, on the swipe panel and on the button
+ *  that confirms it. Two labels for one gesture is how a swipe ends up reading
+ *  as a delete. */
+const ARCHIVE_SITUATION_LABEL = "Archive situation";
+
+/** One wording for archiving a situation, whether it comes from the swipe
+ *  action or the header menu. Archive, never delete: a hard delete would take
+ *  the notes and the practice recordings with it. */
+function confirmArchiveSituation(title: string, onConfirm: () => void) {
+  confirmDelete({
+    title: `Archive “${title}”?`,
+    message: "It stops showing in your Studio, along with its notes and attempts. Nothing is deleted.",
+    deleteLabel: ARCHIVE_SITUATION_LABEL,
+    onConfirm,
+  });
+}
+
+function SituationRow({ situation, onPress, onArchive }: { situation: StudioSituation; onPress: () => void; onArchive?: () => void }) {
   const t = useTheme();
-  return (
+  const row = (
     <Card onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 13 }}>
       <View style={{ width: 44, height: 44, borderRadius: 15, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
         <Icon name="calendar" s={19} c={t.colors.accD} />
@@ -242,6 +267,16 @@ function SituationRow({ situation, onPress }: { situation: StudioSituation; onPr
       </View>
       <Icon name="chev" s={14} w={2.2} c={t.colors.ink3} />
     </Card>
+  );
+  if (!onArchive) return row;
+  // The panel keeps its red — this is still the row's one heavy action — but it
+  // is labelled with the confirm dialog's own words, because what runs is a soft
+  // archive. A panel reading "Delete" would promise the one thing this screen
+  // family refuses to do: a hard delete takes the notes and the recordings too.
+  return (
+    <SwipeRow deleteLabel={ARCHIVE_SITUATION_LABEL} onDelete={() => confirmArchiveSituation(situation.title, onArchive)}>
+      {row}
+    </SwipeRow>
   );
 }
 
@@ -590,7 +625,7 @@ function QuickNoteSheet({ open, nav, topics, situations, initialTopicId, initial
           ) : null}
         </View>
 
-        {error ? <Text style={{ color: "#E5484D", fontSize: 13.5, lineHeight: 19 }}>{error}</Text> : null}
+        {error ? <Text style={{ color: t.colors.warn, fontSize: 13.5, lineHeight: 19 }}>{error}</Text> : null}
         <Text style={{ fontSize: 13, lineHeight: 19, textAlign: "center", color: t.colors.ink2 }}>Capture it now. You can organize it later.</Text>
         <Pill full icon="mic" onPress={saving ? undefined : () => void save("practice")}>{saving === "practice" ? "Saving…" : "Save & practice"}</Pill>
         <Pill tone="ghost" full onPress={saving ? undefined : () => void save("later")}>{saving === "later" ? "Saving…" : "Save for later"}</Pill>
@@ -608,6 +643,9 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
   const [quickOpen, setQuickOpen] = useState(false);
   const [showAllNotes, setShowAllNotes] = useState(false);
   const [showAllSituations, setShowAllSituations] = useState(false);
+  const [newTopic, setNewTopic] = useState(false);
+  const [topicName, setTopicName] = useState("");
+  const [savingTopic, setSavingTopic] = useState(false);
   const load = useCallback(async () => {
     try { setData(await fetchStudioOverview()); setError(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load your Studio."); }
@@ -615,9 +653,21 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
   const revision = nav.speakingDataRevision;
   useFocusEffect(useCallback(() => { if (revision >= 0) void load(); }, [load, revision]));
 
+  const createTopic = async () => {
+    if (!topicName.trim()) return;
+    setSavingTopic(true);
+    try { await createStudioTopic(topicName); setNewTopic(false); setTopicName(""); nav.invalidateSpeakingData(); await load(); nav.notify("Topic created"); }
+    catch (caught) { Alert.alert("Couldn’t create topic", caught instanceof Error ? caught.message : "Try again."); }
+    finally { setSavingTopic(false); }
+  };
+
   const current = data ? pickCurrentNote(data.notes, data.recentAttempts) : null;
   const visibleNotes = (data?.notes ?? []).slice(0, showAllNotes ? 8 : 5);
-  const visibleSituations = (data?.situations ?? []).slice(0, showAllSituations ? 8 : 3);
+  // A favorited situation belongs in exactly one place. Repeating it under
+  // "Your situations" reads as a duplicated row, not as a shortcut.
+  const favorites = (data?.situations ?? []).filter((situation) => situation.isFavorite);
+  const unstarred = (data?.situations ?? []).filter((situation) => !situation.isFavorite);
+  const visibleSituations = unstarred.slice(0, showAllSituations ? 8 : 3);
   const fabBottom = Math.max(insets.bottom, 12) + 12;
   return (
     <>
@@ -675,34 +725,59 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
               </View>
             </EnterStagger>
 
-            <EnterStagger i={2} style={{ gap: 9, marginTop: t.gap * 3 }}>
-              <StudioSectionHeader
-                title="Your situations"
-                action={(data?.situations.length ?? 0) > 3 ? (showAllSituations ? "Show less" : "See all") : "All"}
-                onAction={() => ((data?.situations.length ?? 0) > 3 ? setShowAllSituations((value) => !value) : nav.push("topicsList"))}
-              />
-              {visibleSituations.length ? (
+            {favorites.length ? (
+              <EnterStagger i={2} style={{ gap: 9, marginTop: t.gap * 3 }}>
+                {/* "See all" under a Favorites heading has to arrive at
+                    favorites, not at "All N". AllSituationsScreen reads this as
+                    its opening chip. */}
+                <StudioSectionHeader title="Favorites" action="See all" onAction={() => nav.push("situationsList", { filter: FAVORITES_FILTER })} />
                 <Card style={{ paddingVertical: 2 }}>
-                  {visibleSituations.map((situation, index) => (
+                  {favorites.slice(0, 3).map((situation, index) => (
                     <StudioSituationRow
                       key={situation.id}
                       situation={situation}
                       first={index === 0}
+                      icon="star"
                       onPress={() => nav.push("situation", { id: situation.id, topicId: situation.topicId, title: situation.title })}
                     />
                   ))}
                 </Card>
-              ) : (
-                <Card onPress={() => nav.push("topicsList")} style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
-                  <Icon name="map" s={22} c={t.colors.accD} />
-                  <Text style={{ flex: 1, fontSize: 14.5, fontWeight: "700", color: t.colors.ink }}>Create your first situation</Text>
-                  <Icon name="chev" s={14} w={2.2} c={t.colors.ink3} />
-                </Card>
-              )}
-            </EnterStagger>
+              </EnterStagger>
+            ) : null}
 
-            <EnterStagger i={3} style={{ gap: 9, marginTop: t.gap * 3 }}>
-              <StudioSectionHeader title="Browse" />
+            {/* Once every situation is starred this section would render its
+                first-run "create your first" card over a Studio that is not
+                empty, so it steps aside instead. */}
+            {unstarred.length || !favorites.length ? (
+              <EnterStagger i={3} style={{ gap: 9, marginTop: t.gap * 3 }}>
+                <StudioSectionHeader
+                  title="Your situations"
+                  action={unstarred.length > 3 ? (showAllSituations ? "Show less" : "See all") : "All"}
+                  onAction={() => (unstarred.length > 3 ? setShowAllSituations((value) => !value) : nav.push("situationsList"))}
+                />
+                {visibleSituations.length ? (
+                  <Card style={{ paddingVertical: 2 }}>
+                    {visibleSituations.map((situation, index) => (
+                      <StudioSituationRow
+                        key={situation.id}
+                        situation={situation}
+                        first={index === 0}
+                        onPress={() => nav.push("situation", { id: situation.id, topicId: situation.topicId, title: situation.title })}
+                      />
+                    ))}
+                  </Card>
+                ) : (
+                  <Card onPress={() => nav.push("topicsList")} style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+                    <Icon name="map" s={22} c={t.colors.accD} />
+                    <Text style={{ flex: 1, fontSize: 14.5, fontWeight: "700", color: t.colors.ink }}>Create your first situation</Text>
+                    <Icon name="chev" s={14} w={2.2} c={t.colors.ink3} />
+                  </Card>
+                )}
+              </EnterStagger>
+            ) : null}
+
+            <EnterStagger i={4} style={{ gap: 9, marginTop: t.gap * 3 }}>
+              <StudioSectionHeader title="Browse" action="New topic" chevron={false} onAction={() => setNewTopic(true)} />
               <Card style={{ paddingVertical: 2 }}>
                 <BrowseRow
                   first
@@ -752,16 +827,31 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
           <Text style={{ fontSize: 14, fontWeight: "700", color: t.colors.accD }}>Quick note</Text>
         </View>
         <View style={[{ width: 52, height: 52, borderRadius: 26, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }, t.shadowLg]}>
-          <Icon name="plus" s={24} w={2.4} c="#fff" />
+          <Icon name="plus" s={24} w={2.4} c={t.colors.onAcc} />
         </View>
       </AnimatedPressable>
       <QuickNoteSheet open={quickOpen} nav={nav} topics={data?.topics ?? []} situations={data?.situations ?? []} onClose={() => setQuickOpen(false)} onSaved={() => void load()} />
+      <Sheet open={newTopic} title="New topic" subtitle="A topic holds the situations you keep coming back to." onClose={() => setNewTopic(false)}>
+        <View style={{ paddingHorizontal: 22, gap: 14 }}>
+          <Field label="Topic" value={topicName} onChangeText={setTopicName} placeholder="Work" />
+          <Pill full onPress={savingTopic || !topicName.trim() ? undefined : () => void createTopic()} style={{ opacity: topicName.trim() ? 1 : 0.5 }}>{savingTopic ? "Saving…" : "Create topic"}</Pill>
+        </View>
+      </Sheet>
     </>
   );
 }
 
+/** archiveStudioTopic writes exactly one refusal for the learner — the guard on
+ *  the last open topic. Anything else it throws is Supabase's own text, which
+ *  must not reach a sheet, so it degrades to the generic line. */
+function archiveRefusal(caught: unknown): string {
+  const message = caught instanceof Error ? caught.message : "";
+  return message.includes("last topic") ? message : "Try again.";
+}
+
 export function StudioTopicScreen({ id, name, nav }: { id: string; name?: string; nav: Nav }) {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [topics, setTopics] = useState<StudioTopic[]>([]);
   const [situations, setSituations] = useState<StudioSituation[] | null>(null);
   const [notes, setNotes] = useState<SpeakingNote[]>([]);
@@ -771,13 +861,20 @@ export function StudioTopicScreen({ id, name, nav }: { id: string; name?: string
   const [situationTitle, setSituationTitle] = useState("");
   const [situationDescription, setSituationDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const load = useCallback(async () => {
     try {
       const [allTopics, topicSituations, topicNotes] = await Promise.all([fetchStudioTopics(), fetchStudioSituations(id), fetchSpeakingNotes({ topicId: id })]);
       setTopics(allTopics); setSituations(topicSituations); setNotes(topicNotes); setError(null);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load this topic."); }
   }, [id]);
-  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+  // Pushed screens stay mounted, so a rename or archive one level down only
+  // reaches this list through the revision counter.
+  const revision = nav.speakingDataRevision;
+  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load, revision]);
   const createSituation = async () => {
     if (!situationTitle.trim()) return;
     setSaving(true);
@@ -785,16 +882,74 @@ export function StudioTopicScreen({ id, name, nav }: { id: string; name?: string
     catch (caught) { Alert.alert("Couldn’t create situation", caught instanceof Error ? caught.message : "Try again."); }
     finally { setSaving(false); }
   };
+  const archiveSituation = (situation: StudioSituation) => {
+    void (async () => {
+      try { await archiveStudioSituation(situation.id); nav.invalidateSpeakingData(); await load(); nav.notify("Situation archived"); }
+      catch (caught) { Alert.alert("Couldn’t archive situation", caught instanceof Error ? caught.message : "Try again."); }
+    })();
+  };
+  // The fetched name wins over the nav prop so a rename lands on the header
+  // without popping the screen; the prop only covers the first frame.
+  const topicName = topics.find((topic) => topic.id === id)?.name ?? name ?? "Topic";
+  const renamed = renameValue.trim();
+  const canRename = renamed.length > 0 && renamed !== topicName;
+  const openRename = () => { setMenuOpen(false); setRenameValue(topicName); setRenameOpen(true); };
+  const renameTopic = async () => {
+    if (!canRename) return;
+    setRenaming(true);
+    try { await renameStudioTopic(id, renameValue); setRenameOpen(false); nav.invalidateSpeakingData(); await load(); nav.notify("Topic renamed"); }
+    catch (caught) { Alert.alert("Couldn’t rename topic", caught instanceof Error ? caught.message : "Try again."); }
+    finally { setRenaming(false); }
+  };
+  const archiveTopic = () => {
+    setMenuOpen(false);
+    confirmDelete({
+      title: `Archive “${topicName}”?`,
+      message: "It stops showing in your Studio, along with its situations and notes. Nothing is deleted.",
+      deleteLabel: "Archive topic",
+      onConfirm: () => {
+        void (async () => {
+          try { await archiveStudioTopic(id); nav.invalidateSpeakingData(); nav.pop(); nav.notify("Topic archived"); }
+          catch (caught) { Alert.alert("Couldn’t archive topic", archiveRefusal(caught)); }
+        })();
+      },
+    });
+  };
   return (
     <>
       <Screen>
-        <BackBar onBack={nav.pop} />
+        <BackBar
+          onBack={nav.pop}
+          right={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Topic options"
+              onPress={() => setMenuOpen(true)}
+              style={({ pressed }) => [
+                {
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: t.colors.card,
+                  borderWidth: 1,
+                  borderColor: t.ring,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: pressed ? 0.78 : 1,
+                },
+                t.shadowCard,
+              ]}
+            >
+              <Icon name="dots" s={20} c={t.colors.ink} />
+            </Pressable>
+          }
+        />
         <Stagger>
-          <View style={{ paddingHorizontal: 2 }}><Text style={{ fontSize: 12, fontWeight: "800", color: t.colors.accD, letterSpacing: 0.65 }}>TOPIC</Text><Serif style={{ fontSize: 31, lineHeight: 35, color: t.colors.ink, marginTop: 4 }}>{name ?? topics.find((topic) => topic.id === id)?.name ?? "Topic"}</Serif></View>
+          <View style={{ paddingHorizontal: 2 }}><Text style={{ fontSize: 12, fontWeight: "800", color: t.colors.accD, letterSpacing: 0.65 }}>TOPIC</Text><Serif style={{ fontSize: 31, lineHeight: 35, color: t.colors.ink, marginTop: 4 }}>{topicName}</Serif></View>
           <View style={{ flexDirection: "row", gap: 10 }}><Pill full icon="plus" onPress={() => setQuickOpen(true)}>New note</Pill><Pill full tone="tint" onPress={() => setNewSituation(true)}>New situation</Pill></View>
           <Sect title="Situations" />
         </Stagger>
-        {situations === null && !error ? <Loading /> : error ? <ErrorCard message={error} retry={load} /> : (situations ?? []).map((situation) => <SituationRow key={situation.id} situation={situation} onPress={() => nav.push("situation", { id: situation.id, topicId: id, title: situation.title })} />)}
+        {situations === null && !error ? <Loading /> : error ? <ErrorCard message={error} retry={load} /> : (situations ?? []).map((situation) => <SituationRow key={situation.id} situation={situation} onPress={() => nav.push("situation", { id: situation.id, topicId: id, title: situation.title })} onArchive={() => archiveSituation(situation)} />)}
         <Sect title="Unsorted notes" />
         {notes.filter((note) => !note.situationId).map((note) => <NoteRow key={note.id} note={note} onPress={() => nav.push("speakingNote", { id: note.id })} />)}
       </Screen>
@@ -802,15 +957,53 @@ export function StudioTopicScreen({ id, name, nav }: { id: string; name?: string
       <Sheet open={newSituation} title="New situation" subtitle="Name a specific event, audience, or moment." onClose={() => setNewSituation(false)}>
         <View style={{ paddingHorizontal: 22, gap: 14 }}><Field label="Situation" value={situationTitle} onChangeText={setSituationTitle} placeholder="ABC interview — September" /><Field label="Description" value={situationDescription} onChangeText={setSituationDescription} placeholder="What is happening?" multiline /><Pill full onPress={saving ? undefined : () => void createSituation()}>{saving ? "Saving…" : "Create situation"}</Pill></View>
       </Sheet>
+      <Sheet open={renameOpen} title="Rename topic" subtitle="Everything under it keeps its place." onClose={() => setRenameOpen(false)}>
+        <View style={{ paddingHorizontal: 22, gap: 14 }}>
+          <Field label="Topic" value={renameValue} onChangeText={setRenameValue} placeholder="Work" />
+          <Pill full onPress={renaming || !canRename ? undefined : () => void renameTopic()} style={{ opacity: canRename ? 1 : 0.5 }}>{renaming ? "Saving…" : "Save name"}</Pill>
+        </View>
+      </Sheet>
+      <Modal visible={menuOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.08)" }} onPress={() => setMenuOpen(false)}>
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={[
+              {
+                position: "absolute",
+                top: insets.top + 58,
+                right: 18,
+                width: 210,
+                overflow: "hidden",
+                borderRadius: 22,
+                backgroundColor: t.colors.card,
+                borderWidth: 1,
+                borderColor: t.ring,
+              },
+              t.shadowLg,
+            ]}
+          >
+            <Pressable onPress={openRename} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? t.colors.soft : "transparent" })}>
+              <Icon name="pen" s={18} c={t.colors.ink} />
+              <Text style={{ fontSize: 15.5, fontWeight: "600", color: t.colors.ink }}>Rename topic</Text>
+            </Pressable>
+            <View style={{ height: 1, backgroundColor: t.colors.sep }} />
+            <Pressable onPress={archiveTopic} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? t.colors.soft : "transparent" })}>
+              <Icon name="x" s={18} c={t.colors.warn} />
+              <Text style={{ fontSize: 15.5, fontWeight: "600", color: t.colors.warn }}>Archive topic</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }
 
 // ── Situation detail ────────────────────────────────────────────────────────
 // Ported from Claude Design "Situation Detail.html" (2026-09-09, confirmed).
-// The design carries its own token set, close to but not identical with the
-// global theme: a lighter well/hairline and a distinct dark accent. Deriving
-// them here keeps the port faithful without moving tokens other screens use.
+// Only the neutrals still diverge from the global theme — a lighter well, a
+// lighter hairline and a faint ink the port needs — and they stay local so no
+// other screen shifts. Accent, accent tint and on-accent now read t.colors, so
+// this screen family follows the brand ramp instead of pinning its own cobalt.
 function useSituationTokens() {
   const t = useTheme();
   const dark = t.dark;
@@ -823,10 +1016,14 @@ function useSituationTokens() {
     faint: dark ? "rgba(235,235,245,0.3)" : "rgba(60,60,67,0.33)",
     hair: dark ? "rgba(235,235,245,0.13)" : "rgba(60,60,67,0.14)",
     well: dark ? "rgba(120,120,128,0.14)" : "rgba(120,120,128,0.08)",
-    accent: dark ? "#5B8AF5" : "#3B6EE1",
-    accentSoft: dark ? "rgba(91,138,245,0.18)" : "rgba(59,110,225,0.11)",
-    onAccent: dark ? "#000" : "#fff",
-    warn: dark ? "#FF6961" : "#D70015",
+    accent: t.colors.acc,
+    accentSoft: t.colors.accS,
+    onAccent: t.colors.onAcc,
+    // The Topic menu and the Situation menu run the same archive one screen
+    // apart, so both must read as one warning — which they now do by sharing
+    // the theme slot. Why the slot exists at all (the contrast floor the raw
+    // red missed) is documented with the token in design/mobile-tokens.ts.
+    warn: t.colors.warn,
   };
 }
 
@@ -980,14 +1177,53 @@ function SituationNoteRow({ c, note, first, hero, onPress, onPractice }: { c: Si
   );
 }
 
-function PhraseRow({ c, phrase, first, chevron, onPress }: { c: SituationTokens; phrase: NotePhrase; first?: boolean; chevron?: boolean; onPress?: () => void }) {
+/** Which Speaking Note a phrase arrived through. Blank when it hangs off the
+ *  Situation itself, so the row never claims a source it doesn’t have. The
+ *  live titles map wins where the caller has one — a rename lands without a
+ *  refetch — and the stored title covers the lists that hold no notes. */
+function phraseSource(phrase: NotePhrase, titles?: ReadonlyMap<string, string>): string | null {
+  if (!phrase.noteId) return null;
+  const title = titles?.get(phrase.noteId) ?? phrase.noteTitle;
+  return title ? `From ${title}` : null;
+}
+
+/** Removing is not deleting: the phrase stays in the Phrase Bank. It does come
+ *  off every Note inside this Situation that linked it, because a phrase that
+ *  still arrives through a Note would sit there looking un-removable. */
+function confirmRemovePhrase(situationId: string, phrase: NotePhrase, nav: Nav, reload: () => Promise<void>) {
+  confirmDelete({
+    title: "Remove this phrase?",
+    message: "It stays in your Phrase Bank, and comes off any note in this situation that linked it.",
+    deleteLabel: "Remove",
+    onConfirm: () => {
+      void (async () => {
+        try { await removePhraseFromSituation(situationId, phrase.id); nav.invalidateSpeakingData(); await reload(); nav.notify("Phrase removed"); }
+        catch (caught) { Alert.alert("Couldn’t remove phrase", caught instanceof Error ? caught.message : "Try again."); }
+      })();
+    },
+  });
+}
+
+function PhraseRow({ c, phrase, first, chevron, source, onPress, onRemove }: { c: SituationTokens; phrase: NotePhrase; first?: boolean; chevron?: boolean; source?: string | null; onPress?: () => void; onRemove?: () => void }) {
   const inner = (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 18, paddingRight: 16, paddingVertical: 12, borderTopWidth: first ? 0 : hairline, borderTopColor: c.hair }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 18, paddingRight: onRemove ? 8 : 16, paddingVertical: 12, borderTopWidth: first ? 0 : hairline, borderTopColor: c.hair }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontSize: 14.5, lineHeight: 20, fontWeight: "400", color: c.ink }}>{phrase.text}</Text>
         {phrase.translation ? <Text style={{ fontSize: 12.5, color: c.sub, marginTop: 4 }}>{phrase.translation}</Text> : null}
+        {source ? <Text style={{ fontSize: 12, color: c.faint, marginTop: 4 }} numberOfLines={1}>{source}</Text> : null}
       </View>
       <PhraseBadge status={phrase.learningStatus} c={c} />
+      {onRemove ? (
+        <Pressable
+          onPress={onRemove}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${phrase.text} from this situation`}
+          style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.5 : 1 })}
+        >
+          <Icon name="x" s={15} w={2} c={c.faint} />
+        </Pressable>
+      ) : null}
       {chevron ? <Icon name="chev" s={12} w={1.8} c={c.faint} /> : null}
     </View>
   );
@@ -1108,12 +1344,13 @@ function EventDateSheet({ open, initial, onClose, onSave }: { open: boolean; ini
     }
     void commit(trimmed);
   };
+  const t = useTheme();
   return (
     <Sheet open={open} title="When is it?" subtitle="A date makes the situation easier to find later. Leave it blank to clear." onClose={onClose}>
       {/* Scrollable so the keyboard can't push the save action off-screen. */}
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 8, gap: 14 }}>
         <Field label="Date" value={value} onChangeText={setValue} placeholder="2026-09-18" />
-        {error ? <Text style={{ color: "#E5484D", fontSize: 13.5, lineHeight: 19 }}>{error}</Text> : null}
+        {error ? <Text style={{ color: t.colors.warn, fontSize: 13.5, lineHeight: 19 }}>{error}</Text> : null}
         <Pill full onPress={saving ? undefined : save}>{saving ? "Saving…" : "Save date"}</Pill>
       </ScrollView>
     </Sheet>
@@ -1122,6 +1359,7 @@ function EventDateSheet({ open, initial, onClose, onSave }: { open: boolean; ini
 
 export function StudioSituationScreen({ id, topicId, title, nav }: { id: string; topicId: string; title?: string; nav: Nav }) {
   const c = useSituationTokens();
+  const insets = useSafeAreaInsets();
   const [topics, setTopics] = useState<StudioTopic[]>([]);
   const [situations, setSituations] = useState<StudioSituation[]>([]);
   const [notes, setNotes] = useState<SpeakingNote[] | null>(null);
@@ -1130,6 +1368,11 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
   const [error, setError] = useState<string | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const load = useCallback(async () => {
     try {
       const [allTopics, allSituations, linkedNotes, linkedPhrases, recentAttempts] = await Promise.all([
@@ -1142,7 +1385,11 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
       setTopics(allTopics); setSituations(allSituations); setNotes(linkedNotes); setPhrases(linkedPhrases); setAttempts(recentAttempts); setError(null);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load this situation."); }
   }, [id, topicId]);
-  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+  // The shell keeps this screen mounted while a child is pushed, so focus never
+  // re-fires on the way back — the revision counter is the only signal that a
+  // child screen renamed, archived or starred something.
+  const revision = nav.speakingDataRevision;
+  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load, revision]);
 
   const situation = situations.find((item) => item.id === id);
   const when = situationHeaderDate(situation?.eventDate ?? null);
@@ -1150,15 +1397,83 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
   const noteCount = notes?.length ?? 0;
   const lastRepair = attempts.find((attempt) => attempt.repairSuggestion)?.repairSuggestion ?? null;
   const card = situationCard(c);
+  // The fetched title wins over the nav prop so a rename lands on the header
+  // without popping the screen; the prop only covers the first frame.
+  const situationTitle = situation?.title ?? title ?? "Situation";
+  const renamed = renameValue.trim();
+  const canRename = renamed.length > 0 && renamed !== situationTitle;
+  const openRename = () => { setMenuOpen(false); setRenameValue(situationTitle); setRenameOpen(true); };
+  const renameSituation = async () => {
+    if (!canRename) return;
+    setRenaming(true);
+    try { await renameStudioSituation(id, renameValue); setRenameOpen(false); nav.invalidateSpeakingData(); await load(); nav.notify("Situation renamed"); }
+    catch (caught) { Alert.alert("Couldn’t rename situation", caught instanceof Error ? caught.message : "Try again."); }
+    finally { setRenaming(false); }
+  };
+  const favorite = situation?.isFavorite ?? false;
+  // Optimistic, like the Phrase Bank's star: a star that waits for the network
+  // reads as broken. The flip and its rollback both go through the list the
+  // header reads from, so `load()` can overwrite either with the truth.
+  const toggleFavorite = () => {
+    const next = !favorite;
+    const flip = (value: boolean) => setSituations((list) => list.map((item) => (item.id === id ? { ...item, isFavorite: value } : item)));
+    flip(next);
+    void (async () => {
+      try { await setSituationFavorite(id, next); nav.invalidateSpeakingData(); nav.notify(next ? "Added to favorites" : "Removed from favorites"); }
+      catch (caught) { flip(!next); Alert.alert("Couldn’t update", caught instanceof Error ? caught.message : "Try again."); }
+    })();
+  };
+  const archiveSituation = () => {
+    setMenuOpen(false);
+    confirmArchiveSituation(situationTitle, () => {
+      void (async () => {
+        try { await archiveStudioSituation(id); nav.invalidateSpeakingData(); nav.pop(); nav.notify("Situation archived"); }
+        catch (caught) { Alert.alert("Couldn’t archive situation", caught instanceof Error ? caught.message : "Try again."); }
+      })();
+    });
+  };
 
+  const headerButton: ViewStyle = {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: c.card,
+    borderWidth: hairline,
+    borderColor: c.hair,
+    alignItems: "center",
+    justifyContent: "center",
+  };
   const header = (
     <>
-      <BackBar onBack={nav.pop} />
+      <BackBar
+        onBack={nav.pop}
+        right={
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: favorite }}
+              accessibilityLabel={favorite ? "Remove from favorites" : "Add to favorites"}
+              onPress={toggleFavorite}
+              style={({ pressed }) => [headerButton, c.t.shadowCard, { opacity: pressed ? 0.78 : 1 }]}
+            >
+              <Icon name={favorite ? "star" : "starOutline"} s={20} c={favorite ? c.accent : c.ink} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Situation options"
+              onPress={() => setMenuOpen(true)}
+              style={({ pressed }) => [headerButton, c.t.shadowCard, { opacity: pressed ? 0.78 : 1 }]}
+            >
+              <Icon name="dots" s={20} c={c.ink} />
+            </Pressable>
+          </View>
+        }
+      />
       <View style={{ paddingHorizontal: TEXT_PUSH }}>
         <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent, marginTop: 14, marginBottom: 6 }}>
           {(situation?.topicName ?? "Topic").toUpperCase()}
         </Text>
-        <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>{situation?.title ?? title ?? "Situation"}</Serif>
+        <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>{situationTitle}</Serif>
         {situation?.description ? <Text style={{ fontSize: 14, lineHeight: 20, color: c.sub, marginTop: 8 }}>{situation.description}</Text> : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
           {when
@@ -1191,6 +1506,22 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
       </Screen>
     );
   }
+  // fetchStudioSituations never returns an archived row, and it is scoped to
+  // this topic, so a situation that was archived or moved is simply absent.
+  // Without this branch the screen fell back to the stale nav title and drew a
+  // convincing but empty situation — TalkCtx.returnTo can land you here.
+  if (!situation) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <SituationCenter c={c}>
+          <Serif style={{ fontSize: 20, color: c.ink }}>This situation isn’t here anymore</Serif>
+          <Text style={{ fontSize: 13.5, lineHeight: 20, color: c.sub, textAlign: "center" }}>It was archived or moved to another topic. Its notes and recordings are still saved.</Text>
+          <Pill onPress={nav.pop}>Back</Pill>
+        </SituationCenter>
+      </Screen>
+    );
+  }
 
   return (
     <>
@@ -1219,23 +1550,32 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
           )}
         </View>
 
-        <SituationSection c={c} title="Useful Phrases" />
+        <SituationSection c={c} title="Useful Phrases" actionLabel={phrases.length ? "Add" : undefined} actionIcon="plus" onAction={() => setPickerOpen(true)} />
         <View style={card}>
           {phrases.length ? (
             <>
-              {phrases.slice(0, 5).map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />)}
+              {phrases.slice(0, 5).map((phrase, index) => (
+                <PhraseRow
+                  key={phrase.id}
+                  c={c}
+                  phrase={phrase}
+                  first={index === 0}
+                  source={phraseSource(phrase, noteTitleById)}
+                  onRemove={() => confirmRemovePhrase(id, phrase, nav, load)}
+                />
+              ))}
               {/* Always present, so the full list is reachable even when
                   nothing is hidden — the label switches to "All N" then. */}
               <MoreRow
                 c={c}
                 label={phrases.length > 5 ? `${phrases.length - 5} more phrases` : `All ${phrases.length} phrase${phrases.length === 1 ? "" : "s"}`}
-                onPress={() => nav.push("situationPhrases", { id, topicId, title: situation?.title ?? title })}
+                onPress={() => nav.push("situationPhrases", { id, topicId, title: situationTitle })}
               />
             </>
           ) : (
             <View style={{ paddingHorizontal: 20, paddingVertical: 22 }}>
               <Text style={{ fontSize: 13, lineHeight: 19, color: c.sub }}>No phrases yet — collect expressions you want ready for this situation.</Text>
-              <SoftAction c={c} label="+ Add phrase" onPress={() => (notes?.[0] ? nav.push("speakingNote", { id: notes[0].id }) : setQuickOpen(true))} />
+              <SoftAction c={c} label="+ Add phrase" onPress={() => setPickerOpen(true)} />
             </View>
           )}
         </View>
@@ -1244,7 +1584,7 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
           c={c}
           title="Recent Attempts"
           actionLabel={attempts.length ? `All ${attempts.length}` : undefined}
-          onAction={() => nav.push("situationAttempts", { id, topicId, title: situation?.title ?? title })}
+          onAction={() => nav.push("situationAttempts", { id, topicId, title: situationTitle })}
         />
         {lastRepair ? <RepairNote c={c} lead="Last time: " body={lastRepair} /> : null}
         <View style={card}>
@@ -1265,7 +1605,7 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
                 <Text style={{ fontSize: 16, fontWeight: "600", lineHeight: 21, color: c.ink }}>Start your first attempt</Text>
                 <Text style={{ fontSize: 13, lineHeight: 18, color: c.sub, marginTop: 3 }}>Free talk — you don’t need a note to begin.</Text>
               </View>
-              <MicButton c={c} filled label="Start a free talk attempt" onPress={() => nav.startTalk({ ctx: situation?.title ?? title ?? "Free talk", from: "topics", storyId: id })} />
+              <MicButton c={c} filled label="Start a free talk attempt" onPress={() => nav.startTalk({ ctx: situationTitle, from: "topics", storyId: id })} />
             </View>
           )}
         </View>
@@ -1273,18 +1613,78 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
       <QuickNoteSheet open={quickOpen} nav={nav} topics={topics} situations={situations} initialTopicId={topicId} initialSituationId={id} onClose={() => setQuickOpen(false)} onSaved={() => void load()} />
       <EventDateSheet
         open={dateOpen}
-        initial={situation?.eventDate ?? null}
+        initial={situation.eventDate}
         onClose={() => setDateOpen(false)}
         onSave={async (value) => { await setSituationEventDate(id, value); nav.invalidateSpeakingData(); await load(); }}
       />
+      <PhrasePicker
+        open={pickerOpen}
+        title="Add phrases"
+        subtitle="Pick the language you want ready for this situation."
+        linked={phrases}
+        onLink={(phraseId) => addPhraseToSituation(id, phraseId)}
+        onUnlink={(phraseId) => removePhraseFromSituation(id, phraseId)}
+        onClose={() => setPickerOpen(false)}
+        onChanged={() => { nav.invalidateSpeakingData(); void load(); }}
+      />
+      <Sheet open={renameOpen} title="Rename situation" subtitle="Its notes, phrases and attempts keep their place." onClose={() => setRenameOpen(false)}>
+        <View style={{ paddingHorizontal: 22, gap: 14 }}>
+          <Field label="Situation" value={renameValue} onChangeText={setRenameValue} placeholder="ABC interview — September" />
+          <Pill full onPress={renaming || !canRename ? undefined : () => void renameSituation()} style={{ opacity: canRename ? 1 : 0.5 }}>{renaming ? "Saving…" : "Save name"}</Pill>
+        </View>
+      </Sheet>
+      <Modal visible={menuOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.08)" }} onPress={() => setMenuOpen(false)}>
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={[
+              {
+                position: "absolute",
+                top: insets.top + 58,
+                right: 18,
+                width: 220,
+                overflow: "hidden",
+                borderRadius: 22,
+                backgroundColor: c.card,
+                borderWidth: hairline,
+                borderColor: c.hair,
+              },
+              c.t.shadowLg,
+            ]}
+          >
+            <Pressable onPress={openRename} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? c.well : "transparent" })}>
+              <Icon name="pen" s={18} c={c.ink} />
+              <Text style={{ fontSize: 15.5, fontWeight: "600", color: c.ink }}>Rename situation</Text>
+            </Pressable>
+            <View style={{ height: hairline, backgroundColor: c.hair }} />
+            <Pressable onPress={archiveSituation} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? c.well : "transparent" })}>
+              <Icon name="x" s={18} c={c.warn} />
+              <Text style={{ fontSize: 15.5, fontWeight: "600", color: c.warn }}>Archive situation</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
+  );
+}
+
+/** The filter pill the pushed full-list screens share, so a chip row means the
+ *  same thing whichever list you are standing in. */
+function FilterChip({ c, label, selected, onPress }: { c: SituationTokens; label: string; selected: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityState={{ selected }}>
+      <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 9999, justifyContent: "center", backgroundColor: selected ? c.accent : c.well }}>
+        <Text style={{ fontSize: 12.5, fontWeight: "500", color: selected ? c.onAccent : c.sub }}>{label}</Text>
+      </View>
+    </Pressable>
   );
 }
 
 const PHRASE_FILTER_ORDER = ["ready", "practicing", "recognizing", "new"] as const;
 
-/** Pushed full phrase list. Rows are tappable in the design's Phrase Detail
- *  screen, which is not confirmed yet, so they stay inert here. */
+/** Pushed full phrase list. Tapping a row still does nothing — the design's
+ *  Phrase Detail screen is not confirmed — but each row carries its own Remove
+ *  control, so the list is editable without inventing that screen. */
 export function SituationPhrasesScreen({ id, title, nav }: { id: string; title?: string; nav: Nav }) {
   const c = useSituationTokens();
   const [phrases, setPhrases] = useState<NotePhrase[] | null>(null);
@@ -1294,7 +1694,8 @@ export function SituationPhrasesScreen({ id, title, nav }: { id: string; title?:
     try { setPhrases(await fetchSituationPhrases(id)); setError(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load these phrases."); }
   }, [id]);
-  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+  const revision = nav.speakingDataRevision;
+  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load, revision]);
   const all = useMemo(() => phrases ?? [], [phrases]);
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -1311,24 +1712,136 @@ export function SituationPhrasesScreen({ id, title, nav }: { id: string; title?:
         </Text>
         <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>Useful Phrases</Serif>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
-          <Pressable onPress={() => setFilter(null)} hitSlop={6}>
-            <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 9999, justifyContent: "center", backgroundColor: filter === null ? c.accent : c.well }}>
-              <Text style={{ fontSize: 12.5, fontWeight: "500", color: filter === null ? c.onAccent : c.sub }}>{`All ${all.length}`}</Text>
-            </View>
-          </Pressable>
+          <FilterChip c={c} label={`All ${all.length}`} selected={filter === null} onPress={() => setFilter(null)} />
           {PHRASE_FILTER_ORDER.filter((status) => counts.get(status)).map((status) => (
-            <Pressable key={status} onPress={() => setFilter((current) => (current === status ? null : status))} hitSlop={6}>
-              <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 9999, justifyContent: "center", backgroundColor: filter === status ? c.accent : c.well }}>
-                <Text style={{ fontSize: 12.5, fontWeight: "500", color: filter === status ? c.onAccent : c.sub }}>{`${phraseStatusLabel(status)} ${counts.get(status)}`}</Text>
-              </View>
-            </Pressable>
+            <FilterChip
+              key={status}
+              c={c}
+              label={`${phraseStatusLabel(status)} ${counts.get(status)}`}
+              selected={filter === status}
+              onPress={() => setFilter((current) => (current === status ? null : status))}
+            />
           ))}
         </View>
       </View>
       <View style={{ height: 20 }} />
       {phrases === null && !error ? <SituationCenter c={c}><ActivityIndicator color={c.accent} /></SituationCenter> : error ? <ErrorCard message={error} retry={load} /> : (
         <View style={situationCard(c)}>
-          {visible.length ? visible.map((phrase, index) => <PhraseRow key={phrase.id} c={c} phrase={phrase} first={index === 0} />) : <SituationEmpty c={c} body="Nothing in this stage yet." />}
+          {visible.length ? visible.map((phrase, index) => (
+            <PhraseRow
+              key={phrase.id}
+              c={c}
+              phrase={phrase}
+              first={index === 0}
+              source={phraseSource(phrase)}
+              onRemove={() => confirmRemovePhrase(id, phrase, nav, load)}
+            />
+          )) : <SituationEmpty c={c} body="Nothing in this stage yet." />}
+        </View>
+      )}
+    </Screen>
+  );
+}
+
+// One filter slot holds either a topic id or this sentinel; topic ids are
+// uuids, so they can never collide with it.
+const FAVORITES_FILTER = "favorites";
+
+/** Row rhythm copied from PhraseRow so the two pushed lists read as one family.
+ *  The star is a status mark here, not a control — it toggles on the Situation
+ *  screen itself, where a mis-tap is undoable in the same place. */
+function SituationListRow({ c, situation, first, onPress }: { c: SituationTokens; situation: StudioSituation; first?: boolean; onPress: () => void }) {
+  const when = situationDate(situation.eventDate);
+  const counts = `${situation.noteCount} note${situation.noteCount === 1 ? "" : "s"}  ·  ${situation.attemptCount} attempt${situation.attemptCount === 1 ? "" : "s"}`;
+  const meta = situation.topicName ? `${situation.topicName}  ·  ${counts}` : counts;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${situation.title}. ${meta}${when ? `. ${when}` : ""}`}
+      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 18, paddingRight: 16, paddingVertical: 12, borderTopWidth: first ? 0 : hairline, borderTopColor: c.hair }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            {situation.isFavorite ? <Icon name="star" s={13} c={c.accent} /> : null}
+            <Text style={{ flex: 1, fontSize: 14.5, lineHeight: 20, fontWeight: "600", color: c.ink }} numberOfLines={1}>{situation.title}</Text>
+          </View>
+          <Text style={{ fontSize: 12.5, color: c.sub, marginTop: 4 }} numberOfLines={1}>{meta}</Text>
+        </View>
+        {when ? <Text style={{ fontSize: 12.5, fontWeight: "600", color: c.faint }}>{when}</Text> : null}
+        <Icon name="chev" s={12} w={1.8} c={c.faint} />
+      </View>
+    </Pressable>
+  );
+}
+
+/** Every situation across every topic — the Studio home's "See all". Unlike the
+ *  phrase list it copies, the rows push: the Situation screen exists, so a row
+ *  that did nothing would just read as broken. */
+export function AllSituationsScreen({ nav, initialFilter }: { nav: Nav; initialFilter?: string }) {
+  const c = useSituationTokens();
+  const [situations, setSituations] = useState<StudioSituation[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Which chip the screen opens on. The pusher decides — "See all" under
+  // Favorites opens on Favorites — and the learner can move off it from there,
+  // so this seeds state rather than controlling it.
+  const [filter, setFilter] = useState<string | null>(initialFilter ?? null);
+  const load = useCallback(async () => {
+    try { setSituations(await fetchStudioSituations()); setError(null); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load your situations."); }
+  }, []);
+  // Renaming, archiving or starring happens one screen down; this list stays
+  // mounted meanwhile, so the revision counter is what brings it back current.
+  const revision = nav.speakingDataRevision;
+  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load, revision]);
+  const all = useMemo(() => situations ?? [], [situations]);
+  const favoriteCount = all.filter((situation) => situation.isFavorite).length;
+  // Topics come off the rows already loaded, in the list's own recency order —
+  // no second query, and no topic chip for a topic with nothing in it.
+  const topics = useMemo(() => {
+    const map = new Map<string, { name: string; count: number }>();
+    for (const situation of all) {
+      const entry = map.get(situation.topicId);
+      if (entry) entry.count += 1;
+      else map.set(situation.topicId, { name: situation.topicName ?? "Untitled topic", count: 1 });
+    }
+    return [...map.entries()].map(([id, entry]) => ({ id, name: entry.name, count: entry.count }));
+  }, [all]);
+  const visible = filter === null
+    ? all
+    : filter === FAVORITES_FILTER
+      ? all.filter((situation) => situation.isFavorite)
+      : all.filter((situation) => situation.topicId === filter);
+  const toggleFilter = (value: string) => setFilter((current) => (current === value ? null : value));
+  return (
+    <Screen style={{ gap: 0 }} bottomPad={40}>
+      <BackBar onBack={nav.pop} />
+      <View style={{ paddingHorizontal: TEXT_PUSH }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent, marginTop: 14, marginBottom: 6 }}>YOUR STUDIO</Text>
+        <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>Situations</Serif>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          <FilterChip c={c} label={`All ${all.length}`} selected={filter === null} onPress={() => setFilter(null)} />
+          {favoriteCount ? (
+            <FilterChip c={c} label={`Favorites ${favoriteCount}`} selected={filter === FAVORITES_FILTER} onPress={() => toggleFilter(FAVORITES_FILTER)} />
+          ) : null}
+          {topics.map((topic) => (
+            <FilterChip key={topic.id} c={c} label={`${topic.name} ${topic.count}`} selected={filter === topic.id} onPress={() => toggleFilter(topic.id)} />
+          ))}
+        </View>
+      </View>
+      <View style={{ height: 20 }} />
+      {situations === null && !error ? <SituationCenter c={c}><ActivityIndicator color={c.accent} /></SituationCenter> : error ? <ErrorCard message={error} retry={load} /> : (
+        <View style={situationCard(c)}>
+          {visible.length ? visible.map((situation, index) => (
+            <SituationListRow
+              key={situation.id}
+              c={c}
+              situation={situation}
+              first={index === 0}
+              onPress={() => nav.push("situation", { id: situation.id, topicId: situation.topicId, title: situation.title })}
+            />
+          )) : <SituationEmpty c={c} body={all.length ? "Nothing in this filter yet." : "Situations you create will collect here."} />}
         </View>
       )}
     </Screen>
@@ -1414,7 +1927,7 @@ export function SituationAttemptsScreen({ id, title, nav }: { id: string; title?
   );
 }
 
-function PhrasePicker({ open, note, linked, onClose, onChanged }: { open: boolean; note: SpeakingNote; linked: NotePhrase[]; onClose: () => void; onChanged: () => void }) {
+function PhrasePicker({ open, title, subtitle, linked, onLink, onUnlink, onClose, onChanged }: { open: boolean; title: string; subtitle: string; linked: NotePhrase[]; onLink: (phraseId: string) => Promise<void>; onUnlink: (phraseId: string) => Promise<void>; onClose: () => void; onChanged: () => void }) {
   const t = useTheme();
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<PhraseItem[]>([]);
@@ -1424,16 +1937,16 @@ function PhrasePicker({ open, note, linked, onClose, onChanged }: { open: boolea
   const visible = items.filter((item) => !query.trim() || `${item.text} ${item.translation ?? ""}`.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en"))).slice(0, 30);
   const toggle = async (phrase: PhraseItem) => {
     setBusy(phrase.id);
-    try { if (linkedIds.has(phrase.id)) await unlinkPhraseFromNote(note.id, phrase.id); else await linkPhraseToNote({ noteId: note.id, phraseId: phrase.id, situationId: note.situationId }); onChanged(); }
+    try { if (linkedIds.has(phrase.id)) await onUnlink(phrase.id); else await onLink(phrase.id); onChanged(); }
     catch (caught) { Alert.alert("Couldn’t update phrases", caught instanceof Error ? caught.message : "Try again."); }
     finally { setBusy(null); }
   };
   return (
-    <Sheet open={open} title="Link phrases" subtitle="Choose language you want available when you practice." onClose={onClose}>
+    <Sheet open={open} title={title} subtitle={subtitle} onClose={onClose}>
       <View style={{ paddingHorizontal: 22, gap: 12 }}>
         <Field label="Search" value={query} onChangeText={setQuery} placeholder="How can I say this?" />
         <ScrollView style={{ maxHeight: 430 }} keyboardShouldPersistTaps="handled">
-          {visible.map((phrase, index) => { const selected = linkedIds.has(phrase.id); return <Pressable key={phrase.id} onPress={() => void toggle(phrase)} style={({ pressed }) => ({ minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep, opacity: pressed || busy === phrase.id ? 0.55 : 1 })}><View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{phrase.text}</Text>{phrase.translation ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 3 }}>{phrase.translation}</Text> : null}</View><View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: selected ? t.colors.acc : t.colors.soft, alignItems: "center", justifyContent: "center" }}><Icon name={selected ? "check" : "plus"} s={14} c={selected ? "#fff" : t.colors.ink3} /></View></Pressable>; })}
+          {visible.map((phrase, index) => { const selected = linkedIds.has(phrase.id); return <Pressable key={phrase.id} onPress={() => void toggle(phrase)} style={({ pressed }) => ({ minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep, opacity: pressed || busy === phrase.id ? 0.55 : 1 })}><View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{phrase.text}</Text>{phrase.translation ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 3 }}>{phrase.translation}</Text> : null}</View><View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: selected ? t.colors.acc : t.colors.soft, alignItems: "center", justifyContent: "center" }}><Icon name={selected ? "check" : "plus"} s={14} c={selected ? t.colors.onAcc : t.colors.ink3} /></View></Pressable>; })}
         </ScrollView>
         <Pill tone="ghost" full onPress={onClose}>Done</Pill>
       </View>
@@ -1927,7 +2440,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
               inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
               placeholder="Untitled note"
               placeholderTextColor={c.faint}
-              style={{ fontFamily: "Newsreader", fontSize: 31, lineHeight: 35, letterSpacing: -0.31, color: c.ink, padding: 0 }}
+              style={{ ...serifInputFace(title, -0.31), fontSize: 31, lineHeight: 35, color: c.ink, padding: 0 }}
             />
             {/* Serif against the system-font body: the two lines read as
                 different kinds of text at a glance, without a form label. The
@@ -1941,7 +2454,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
               inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
               placeholder="What should this sound like? One sentence."
               placeholderTextColor={c.faint}
-              style={{ fontFamily: "Newsreader", fontSize: 17, lineHeight: 23, color: c.sub, padding: 0, marginTop: 7 }}
+              style={{ ...serifInputFace(goal, 0), fontSize: 17, lineHeight: 23, color: c.sub, padding: 0, marginTop: 7 }}
             />
             <NoteBodyCard c={c} value={body} onOpen={(editing) => { setEditorEditing(editing); setEditorOpen(true); }} />
           </View>
@@ -1986,7 +2499,16 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
         meta={newest ? `Just now · ${attemptDuration(newest.durationSeconds)}` : ""}
         onClose={() => setFixOpen(false)}
       />
-      <PhrasePicker open={pickerOpen} note={note} linked={phrases} onClose={() => setPickerOpen(false)} onChanged={() => void load()} />
+      <PhrasePicker
+        open={pickerOpen}
+        title="Link phrases"
+        subtitle="Choose language you want available when you practice."
+        linked={phrases}
+        onLink={(phraseId) => linkPhraseToNote({ noteId: note.id, phraseId, situationId: note.situationId })}
+        onUnlink={(phraseId) => unlinkPhraseFromNote(note.id, phraseId)}
+        onClose={() => setPickerOpen(false)}
+        onChanged={() => void load()}
+      />
       <Sheet open={organizeOpen} title="Organize note" subtitle="Topic is required. Situation can stay Unsorted until later." onClose={() => setOrganizeOpen(false)}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 12, gap: 16 }}>
           <View style={{ gap: 8 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: c.faint }}>TOPIC · REQUIRED</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{topics.map((topic) => <Chip key={topic.id} active={topic.id === nextTopicId} onPress={() => { setNextTopicId(topic.id); setNextSituationId(null); }}>{topic.name}</Chip>)}</View></View>

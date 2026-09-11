@@ -12,7 +12,8 @@ import { MirrorPreview } from "@/components/mirror-preview";
 import { TalkFeedbackDetail } from "@/components/talk-feedback-detail";
 import { hairline, useTheme } from "@/design/theme";
 import type { IconName } from "@/design/icon";
-import { BackBar, Card, ExpandableCopy, Hero, Icon, Pill, Screen, Serif, Wave, promptFeedbackNote } from "@/design/ui";
+import { BackBar, Card, ExpandableCopy, Hero, Icon, Pill, Screen, Serif, Wave, gradientStops, promptFeedbackNote } from "@/design/ui";
+import { BRAND, Gradients } from "@/design/mobile-tokens";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { createTalkSession } from "@/lib/speaking-world";
 import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
@@ -34,6 +35,19 @@ const TALK_SAMPLES = [
 const TALK_BEATS = ["What I’m building", "Who it helps", "How it works", "Why it matters"];
 
 const FROST = "rgba(20,22,28,0.55)";
+// The live camera feed is a permanently dark surface — like the Hero's brand
+// ramp it does not track the color scheme, so the accent drawn on it must not
+// either. Light-mode acc is #162555, which measures 1.40:1 against the
+// rgba(28,30,36,0.66) frost circles beside it (composited over a mid-grey
+// #808080 frame that is rgb(62,63,67)); the disc stops reading as the accent and
+// only the wave inside tells you it is the record control. BRAND.light does not
+// rescue it either — #344E91 is 1.32:1 against the same frost. Pinned instead to
+// the dark-scheme accent contract, which is the pair built for a dark ground:
+//   #6E8DD5 on rgb(62,63,67) = 3.22:1  (>= 3:1, non-text floor)
+//   #6E8DD5 on a blown-out white frame = 3.26:1
+//   CAMERA_ON_ACC (#0D1A3B) on #6E8DD5 = 5.24:1  (white would be 3.26:1)
+const CAMERA_ACC = "#6E8DD5";
+const CAMERA_ON_ACC = BRAND.dark;
 const ANALYSIS_ERROR_COPY = "Couldn’t analyze this time. Try again.";
 const SESSION_SAVE_ERROR_COPY = "Couldn’t save this session. Check your connection and try talking again.";
 
@@ -700,7 +714,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </View>
           )}
           {saveState === "error" ? (
-            <Text style={{ fontSize: 13, lineHeight: 19, color: "#E5484D", fontWeight: "600", marginTop: 10, textAlign: "center" }}>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.warn, fontWeight: "600", marginTop: 10, textAlign: "center" }}>
               {saveErr ?? "Couldn’t save this session."}
             </Text>
           ) : null}
@@ -758,7 +772,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
 
         {diagState === "error" ? (
           <Card lg style={{ gap: 12 }}>
-            <Text style={{ fontSize: 15, color: "#E5484D", fontWeight: "600" }}>{diagErr ?? "Couldn’t analyze this session."}</Text>
+            <Text style={{ fontSize: 15, color: t.colors.warn, fontWeight: "600" }}>{diagErr ?? "Couldn’t analyze this session."}</Text>
             <Pill tone="tint" small onPress={() => runDiagnosis(transcript)}>
               Try again
             </Pill>
@@ -875,8 +889,8 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         {bankState === "error" ? (
           <Card style={{ gap: 11 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-              <Icon name="bank" s={17} c="#E5484D" />
-              <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: "#E5484D" }}>Couldn’t check your Phrase Bank.</Text>
+              <Icon name="bank" s={17} c={t.colors.warn} />
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: t.colors.warn }}>Couldn’t check your Phrase Bank.</Text>
             </View>
             <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>Your Focus coaching is still available above.</Text>
             <Pill tone="tint" small onPress={() => runBankSuggestion(transcript)}>
@@ -887,14 +901,14 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
 
         {bankState === "done" && bankSuggestion && !bankDismissed ? (
           <LinearGradient
-            colors={["#315FC7", "#5B88E8"]}
+            colors={gradientStops(Gradients.brandLift)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{
               borderRadius: t.r,
               padding: t.padc,
               overflow: "hidden",
-              shadowColor: "#3D6FE0",
+              shadowColor: BRAND.main,
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.18,
               shadowRadius: 16,
@@ -909,7 +923,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                 borderRadius: 75,
                 right: -48,
                 top: -88,
-                backgroundColor: "rgba(255,255,255,0.12)",
+                backgroundColor: "rgba(255,255,255,0.10)",
               }}
             />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -940,10 +954,37 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <Text style={{ fontSize: 13, lineHeight: 19, color: "rgba(255,255,255,0.86)", marginTop: 11 }}>{bankSuggestion.why}</Text>
             <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.66)", marginTop: 9 }}>{bankSuggestion.sourceLabel}</Text>
             <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
-              <Pill tone="white" full icon="mic" onPress={tryBankPhrase} textStyle={{ color: t.colors.accD }}>
+              {/* Accept and dismiss sit on this card's brandLift ramp
+                  (#162555 → #344E91), where tone="white" is the only tone whose
+                  own pair survives — so the primary/secondary split cannot come
+                  from a second tone's fill: `dark` measures 1.05–2.14:1 against the
+                  ramp and `tint`/`soft`/`ghost` each put their label under 3:1 on
+                  navy in one scheme or the other. Accept therefore keeps the solid
+                  tone="white" capsule (plus the mic icon); dismiss becomes an
+                  outline, taking tone="dark" only for its fixed #fff foreground —
+                  the one scheme-independent white label in the table, which the
+                  text takes automatically — with the fill replaced by transparent
+                  so the card shows through instead of a near-black capsule
+                  dissolving into it. Still no textStyle, so neither label can
+                  drift off its own fill the way the old overrides did (accD
+                  #8FACEF = 2.25:1 on #FFFFFF; ink2 is a near-white grey).
+                  Measured against the ramp behind this row (#162555 ‥ #344E91):
+                    accept  fill #FFFFFF on ramp          14.69:1 ‥ 7.94:1
+                    accept  label BRAND.dark on #FFFFFF   17.10:1
+                    dismiss label #FFFFFF on ramp         14.69:1 ‥ 7.94:1
+                    dismiss 1.5pt rgba(255,255,255,.68)   7.50:1 ‥ 4.65:1
+                  opacity 0.86 is gone: it dimmed the whole capsule and was the
+                  only thing telling the two buttons apart, one of which discards
+                  the suggestion with no undo. */}
+              <Pill tone="white" full icon="mic" onPress={tryBankPhrase}>
                 Try this phrase
               </Pill>
-              <Pill tone="white" full onPress={rejectBankPhrase} textStyle={{ color: t.colors.ink2 }} style={{ opacity: 0.86 }}>
+              <Pill
+                tone="dark"
+                full
+                onPress={rejectBankPhrase}
+                style={{ backgroundColor: "transparent", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.68)" }}
+              >
                 Doesn’t fit
               </Pill>
             </View>
@@ -1028,7 +1069,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <Serif style={{ fontSize: 21, lineHeight: 28, color: "#fff", textAlign: "center" }}>
               {retryResult === "used" ? "You brought it into this Story." : "Not yet is useful evidence too."}
             </Serif>
-            <Pill tone="white" small onPress={() => setPhase("moment")} textStyle={{ color: t.colors.accD }} style={{ marginTop: 12, shadowOpacity: 0, alignSelf: "center" }}>Back to the moment</Pill>
+            {/* No textStyle: tone="white" carries its own pair (#FFFFFF fill /
+                BRAND.dark label, 17.10:1). accD is #8FACEF in dark mode = 2.25:1
+                on that fill. shadowOpacity:0 stays — a black shadow does nothing
+                on the hero's navy ramp and the fill separates at 7.94:1. */}
+            <Pill tone="white" small onPress={() => setPhase("moment")} style={{ marginTop: 12, shadowOpacity: 0, alignSelf: "center" }}>Back to the moment</Pill>
           </Hero>
         ) : (
           <View style={{ gap: 10 }}>
@@ -1066,11 +1111,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <Serif style={{ fontSize: 21, lineHeight: 28, color: "#fff", textAlign: "center" }}>
               {bankRetryResult === "used" ? "You brought it into this Story." : "Not yet is useful evidence too."}
             </Serif>
+            {/* Same as the retry hero: the tone supplies its own 17.10:1 label. */}
             <Pill
               tone="white"
               small
               onPress={() => setPhase("done")}
-              textStyle={{ color: t.colors.accD }}
               style={{ marginTop: 12, shadowOpacity: 0, alignSelf: "center" }}
             >
               Back to feedback
@@ -1259,7 +1304,10 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                             borderColor: "rgba(0,0,0,0.2)",
                           }}
                         >
-                          {done ? <Icon name="check" s={12} w={3} c="#fff" /> : null}
+                          {/* onAcc rule: this dot is t.colors.acc, which follows the
+                              scheme even though the panel around it does not. White on
+                              dark-mode acc (#6E8DD5) is 3.26:1; onAcc is 5.24:1. */}
+                          {done ? <Icon name="check" s={12} w={3} c={t.colors.onAcc} /> : null}
                         </View>
                         <Text style={{ flex: 1, fontSize: 15.5, fontWeight: current ? "700" : "600", color: current ? "#16181d" : done ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.7)" }}>
                           {b}
@@ -1277,15 +1325,18 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <View style={{ alignItems: "center", gap: 8 }}>
               <Pressable
                 onPress={() => setHintOpen((open) => !open)}
-                style={{ backgroundColor: hintOpen ? t.colors.acc : "rgba(28,30,36,0.66)", width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" }}
+                style={{ backgroundColor: hintOpen ? CAMERA_ACC : "rgba(28,30,36,0.66)", width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" }}
               >
-                <Icon name="bulb" s={24} w={1.9} c="#fff" />
+                {/* Open state is the same accent-on-camera case as the record disc:
+                    light-mode acc was 1.40:1 against this button's own closed fill,
+                    so "open" and "closed" looked identical. Icon follows the fill. */}
+                <Icon name="bulb" s={24} w={1.9} c={hintOpen ? CAMERA_ON_ACC : "#fff"} />
               </Pressable>
               <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>{hintOpen ? "Hide" : "Hint"}</Text>
             </View>
             <View style={{ alignItems: "center", gap: 8, paddingBottom: 22 }}>
-              <View style={[{ width: 84, height: 84, borderRadius: 42, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }, t.shadowLg]}>
-                <Wave n={5} h={30} active color="#fff" />
+              <View style={[{ width: 84, height: 84, borderRadius: 42, backgroundColor: CAMERA_ACC, alignItems: "center", justifyContent: "center" }, t.shadowLg]}>
+                <Wave n={5} h={30} active color={CAMERA_ON_ACC} />
               </View>
             </View>
             <View style={{ alignItems: "center", gap: 8 }}>

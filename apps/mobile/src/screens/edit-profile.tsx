@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "reac
 import { LinearGradient } from "expo-linear-gradient";
 
 import { hairline, useTheme } from "@/design/theme";
+import { BRAND, Gradients } from "@/design/mobile-tokens";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { PHRASES_PER_DAY_OPTIONS, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
@@ -28,7 +29,7 @@ import {
   TALK_FOCUS_OPTIONS,
   type TalkFocus,
 } from "@/lib/talk-focus";
-import { Avatar, BackBar, Card, Chip, Icon, Pill, Screen } from "@/design/ui";
+import { Avatar, BackBar, Card, Chip, Icon, Pill, Screen, gradientStops } from "@/design/ui";
 import { avatarUrlFromMetadata, clearUploadedAvatar, pickAndUploadAvatar } from "@/lib/profile-photo";
 import type { Nav } from "./nav";
 
@@ -136,7 +137,7 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
               borderColor: t.colors.bg,
             }}
           >
-            {photoBusy ? <ActivityIndicator color="#fff" /> : <Icon name="camera" s={14} c="#fff" />}
+            {photoBusy ? <ActivityIndicator color={t.colors.onAcc} /> : <Icon name="camera" s={14} c={t.colors.onAcc} />}
           </View>
         </Pressable>
         <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.accD, marginTop: 10 }}>Change photo</Text>
@@ -162,9 +163,9 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
         />
       </Card>
 
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center" }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center" }}>{error}</Text> : null}
       <Pill full icon="check" onPress={saving ? undefined : save} style={{ opacity: saving ? 0.6 : 1 }}>
-        {saving ? <ActivityIndicator color="#fff" /> : "Save"}
+        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : "Save"}
       </Pill>
     </Screen>
   );
@@ -241,7 +242,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -288,14 +289,14 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
         </View>
         <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, marginTop: 14 }}>You may have meant</Text>
         <LinearGradient
-          colors={["#A9C7FF", "#D5E3FF", "#7BA7F6"]}
+          colors={gradientStops(Gradients.brandEdge)}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
             marginTop: 8,
             borderRadius: t.r,
             padding: 1.5,
-            shadowColor: "#3D6FE0",
+            shadowColor: BRAND.main,
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.2,
             shadowRadius: 18,
@@ -303,7 +304,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
           }}
         >
           <LinearGradient
-            colors={["#3D6FE0", "#6C9BF2"]}
+            colors={gradientStops(Gradients.brandLift)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{ borderRadius: t.r - 1.5, padding: t.padc, overflow: "hidden" }}
@@ -316,7 +317,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
                 borderRadius: 60,
                 top: -72,
                 right: -32,
-                backgroundColor: "rgba(255,255,255,0.14)",
+                backgroundColor: "rgba(255,255,255,0.10)",
               }}
             />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
@@ -378,7 +379,7 @@ export function EnglishLevelScreen({ nav }: { nav: Nav }) {
               </View>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -431,7 +432,7 @@ export function ThemeScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -502,7 +503,7 @@ export function DailySpeakingGoalScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -510,7 +511,7 @@ export function DailySpeakingGoalScreen({ nav }: { nav: Nav }) {
             </Pressable>
           );
         })}
-        {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingVertical: 10 }}>{error}</Text> : null}
+        {error ? <Text style={{ fontSize: 13, color: t.colors.warn, paddingVertical: 10 }}>{error}</Text> : null}
       </Card>
     </Screen>
   );
@@ -556,7 +557,7 @@ export function PhrasesPerDayScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />

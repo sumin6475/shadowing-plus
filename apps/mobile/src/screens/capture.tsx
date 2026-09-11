@@ -220,7 +220,7 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
           { transform: [{ scale: fx.scale }] },
         ]}
       >
-        <Icon name={open ? "x" : "plus"} s={24} w={2.4} c="#fff" />
+        <Icon name={open ? "x" : "plus"} s={24} w={2.4} c={t.colors.onAcc} />
       </AnimatedPressable>
     </>
   );
@@ -271,21 +271,40 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
   const [savedEditError, setSavedEditError] = useState<string | null>(null);
   const [savingSavedEdit, setSavingSavedEdit] = useState(false);
 
-  const loadStories = useCallback(async () => {
+  // Bumped by Retry to re-run the story load below.
+  const [storiesNonce, setStoriesNonce] = useState(0);
+
+  // Load the story list. The fetch lives in the effect, so every commit happens
+  // after `await` — the effect body itself sets no state, which is what the
+  // cascading-render warning is actually about. There is no pre-set to defer:
+  // storiesLoading starts true and storiesError false, already the mount state.
+  // `alive` drops a response that lost its race with unmount or another Retry.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const next = await fetchAllStories();
+        if (!alive) return;
+        setStories(next);
+        setStoriesError(false);
+      } catch {
+        if (alive) setStoriesError(true);
+      } finally {
+        if (alive) setStoriesLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [storiesNonce]);
+
+  // Retry is a press handler, not an effect: showing the spinner immediately is
+  // wanted here, and a commit in an event handler cascades nothing.
+  const retryStories = useCallback(() => {
     setStoriesLoading(true);
     setStoriesError(false);
-    try {
-      setStories(await fetchAllStories());
-    } catch {
-      setStoriesError(true);
-    } finally {
-      setStoriesLoading(false);
-    }
+    setStoriesNonce((n) => n + 1);
   }, []);
-
-  useEffect(() => {
-    void loadStories();
-  }, [loadStories]);
 
   const applyPhraseDraft = useCallback((draft: PhraseCaptureDraft) => {
     setText(draft.suggestedPhrase);
@@ -867,7 +886,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
           ) : storiesError ? (
             <View style={{ paddingTop: 14, alignItems: "flex-start" }}>
               <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3 }}>Couldn’t load your stories. You can still save this phrase without linking it.</Text>
-              <Pill tone="tint" small onPress={loadStories} style={{ marginTop: 9 }}>Retry stories</Pill>
+              <Pill tone="tint" small onPress={retryStories} style={{ marginTop: 9 }}>Retry stories</Pill>
             </View>
           ) : (
             <>
@@ -886,9 +905,9 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       ) : null}
 
       {confidence != null && confidence < 0.7 ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18 }}>Check the suggested phrase before saving.</Text> : null}
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center" }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center" }}>{error}</Text> : null}
       <Pill full icon="bank" onPress={reading || filling || saving ? undefined : save} style={{ opacity: reading || filling || saving ? 0.6 : 1 }}>
-        {saving ? <ActivityIndicator color="#fff" /> : savedPhrases.length > 0 ? "Save this phrase" : "Save to Phrase Bank"}
+        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : savedPhrases.length > 0 ? "Save this phrase" : "Save to Phrase Bank"}
       </Pill>
       </Screen>
 
@@ -914,7 +933,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         >
           <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, marginBottom: 20 }} />
           <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-            <Icon name="check" s={21} w={2.6} c="#fff" />
+            <Icon name="check" s={21} w={2.6} c={t.colors.onAcc} />
           </View>
           <Text style={{ fontSize: 21, lineHeight: 28, fontWeight: "700", color: t.colors.ink, textAlign: "center", marginTop: 14 }}>
             “{savePrompt?.text}” {savePrompt?.result === "already" ? "is already saved" : "saved"}
@@ -971,9 +990,9 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
                 <TextInput value={savedEditMeaning} onChangeText={setSavedEditMeaning} placeholder="Meaning" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
                 <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 18 }}>HOW IT’S USED</Text>
                 <TextInput value={savedEditNote} onChangeText={setSavedEditNote} multiline placeholder="How it’s used" placeholderTextColor={t.colors.ink3} style={{ minHeight: 54, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
-                {savedEditError ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center", marginTop: 12 }}>{savedEditError}</Text> : null}
+                {savedEditError ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center", marginTop: 12 }}>{savedEditError}</Text> : null}
                 <Pill full onPress={savingSavedEdit ? undefined : () => void saveSavedPhraseEdits()} style={{ marginTop: 20, opacity: savingSavedEdit ? 0.6 : 1 }}>
-                  {savingSavedEdit ? <ActivityIndicator color="#fff" /> : "Save changes"}
+                  {savingSavedEdit ? <ActivityIndicator color={t.colors.onAcc} /> : "Save changes"}
                 </Pill>
                 <Pill tone="ghost" onPress={savingSavedEdit ? undefined : () => setEditingSaved(false)} style={{ alignSelf: "center", marginTop: 4 }}>Cancel</Pill>
               </>
@@ -982,7 +1001,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                   <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.7, color: t.colors.ink3 }}>SAVED PHRASE</Text>
                   <View style={{ width: 21, height: 21, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                    <Icon name="check" s={12} w={2.5} c="#fff" />
+                    <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                   </View>
                 </View>
                 <Text style={{ fontSize: 29, lineHeight: 37, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 9 }}>{selectedSaved.text}</Text>

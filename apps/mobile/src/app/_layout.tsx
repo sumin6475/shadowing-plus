@@ -239,7 +239,7 @@ function ImportingStory({ error, onRetry }: { error: string | null; onRetry: () 
       </Text>
       {error ? (
         <Pressable onPress={onRetry} style={{ marginTop: 22, minHeight: 50, minWidth: 160, paddingHorizontal: 24, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: t.colors.acc }}>
-          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Try again</Text>
+          <Text style={{ color: t.colors.onAcc, fontSize: 16, fontWeight: "700" }}>Try again</Text>
         </Pressable>
       ) : null}
     </View>

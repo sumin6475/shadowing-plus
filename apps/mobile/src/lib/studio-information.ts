@@ -3,7 +3,7 @@
 // domains=Topics, stories=Situations, messages=Speaking Notes,
 // talk_sessions=Practice Attempts.
 import { fetchPhrases, linkPhraseToStory, recordPhraseEvent, type PhraseItem } from "./phrases";
-import { createBeat, createStory, fetchDomains } from "./speaking-world";
+import { archiveDomain, archiveStory, createBeat, createDomain, createStory, fetchDomains, renameDomain } from "./speaking-world";
 import { supabase } from "./supabase";
 
 export interface StudioTopic {
@@ -22,6 +22,7 @@ export interface StudioSituation {
   description: string | null;
   eventDate: string | null;
   status: string;
+  isFavorite: boolean;
   noteCount: number;
   attemptCount: number;
 }
@@ -47,6 +48,10 @@ export interface NotePhrase {
   text: string;
   translation: string | null;
   learningStatus: PhraseItem["learningStatus"];
+  /** The Speaking Note this phrase arrived through, or null when it is attached
+   *  straight to the Situation (phrase_story_links, written on every capture). */
+  noteId: string | null;
+  noteTitle: string | null;
 }
 
 export interface PracticeAttempt {
@@ -93,18 +98,33 @@ function countBy(rows: LooseRow[] | null | undefined, key: string): Map<string, 
   return counts;
 }
 
+// `is_favorite` is the 029 column. On a database that hasn't run it PostgREST
+// answers "column stories.is_favorite does not exist", which matched none of
+// the older tokens — and because fetchStudioOverview is one Promise.all, the
+// whole Studio home would have gone to an ErrorCard instead of degrading to a
+// list without favorites.
+//
+// `meaning` is the 030 column — the EXPAND half of renaming
+// phrase_items.meaning_ko to meaning. Same trap, one layer down: every nested
+// phrase select below names it, and a database that has not run 030 answers
+// "column phrase_items.meaning does not exist". The token on its own only buys
+// the retry; PHRASE_MEANING_COLUMNS is what re-asks for the gloss under its old
+// name, so a Situation keeps showing its phrases instead of listing none.
 function looksLikeMissingStudioSchema(message: string): boolean {
-  return /domain_id|goal|body|status|event_date|note_phrase_links|schema cache/i.test(message);
+  return /domain_id|goal|body|status|event_date|is_favorite|meaning|note_phrase_links|schema cache/i.test(message);
 }
 
+// Chinese and Japanese end sentences with 。！？ and never put a space after
+// them, so those split on the mark itself; Latin punctuation still needs the
+// following whitespace.
+const SENTENCE_END = /(?<=[.!?])\s+|(?<=[。！？])|\n+/;
+
 export function quickTitleFromBody(body: string): string {
-  const first = body
-    .trim()
-    .split(/(?<=[.!?])\s+|\n+/)[0]
-    ?.replace(/\s+/g, " ")
-    .trim();
+  const first = body.trim().split(SENTENCE_END)[0]?.replace(/\s+/g, " ").trim();
   if (!first) return "";
-  return first.length > 64 ? `${first.slice(0, 61).trimEnd()}…` : first;
+  // Count code points, not UTF-16 units, so an emoji is never cut in half.
+  const chars = Array.from(first);
+  return chars.length > 64 ? `${chars.slice(0, 61).join("").trimEnd()}…` : first;
 }
 
 export async function fetchStudioTopics(): Promise<StudioTopic[]> {
@@ -120,21 +140,56 @@ export async function fetchStudioTopics(): Promise<StudioTopic[]> {
   }));
 }
 
+/** Create a Topic. createDomain owns positioning; this keeps the Studio screens
+ *  on one import surface, the way fetchStudioTopics wraps fetchDomains. */
+export async function createStudioTopic(name: string): Promise<string> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Enter a topic name.");
+  const id = await createDomain(trimmed);
+  if (!id) throw new Error("Couldn’t create this topic.");
+  return id;
+}
+
+export async function renameStudioTopic(id: string, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Enter a topic name.");
+  await renameDomain(id, trimmed);
+}
+
+/** Soft-archive a Topic. Refuses the learner's last open one — archiveDomain
+ *  explains why, and throws a message the UI can show verbatim. */
+export async function archiveStudioTopic(id: string): Promise<void> {
+  await archiveDomain(id);
+}
+
+// Column ladder, widest first. Each rung drops the column a newer migration
+// added (029 is_favorite, then 028 event_date), so an un-migrated database
+// still loads the list instead of erroring out the whole Studio home. A missing
+// column just leaves the key off the row, which the `??` defaults below absorb.
+const SITUATION_SELECTS = [
+  "id, domain_id, title, summary, event_date, status, is_favorite, domains(name, archived)",
+  "id, domain_id, title, summary, event_date, status, domains(name, archived)",
+  "id, domain_id, title, summary, status, domains(name, archived)",
+];
+
+// Favorites are filtered in memory, not in SQL. An `.eq("is_favorite", true)`
+// would pin this query to the top rung of the ladder — the only select that
+// names the column — and on a database still short of migration 029 it would
+// take the whole Studio home down with it. Every caller already needs the full
+// list for its picker, so the filter costs a `.filter()`, not a round trip.
 export async function fetchStudioSituations(topicId?: string): Promise<StudioSituation[]> {
-  const load = async (modern: boolean) => {
+  const load = async (select: string) => {
     let query = supabase
       .from("stories")
-      .select(modern ? "id, domain_id, title, summary, event_date, status, domains(name)" : "id, domain_id, title, summary, status, domains(name)")
+      .select(select)
       .neq("status", "archived")
       .order("updated_at", { ascending: false });
     if (topicId) query = query.eq("domain_id", topicId);
     return query;
   };
-  let result = await load(true);
-  let modern = true;
-  if (result.error && looksLikeMissingStudioSchema(result.error.message)) {
-    result = await load(false);
-    modern = false;
+  let result = await load(SITUATION_SELECTS[0]);
+  for (let rung = 1; rung < SITUATION_SELECTS.length && result.error && looksLikeMissingStudioSchema(result.error.message); rung += 1) {
+    result = await load(SITUATION_SELECTS[rung]);
   }
   if (result.error) throw new Error(result.error.message);
 
@@ -151,18 +206,24 @@ export async function fetchStudioSituations(topicId?: string): Promise<StudioSit
   const noteCounts = countBy((notes.data ?? []) as LooseRow[], "story_id");
   const attemptCounts = countBy((attempts.data ?? []) as LooseRow[], "story_id");
 
+  type DomainRef = { name?: string; archived?: boolean };
   return situationRows.flatMap((row) => {
     const domainId = row.domain_id as string | null;
     if (!domainId) return [];
-    const domain = one(row.domains as { name?: string } | { name?: string }[] | null);
+    const domain = one(row.domains as DomainRef | DomainRef[] | null);
+    // An archived Topic drops out of the cross-topic lists, but a query scoped
+    // to one topic still answers so an open Topic screen can't blank out
+    // mid-session.
+    if (!topicId && domain?.archived) return [];
     return [{
       id: row.id as string,
       topicId: domainId,
       topicName: domain?.name ?? null,
       title: (row.title as string) || "Untitled situation",
       description: (row.summary as string | null) ?? null,
-      eventDate: modern ? ((row.event_date as string | null) ?? null) : null,
+      eventDate: (row.event_date as string | null) ?? null,
       status: (row.status as string) ?? "active",
+      isFavorite: (row.is_favorite as boolean | null) ?? false,
       noteCount: noteCounts.get(row.id as string) ?? 0,
       attemptCount: attemptCounts.get(row.id as string) ?? 0,
     }];
@@ -191,8 +252,8 @@ export async function fetchSpeakingNotes(input: {
 } = {}): Promise<SpeakingNote[]> {
   const load = async (modern: boolean) => {
     const select = modern
-      ? "id, story_id, domain_id, label, goal, body, status, created_at, updated_at, stories(title, domain_id, domains(name)), domains(name)"
-      : "id, story_id, label, created_at, updated_at, stories(title, domain_id, domains(name))";
+      ? "id, story_id, domain_id, label, goal, body, status, created_at, updated_at, stories(title, domain_id, domains(name, archived)), domains(name, archived)"
+      : "id, story_id, label, created_at, updated_at, stories(title, domain_id, domains(name, archived))";
     let query = supabase.from("messages").select(select).order("updated_at", { ascending: false }).limit(input.limit ?? 100);
     if (input.id) query = query.eq("id", input.id);
     if (input.situationId) query = query.eq("story_id", input.situationId);
@@ -217,10 +278,15 @@ export async function fetchSpeakingNotes(input: {
     ? new Map<string, number>()
     : countBy((legacyLinks.data ?? []) as LooseRow[], "story_id");
 
+  // Any scoped query (by id, topic, or situation) still answers for an archived
+  // Topic so an open screen can't blank out; only the cross-topic lists hide it.
+  const scoped = Boolean(input.id || input.topicId || input.situationId);
+  type DomainRef = { name?: string; archived?: boolean };
   return rows.flatMap((row) => {
     const story = one(row.stories as LooseRow | LooseRow[] | null);
-    const storyDomain = one(story?.domains as { name?: string } | { name?: string }[] | null);
-    const directDomain = one(row.domains as { name?: string } | { name?: string }[] | null);
+    const storyDomain = one(story?.domains as DomainRef | DomainRef[] | null);
+    const directDomain = one(row.domains as DomainRef | DomainRef[] | null);
+    if (!scoped && (directDomain?.archived ?? storyDomain?.archived)) return [];
     const topicId = modern
       ? ((row.domain_id as string | null) ?? (story?.domain_id as string | null))
       : (story?.domain_id as string | null);
@@ -332,39 +398,145 @@ export async function fetchPracticeAttempts(input: { noteId?: string; situationI
   }));
 }
 
-function phraseFromNested(value: unknown): NotePhrase | null {
+// Gloss-column ladder for the nested phrase selects, widest/newest first like
+// SITUATION_SELECTS. 030 adds `meaning` beside the legacy `meaning_ko` and a
+// trigger mirrors the two, so either name returns the same text; a database
+// still short of 030 only answers to the second rung. Drop that rung with 031.
+const PHRASE_MEANING_COLUMNS = ["meaning", "meaning_ko"] as const;
+
+const nestedPhraseSelect = (meaning: string) =>
+  `phrase_items(id, text, ${meaning}, learning_status, status)`;
+
+/** Walk the gloss rungs for one nested phrase query. `load` receives the
+ *  `phrase_items(...)` fragment to splice into its own select. */
+async function loadNestedPhrases(
+  load: (nested: string) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<{ data: unknown; error: { message: string } | null }> {
+  let result = await load(nestedPhraseSelect(PHRASE_MEANING_COLUMNS[0]));
+  for (
+    let rung = 1;
+    rung < PHRASE_MEANING_COLUMNS.length &&
+    result.error &&
+    looksLikeMissingStudioSchema(result.error.message);
+    rung += 1
+  ) {
+    result = await load(nestedPhraseSelect(PHRASE_MEANING_COLUMNS[rung]));
+  }
+  return result;
+}
+
+function phraseFromNested(value: unknown, from: { noteId: string | null; noteTitle: string | null }): NotePhrase | null {
   const row = one(value as LooseRow | LooseRow[] | null);
   if (!row || row.status !== "ready") return null;
   return {
     id: row.id as string,
     text: (row.text as string) || "",
-    translation: (row.meaning_ko as string | null) ?? null,
+    // `meaning` post-030, `meaning_ko` on the pre-030 rung.
+    translation:
+      (row.meaning as string | null | undefined) ??
+      (row.meaning_ko as string | null | undefined) ??
+      null,
     learningStatus: ((row.learning_status as PhraseItem["learningStatus"] | null) ?? "new"),
+    noteId: from.noteId,
+    noteTitle: from.noteTitle,
   };
 }
 
-export async function fetchNotePhrases(note: Pick<SpeakingNote, "id" | "situationId">): Promise<NotePhrase[]> {
-  const result = await supabase
-    .from("note_phrase_links")
-    .select("phrase_items(id, text, meaning_ko, learning_status, status)")
-    .eq("message_id", note.id)
-    .order("linked_at", { ascending: false });
-  if (!result.error) return (result.data ?? []).flatMap((row) => phraseFromNested(row.phrase_items) ?? []);
-  if (!looksLikeMissingStudioSchema(result.error.message) || !note.situationId) throw new Error(result.error.message);
-  const fallback = await supabase
-    .from("phrase_story_links")
-    .select("phrase_items(id, text, meaning_ko, learning_status, status)")
-    .eq("story_id", note.situationId);
-  if (fallback.error) throw new Error(fallback.error.message);
-  return (fallback.data ?? []).flatMap((row) => phraseFromNested(row.phrase_items) ?? []);
+/** Phrases attached straight to a Situation. phrase_story_links is written by
+ *  every capture (linkPhraseToStory) but Studio never read it, which is why a
+ *  Situation with no Notes showed zero phrases. These carry no Note. */
+async function situationLinkedPhrases(situationId: string): Promise<NotePhrase[]> {
+  const result = await loadNestedPhrases((nested) =>
+    supabase
+      .from("phrase_story_links")
+      .select(nested)
+      .eq("story_id", situationId)
+      .order("created_at", { ascending: false }),
+  );
+  if (result.error) {
+    if (!looksLikeMissingStudioSchema(result.error.message)) throw new Error(result.error.message);
+    return [];
+  }
+  const rows = (result.data as unknown as LooseRow[] | null) ?? [];
+  return rows.flatMap((row) => phraseFromNested(row.phrase_items, { noteId: null, noteTitle: null }) ?? []);
 }
 
+export async function fetchNotePhrases(note: Pick<SpeakingNote, "id" | "situationId" | "title">): Promise<NotePhrase[]> {
+  const result = await loadNestedPhrases((nested) =>
+    supabase
+      .from("note_phrase_links")
+      .select(`message_id, ${nested}`)
+      .eq("message_id", note.id)
+      .order("linked_at", { ascending: false }),
+  );
+  if (!result.error) {
+    const rows = (result.data as unknown as LooseRow[] | null) ?? [];
+    return rows.flatMap((row) => phraseFromNested(row.phrase_items, {
+      noteId: (row.message_id as string | null) ?? note.id,
+      noteTitle: note.title,
+    }) ?? []);
+  }
+  if (!looksLikeMissingStudioSchema(result.error.message) || !note.situationId) throw new Error(result.error.message);
+  // Pre-028 databases only have Situation-level links, and those name no Note.
+  const situationId = note.situationId;
+  const fallback = await loadNestedPhrases((nested) =>
+    supabase.from("phrase_story_links").select(nested).eq("story_id", situationId),
+  );
+  if (fallback.error) throw new Error(fallback.error.message);
+  const rows = (fallback.data as unknown as LooseRow[] | null) ?? [];
+  return rows.flatMap((row) => phraseFromNested(row.phrase_items, { noteId: null, noteTitle: null }) ?? []);
+}
+
+/** Every phrase in a Situation: the ones its Notes link, plus the ones attached
+ *  to the Situation directly. */
 export async function fetchSituationPhrases(situationId: string): Promise<NotePhrase[]> {
   const notes = await fetchSpeakingNotes({ situationId, limit: 100 });
-  const groups = await Promise.all(notes.map((note) => fetchNotePhrases(note)));
+  const [groups, direct] = await Promise.all([
+    Promise.all(notes.map((note) => fetchNotePhrases(note))),
+    situationLinkedPhrases(situationId),
+  ]);
+  // Still one row per phrase, but provenance is deterministic now instead of
+  // "whichever Note happened to be walked last": notes arrive newest-updated
+  // first, so the freshest Note that claims a phrase wins, and a direct
+  // Situation link only fills in for phrases no Note claims.
   const unique = new Map<string, NotePhrase>();
-  for (const phrase of groups.flat()) unique.set(phrase.id, phrase);
+  for (const phrase of [...groups.flat(), ...direct]) {
+    if (!unique.has(phrase.id)) unique.set(phrase.id, phrase);
+  }
   return [...unique.values()];
+}
+
+/** Attach a phrase straight to a Situation. Delegates to linkPhraseToStory so
+ *  phrase_story_links keeps a single writer — and its 'learner' default is the
+ *  point: that table's CHECK has no 'migration', which note_phrase_links does,
+ *  so a source value must never be copied across from a Note link. */
+export async function addPhraseToSituation(situationId: string, phraseId: string): Promise<void> {
+  await linkPhraseToStory(phraseId, situationId);
+}
+
+/**
+ * Detach a phrase from a Situation; the phrase itself stays in the Phrase Bank.
+ * A phrase can reach a Situation two ways — a direct link, or any Note inside
+ * it — so both go. Dropping only the direct link would leave the phrase on
+ * screen and make the button look broken.
+ */
+export async function removePhraseFromSituation(situationId: string, phraseId: string): Promise<void> {
+  const direct = await supabase
+    .from("phrase_story_links")
+    .delete()
+    .eq("story_id", situationId)
+    .eq("phrase_item_id", phraseId);
+  if (direct.error) throw new Error(direct.error.message);
+  const notes = await supabase.from("messages").select("id").eq("story_id", situationId);
+  if (notes.error) throw new Error(notes.error.message);
+  const noteIds = (notes.data ?? []).map((row) => row.id as string);
+  if (!noteIds.length) return;
+  const links = await supabase
+    .from("note_phrase_links")
+    .delete()
+    .in("message_id", noteIds)
+    .eq("phrase_item_id", phraseId);
+  if (links.error && !looksLikeMissingStudioSchema(links.error.message)) throw new Error(links.error.message);
 }
 
 async function legacyUnsortedSituation(topicId: string): Promise<string> {
@@ -481,11 +653,46 @@ export async function createStudioSituation(input: { topicId: string; title: str
   throw new Error(result.error?.message ?? "Couldn’t create this situation.");
 }
 
+/**
+ * Rename a situation. Nothing in the schema maintains `stories.updated_at` —
+ * there is no trigger, and none of the shipped writers set it — so
+ * fetchStudioSituations' `order("updated_at")` was silently created_at order.
+ * Every content write here sets it, or a rename wouldn't reorder the list.
+ */
+export async function renameStudioSituation(id: string, title: string): Promise<void> {
+  const trimmed = title.trim();
+  if (!trimmed) throw new Error("Enter a situation name.");
+  const { error } = await supabase
+    .from("stories")
+    .update({ title: trimmed, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Soft-archive a situation. Reuses archiveStory so stories.status has one
+ *  updater — a hard delete would cascade to its notes, beats and attempts. */
+export async function archiveStudioSituation(id: string): Promise<void> {
+  await archiveStory(id);
+}
+
+/** Star a situation. Modelled on setPhraseFavorite: the column lands in 029, so
+ *  a database without it gets a line the UI can show instead of raw SQL.
+ *  Deliberately does not touch updated_at — starring isn't an edit, and it
+ *  would shuffle the list under the learner's thumb. */
+export async function setSituationFavorite(id: string, favorite: boolean): Promise<void> {
+  const { error } = await supabase.from("stories").update({ is_favorite: favorite }).eq("id", id);
+  if (error && looksLikeMissingStudioSchema(error.message)) throw new Error("Favorites are temporarily unavailable.");
+  if (error) throw new Error(error.message);
+}
+
 /** Set (or clear) a situation's event date. Backs the "+ Date" chip on the
  *  Situation header — the field shipped in migration 028 but nothing ever
  *  wrote to it, so every situation read back null. */
 export async function setSituationEventDate(id: string, eventDate: string | null): Promise<void> {
-  const { error } = await supabase.from("stories").update({ event_date: eventDate }).eq("id", id);
+  const { error } = await supabase
+    .from("stories")
+    .update({ event_date: eventDate, updated_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) throw new Error(error.message);
 }
 

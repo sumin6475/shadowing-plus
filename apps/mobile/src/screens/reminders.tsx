@@ -44,7 +44,11 @@ export function RemindersScreen({ nav }: { nav: Nav }) {
   }, []);
 
   useEffect(() => {
-    void refreshPermission();
+    // Deferred one microtask on purpose: refreshPermission() setStates, and doing
+    // that synchronously in an effect body cascades a second render (and trips
+    // react-hooks/set-state-in-effect). The permission read was already async, so
+    // nothing observable moves — do not "simplify" this back to a bare call.
+    void Promise.resolve().then(refreshPermission);
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") void refreshPermission();
     });
