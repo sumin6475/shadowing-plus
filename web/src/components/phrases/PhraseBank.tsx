@@ -28,7 +28,7 @@ export interface PhraseRow {
   id: string;
   text: string;
   kind: string;
-  meaning_ko: string | null;
+  meaning: string | null;
   usage_note: string | null;
   start_time: number | null;
   video_id: string | null;
@@ -228,7 +228,7 @@ export function PhraseCard({
         <div style={{ minWidth: 0 }}>
           <h3 className="pb-phrase">{p.text}</h3>
           {p.status === "ready" ? (
-            p.meaning_ko && <p className="pb-gloss">{p.meaning_ko}</p>
+            p.meaning && <p className="pb-gloss">{p.meaning}</p>
           ) : (
             <p className="pb-gloss pb-muted">
               {p.status === "failed" ? "Explanation unavailable." : "Explaining this phrase…"}
