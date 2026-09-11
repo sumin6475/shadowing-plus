@@ -1145,3 +1145,23 @@ Mincho, 키릴 → New York(`ui-serif`), 나머지 → Newsreader. 둘 다 iOS �
 
 한국어·번체는 지금처럼 시스템 산세리프로 폴백한다. 대만 학습자가 노트 제목을 중국어로
 쓰는 게 보이면 Noto Serif TC 번들(+16MB)이 다음 단계.
+
+---
+
+## 2026-09-11 — `testflight` 빌드 프로필
+
+Library를 계속 쓰고 싶다는 결정. 그런데 TestFlight로 가는 건 `production` 프로필뿐이고,
+거기엔 미리보기 플래그가 없어서 빌드 23부터 Library가 사라질 참이었다(빌드 22는 게이트
+이전 커밋 `15e1426`이라 보였다).
+
+**추가:** `build.testflight` = `extends: production` + `EXPO_PUBLIC_PREVIEW_FEATURES=1`,
+`submit.testflight` = `extends: production`. production은 그대로 — 심사용이 깨끗하게 남는다.
+
+**진짜 위험은 설정이 아니라 App Store Connect였다.** 두 프로필이 같은 ASC 앱에 올라가고
+빌드 번호 카운터도 하나라, 목록에 "1.0.0 (23)", "(24)"가 **어느 프로필인지 표시 없이**
+섞인다. 심사 제출 때 testflight 빌드를 고르면 미완성 Library가 심사에 간다(B6와 같은 2.1
+노출). 막는 법: 제출 전 `eas build:list`로 번호의 프로필 확인(submission kit §6), 폰에선
+Settings에 Library 카드가 있으면 testflight 빌드.
+
+**릴리스 검사 확장:** testflight가 production을 상속하는지, 스토어 빌드로 남는지(누가
+`internal`로 바꾸면 TestFlight에 못 올라감), 두 플래그가 있는지. `npm run validate` exit 0.

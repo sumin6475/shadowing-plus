@@ -14,7 +14,7 @@ const iconPath = "./assets/images/saylo-icon-v3.png";
 assert(app.icon === iconPath, `expo.icon must use ${iconPath}`);
 assert(app.ios?.icon === iconPath, `expo.ios.icon must use ${iconPath}`);
 
-for (const profile of ["development", "preview", "production"]) {
+for (const profile of ["development", "preview", "production", "testflight"]) {
   assert(
     eas.build?.[profile]?.env?.EXPO_PUBLIC_USE_RN_FETCH === "1",
     `${profile} must set EXPO_PUBLIC_USE_RN_FETCH=1`,
@@ -52,12 +52,18 @@ assert(privacy.NSPrivacyAccessedAPITypes?.length > 0, "NSPrivacyAccessedAPITypes
 
 // Unfinished surfaces (Library, Recommendations) must be absent from the App
 // Store build - Guideline 2.1. See src/lib/release-flags.ts.
+// `testflight` is production plus the preview flag and nothing else: the
+// owner's own TestFlight build, with Library. It must stay a store build that
+// inherits production, or it drifts silently from what App Review will get.
+assert(eas.build?.testflight?.extends === "production", "testflight must extend production");
+assert(eas.build?.testflight?.distribution === undefined, "testflight must stay a store (TestFlight) build");
+
 const buildEnv = (profile) => eas.build?.[profile]?.["env"] ?? {};
 assert(
   buildEnv("production").EXPO_PUBLIC_PREVIEW_FEATURES === undefined,
   "production must NOT set EXPO_PUBLIC_PREVIEW_FEATURES - preview-only surfaces would ship",
 );
-for (const profile of ["development", "preview"]) {
+for (const profile of ["development", "preview", "testflight"]) {
   assert(
     buildEnv(profile).EXPO_PUBLIC_PREVIEW_FEATURES === "1",
     `${profile} must set EXPO_PUBLIC_PREVIEW_FEATURES=1`,

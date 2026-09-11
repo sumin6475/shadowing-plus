@@ -161,3 +161,27 @@ Export anything you want to keep first.
 - [ ] Privacy Policy URL points at the updated `/privacy`
 - [ ] `npm run validate` green on the exact commit you build from
 - [ ] Production build made with the `production` EAS profile — it must NOT carry `EXPO_PUBLIC_PREVIEW_FEATURES`
+
+## 6. Which build goes where
+
+Two EAS profiles upload to the **same** App Store Connect app and share one
+build-number counter, so App Store Connect lists their builds side by side —
+"1.0.0 (23)", "1.0.0 (24)" — with nothing saying which profile made which.
+
+| Profile | Library / Recommendations | Use for |
+|---|---|---|
+| `testflight` | shown | your own phone, and the internal TestFlight group only |
+| `production` | hidden | external testers (Beta App Review) and App Review |
+
+A `testflight` build must never reach Beta App Review or App Review: Library is
+unfinished, and shipping it is the Guideline 2.1 exposure blocker B6 closed.
+
+**Before picking a build in App Store Connect**, look up which profile made it,
+and choose a number whose profile is `production`:
+
+```bash
+npx eas-cli build:list --platform ios --limit 5
+```
+
+On the phone, the quick tell is Settings: a Library card there means a
+`testflight` (or dev) build.
