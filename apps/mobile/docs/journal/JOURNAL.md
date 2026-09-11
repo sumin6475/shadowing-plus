@@ -760,3 +760,388 @@ switch. Not verified: the fix sheet and the accessory bar — no attempt carries
   **함정:** Yoga는 텍스트를 "주어진 공간" 기준으로 측정하므로 클립 박스(100pt) 안에서
   재면 어떤 길이의 노트든 `layout.height === 100`으로 나와 잘림을 감지할 수 없다.
   측정용 래퍼를 `height: 4000`으로 두고 그 안에서 재도록 바꿔서 해결.
+
+---
+
+## 2026-09-10 — 앱스토어 제출 준비: 감사 · 첫 실행 코치마크 · 스크린샷 기획
+
+**만든 것 1 — 제출 감사.** 코드/보안/권한을 실제로 읽고 2026년 9월 기준 가이드라인에
+대조했다: [app-store-submission-audit.md](../release/app-store-submission-audit.md).
+이미 통과한 것(5.1.1(v) 계정 삭제, 5.1.2(i) OpenAI 동의, 2.5.14 녹음 표시, 4.8 Apple
+로그인 게이팅, 온디바이스 STT, 번들 내 시크릿 0건)과 **막는 것 6건**(앱 타깃
+privacy manifest 부재, "Coming soon" 플레이스홀더 5곳, 웹 개인정보처리방침이 모바일
+현실을 안 담음, 리뷰용 데모 계정, 연령등급 설문, Library 탭 결정)을 분리했다.
+
+**만든 것 2 — 첫 로그인 코치마크.** Today 탭에서 딤 + 스포트라이트 4스텝.
+`src/lib/product-tour.ts`(영속화 + L1별 문구), `src/components/product-tour.tsx`
+(측정·마스크·카드). 타깃은 `<TourTarget>`으로 감싸 `measureInWindow`로 재고,
+구멍은 `react-native-svg`의 `Mask` 하나로 뚫는다. 설정에 "Show tips again" 추가.
+
+**배운 원칙 — 플랫폼과 싸우지 말고 이용한다.** 네이티브 탭바가 modal 위에 그려진다는
+걸 발견하고, 탭바 스텝은 구멍을 뚫는 대신 **화면 전체만 딤 처리**하도록 뒤집었다.
+딤이 안 걸리는 탭바가 그대로 스포트라이트가 된다. 함께 배운 것: 가시성 판정은
+**타깃 크기에 상대적**이어야 하고, 등록된 스텝은 조용히 사라지는 대신
+**degrade**해야 한다.
+→ [postmortem](postmortems/2026-09-10-nativetabs-bar-draws-above-modal.md)
+
+**만든 것 3 — 스크린샷 기획.** 6프레임 서사(EN/KO 카피 포함) + 캡처·합성 파이프라인:
+[app-store-screenshots-plan.md](../release/app-store-screenshots-plan.md).
+필요한 건 6.9" 1320×2868 한 세트뿐(iPad 미지원). **폰 화면은 이미지 모델로 만들지
+않는다** — 실제 빌드와 다른 UI는 2.3.3 리젝 사유다.
+
+**게이트**: `npm run validate` PASS (release-config · typecheck 0 errors ·
+lint 0 errors/15 warnings · `export:ios`). 시뮬레이터(iPhone 17 Pro, iOS 26)에서
+4스텝 전부와 완료 후 재실행 안 뜨는 것까지 확인.
+
+**아직 안 한 것**: 감사 문서의 블로커 6건은 전부 미착수 — 문서화만 했다.
+
+---
+
+## 2026-09-10 (2) — 제출 블로커 6건 처리
+
+**B1 privacy manifest.** `app.json`에 `expo.ios.privacyManifests` 추가 →
+`expo prebuild`가 `ios/Saylo/PrivacyInfo.xcprivacy`를 실제로 생성하는 것까지 확인.
+식별자는 기억이 아니라 **Apple 문서 JSON에서 뽑았다** (`NSPrivacyCollectedDataTypePhotosorVideos`
+— "or"가 소문자다. 이런 건 틀리면 리젝이다). Audio Data는 **일부러 뺐고**, 누가
+나중에 추가하면 `verify:release-config`가 실패하도록 막아 뒀다.
+
+**B2 + B6 플레이스홀더/Library.** `src/lib/release-flags.ts` 하나로 통일.
+`EXPO_PUBLIC_PREVIEW_FEATURES`는 eas.json의 `development`/`preview`에만 있고
+`production`엔 없다. 뒤에 아무것도 없는 4개 행은 그냥 삭제, Recommendations와
+Library는 플래그 뒤로. **원칙: "곧 나와요"는 App Review에게 "안 만들어졌어요"로 읽힌다.**
+
+**B3 개인정보처리방침.** 웹 `/privacy`에 모바일 현실을 넣었다 — 녹음은 기기에만,
+카메라/사진, OpenAI 동의와 철회 경로, PostHog, 인앱 계정 삭제. 빌드로 프리렌더
+확인(`○ /privacy`).
+**한 번 틀렸다가 바로잡은 것:** `feat/studio-note-loop` 워크트리에 옛 Shadowing+
+방침이 보이길래 "머지하면 라이브 방침이 되돌아간다"고 적었는데, **틀렸다.**
+`git merge-tree`로 확인: 그 브랜치는 `0a494a7`(2026-07-31)에서 갈라진 뒤 77커밋
+동안 **`web/`을 한 번도 건드리지 않았다.** git은 스냅샷이 아니라 3-way diff로
+머지하므로 main의 web 커밋 18개는 그대로 살아남는다. 그냥 뒤처져 있을 뿐.
+**교훈: "파일이 옛날 내용이다"와 "브랜치가 그 파일을 되돌린다"는 다른 얘기다.**
+수정 자체는 main 기반인 studio 워크트리에 넣었다(그쪽이 배포 경로).
+
+**B4 + B5는 코드로 못 닫는다.** 계정 생성(비밀번호 입력)과 App Store Connect 폼이라
+`docs/release/app-review-submission-kit.md`로 넘겼다 — 리뷰 계정 시딩 체크리스트,
+붙여넣을 리뷰 노트 전문, 연령등급 답안, 그리고 manifest와 **정확히 일치하는**
+App Privacy 라벨 표.
+
+**결정 1건 — 투어 언어.** 기기 로케일이 아니라 **영어 기본**, 학습자가 설정에서
+모국어를 고르면 그때 L1. 로케일은 추측이지 선택이 아니다(이 시뮬레이터 로케일이
+`en_KR`인데 한국어 투어가 떴던 게 증거).
+→ [ADR 0021](decisions/0021-first-run-tour-language-english-default.md)
+
+**게이트**: 모바일 `npm run validate` PASS · 웹 `npm run build` PASS(`/privacy` 정적) ·
+시뮬레이터에서 투어 언어 양쪽 경로 확인.
+
+**주의**: prebuild가 `ios/`를 새로 만들면서 타깃 폴더가 `ios/Shadowing` → `ios/Saylo`로
+바뀌고 Pods가 지워졌다. EAS는 매번 prebuild하니 영향 없지만, **로컬 네이티브 빌드 전엔
+`npx pod-install`** 필요.
+
+---
+
+## 2026-09-10 (3) — Phrases 강조 · 다국어(N:1) 실사용 점검
+
+**Phrases 탭 강조.** 탭바 스텝이 "이 줄 전체"를 가리키던 걸 **Phrases 하나**를
+가리키도록 바꿨다. 네이티브 탭바는 모달 위에 그려져서 구멍을 뚫을 수 없으니,
+바로 **위에 캐럿**을 띄우는 방식.
+
+**두 번 틀리고 세 번째에 맞춘 좌표.** 캐럿이 처음엔 60pt 위, 다음엔 탭 아이콘
+위를 덮었다. 화면에 값을 직접 찍어서 끝냈다:
+`win=402x874 cont=874 insB=83 insT=62`.
+→ **모달은 화면 전체 높이가 맞고**, 탭 네비게이터 안에서는
+`react-native-safe-area-context`가 **탭바 높이를 이미 bottom inset에 포함**한다
+(83 = 49 바 + 34 홈 인디케이터). 그래서 `height - insets.bottom`이 곧 탭바 상단.
+여기에 바 높이를 또 빼서 두 번 틀렸다.
+**교훈: 레이아웃을 추론하지 말고 한 번 찍어보면 5분에 끝난다.**
+
+**N:1 점검 — 고르면 아무 일도 안 일어나고 있었다.** Settings에 es/ru가 있었지만
+**언어를 골라도 앱에서 바뀌는 게 없었다.** L1을 쓰라고 만든 `stuckNoteCopy()`는
+**호출부가 하나도 없는 죽은 코드**였고, 사진 캡처는 **모두에게 한국어 뜻**을 줬다.
+→ 전수 점검 결과: [first-language-readiness.md](../release/first-language-readiness.md)
+
+**고친 것 2개.**
+1. `phrase-capture` Edge Function의 하드코딩 한국어 **6곳**을 `${lang}`으로. 클라가
+   `first_language`를 실어 보낸다(서버는 알 방법이 없다 — L1은 컬럼이 아니니까).
+   구버전 빌드는 필드가 없어서 `ko`로 폴백(주석에 제거 조건 명시).
+2. L1이 **계정에도 저장**된다. 전엔 AsyncStorage뿐이라 재설치하면 사라지고 서버도
+   못 봤다. 이제 기기 우선, 없으면 계정.
+
+**남은 건 버그가 아니라 결정** — AI 코칭 영어 고정, 앱 크롬 영어 고정,
+`meaning_ko` 컬럼명, Newsreader에 키릴/한글 없음(스페인어는 완전 커버).
+
+**검증**: `npm run validate` PASS. 시뮬레이터에서 `first_language=es`로
+투어가 스페인어로("Empieza aquí") **세리프 그대로** 렌더되는 것까지 확인.
+(한국어/러시아어는 시스템 폰트로 폴백된다 — 문서 §3.4.)
+
+**주의**: `phrase-capture`는 앱 빌드가 아니라
+`supabase functions deploy phrase-capture`로 따로 배포해야 반영된다.
+
+---
+
+## 2026-09-10 — 번체 중국어 + 일본어 L1 추가 (타깃: 대만 우선)
+
+러시아어 대신 중국어·일본어가 급하다는 판단. 언어별 구현 난이도를 **측정해서**
+비교했고, 그 결과가 결정을 바꿨다.
+
+**측정한 것 (추정 아님).**
+- 번들 TTF cmap을 직접 파싱: Inter는 라틴+키릴+베트남/터키/폴란드, **CJK 없음**.
+  Newsreader(제목 세리프, 564자)는 **라틴만**. 한국어가 이미 두 서체 다 시스템
+  폰트로 폴백 중 → CJK는 새로운 종류의 리스크가 아니다.
+- 언어당 코드 비용은 어떤 언어든 동일: **번역 문자열 14개 + 등록 라인 5줄**.
+  갈리는 건 (a) 로케일 파서가 버티는지 (b) 폰트 (c) 스토어 규정, 이 3개뿐.
+
+**그래서 바뀐 판단 2개.**
+1. **중국어만 로케일 파서를 깬다.** `deviceLang()`이 `split("-")[0]`이라
+   `zh-Hant-TW`와 `zh-Hans-CN`이 둘 다 `zh`로 뭉개졌다. 후보 중 유일하게 `L1`
+   타입 자체를 건드리게 만드는 언어. → `localeToL1()`로 교체(스크립트 서브태그
+   우선, 없으면 지역에서 유도).
+2. **싱가포르는 번체가 아니라 간체다.** "대만+홍콩+싱가포르"는 한 스크립트가
+   아니라 두 스크립트다. 번체만 넣고 간체는 보류 — 대신 간체 device는 **잘못된
+   스크립트 대신 영어로** 폴백하게 했다(`zh-Hans`는 파서가 뱉지만 SUPPORTED엔
+   없음). 나중에 추가할 때 순수 additive.
+
+**ICP는 무관해졌다.** 본토 스토어 등재만 ICP 등록번호(중국 법인 필요)를 요구하고,
+대만·홍콩·싱가포르는 일반 스토어프론트다. 타깃을 대만으로 잡은 순간 블로커가
+연기된 게 아니라 사라졌다.
+
+**두 번째 언어로 일본어를 고른 이유**: 포르투갈어와 한계 비용이 동률(14문자열)이고
+오히려 pt는 세리프가 살아남는다. 그런데 중국어가 어차피 CJK 타이포그래피 결정을
+강제하므로, 일본어는 그걸 **재사용**하고 pt는 전선을 하나 더 연다.
+
+**검증**
+- `localeToL1` 순수 함수 18케이스 전부 통과 (zh-Hant-TW/zh-TW/zh-HK/zh-Hant-HK →
+  zh-Hant; zh-Hans-CN/zh-CN/zh-Hans-SG/zh-SG/zh → zh-Hans; ja/ko/en/es/ru/th 정상).
+- 시뮬레이터에서 `zh-Hant` 투어 4스텝 전부 렌더 확인 — 글리프가 번체
+  (檔案/隱私/個/裡/連/當), Phrases 캐럿·탭바 스텝 정상.
+- `ja`도 렌더 확인 — 한자가 **일본 자형**(音声認識/処理/内容/残ります)으로 떴다.
+  한자 통합(Han unification) 오폴백 없음.
+- `npm run validate` PASS (0 errors, 15 warnings = 기존 베이스라인).
+
+**아직 검증 안 된 것**: `app.json`에 넣은 `CFBundleLocalizations`는 Info.plist
+변경이라 **네이티브 재빌드 전엔 효과가 없다.** 위 시뮬레이터 확인은 그것 없이
+통과한 것이고(문자열에 가나·번체 고유자가 섞여 있어서 iOS가 맞게 골랐을 가능성이
+높다), 한자만으로 된 문자열에서는 여전히 필요할 수 있다.
+
+→ 결정 기록: [ADR 0022](decisions/0022-traditional-chinese-and-japanese-l1.md)
+
+**주의**: `phrase-capture` / `talk-stuck` Edge Function도 고쳤다 — 앱 빌드가 아니라
+`supabase functions deploy <name>`으로 따로 배포해야 반영된다.
+
+**같은 날 — 스크린샷 플랜에 zh-Hant 추가하면서 발견한 오류.** 기존 §5.2가
+"ko 세트는 기기 언어를 한국어로 설정하면 투어·인사·Stuck 메모가 전부 바뀐다"고
+적혀 있었는데 **틀렸다.** 시뮬레이터에서 zh-Hant/ja로 확인한 결과 앱 크롬(인사, 날짜,
+This week, Today, 탭 라벨)은 **어떤 L1에서도 영어**다(ADR 0021 의도대로). L1을 따라가는
+표면은 셋뿐 — 투어(그것도 Settings에서 **명시적으로 고른 뒤에만**, 기기 로케일로는 안 됨),
+Stuck 메모, phrase 글로스. 그래서 로케일당 raw 캡처 6장을 다시 찍을 필요가 없다:
+6장 한 번 + 글로스가 보이는 **프레임 4만 로케일별로** 재촬영 = 8장.
+
+캡션 템플릿 주의도 추가: Newsreader에 CJK가 없으니 zh-Hant/ko 헤드라인은 시스템 CJK
+서체로 — zh-Hant는 **PingFang TC**(SC를 쓰면 같은 코드포인트를 간체 자형으로 그린다).
+
+**같은 날 (2) — 일본어 캡션 추가 + §3 재구성.** 로케일이 4개(en/ko/zh-Hant/ja)가 되면서
+캡션을 한 테이블에 다 넣으면 7열이라 못 읽는다. 프레임 표는 EN만 남기고, §3.1에
+**로케일별 표 3개**(Headline / Subhead)로 분리 — 네이티브 리뷰어가 한 세트를 위에서
+아래로 읽을 수 있게. 캡처는 6장 + 프레임4 로케일별 3장 = 9장, 렌더는 24프레임.
+
+폰트 규칙에 항목 하나 추가: **CJK 한 서체로 두 로케일을 처리하면 안 된다.** zh-Hant와
+ja는 같은 코드포인트의 인쇄 자형이 다르니(한자 통합) PingFang으로 일본어를 그리면
+"중국어처럼 보이는 한자"가 된다 — 일본어 독자가 가장 먼저 알아채는 티. zh-Hant는
+PingFang TC, ja는 Hiragino Sans, ko는 Apple SD Gothic Neo.
+
+**같은 날 (3) — Edge Function 2개 배포, 그리고 배포 직전에 잡은 버그.**
+`supabase functions deploy` 직전 diff를 읽다가 발견: `learnerLanguage()`가 코드를
+`toLowerCase()` 하는데 맵 키는 `"zh-Hant"`라 **매칭이 안 됐다.** 번체 학습자가 전부
+`DEFAULT_L1="ko"`로 떨어져서 **한국어 뜻**을 받을 뻔했다. 에러도 안 난다 — `??` 폴백이
+삼켜버리니까. L1에 처음으로 2글자가 아닌 코드가 들어오면서 생긴 문제.
+
+키를 소문자로 맞추고 이유를 주석에 박았다. 배포 전 8케이스 확인
+(zh-Hant/ja/ko/es/ru/en → 정상, ""/null/"xx" → ko 폴백 의도대로).
+
+배포 완료 (project `hetcnrmzrksbjoeczeze`):
+- `phrase-capture` → version 8, ACTIVE, 2026-09-10 12:01:23
+- `talk-stuck` → version 4, ACTIVE, 2026-09-10 12:01:37
+
+→ 포스트모템: [2026-09-10-l1-code-lowercased-before-lookup.md](postmortems/2026-09-10-l1-code-lowercased-before-lookup.md)
+
+**아직 안 한 것**: 실기기에서 `first_language=zh-Hant`로 사진 캡처를 돌려 번체 뜻이
+실제로 오는지는 미검증(앱 빌드가 필요하다). 배포 자체는 version/updated_at으로 확인.
+
+---
+
+## 2026-09-10 — 네이비 리컬러 + Studio CRUD + Situation 즐겨찾기
+
+세 파트를 14 에이전트 워크플로로 빌드하고, 구현을 못 본 홀드아웃 리뷰어로 적대적
+검증했다. **기능보다 측정이 결정을 바꿨다.**
+
+**측정이 뒤집은 것 2개.**
+1. `#162555`를 accent 전체에 쓰면 **본문 잉크 `#111114` 대비 1.28:1** — "See all",
+   링크, 활성 탭이 그냥 검은 글씨로 읽힌다. 역할별로 갈랐다: 큰 채움 `acc`=#162555,
+   작은 인터랙티브 텍스트 `accD`=#344E91.
+2. **다크 모드는 세 색 다 못 쓴다** (검정 대비 1.23 / 1.43 / 2.64, UI 최소 3.0 미달).
+   같은 hue 266 계열을 L=0.65로 연장해 `#6E8DD5`(6.43:1)를 만들었다.
+
+**`onAcc` 슬롯을 새로 만든 게 핵심.** 다크 `acc`가 *밝은* 네이비라, 앱 전반의
+`"#fff"` 관행이 맞는 값에서 3.02:1로 뒤집힌다. 1차 리뷰가 미이관 10곳을 찾았고
+그중 하나가 **첫 실행 투어를 넘길 수 있는 유일한 버튼**이었다.
+
+`SP_H`는 262 유지 — 새 브랜드와 4° 차이라 눈에 안 보이는데 파생 12슬롯이 흔들린다.
+
+**히어로 카드**(요청대로 따로 처리): 3스톱 램프, 흰 블룸 0.16→0.11(어두운 바탕에서
+훨씬 세게 읽힘), **네이비 로브 삭제**(#142878이 새 두 다크 사이에 묻힘), 다크에서만
+헤어라인 링.
+
+**Studio**: topic/situation 생성·이름변경·아카이브(**하드 삭제 아님** — 캐스케이드가
+연습 녹음·전사를 지운다), situation 레벨 phrase 추가/삭제(이미 살아 있던
+`phrase_story_links`를 Studio가 **읽지 않고 있었다**), phrase별 출처 노트 표시,
+별+토스트+Favorites 섹션+See all 페이지.
+
+**검증**: `npm run validate` exit 0 (0 errors / 15 warnings = 기존 베이스라인),
+시뮬레이터 라이트·다크 양쪽 확인. 렌더된 프레임 색상 센서스에서 **옛 코발트
+`#3B6EE1` 0픽셀** — `useSituationTokens`가 테마를 가리던 100KB 화면군까지 포함해
+리컬러가 완전히 도달했다.
+
+**놓칠 뻔한 것**: `is_favorite`를 select에 넣기 전에 `looksLikeMissingStudioSchema`
+정규식을 먼저 넓혔다. 안 그랬으면 029 미적용 상태에서 `Promise.all`이 통째로 reject돼
+**Studio 홈 전체가 빈 화면**이 됐다.
+
+→ [ADR 0023](decisions/0023-navy-brand-palette-and-slot-mapping.md)
+→ [포스트모템](postmortems/2026-09-10-pill-white-tone-fix-blanked-a-label.md) — 대비 수정이
+   버튼 라벨을 지워버린 회귀
+
+**미적용**: 마이그레이션 029(`stories.is_favorite`)는 CLI가 없어 SQL Editor에 직접
+붙여야 한다. 그때까지 Favorites 섹션은 안 뜨고 별은 실패한다(빈 화면은 아니다).
+
+**같은 날 — 029 적용 후 실기기(시뮬레이터) E2E 확인.** 원장이 손으로 쓰는 거라 그 자체는
+증거가 아니어서, 앱에서 루프를 돌려 확인했다:
+1. situation 상세 헤더의 빈 별 → 탭 → **채워짐** (029 미적용이면 "Favorites are temporarily
+   unavailable."이 떴을 것이므로, 이게 컬럼 존재의 실질 증거다)
+2. 홈에 **Favorites 섹션이 나타나고**, 해당 situation이 "Your situations"에서는 **빠졌다**
+   (같은 행 중복 방지 동작 확인)
+3. Favorites의 "See all" → 새 Situations 페이지가 **Favorites 칩이 선택된 채로** 열림
+   (`shell.tsx`가 `initialFilter`를 안 넘겨주던 것을 고친 결과 — 리뷰 2차가 잡았다)
+4. 칩 구성: `All 19 / Favorites 1 / About me 5 / Ideas 4 / Daily life 3 / Experiences 3 /
+   Work·Study 4` — topic별 카운트 칩 + Favorites, 설계대로.
+5. Useful Phrases에 **"From 30-second version"** 출처 표기와 개별 제거(×) 버튼 렌더 확인.
+
+---
+
+## 2026-09-10 — 릴리스 정리: warn 토큰, lint 래칫, 그리고 리컬러가 남긴 구멍들
+
+**lint 15 → 3.** cap을 정확히 3으로 래칫했다(올리지 않는다 — 경고를 추가하려면 하나를
+먼저 고쳐야 한다). `warn` 슬롯을 토큰으로 승격(#D70015 / #FF6961, 측정 5.38:1 / 6.03:1),
+죽은 `stuckNoteCopy` 제거, `expo-speech-recognition`을 정확히 56.0.1로 고정.
+Android 권한은 **안 건드렸다** — 에이전트가 미사용을 증명하지 못했고, 증명 없이 지웠다면
+안드로이드 오디오가 조용히 깨졌을 것이다.
+
+**네이티브 스플래시가 빈 화면이었다.** `splash-icon.png`가 흰색 Expo 기본 로고인데 배경이
+`#fbf9f4`라 아무것도 안 보였다. 배경을 `#162555`로 맞춰 JS 스플래시와 이음매를 없앴고,
+Expo 로고는 제거했다 — 네이비 위에선 오히려 *보이게* 되어 Expo 로고를 Saylo 마크로
+출시하는 꼴이 된다.
+
+**리컬러가 만든 구멍 3개** (전부 홀드아웃 리뷰가 찾음):
+1. **아무도 로그인 화면을 안 열었다.** `auth-palette.ts`가 테마와 별도 레이어라 모든
+   패스가 비껴갔다. 다크 모드 "Sign in" 라벨이 3.26:1 — 리컬러 전엔 4.66:1로 통과였으니
+   **내가 깬 것**이고, 신규 사용자와 App Review가 처음 보는 화면이다.
+2. `mirror-preview.tsx`의 "Open Settings"가 카메라 placeholder 위 **1.08:1**. `talk.tsx`가
+   이미 `CAMERA_ACC`로 푼 문제인데 이 파일만 빠졌다.
+3. **수정이 같은 버튼의 다른 상태를 깼다** — `onAccent`를 무조건 적용했는데 채움은
+   `canSubmit ? accent : accentSoft`다. `canSubmit`은 busy일 때 false가 되므로 인증
+   왕복 내내 스피너가 1.15:1로 안 보인다. 앱의 기존 `soft` 톤 관례(`{bg: accS, fg: accD}`)를
+   따라 전경이 채움을 따라가게 고쳤다(5.76 / 6.59).
+
+**마지막 text-on-red**: 스와이프 패널 라벨만 `#E5484D` 위 흰색 3.91:1로 남아 있었다.
+패널 채움을 `#D70015`로 바꿔 5.38:1. 파괴적 동작을 구분하는 유일한 단어였다.
+
+**검증**: `npm run validate` exit 0, 0 errors / 3 warnings (cap 3).
+
+→ [포스트모템](postmortems/2026-09-10-only-entry-point-was-never-checked.md) — "유일한
+   진입점"이라는 **확인 안 된 주장**이 App Store 빌드에 Guideline 2.1 구멍을 남겼다.
+   감사 문서 §B6은 틀린 원문을 지우지 않고 그대로 둔 채 정정했다 — 오류 자체가 교훈이라서.
+
+---
+
+## 2026-09-10 — 언어 정책 확정, 새 아이콘, prebuild
+
+**언어 정책(ADR 0024).** AI 피드백은 영어, 표현 뜻풀이는 학습자 L1, 노트·자유 메모는
+어떤 언어든. `talk-diagnose`의 6개 필드 중 3개(`said`, `improvedSentence`,
+`diagnosisTag`)는 어차피 영어여야 해서, 나머지만 L1로 바꾸면 카드 하나에 두 언어가
+섞인다.
+
+**"노트는 어떤 언어든"은 기본값이 아니라 지켜야 하는 약속이었다.** `quickTitleFromBody`가
+라틴 구두점+공백으로만 문장을 나눠서, 중국어·일본어 노트(마침표 `。！？` 뒤에 공백이
+없다)는 **문단 전체가 제목**이 됐다. 그리고 `slice(0, 61)`이 UTF-16 단위로 잘라서 이모지를
+반쪽으로 끊었다(`�`). 격리 테스트: zh-Hant 53자→12자, ja 31자→12자, 이모지 경계 lone
+surrogate 해소, en/ko/소수점 문장은 변화 없음.
+
+**새 아이콘.** 받은 PNG는 흰 여백 14px + 둥근 모서리가 구워진 1254px라, iOS의 슈퍼타원
+마스크와 겹쳐 흰 테두리가 생겼을 것이다. 마크만 알파로 추출해 브랜드 그라데이션 위에
+풀블리드로 다시 뽑았다 — 1024² RGB(App Store는 알파 금지), 마크 74%.
+
+**prebuild.** 성공했지만 `pod install`이 `Unicode Normalization not appropriate for
+ASCII-8BIT (Encoding::CompatibilityError)`로 죽었다. 경로는 전부 ASCII — 원인은
+`LANG`/`LC_ALL`이 비어 있던 것. `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`로 통과.
+`CFBundleLocalizations`(en ko zh-Hant ja es ru)가 이제 실제 Info.plist에 들어갔다.
+
+→ [ADR 0024](decisions/0024-language-policy-per-surface.md)
+
+---
+
+## 2026-09-10 — `meaning_ko` → `meaning` (expand), 그리고 리뷰어 없이 한 리뷰
+
+**단순 RENAME을 안 한 이유.** 이 컬럼을 읽는 라이브 클라이언트가 둘 있다 — push하면
+자동 배포되는 웹(구 번들이 잠깐 서빙된다)과 테스터 폰에 **이미 설치된 TestFlight 빌드**
+(마이그레이션과 발맞춰 업데이트할 방법이 없다). RENAME은 둘 다에서 PostgREST 42703 →
+표현 목록이 빈 화면. 그래서 030은 `meaning`을 *추가*·백필하고 양방향 동기화 트리거를
+걸고, `meaning_ko` 삭제는 031로 미룬다. 코드 37곳 이관: 웹 5, 모바일 2, 엣지 함수 2.
+
+**게이트가 목록 밖의 독자를 찾았다.** 크롬 확장 `extension/content.js`가 `item.meaning_ko`를
+렌더하고 있었다 — 처음 뽑은 10개 파일 목록에 없었다. `item.meaning || item.meaning_ko`로.
+
+**리뷰 에이전트가 세션 한도로 죽어서 트리거 검토를 직접 했다.** 케이스를 전부 밟았다:
+구/신 클라이언트 INSERT, 의도적 NULL 지우기(양방향), 둘 다 다른 값(`meaning` 우선),
+둘 다 안 건드림(`UPDATE OF`라 발화 안 함), 재귀(BEFORE 트리거라 없음) — 전부 맞다.
+**구멍은 로직이 아니라 트랜잭션이었다.** `ADD COLUMN → 백필 → 트리거 생성`이 묶여 있지
+않아서 (1) 백필과 트리거 사이에 구 클라이언트가 쓰면 그 행은 영구히 어긋나고, (2) 부분
+실행 상태에서 엣지 함수가 배포되면 `phrase-embed`가 뜻풀이 없이 임베딩해 벡터가 **조용히**
+망가진다. 둘 다 에러가 안 난다는 게 핵심. `BEGIN; … COMMIT;`로 묶어 전부-아니면-전무로.
+원장의 붙여넣기 블록도 파일과 바이트 단위로 맞췄다.
+
+**내 아이콘 교체가 게이트를 깼다.** `verify-release-config.mjs`가 `saylo-icon-v2.png`를
+고정 검사하고 있었다. v3로 올렸다(1024² RGB 알파 없음 검사도 통과).
+`quickTitleFromBody`의 CJK·이모지 수정도 반영.
+
+**검증**: 모바일 `npm run validate` exit 0 (0 errors / 3 warnings, cap 3). 웹은 placeholder
+환경 변수로 `npm run build` 통과(실제 환경 변수 파일은 건드리지 않음).
+
+**미적용**: 030. **순서가 전부다** — 030 적용 → 검증 쿼리(0, 1) → 그다음 main push·엣지
+함수 배포. 웹과 엣지 함수는 `meaning`을 fallback 없이 조회한다(fallback은 모바일에만).
+
+---
+
+## 2026-09-10 — 030 적용, 엣지 함수 배포, 폰트 B
+
+**030 적용 확인.** 네가 받은 결과는 `trg = 1` 하나였다 — SQL Editor는 여러 문장을 실행하면
+**마지막 결과만** 보여준다. 첫 쿼리(백필 누락 = 0)는 따로 확인하지 않았지만, 마이그레이션을
+`BEGIN/COMMIT`으로 묶었기 때문에 트리거가 있으면 같은 트랜잭션의 백필도 커밋된 것이다.
+직전에 넣은 트랜잭션이 여기서 "두 번째 쿼리 하나로 전체를 증명"하는 값을 냈다.
+
+**엣지 함수 배포.** 배포 전 diff 재확인 — 두 파일 다 `meaning_ko` → `meaning` 순수 이름
+변경이고, 임베딩 입력 문자열이 같아서(트리거가 두 컬럼을 같게 유지) 기존 벡터와 새 벡터가
+어긋나지 않는다. `phrase-embed` v4, `talk-phrase-suggest` v4, ACTIVE.
+
+**폰트 B — 글자 종류로 세리프를 고른다.** `ui.tsx`에 `serifFace()`를 두고 `Serif` 컴포넌트와
+노트 편집기의 제목·목표 입력창이 쓰게 했다. 가나(또는 L1이 `ja`일 때의 한자) → Hiragino
+Mincho, 키릴 → New York(`ui-serif`), 나머지 → Newsreader. 둘 다 iOS 내장이라 **용량 0**.
+한자만 있는 문자열을 L1로 가르는 이유: Mincho로 중국어를 그리면 대만 학습자에게 일본
+자형을 보여준다. 크기 보정 1.1배는 Newsreader의 작은 x-height 전용이라 다른 폰트엔
+안 걸고, CJK는 자간 0.
+
+**검증** (시뮬레이터, 같은 투어 카드):
+- `ja` 「ここから始めましょう」 — 산세리프 → **Hiragino Mincho** (획 끝 세리프 확인)
+- `ru` 「Начните отсюда」 — 산세리프 → **New York**
+- 영어 제목은 Newsreader 그대로, 본문은 산세리프 그대로
+- `npm run validate` exit 0 (0 errors / 3 warnings)
+
+한국어·번체는 지금처럼 시스템 산세리프로 폴백한다. 대만 학습자가 노트 제목을 중국어로
+쓰는 게 보이면 Noto Serif TC 번들(+16MB)이 다음 단계.
