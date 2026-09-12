@@ -1350,11 +1350,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               messageId={p0.messageId ?? null}
               talkSessionId={resolveSessionId}
               fallbackPrompt={prompt}
-              style={[
-                { position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, backgroundColor: "rgba(255,255,255,0.97)", borderRadius: 26, padding: 16 },
-                t.shadowLg,
-                { zIndex: 15 },
-              ]}
+              // Position only: the card chrome belongs to the panel, because
+              // both of its faces have to carry it in order to turn together.
+              style={{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, zIndex: 15 }}
             />
           ) : null}
 

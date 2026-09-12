@@ -18,7 +18,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import * as Haptics from "expo-haptics";
-import Reanimated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
+import Reanimated, { Easing, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
 
 import { Icon, Serif } from "@/design/ui";
 import { useTheme } from "@/design/theme";
@@ -36,8 +36,21 @@ const SHEET_ACC = BRAND.main;
 const SHEET_INK = "#16181d";
 const SHEET_INK2 = "rgba(0,0,0,0.55)";
 const SHEET_INK3 = "rgba(0,0,0,0.4)";
-/** Both faces stand on this so the card does not jump size as it turns. */
-const FACE_MIN_HEIGHT = 232;
+// The card is a fixed size. Both faces are drawn at once, stacked, and the
+// pair turns together — so the panel must not resize halfway through, or the
+// turn reads as the card splitting open rather than flipping over.
+const PANEL_HEIGHT = 300;
+const CARD: ViewStyle = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: "rgba(255,255,255,0.97)",
+  borderRadius: 26,
+  padding: 16,
+  backfaceVisibility: "hidden",
+};
 
 /** The shape both sources reduce to. `usageNote` is the "How it's used" line. */
 export interface HintPhrase {
@@ -172,7 +185,7 @@ function PhraseEntry({ phrase, onBack }: { phrase: HintPhrase; onBack: () => voi
       accessibilityRole="button"
       accessibilityLabel="Back to the phrase list"
       onPress={onBack}
-      style={{ minHeight: FACE_MIN_HEIGHT, justifyContent: "center", paddingHorizontal: 4, paddingVertical: 8 }}
+      style={{ flex: 1, justifyContent: "center", paddingHorizontal: 4, paddingVertical: 8 }}
     >
       <View style={{ alignItems: "flex-start", gap: 10 }}>
         <Serif strong style={{ fontSize: 28, lineHeight: 35, color: SHEET_INK }}>{phrase.text}</Serif>
@@ -314,6 +327,7 @@ export function TalkHintSheet({
   fallbackPrompt: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const t = useTheme();
   const linkedAvailable = Boolean(messageId || storyId);
   const linkedLabel = messageId ? "This note" : "This situation";
   const [source, setSource] = useState<TalkHintSource>(() => {
@@ -329,38 +343,41 @@ export function TalkHintSheet({
   // on screen but never rolls the schedule back: the phrase really was said.
   const reviewed = useRef<Set<string>>(new Set());
 
-  const rot = useSharedValue(0);
+  // One continuous 0 -> 180 turn of BOTH faces at once. The earlier version
+  // turned to the edge, swapped the content, and turned back from the other
+  // side; because the two faces are different heights the card resized at that
+  // instant, and a resize at the halfway point reads as the panel splitting
+  // open rather than a card flipping over. So the faces are stacked inside a
+  // fixed-size box, the back one parked a half-turn behind the front, and the
+  // pair rotates together. Nothing swaps and nothing resizes.
+  //
+  // Opacity, not backfaceVisibility, decides which face you see: the hard
+  // switch at 90 degrees is exactly when the card is edge-on, and it does not
+  // depend on how the platform composites a rotated view's back side.
+  const flip = useSharedValue(0);
   const turning = useRef(false);
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [{ perspective: 900 }, { rotateY: `${rot.value}deg` }],
+  const [showBack, setShowBack] = useState(false);
+  const frontStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 1200 }, { rotateY: `${flip.value * 180}deg` }],
+    opacity: flip.value < 0.5 ? 1 : 0,
+  }));
+  const backStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 1200 }, { rotateY: `${180 + flip.value * 180}deg` }],
+    opacity: flip.value < 0.5 ? 0 : 1,
   }));
 
-  // Half-turn, swap faces at the edge, half-turn in from the other side. Two
-  // timings instead of one 180 degree sweep so the back face is never drawn
-  // mirrored and the panel may change height between faces.
-  //
-  // It MUST be one withSequence, and the face swap MUST stay on the JS side.
-  // Writing `rot.value` from inside the first timing's own callback re-enters
-  // Reanimated's value setter, which cancels that animation, which invokes the
-  // same callback again with finished=false:
-  //   set -> valueSetter -> callback -> set -> ...  => Maximum call stack size
-  //   exceeded, on the UI thread. A timer keeps the phrase object out of the
-  //   worklet closure entirely, and at 86 degrees the panel is edge-on, so a
-  //   frame of drift either way is not visible.
   const turn = (next: HintPhrase | null) => {
     if (turning.current) return;
     turning.current = true;
-    void Haptics.selectionAsync();
-    rot.value = withSequence(
-      withTiming(86, { duration: 150 }),
-      // 1ms, not 0: timing divides elapsed time by the duration.
-      withTiming(-86, { duration: 1 }),
-      withTiming(0, { duration: 170 }),
-    );
-    setTimeout(() => setDetail(next), 150);
     setTimeout(() => {
       turning.current = false;
-    }, 340);
+    }, 460);
+    void Haptics.selectionAsync();
+    // The entry keeps whatever phrase it last showed until a new one opens, so
+    // the face behind the list is never blank mid-turn.
+    if (next) setDetail(next);
+    setShowBack(Boolean(next));
+    flip.value = withTiming(next ? 1 : 0, { duration: 420, easing: Easing.inOut(Easing.cubic) });
   };
 
   // Only fetched once the learner actually asks for it; a free talk never does.
@@ -409,87 +426,97 @@ export function TalkHintSheet({
 
   return (
     <>
-      <Reanimated.View style={[style, cardStyle]}>
-        {detail ? (
-          <PhraseEntry phrase={detail} onBack={() => turn(null)} />
-        ) : (
-          <>
-            {/* Not a tab bar: there is only one list, so segmented chrome was
-                promising a second tab that did not exist. A label, and the
-                sliders control parked where that second tab used to sit. The
-                phrases below are near-black bold 16.5pt, so this differs on
-                case, size, tracking and color and never reads as a row. */}
-            <View
-              style={{
-                minHeight: 34,
+      <View style={[style, { height: PANEL_HEIGHT }]}>
+        <Reanimated.View
+          style={[CARD, t.shadowLg, frontStyle]}
+          pointerEvents={showBack ? "none" : "auto"}
+          accessibilityElementsHidden={showBack}
+          importantForAccessibility={showBack ? "no-hide-descendants" : "auto"}
+        >
+          {/* Not a tab bar: there is only one list, so segmented chrome was
+              promising a second tab that did not exist. A label, and the
+              sliders control parked where that second tab used to sit. The
+              phrases below are near-black bold 16.5pt, so this differs on
+              case, size, tracking and color and never reads as a row. */}
+          <View
+            style={{
+              minHeight: 34,
+              alignItems: "center",
+              justifyContent: "center",
+              paddingBottom: 8,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(0,0,0,0.07)",
+            }}
+          >
+            <Text
+              style={{ fontSize: 12, fontWeight: "800", letterSpacing: 1.1, color: SHEET_ACC, textTransform: "uppercase" }}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Choose which phrases to show"
+              onPress={() => setSettingsOpen(true)}
+              hitSlop={10}
+              style={({ pressed }) => ({
+                position: "absolute",
+                right: 0,
+                width: 34,
+                height: 34,
                 alignItems: "center",
                 justifyContent: "center",
-                paddingBottom: 8,
-                borderBottomWidth: 1,
-                borderBottomColor: "rgba(0,0,0,0.07)",
-              }}
+                opacity: pressed ? 0.5 : 1,
+              })}
             >
-              <Text
-                style={{ fontSize: 12, fontWeight: "800", letterSpacing: 1.1, color: SHEET_ACC, textTransform: "uppercase" }}
-                numberOfLines={1}
-              >
-                {title}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Choose which phrases to show"
-                onPress={() => setSettingsOpen(true)}
-                hitSlop={10}
-                style={({ pressed }) => ({
-                  position: "absolute",
-                  right: 0,
-                  width: 34,
-                  height: 34,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: pressed ? 0.5 : 1,
-                })}
-              >
-                <Icon name="sliders" s={19} w={1.9} c={SHEET_INK3} />
-              </Pressable>
-            </View>
+              <Icon name="sliders" s={19} w={1.9} c={SHEET_INK3} />
+            </Pressable>
+          </View>
 
-            <View style={{ paddingTop: 6, paddingHorizontal: 4, minHeight: FACE_MIN_HEIGHT }}>
-              {loading ? (
-                <View style={{ paddingVertical: 34, alignItems: "center" }}>
-                  <ActivityIndicator color={SHEET_ACC} />
-                </View>
-              ) : linkedError ? (
-                <View style={{ paddingVertical: 26 }}>
-                  <Text style={{ fontSize: 14, lineHeight: 20, color: SHEET_INK2 }}>
-                    Couldn’t load these phrases. Your talk is still recording.
-                  </Text>
-                </View>
-              ) : list && list.length ? (
-                <ScrollView style={{ maxHeight: 250 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                  {list.map((phrase, index) => (
-                    <PhraseRow
-                      key={phrase.id}
-                      phrase={phrase}
-                      divider={index > 0}
-                      checked={Boolean(checked[phrase.id])}
-                      onToggleCheck={() => toggleCheck(phrase)}
-                      onOpen={() => turn(phrase)}
-                    />
-                  ))}
-                </ScrollView>
-              ) : (
-                <View style={{ paddingTop: 10, paddingBottom: 6 }}>
-                  <Serif style={{ fontSize: 21, lineHeight: 28, color: SHEET_INK }}>{fallbackPrompt}</Serif>
-                  <Text style={{ fontSize: 14, color: SHEET_INK2, marginTop: 6 }}>
-                    {source === "linked" ? "Nothing is saved here yet — just keep talking." : "Use it naturally when it fits."}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </>
-        )}
-      </Reanimated.View>
+          <View style={{ flex: 1, paddingTop: 6, paddingHorizontal: 4 }}>
+            {loading ? (
+              <View style={{ paddingVertical: 34, alignItems: "center" }}>
+                <ActivityIndicator color={SHEET_ACC} />
+              </View>
+            ) : linkedError ? (
+              <View style={{ paddingVertical: 26 }}>
+                <Text style={{ fontSize: 14, lineHeight: 20, color: SHEET_INK2 }}>
+                  Couldn’t load these phrases. Your talk is still recording.
+                </Text>
+              </View>
+            ) : list && list.length ? (
+              <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {list.map((phrase, index) => (
+                  <PhraseRow
+                    key={phrase.id}
+                    phrase={phrase}
+                    divider={index > 0}
+                    checked={Boolean(checked[phrase.id])}
+                    onToggleCheck={() => toggleCheck(phrase)}
+                    onOpen={() => turn(phrase)}
+                  />
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ paddingTop: 10, paddingBottom: 6 }}>
+                <Serif style={{ fontSize: 21, lineHeight: 28, color: SHEET_INK }}>{fallbackPrompt}</Serif>
+                <Text style={{ fontSize: 14, color: SHEET_INK2, marginTop: 6 }}>
+                  {source === "linked" ? "Nothing is saved here yet — just keep talking." : "Use it naturally when it fits."}
+                </Text>
+              </View>
+            )}
+          </View>
+        </Reanimated.View>
+
+        <Reanimated.View
+          style={[CARD, t.shadowLg, backStyle]}
+          pointerEvents={showBack ? "auto" : "none"}
+          accessibilityElementsHidden={!showBack}
+          importantForAccessibility={showBack ? "auto" : "no-hide-descendants"}
+        >
+          {detail ? <PhraseEntry phrase={detail} onBack={() => turn(null)} /> : null}
+        </Reanimated.View>
+      </View>
 
       <SourceModal
         open={settingsOpen}
