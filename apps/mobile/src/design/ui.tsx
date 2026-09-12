@@ -115,8 +115,29 @@ export function serifInputFace(text: string, tracking: number): TextStyle {
   return { fontFamily: face.fontFamily, letterSpacing: face.tracking ? tracking : 0 };
 }
 
-export function Serif({ children, style, numberOfLines }: { children: ReactNode; style?: StyleProp<TextStyle>; numberOfLines?: number }) {
-  const face = serifFace(textOf(children));
+/**
+ * `strong` is not a style flag, it is a different face. Only
+ * Newsreader36pt-Regular is bundled, so fontWeight on a Newsreader run matches
+ * nothing and iOS quietly draws Regular — the bold never arrives and nothing
+ * warns you. The system serif (New York) ships every weight, costs no bundle,
+ * and is already this design system's serif for Cyrillic, so a bold serif run
+ * goes there instead. It needs no SERIF_SCALE: its x-height is not Newsreader's
+ * small one. Text that Newsreader cannot draw at all still routes by script.
+ */
+export function Serif({
+  children,
+  style,
+  numberOfLines,
+  strong,
+}: {
+  children: ReactNode;
+  style?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+  strong?: boolean;
+}) {
+  const text = textOf(children);
+  const natural = serifFace(text);
+  const face: SerifFace = strong && natural === NEWSREADER_FACE ? { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true } : natural;
   const flat = StyleSheet.flatten(style) as TextStyle | undefined;
   const scaled: TextStyle = {};
   if (face.scale !== 1) {
@@ -124,7 +145,10 @@ export function Serif({ children, style, numberOfLines }: { children: ReactNode;
     if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * face.scale);
   }
   return (
-    <Text numberOfLines={numberOfLines} style={[{ fontFamily: face.fontFamily, letterSpacing: face.tracking ? -0.2 : 0 }, style, scaled]}>
+    <Text
+      numberOfLines={numberOfLines}
+      style={[{ fontFamily: face.fontFamily, letterSpacing: face.tracking ? -0.2 : 0 }, style, scaled, strong ? { fontWeight: "700" } : null]}
+    >
       {children}
     </Text>
   );

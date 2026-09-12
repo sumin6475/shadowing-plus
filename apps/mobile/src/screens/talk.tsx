@@ -1339,17 +1339,23 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           />
 
           {hintOpen ? (
-            <View style={[{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, backgroundColor: "rgba(255,255,255,0.97)", borderRadius: 26, padding: 16 }, t.shadowLg, { zIndex: 15 }]}>
-              {/* The topic used to be repeated here under a "TODAY'S TOPIC"
-                  label; it is already the title and the pill at the top of this
-                  same screen, so the space goes to the phrases instead. */}
-              <TalkHintSheet
-                todayPhrases={todayPhrases}
-                storyId={p0.storyId ?? null}
-                messageId={p0.messageId ?? null}
-                fallbackPrompt={prompt}
-              />
-            </View>
+            /* The panel carries its own card so the whole thing can turn over
+               when a phrase is opened. The topic used to be repeated inside it
+               under a "TODAY'S TOPIC" label; it is already the title and the
+               pill at the top of this same screen, so that space went to the
+               phrases instead. */
+            <TalkHintSheet
+              todayPhrases={todayPhrases}
+              storyId={p0.storyId ?? null}
+              messageId={p0.messageId ?? null}
+              talkSessionId={resolveSessionId}
+              fallbackPrompt={prompt}
+              style={[
+                { position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, backgroundColor: "rgba(255,255,255,0.97)", borderRadius: 26, padding: 16 },
+                t.shadowLg,
+                { zIndex: 15 },
+              ]}
+            />
           ) : null}
 
           {/* bottom controls — Hint · record indicator · Finish */}

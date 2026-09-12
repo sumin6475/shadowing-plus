@@ -108,6 +108,15 @@ export function TodayScreen({ nav }: { nav: Nav }) {
     return () => clearTimeout(timer);
   }, [load]);
 
+  // Native tabs keep this screen mounted, so the count was whatever it was at
+  // app start. Ticking a phrase during a self-talk marks it reviewed, and
+  // landing back on a stale "5 / 5" reads as the tick having done nothing.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
   useEffect(() => {
     let active = true;
     fetchRecentTalkedStory()
