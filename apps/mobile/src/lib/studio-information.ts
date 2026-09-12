@@ -48,6 +48,8 @@ export interface NotePhrase {
   text: string;
   translation: string | null;
   learningStatus: PhraseItem["learningStatus"];
+  /** AI / learner-edited "how it's used". Same column the Phrase Bank shows. */
+  usageNote: string | null;
   /** The Speaking Note this phrase arrived through, or null when it is attached
    *  straight to the Situation (phrase_story_links, written on every capture). */
   noteId: string | null;
@@ -195,9 +197,17 @@ export async function fetchStudioSituations(topicId?: string): Promise<StudioSit
 
   const situationRows = (result.data ?? []) as unknown as LooseRow[];
   const ids = situationRows.map((row) => row.id as string);
+  // Archived notes are out of every Studio list, so they are out of the count
+  // too. `status` arrived in 028; a pre-028 database has nothing archived.
+  const countNotes = async () => {
+    const modern = await supabase.from("messages").select("id, story_id").in("story_id", ids).neq("status", "archived");
+    return modern.error && looksLikeMissingStudioSchema(modern.error.message)
+      ? await supabase.from("messages").select("id, story_id").in("story_id", ids)
+      : modern;
+  };
   const [notes, attempts] = ids.length
     ? await Promise.all([
-        supabase.from("messages").select("id, story_id").in("story_id", ids),
+        countNotes(),
         supabase.from("talk_sessions").select("id, story_id").in("story_id", ids),
       ])
     : [{ data: [], error: null }, { data: [], error: null }];
@@ -258,6 +268,7 @@ export async function fetchSpeakingNotes(input: {
     if (input.id) query = query.eq("id", input.id);
     if (input.situationId) query = query.eq("story_id", input.situationId);
     if (modern && input.topicId) query = query.eq("domain_id", input.topicId);
+    if (modern) query = query.neq("status", "archived");
     return query;
   };
 
@@ -405,7 +416,7 @@ export async function fetchPracticeAttempts(input: { noteId?: string; situationI
 const PHRASE_MEANING_COLUMNS = ["meaning", "meaning_ko"] as const;
 
 const nestedPhraseSelect = (meaning: string) =>
-  `phrase_items(id, text, ${meaning}, learning_status, status)`;
+  `phrase_items(id, text, ${meaning}, usage_note, learning_status, status)`;
 
 /** Walk the gloss rungs for one nested phrase query. `load` receives the
  *  `phrase_items(...)` fragment to splice into its own select. */
@@ -437,6 +448,7 @@ function phraseFromNested(value: unknown, from: { noteId: string | null; noteTit
       (row.meaning_ko as string | null | undefined) ??
       null,
     learningStatus: ((row.learning_status as PhraseItem["learningStatus"] | null) ?? "new"),
+    usageNote: (row.usage_note as string | null | undefined) ?? null,
     noteId: from.noteId,
     noteTitle: from.noteTitle,
   };
@@ -606,6 +618,22 @@ export async function updateSpeakingNote(id: string, input: Pick<QuickNoteInput,
       status: input.situationId ? "active" : "unsorted",
       updated_at: new Date().toISOString(),
     })
+    .eq("id", id)
+    // Never resurrect an archived note. The note screen autosaves on a debounce
+    // and flushes on unmount, so a save can land after the learner archived it,
+    // and the `status` above would put it straight back to active.
+    .neq("status", "archived");
+  if (error) throw new Error(error.message);
+}
+
+/** Take a note out of every Studio list. Archive, never delete: a hard delete
+ *  cascades to its beats and phrase links and orphans its practice attempts.
+ *  `messages.status` already allows 'archived' (028), and the scope trigger
+ *  passes it through untouched, so this needs no migration. */
+export async function archiveSpeakingNote(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("messages")
+    .update({ status: "archived", updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) throw new Error(error.message);
 }

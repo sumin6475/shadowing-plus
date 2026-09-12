@@ -26,6 +26,7 @@ import { hairline, useTheme } from "@/design/theme";
 import { AnimatedPressable, Avatar, BackBar, Card, Chip, EnterStagger, Icon, Pill, Screen, Sect, Serif, Stagger, SwipeRow, confirmDelete, serifInputFace, usePressFx } from "@/design/ui";
 import {
   addPhraseToSituation,
+  archiveSpeakingNote,
   archiveStudioSituation,
   archiveStudioTopic,
   createQuickNote,
@@ -2219,6 +2220,9 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
   const [fixOpen, setFixOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorEditing, setEditorEditing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const titleRef = useRef<TextInput>(null);
+  const noteScrollRef = useRef<ScrollView>(null);
 
   // Autosave reads through refs so the debounce timer and the unmount flush
   // always see the latest draft without re-subscribing on every keystroke.
@@ -2305,6 +2309,32 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
 
   // Leaving the screen inside the debounce window must not lose the edit.
   useEffect(() => () => { void persistRef.current(); }, []);
+
+  // Rename jumps into the title field instead of opening a second editor: the
+  // title is already editable in place and autosaves. The header scrolls with
+  // the note, so bring the top back into view before focusing.
+  const renameNote = () => {
+    setMenuOpen(false);
+    noteScrollRef.current?.scrollTo({ y: 0, animated: true });
+    setTimeout(() => titleRef.current?.focus(), 300);
+  };
+  // Archive, never delete — same rule as a situation. The pending edit lands
+  // first, so the learner's last words are kept and the unmount flush has
+  // nothing left to write.
+  const archiveNote = () => {
+    setMenuOpen(false);
+    confirmDelete({
+      title: `Archive “${savedRef.current?.title || "this note"}”?`,
+      message: "It stops showing in your Studio. Its phrases and practice attempts stay — nothing is deleted.",
+      deleteLabel: "Archive note",
+      onConfirm: () => {
+        void (async () => {
+          try { await persistRef.current(); await archiveSpeakingNote(id); nav.invalidateSpeakingData(); nav.pop(); nav.notify("Note archived"); }
+          catch (caught) { Alert.alert("Couldn’t archive note", caught instanceof Error ? caught.message : "Try again."); }
+        })();
+      },
+    });
+  };
 
   const openOrganizer = () => {
     setNextTopicId(note?.topicId ?? null);
@@ -2422,8 +2452,44 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
   return (
     <>
       <View style={{ flex: 1 }}>
-        <Screen style={{ gap: 0 }} bottomPad={104}>
-          <BackBar onBack={nav.pop} right={<SaveStatus c={c} state={saveState} onRetry={() => void persist()} />} />
+        <Screen style={{ gap: 0 }} bottomPad={104} scrollRef={noteScrollRef}>
+          <BackBar
+            onBack={nav.pop}
+            right={
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <SaveStatus c={c} state={saveState} onRetry={() => void persist()} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Note options"
+                  onPress={() => setMenuOpen(true)}
+                  style={({ pressed }) => [{ width: 44, height: 44, borderRadius: 22, backgroundColor: c.card, alignItems: "center", justifyContent: "center" }, c.t.shadowCard, { opacity: pressed ? 0.78 : 1 }]}
+                >
+                  <Icon name="dots" s={20} c={c.ink} />
+                </Pressable>
+              </View>
+            }
+          />
+          <Modal visible={menuOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuOpen(false)}>
+            <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.08)" }} onPress={() => setMenuOpen(false)}>
+              <Pressable
+                onPress={(event) => event.stopPropagation()}
+                style={[
+                  { position: "absolute", top: insets.top + 58, right: 18, width: 220, overflow: "hidden", borderRadius: 22, backgroundColor: c.card, borderWidth: hairline, borderColor: c.hair },
+                  c.t.shadowLg,
+                ]}
+              >
+                <Pressable onPress={renameNote} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? c.well : "transparent" })}>
+                  <Icon name="pen" s={18} c={c.ink} />
+                  <Text style={{ fontSize: 15.5, fontWeight: "600", color: c.ink }}>Rename note</Text>
+                </Pressable>
+                <View style={{ height: hairline, backgroundColor: c.hair }} />
+                <Pressable onPress={archiveNote} style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, backgroundColor: pressed ? c.well : "transparent" })}>
+                  <Icon name="x" s={18} c={c.warn} />
+                  <Text style={{ fontSize: 15.5, fontWeight: "600", color: c.warn }}>Archive note</Text>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           {/* Keyed on the scheme: iOS repaints a live appearance switch for Text
               but not for TextInput, which otherwise leaves the note dark on
@@ -2434,6 +2500,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
               <Icon name="chev" s={11} w={2} c={note.situationTitle ? c.accent : c.faint} />
             </Pressable>
             <TextInput
+              ref={titleRef}
               value={title}
               onChangeText={(value) => editDraft("title", value)}
               multiline

@@ -20,6 +20,7 @@ export type IconName =
   | "dots"
   | "bell"
   | "gear"
+  | "sliders"
   | "ear"
   | "pen"
   | "arrow"
@@ -177,11 +178,24 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
         </G>
       );
       break;
+    // NOTE: "gear" is a circle with eight rays — the same drawing as "sun",
+    // one radius apart. It reads as brightness, not settings, so nothing uses
+    // it. Reach for "sliders" below instead.
     case "gear":
       body = (
         <G {...common}>
           <Circle cx="12" cy="12" r="3.2" />
           <Path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
+        </G>
+      );
+      break;
+    case "sliders":
+      body = (
+        <G {...common}>
+          <Path d="M4 7h8M18 7h2M4 12h2M12 12h8M4 17h10M20 17h0" />
+          <Circle cx="15" cy="7" r="2.4" />
+          <Circle cx="9" cy="12" r="2.4" />
+          <Circle cx="17" cy="17" r="2.4" />
         </G>
       );
       break;

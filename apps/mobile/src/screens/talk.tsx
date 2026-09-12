@@ -2,13 +2,14 @@
 // Phases: live → done → moment → retry. The web original uses radial
 // gradients + backdrop blur; RN stands those in with layered translucent fills.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, Text, View } from "react-native";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePostHog } from "posthog-react-native";
 
 import { MirrorPreview } from "@/components/mirror-preview";
+import { TalkHintSheet } from "@/components/talk-hint-sheet";
 import { TalkFeedbackDetail } from "@/components/talk-feedback-detail";
 import { hairline, useTheme } from "@/design/theme";
 import type { IconName } from "@/design/icon";
@@ -24,6 +25,7 @@ import { logTalkSuggestions, rateTalkSuggestion, suggestionKey, type SuggestionS
 import { promptPhraseStage, todaysPhrases } from "@/lib/daily-phrases";
 import { talkFocus, TALK_FOCUS_LABEL, type TalkFocus } from "@/lib/talk-focus";
 import { confirmAttemptPhraseCandidate, saveAttemptPhraseCandidates } from "@/lib/studio-information";
+import { aiProcessingAllowed, AiProcessingConsentRequiredError, setAiProcessingConsent } from "@/lib/ai-consent";
 import type { TalkMoment, TalkPhraseSuggestion, TalkPhraseUsedMatch } from "@/types/api";
 import type { Nav, TalkCtx } from "./nav";
 
@@ -49,6 +51,67 @@ const FROST = "rgba(20,22,28,0.55)";
 const CAMERA_ACC = "#6E8DD5";
 const CAMERA_ON_ACC = BRAND.dark;
 const ANALYSIS_ERROR_COPY = "Couldn’t analyze this time. Try again.";
+
+/** Asked once, before a word is spoken, when AI processing is currently off.
+ *  A real dialog rather than Alert.alert: Alert takes a plain string, and the
+ *  four facts that decide this for the learner — what still works, what does
+ *  not, what leaves the phone, what does not — have to be findable at a glance
+ *  by someone who is about to start talking. */
+function ConsentPrompt({
+  visible,
+  onAllow,
+  onDismiss,
+}: {
+  visible: boolean;
+  onAllow: () => void;
+  onDismiss: () => void;
+}) {
+  const t = useTheme();
+  const strong = { fontWeight: "700" as const, color: t.colors.ink };
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onDismiss}>
+      <View style={{ flex: 1, backgroundColor: "rgba(10,12,18,0.55)", alignItems: "center", justifyContent: "center", paddingHorizontal: 28 }}>
+        <View style={[{ width: "100%", maxWidth: 400, borderRadius: 26, backgroundColor: t.colors.card, overflow: "hidden" }, t.shadowLg]}>
+          <View style={{ paddingHorizontal: 20, paddingTop: 22, paddingBottom: 18, gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+              <Icon name="sparkle" s={18} c={t.colors.accD} />
+              <Text style={{ flex: 1, fontSize: 17.5, fontWeight: "700", color: t.colors.ink }}>Turn on AI feedback?</Text>
+            </View>
+            <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink2 }}>
+              It is <Text style={strong}>off right now</Text>. You can still talk — this attempt is{" "}
+              <Text style={strong}>recorded and saved</Text> either way — but you will get{" "}
+              <Text style={strong}>no coaching</Text> and <Text style={strong}>no Phrase Bank check</Text> at the end.
+            </Text>
+            <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink2 }}>
+              Turning it on sends <Text style={strong}>the text of what you say</Text> to OpenAI. Your{" "}
+              <Text style={strong}>recording stays on this device</Text>.
+            </Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>
+              Change it any time at <Text style={{ fontWeight: "700", color: t.colors.ink2 }}>Profile → Privacy</Text>.
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", borderTopWidth: hairline, borderTopColor: t.colors.sep }}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onDismiss}
+              style={({ pressed }) => ({ flex: 1, minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? t.colors.soft : "transparent" })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink2 }}>Not now</Text>
+            </Pressable>
+            <View style={{ width: hairline, backgroundColor: t.colors.sep }} />
+            <Pressable
+              accessibilityRole="button"
+              onPress={onAllow}
+              style={({ pressed }) => ({ flex: 1, minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? t.colors.soft : "transparent" })}
+            >
+              <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.accD }}>Turn on</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 const SESSION_SAVE_ERROR_COPY = "Couldn’t save this session. Check your connection and try talking again.";
 
 function RateRow({
@@ -189,8 +252,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
 
   const [phase, setPhase] = useState<"live" | "done" | "moment" | "retry" | "bankRetry">("live");
   const [sec, setSec] = useState(0);
-  const [tab, setTab] = useState<"phrase" | "beats">("phrase");
-  const [beatIdx, setBeatIdx] = useState(0); // current story beat in the checklist
   const [ctx, setCtx] = useState(p0.ctx || "Free talk");
   const [dd, setDd] = useState(false);
   const [hintOpen, setHintOpen] = useState(false);
@@ -198,12 +259,14 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [dur, setDur] = useState(0);
   const [sel, setSel] = useState(0);
   const [retryResult, setRetryResult] = useState<"used" | "not_yet" | null>(null);
-  const beats = p0.beats || TALK_BEATS;
   const prompt = p0.prompt || "What I’m trying to do is…";
 
   // On-device speech recognition for the live session (ADR 0003).
   const speech = useSpeechSession();
   const startedRef = useRef(false);
+  // One consent prompt per mounted attempt, even across a restart.
+  const consentAskedRef = useRef(false);
+  const [consentPrompt, setConsentPrompt] = useState(false);
   // True when mic/speech permission was denied — recognition never started, so
   // nothing was heard and finish() must not save a "completed" session.
   const [micDenied, setMicDenied] = useState(false);
@@ -227,6 +290,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const [moments, setMoments] = useState<TalkMoment[]>([]);
   const [diagState, setDiagState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [diagErr, setDiagErr] = useState<string | null>(null);
+  // Both AI calls are gated on the same consent flag, so a denial fails them
+  // together with a generic "try again" that can never succeed. Tracked apart
+  // from the error states so the result screen can say what is actually wrong
+  // and point at the switch that fixes it.
+  const [aiOff, setAiOff] = useState(false);
   const [sessionFocus, setSessionFocus] = useState<TalkFocus>(() => talkFocus());
   // Bank retrieval is intentionally independent from Focus coaching. Either
   // request may fail or return empty without suppressing the other's result.
@@ -272,6 +340,16 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     startedRef.current = true;
     speech.start({ onDevice: true }).then((ok) => {
       if (!ok) setMicDenied(true);
+      // Ask about AI processing BEFORE anything is said, not after. Finding out
+      // that coaching was off only once a five-minute attempt is already
+      // recorded is the worst possible time to learn it. Chained onto the mic
+      // result so it never races the system permission sheet, and only ever
+      // shown when the answer is currently no.
+      void (async () => {
+        if (consentAskedRef.current || (await aiProcessingAllowed())) return;
+        consentAskedRef.current = true;
+        setConsentPrompt(true);
+      })();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -351,6 +429,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setSessionFocus(focus);
     setDiagState("loading");
     setDiagErr(null);
+    setAiOff(false);
     diagnoseTalk({ transcript: text, topic, storyId: p0.storyId ?? null, focus })
       .then(async (ms) => {
         setMoments(ms);
@@ -371,7 +450,8 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       .catch((e) => {
         reportTalkFailure("diagnose", e);
         setDiagState("error");
-        setDiagErr(ANALYSIS_ERROR_COPY);
+        if (e instanceof AiProcessingConsentRequiredError) setAiOff(true);
+        setDiagErr(e instanceof Error && e.message ? e.message : ANALYSIS_ERROR_COPY);
       });
   };
 
@@ -389,6 +469,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     bankAcceptedRef.current = false;
     bankRejectedRef.current = false;
     bankUsedRef.current = false;
+    setAiOff(false);
     setBankState("loading");
     // Wait for the exact talk_session.id so phrase-suggest persists its
     // phrase_events with the right session linkage.
@@ -410,6 +491,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         reportTalkFailure("phrase_suggestion", e);
         setBankSuggestion(null);
         setBankUsed([]);
+        if (e instanceof AiProcessingConsentRequiredError) setAiOff(true);
         setBankState("error");
       });
   };
@@ -484,6 +566,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setMoments([]);
     setDiagState("idle");
     setDiagErr(null);
+    setAiOff(false);
     setBankSuggestion(null);
     setBankUsed([]);
     setBankUsedVerdicts({});
@@ -499,8 +582,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setPhase("live");
     setSec(0);
     setHintOpen(false);
-    setTab("phrase");
-    setBeatIdx(0);
     setDd(false);
   };
   // Ending an attempt returns to whatever started it — the Speaking Note, in
@@ -657,15 +738,21 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           ? "The attempt is saved — but the mic didn’t catch your words this time."
           : diagState === "done" && moments.length
             ? "Here’s where you could say it more naturally."
-            : bankState === "loading"
-              ? "Checking your Phrase Bank…"
-              : bankState === "done" && bankSuggestion
-                ? "You already saved something useful for this moment."
-                : bankState === "error"
-                  ? "Focus coaching is ready. Your Phrase Bank check needs another try."
-                  : diagState === "done"
-                    ? "You kept going the whole time."
-                    : "";
+            : aiOff
+              ? "AI feedback is turned off, so nothing was sent for coaching."
+              : diagState === "error" && bankState === "error"
+                ? "Neither check went through this time."
+                : diagState === "error"
+                  ? "Your attempt is saved. The coaching check needs another try."
+                  : bankState === "loading"
+                    ? "Checking your Phrase Bank…"
+                    : bankState === "done" && bankSuggestion
+                      ? "You already saved something useful for this moment."
+                      : bankState === "error"
+                        ? "Focus coaching is ready. Your Phrase Bank check needs another try."
+                        : diagState === "done"
+                          ? "You kept going the whole time."
+                          : "";
     return (
       <Screen bottomPad={40}>
         {/* Close — the result is a landing, not a trap. Same exit as Done. */}
@@ -770,7 +857,24 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           </Card>
         ) : null}
 
-        {diagState === "error" ? (
+        {aiOff ? (
+          <Card lg style={{ gap: 11 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+              <Icon name="sparkle" s={17} c={t.colors.accD} />
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: t.colors.ink }}>AI feedback is off</Text>
+            </View>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2 }}>
+              Nothing failed — coaching and the Phrase Bank check need to send the text of what you said to OpenAI, and
+              that permission is off for your account. Your recording and transcript are saved either way.
+            </Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>
+              Turn it on at Profile → Privacy → “Allow OpenAI processing”, then tap Talk again to get feedback.
+            </Text>
+            <Pill tone="tint" small onPress={() => nav.push("privacy")}>
+              Open Privacy
+            </Pill>
+          </Card>
+        ) : diagState === "error" ? (
           <Card lg style={{ gap: 12 }}>
             <Text style={{ fontSize: 15, color: t.colors.warn, fontWeight: "600" }}>{diagErr ?? "Couldn’t analyze this session."}</Text>
             <Pill tone="tint" small onPress={() => runDiagnosis(transcript)}>
@@ -886,7 +990,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           </Card>
         ) : null}
 
-        {bankState === "error" ? (
+        {bankState === "error" && !aiOff ? (
           <Card style={{ gap: 11 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
               <Icon name="bank" s={17} c={t.colors.warn} />
@@ -1133,7 +1237,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   // ── mirror: live ──
   const live = phase === "live";
   const subPill = p0.sub || (ctx !== "Free talk" ? ctx : null);
-  const topicLine = [ctx, p0.sub].filter(Boolean).join(" · ");
   return (
     <View style={{ position: "absolute", inset: 0 }}>
       <MirrorPreview />
@@ -1224,99 +1327,28 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </View>
           ) : null}
 
+          <ConsentPrompt
+            visible={consentPrompt}
+            onDismiss={() => setConsentPrompt(false)}
+            onAllow={() => {
+              setConsentPrompt(false);
+              setAiProcessingConsent(true).catch(() => {
+                Alert.alert("Couldn’t save your choice", "Check your connection, or turn it on in Profile → Privacy.");
+              });
+            }}
+          />
+
           {hintOpen ? (
             <View style={[{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 132, backgroundColor: "rgba(255,255,255,0.97)", borderRadius: 26, padding: 16 }, t.shadowLg, { zIndex: 15 }]}>
-              <View style={{ flexDirection: "row", backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 999, padding: 4 }}>
-                {(
-                  [
-                    ["phrase", "Today’s phrases"],
-                    ["beats", `Story beats · ${beats.length}`],
-                  ] as const
-                ).map(([key, label]) => {
-                  const on = tab === key;
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => setTab(key)}
-                      style={{ flex: 1, height: 40, borderRadius: 999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: on ? t.colors.accS : "transparent" }}
-                    >
-                      {on ? <Icon name="sparkle" s={15} c={t.colors.accD} /> : null}
-                      <Text style={{ fontSize: 14.5, fontWeight: "700", color: on ? t.colors.accD : "rgba(0,0,0,0.5)" }}>{label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {tab === "phrase" ? (
-                <View style={{ paddingTop: 14, paddingHorizontal: 4 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }}>TODAY’S TOPIC</Text>
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: "#16181d", marginTop: 6 }}>{topicLine}</Text>
-                  {p0.prompt ? (
-                    <Text style={{ fontSize: 13.5, lineHeight: 19, color: "rgba(0,0,0,0.5)", marginTop: 4 }}>{p0.prompt}</Text>
-                  ) : null}
-                  <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)", marginTop: 14 }}>REVIEW TODAY</Text>
-                  {todayPhrases.length ? (
-                    <ScrollView style={{ maxHeight: 168, marginTop: 8 }} nestedScrollEnabled>
-                      {todayPhrases.map((item, index) => (
-                        <View key={item.id} style={{ paddingVertical: 8, borderTopWidth: index ? 1 : 0, borderTopColor: "rgba(0,0,0,0.06)" }}>
-                          <Text style={{ fontSize: 16, fontWeight: "700", color: "#16181d" }}>{item.text}</Text>
-                          {item.translation ? (
-                            <Text style={{ fontSize: 13, color: "rgba(0,0,0,0.5)", marginTop: 3 }}>{item.translation}</Text>
-                          ) : null}
-                        </View>
-                      ))}
-                    </ScrollView>
-                  ) : (
-                    <View style={{ paddingTop: 8 }}>
-                      <Serif style={{ fontSize: 22, lineHeight: 28, color: "#16181d" }}>{prompt}</Serif>
-                      <Text style={{ fontSize: 14, color: "rgba(0,0,0,0.5)", marginTop: 6 }}>Use it naturally when it fits.</Text>
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <View style={{ paddingTop: 14, paddingHorizontal: 4 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(0,0,0,0.4)" }} numberOfLines={1}>
-                      {ctx.toUpperCase()}
-                    </Text>
-                    <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: "rgba(0,0,0,0.4)" }}>
-                      {Math.min(beatIdx + 1, beats.length)} OF {beats.length}
-                    </Text>
-                  </View>
-                  {beats.map((b, i) => {
-                    const done = i < beatIdx;
-                    const current = i === beatIdx;
-                    return (
-                      <Pressable
-                        key={i}
-                        onPress={() => setBeatIdx(i)}
-                        style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, paddingHorizontal: 8, borderRadius: 14, backgroundColor: current ? t.colors.accS : "transparent" }}
-                      >
-                        <View
-                          style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: 11,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: done || current ? t.colors.acc : "transparent",
-                            borderWidth: done || current ? 0 : 2,
-                            borderColor: "rgba(0,0,0,0.2)",
-                          }}
-                        >
-                          {/* onAcc rule: this dot is t.colors.acc, which follows the
-                              scheme even though the panel around it does not. White on
-                              dark-mode acc (#6E8DD5) is 3.26:1; onAcc is 5.24:1. */}
-                          {done ? <Icon name="check" s={12} w={3} c={t.colors.onAcc} /> : null}
-                        </View>
-                        <Text style={{ flex: 1, fontSize: 15.5, fontWeight: current ? "700" : "600", color: current ? "#16181d" : done ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.7)" }}>
-                          {b}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
+              {/* The topic used to be repeated here under a "TODAY'S TOPIC"
+                  label; it is already the title and the pill at the top of this
+                  same screen, so the space goes to the phrases instead. */}
+              <TalkHintSheet
+                todayPhrases={todayPhrases}
+                storyId={p0.storyId ?? null}
+                messageId={p0.messageId ?? null}
+                fallbackPrompt={prompt}
+              />
             </View>
           ) : null}
 

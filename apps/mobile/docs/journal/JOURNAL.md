@@ -1165,3 +1165,48 @@ Settings에 Library 카드가 있으면 testflight 빌드.
 
 **릴리스 검사 확장:** testflight가 production을 상속하는지, 스토어 빌드로 남는지(누가
 `internal`로 바꾸면 TestFlight에 못 올라감), 두 플래그가 있는지. `npm run validate` exit 0.
+
+## 2026-09-12 — Self-talk 힌트 패널 재설계 + AI 피드백이 조용히 꺼져 있던 이유
+
+**AI 피드백.** 결과 화면의 두 빨간 카드는 서로 다른 두 장애가 아니라 **하나의 공통
+선행 조건**이었다. `diagnoseTalk`와 `suggestTalkPhrase` 둘 다 네트워크 이전에
+`requireAiProcessingConsent()`를 지나고, 동의 알림창의 "Privacy Policy" 버튼이
+`save(false)`를 호출하고 있었다 — 정책을 읽으려는 행동이 영구 거부로 기록된다. 화면은
+실제 에러를 고정 문구로 덮어써서 절대 성공할 수 없는 "Try again"만 보여줬고, 헤더는
+`diagState === "error"` 분기가 없어 **"Focus coaching is ready."** 라는 거짓 문장을
+출력했다. 셋 다 고침 → `postmortems/2026-09-12-privacy-policy-button-denied-ai-consent.md`.
+기기에서 토글 확인은 남아 있다.
+
+**원칙(적용).** *실패는 사용자가 행동할 수 있는 문장으로 말해야 한다.* 재시도로 고칠 수
+없는 실패에 재시도 버튼을 주면 사용자는 무한히 같은 벽을 친다. 그리고 상태 문구는 성공
+경로만 나열하면 안 된다 — 실패 분기를 빼먹으면 UI가 거짓말을 한다.
+
+**힌트 패널.** Story beats 탭을 걷어내고 한 개의 리스트로 바꿨다. 화면 상단 제목과
+중복이던 `TODAY'S TOPIC` 블록과 `REVIEW TODAY` 라벨을 지워 그만큼을 phrase에 줬다
+(리스트 높이 168 → 250). 각 행은 왼쪽 원형 체크박스(직접 표시, 햅틱 + squash-and-settle
+애니메이션)와, 그 외 영역을 누르면 Y축으로 뒤집혀 ① 표현 ② 뜻 ③ How it's used를 보여주는
+카드가 됐다. 뒤집기는 180° 한 번이 아니라 0→84° / -84°→0 두 구간으로 나눴다 — 뒷면이
+거울상으로 그려지지 않고, 앞뒤 높이가 달라도 된다.
+
+**설정.** 헤더 오른쪽 기어 → 딤 + 중앙 모달에서 보는 대상을 고른다(Today's phrases /
+This note · This situation). 선택은 AsyncStorage에 남는다(`src/lib/talk-hint-source.ts`,
+talk-focus와 같은 모양). Free talk은 연결된 대상이 없어 두 번째 선택지가 비활성이다.
+
+**색.** 이 패널은 항상 흰색인데 강조색만 색상 스킴을 따라가고 있었다 — 다크 모드 accent
+`#8FACEF`는 흰 바탕에서 2.25:1이라 체크된 상자가 체크로 안 읽힌다. camera 표면과 같은
+고정-표면 규칙을 반대로 적용해 브랜드 네이비로 고정했다(`#162555` on white = 14.7:1).
+
+`npm run validate` exit 0 (0 errors, 3 warnings, cap 3). expo-haptics 추가 →
+네이티브 모듈이라 다음 EAS 빌드부터 적용된다.
+
+**기기 확인 후 2차 수정.** 동의 원인 확정됨(토글 켜니 동작). 세 가지를 더 고쳤다.
+
+- 첫 탭에 UI 스레드가 스택 오버플로로 죽었다 — 애니메이션 완료 콜백 안에서 shared value에
+  대입하면 그 애니메이션이 취소되고 같은 콜백이 다시 불린다. `withSequence` 하나로 합침 →
+  `postmortems/2026-09-12-shared-value-write-inside-its-own-callback.md`.
+- 탭처럼 생긴 헤더를 없앴다. 리스트가 하나뿐인데 세그먼트 크롬이 **있지도 않은 두 번째 탭을
+  약속하고** 있었다. 제목은 가운데 평문, 기어는 배경 없이 그 두 번째 탭 자리에.
+- **동의는 말하기 전에 묻는다.** 5분을 말하고 나서야 코칭이 꺼져 있었다는 걸 아는 건 최악의
+  타이밍이다. 라이브 진입 시 마이크 권한 시트 다음에 물어본다. `Alert.alert`는 평문만 받아서
+  결정에 필요한 네 가지 사실(뭐가 되고, 뭐가 안 되고, 뭐가 나가고, 뭐가 안 나가는지)을
+  강조할 수 없으므로 실제 모달로 만들었다. Free talk에서 설정이 왜 잠기는지도 모달 안에 적었다.
