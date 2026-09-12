@@ -1,7 +1,7 @@
 // phrases.tsx — Phrase Bank tab: list + chart, detail, review flow. Backed by
 // the canonical `phrase_items` collection; transcript bookmarks are separate.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -944,10 +944,26 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
       </Modal>
 
       <Modal visible={editOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => { if (!savingEdit) setEditOpen(false); }}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={() => { if (!savingEdit) setEditOpen(false); }}>
+        {/* The backdrop and the sheet are separate now. They used to be one
+            Pressable doing both jobs, which left nowhere to put a
+            KeyboardAvoidingView — so the keyboard (this sheet autofocuses, so
+            it is always up) covered the phrase field the sheet exists to
+            edit. */}
+        <View style={{ flex: 1 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(20,22,28,0.28)" }]}
+            onPress={() => { if (!savingEdit) setEditOpen(false); }}
+          />
+          <KeyboardAvoidingView
+            pointerEvents="box-none"
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1, justifyContent: "flex-end" }}
+          >
           <Pressable
             onPress={(event) => event.stopPropagation()}
-            style={{ maxHeight: "84%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 12 }}
+            style={{ maxHeight: "92%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 12 }}
           >
             <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 18 }} />
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -975,7 +991,8 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
               <Pill tone="ghost" onPress={savingEdit ? undefined : () => setEditOpen(false)} style={{ alignSelf: "center", marginTop: 4 }}>Cancel</Pill>
             </ScrollView>
           </Pressable>
-        </Pressable>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
     </>
   );

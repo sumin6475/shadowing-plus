@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, InteractionManager, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, InteractionManager, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
@@ -953,14 +953,25 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       statusBarTranslucent
       onRequestClose={() => { if (!savingSavedEdit) setSelectedSaved(null); }}
     >
+      {/* Backdrop and sheet are separate views so a KeyboardAvoidingView can
+          sit between them; as one Pressable there was nowhere to put it and
+          the keyboard covered the fields being edited. */}
+      <View style={{ flex: 1 }}>
       <Pressable
-        style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(20,22,28,0.28)" }]}
         onPress={() => { if (!savingSavedEdit) setSelectedSaved(null); }}
+      />
+      <KeyboardAvoidingView
+        pointerEvents="box-none"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1, justifyContent: "flex-end" }}
       >
         <Pressable
           onPress={(event) => event.stopPropagation()}
           style={{
-            maxHeight: "82%",
+            maxHeight: "92%",
             backgroundColor: t.colors.bg,
             borderTopLeftRadius: 38,
             borderTopRightRadius: 38,
@@ -1019,7 +1030,8 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
             ) : null}
           </ScrollView>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
+      </View>
     </Modal>
     </>
   );

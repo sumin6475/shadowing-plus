@@ -3,7 +3,7 @@
 // Rehearsal: mirror-style mini session — see the target phrase, record takes,
 // on-device STT checks whether the phrase actually came out.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
@@ -264,10 +264,24 @@ function AddStorySheet({
 
   return (
     <Modal visible={open} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={onClose}>
+      {/* Backdrop and sheet are separate views so a KeyboardAvoidingView can
+          sit between them; as one Pressable there was nowhere to put it and
+          the keyboard covered the search field and its results. */}
+      <View style={{ flex: 1 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(20,22,28,0.28)" }]}
+        onPress={onClose}
+      />
+      <KeyboardAvoidingView
+        pointerEvents="box-none"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1, justifyContent: "flex-end" }}
+      >
         <Pressable
           onPress={(event) => event.stopPropagation()}
-          style={{ maxHeight: "78%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 8 }}
+          style={{ maxHeight: "92%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 8 }}
         >
           <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 16 }} />
           <Serif style={{ fontSize: 22, color: t.colors.ink, textAlign: "center" }}>Add to a story</Serif>
@@ -338,7 +352,8 @@ function AddStorySheet({
             Cancel
           </Pill>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
