@@ -1260,3 +1260,33 @@ talk-focus와 같은 모양). Free talk은 연결된 대상이 없어 두 번째
 읽히지만, 크기 변화가 섞이는 순간 사용자는 다른 사건으로 해석한다.
 
 `npm run validate` exit 0.
+
+## 2026-09-12 — 키보드에 가려지는 시트 셋, 그리고 안 자라는 선택 UI
+
+**키보드.** Edit phrase 시트가 autofocus라 키보드가 항상 올라와 있는데, 정작 편집할 필드를
+가리고 있었다. 원인은 backdrop과 시트가 **하나의 Pressable**이라 `KeyboardAvoidingView`를
+넣을 자리가 없던 것. 같은 모양의 시트가 셋이었다(phrases / capture / practice). Studio의
+Sheet가 쓰던 구조로 통일.
+
+**칩 격자는 개수를 모르는 목록에 쓰면 안 된다.** 줄바꿈이 예측 불가라 시트 높이가 내용에
+따라 움직이고, 긴 제목이 잘리고, 가로 칩 레일이 세로 시트 안에 들어가 스크롤 방향이 섞이고,
+무엇보다 **검색할 자리가 없다.** Studio가 네 가지를 한꺼번에 겪고 있었다.
+
+**그리고 이미 데이터가 새고 있었다 — 조용한 truncation 넷.**
+- `phraseChoices().then(items => items.slice(0, 20))` → 다시 렌더에서 `slice(0, 10)`.
+  **이중 캡**이라 표현 11번째부터는 도달 불가.
+- `PhrasePicker`의 `.slice(0, 30)` — 검색 필터 **뒤에** 걸려 있어서, 뭘 치든 31번째는 안 나옴.
+- story picker의 `slice(0, 10)` / `slice(3, 10)` — 검색창이 비어 있으면 11번째 story는 없음.
+모두 "나중에 불편해질 것"이 아니라 **지금 있는 버그**였다. 캡 자체를 없앰(시트가 스크롤된다).
+
+**공용 `PickerSheet`.** 행 + 섹션 + 8개 넘을 때만 나오는 검색. `practice.tsx`의 Add-to-a-story가
+이미 그 모양이라 발명이 아니라 일반화였다. Quick capture의 situation 선택은 **topic 칩 → situation
+칩** 2단계를 없애고 한 목록으로 폈다 — situation은 이미 자기 topic을 알고 있으니 하나 고르면
+둘 다 정해진다. `Unsorted · About me`는 이 필드가 원래 보여주던 문자열 그대로라, 행이 값과
+같은 모양으로 읽힌다. Organize note도 같은 목록으로 바꾸고 탭 즉시 저장(고르는 게 결정 전부라
+확인 버튼이 한 번 더 있을 이유가 없다).
+
+**설계 하나 되돌림:** 검색 결과가 있을 때도 `Create "Daily"`를 같이 띄웠더니, `Daily life` 행 셋
+아래에 **다른 topic에 만들겠다는** 버튼이 붙었다. 결과가 0일 때만 뜨게 수정.
+
+`npm run validate` exit 0. 시뮬레이터에서 검색·섹션·생성·단일선택·다중선택 전부 확인.

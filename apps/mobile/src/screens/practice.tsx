@@ -338,12 +338,14 @@ function AddStorySheet({
                     {label}
                   </Text>
                 );
-                if (!sectioned) return choices.slice(0, 10).map((story, i) => row(story, i === 0));
+                // No cap: the sheet scrolls, and a hard 10 meant story 11 was
+                // unreachable whenever the search box was empty.
+                if (!sectioned) return choices.map((story, i) => row(story, i === 0));
                 return [
                   header("RECENTS"),
                   ...choices.slice(0, 3).map((story, i) => row(story, i === 0)),
                   header("ALL STORIES"),
-                  ...choices.slice(3, 10).map((story, i) => row(story, i === 0)),
+                  ...choices.slice(3).map((story, i) => row(story, i === 0)),
                 ];
               })()
             )}

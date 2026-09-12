@@ -21,9 +21,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { PickerSheet, type PickerSection } from "@/components/picker-sheet";
 import type { IconName } from "@/design/icon";
 import { hairline, useTheme } from "@/design/theme";
-import { AnimatedPressable, Avatar, BackBar, Card, Chip, EnterStagger, Icon, Pill, Screen, Sect, Serif, Stagger, SwipeRow, confirmDelete, serifInputFace, usePressFx } from "@/design/ui";
+import { AnimatedPressable, Avatar, BackBar, Card, EnterStagger, Icon, Pill, Screen, Sect, Serif, Stagger, SwipeRow, confirmDelete, serifInputFace, usePressFx } from "@/design/ui";
 import {
   addPhraseToSituation,
   archiveSpeakingNote,
@@ -239,6 +240,10 @@ function BrowseRow({ icon, label, caption, first, onPress }: { icon: IconName; l
 /** One wording for archiving a situation, on the swipe panel and on the button
  *  that confirms it. Two labels for one gesture is how a swipe ends up reading
  *  as a delete. */
+// Topics and situations share one picker list, so a topic-only row needs an id
+// that can never collide with a situation id.
+const TOPIC_ROW_PREFIX = "topic:";
+
 const ARCHIVE_SITUATION_LABEL = "Archive situation";
 
 /** One wording for archiving a situation, whether it comes from the swipe
@@ -454,14 +459,63 @@ function QuickNoteSheet({ open, nav, topics, situations, initialTopicId, initial
       setSituationId(initialSituationId ?? null);
       setChooser(null);
     }, 0);
-    phraseChoices().then((items) => setPhrases(items.slice(0, 20))).catch(() => setPhrases([]));
+    // No slice: it used to take 20 here and render 10, so a learner with more
+    // phrases than that simply could not reach them.
+    phraseChoices().then(setPhrases).catch(() => setPhrases([]));
     return () => clearTimeout(timer);
   }, [open, initialTopicId, initialSituationId, situations, topics]);
 
-  const availableSituations = situations.filter((item) => item.topicId === topicId);
   const selectedSituation = situations.find((item) => item.id === situationId);
   const selectedTopic = topics.find((item) => item.id === topicId);
   const situationLabel = selectedSituation?.title ?? (selectedTopic ? `Unsorted · ${selectedTopic.name}` : "Choose a situation");
+  const topicName = (id: string) => topics.find((topic) => topic.id === id)?.name ?? "";
+
+  // One flat list instead of topic chips feeding situation chips. A situation
+  // already names its topic, so picking one sets both — and "Unsorted · Topic"
+  // is the exact string this field already displayed for the topic-only case,
+  // so the rows read the way the value reads.
+  const situationSections: PickerSection[] = [
+    {
+      key: "situations",
+      title: "SITUATIONS",
+      rows: situations.map((item) => ({ id: item.id, label: item.title, sublabel: topicName(item.topicId) })),
+    },
+    {
+      key: "topics",
+      title: "NO SITUATION YET",
+      rows: topics.map((topic) => ({ id: `${TOPIC_ROW_PREFIX}${topic.id}`, label: `Unsorted · ${topic.name}`, sublabel: "Topic only" })),
+    },
+  ].filter((section) => section.rows.length > 0);
+
+  const pickSituation = (rowId: string) => {
+    if (rowId.startsWith(TOPIC_ROW_PREFIX)) {
+      setTopicId(rowId.slice(TOPIC_ROW_PREFIX.length));
+      setSituationId(null);
+    } else {
+      const situation = situations.find((item) => item.id === rowId);
+      if (!situation) return;
+      setSituationId(situation.id);
+      setTopicId(situation.topicId);
+    }
+    setChooser(null);
+  };
+
+  const createSituationInline = async (name: string) => {
+    if (!topicId) return;
+    try {
+      const newId = await createStudioSituation({ topicId, title: name });
+      setSituationId(newId);
+      setChooser(null);
+      nav.invalidateSpeakingData();
+      onSaved();
+    } catch (caught) {
+      Alert.alert("Couldn’t create situation", caught instanceof Error ? caught.message : "Try again.");
+    }
+  };
+
+  const phraseSections: PickerSection[] = phrases.length
+    ? [{ key: "phrases", rows: phrases.map((phrase) => ({ id: phrase.id, label: phrase.text, sublabel: phrase.translation })) }]
+    : [];
   const resetAndClose = () => {
     if (saving) return;
     setTitle("");
@@ -576,21 +630,6 @@ function QuickNoteSheet({ open, nav, topics, situations, initialTopicId, initial
             <Text style={{ flex: 1, fontSize: 16, fontWeight: "600", color: t.colors.ink }} numberOfLines={1}>{situationLabel}</Text>
             <Icon name="chev" s={14} w={2.2} c={t.colors.ink2} />
           </Pressable>
-          {chooser === "situation" ? (
-            <View style={{ borderRadius: 20, backgroundColor: t.colors.card, borderWidth: 1, borderColor: t.ring, padding: 14, gap: 12 }}>
-              <Text style={{ fontSize: 11.5, fontWeight: "800", letterSpacing: 0.5, color: t.colors.ink3 }}>TOPIC</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {topics.map((topic) => <Chip key={topic.id} active={topic.id === topicId} onPress={() => { setTopicId(topic.id); setSituationId(null); }}>{topic.name}</Chip>)}
-              </ScrollView>
-              <Text style={{ fontSize: 11.5, fontWeight: "800", letterSpacing: 0.5, color: t.colors.ink3 }}>SITUATION</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Chip active={situationId === null} onPress={() => { setSituationId(null); setChooser(null); }}>Unsorted</Chip>
-                {availableSituations.map((situation) => (
-                  <Chip key={situation.id} active={situation.id === situationId} onPress={() => { setSituationId(situation.id); setTopicId(situation.topicId); setChooser(null); }}>{situation.title}</Chip>
-                ))}
-              </View>
-            </View>
-          ) : null}
         </View>
 
         <View style={{ gap: 7 }}>
@@ -607,23 +646,6 @@ function QuickNoteSheet({ open, nav, topics, situations, initialTopicId, initial
             <Text style={{ flex: 1, fontSize: 16, fontWeight: "600", color: t.colors.accD }}>{phraseIds.length ? `${phraseIds.length} linked phrases` : "+ Add phrases"}</Text>
             <Icon name="chev" s={14} w={2.2} c={t.colors.ink2} />
           </Pressable>
-          {chooser === "phrases" ? (
-            <View style={{ borderRadius: 20, backgroundColor: t.colors.card, borderWidth: 1, borderColor: t.ring, padding: 14 }}>
-              {phrases.length ? (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {phrases.slice(0, 10).map((phrase) => (
-                    <Chip
-                      key={phrase.id}
-                      active={phraseIds.includes(phrase.id)}
-                      onPress={() => setPhraseIds((current) => current.includes(phrase.id) ? current.filter((id) => id !== phrase.id) : [...current, phrase.id])}
-                    >
-                      {phrase.text}
-                    </Chip>
-                  ))}
-                </View>
-              ) : <Text style={{ fontSize: 13.5, lineHeight: 19, color: t.colors.ink3 }}>Saved phrases will appear here.</Text>}
-            </View>
-          ) : null}
         </View>
 
         {error ? <Text style={{ color: t.colors.warn, fontSize: 13.5, lineHeight: 19 }}>{error}</Text> : null}
@@ -631,6 +653,33 @@ function QuickNoteSheet({ open, nav, topics, situations, initialTopicId, initial
         <Pill full icon="mic" onPress={saving ? undefined : () => void save("practice")}>{saving === "practice" ? "Saving…" : "Save & practice"}</Pill>
         <Pill tone="ghost" full onPress={saving ? undefined : () => void save("later")}>{saving === "later" ? "Saving…" : "Save for later"}</Pill>
       </ScrollView>
+
+      <PickerSheet
+        open={chooser === "situation"}
+        title="Where does this belong?"
+        subtitle="Pick a situation, or just its topic and sort it later."
+        sections={situationSections}
+        selectedIds={situationId ? [situationId] : topicId ? [`${TOPIC_ROW_PREFIX}${topicId}`] : []}
+        searchPlaceholder="Find a situation or topic"
+        emptyLabel="Create a topic first, from Studio."
+        createLabel={(query) => (selectedTopic ? `Create “${query}” in ${selectedTopic.name}` : null)}
+        onCreate={createSituationInline}
+        onSelect={pickSituation}
+        onClose={() => setChooser(null)}
+      />
+
+      <PickerSheet
+        open={chooser === "phrases"}
+        multiple
+        title="Link phrases"
+        subtitle="Language you want ready while you practice."
+        sections={phraseSections}
+        selectedIds={phraseIds}
+        searchPlaceholder="Find a phrase"
+        emptyLabel="Saved phrases will appear here."
+        onSelect={(id) => setPhraseIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]))}
+        onClose={() => setChooser(null)}
+      />
     </Sheet>
   );
 }
@@ -1929,29 +1978,35 @@ export function SituationAttemptsScreen({ id, title, nav }: { id: string; title?
 }
 
 function PhrasePicker({ open, title, subtitle, linked, onLink, onUnlink, onClose, onChanged }: { open: boolean; title: string; subtitle: string; linked: NotePhrase[]; onLink: (phraseId: string) => Promise<void>; onUnlink: (phraseId: string) => Promise<void>; onClose: () => void; onChanged: () => void }) {
-  const t = useTheme();
-  const [query, setQuery] = useState("");
-  const [items, setItems] = useState<PhraseItem[]>([]);
+  const [items, setItems] = useState<PhraseItem[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => { if (open) phraseChoices().then(setItems).catch(() => setItems([])); }, [open]);
   const linkedIds = useMemo(() => new Set(linked.map((phrase) => phrase.id)), [linked]);
-  const visible = items.filter((item) => !query.trim() || `${item.text} ${item.translation ?? ""}`.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en"))).slice(0, 30);
-  const toggle = async (phrase: PhraseItem) => {
-    setBusy(phrase.id);
-    try { if (linkedIds.has(phrase.id)) await onUnlink(phrase.id); else await onLink(phrase.id); onChanged(); }
+  // Was `.slice(0, 30)` — applied AFTER the search filter, so phrase 31 stayed
+  // unreachable no matter what you typed. The list scrolls; it needs no cap.
+  const sections: PickerSection[] | null = items
+    ? [{ key: "phrases", rows: items.map((item) => ({ id: item.id, label: item.text, sublabel: item.translation })) }]
+    : null;
+  const toggle = async (phraseId: string) => {
+    setBusy(phraseId);
+    try { if (linkedIds.has(phraseId)) await onUnlink(phraseId); else await onLink(phraseId); onChanged(); }
     catch (caught) { Alert.alert("Couldn’t update phrases", caught instanceof Error ? caught.message : "Try again."); }
     finally { setBusy(null); }
   };
   return (
-    <Sheet open={open} title={title} subtitle={subtitle} onClose={onClose}>
-      <View style={{ paddingHorizontal: 22, gap: 12 }}>
-        <Field label="Search" value={query} onChangeText={setQuery} placeholder="How can I say this?" />
-        <ScrollView style={{ maxHeight: 430 }} keyboardShouldPersistTaps="handled">
-          {visible.map((phrase, index) => { const selected = linkedIds.has(phrase.id); return <Pressable key={phrase.id} onPress={() => void toggle(phrase)} style={({ pressed }) => ({ minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: index ? 1 : 0, borderTopColor: t.colors.sep, opacity: pressed || busy === phrase.id ? 0.55 : 1 })}><View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>{phrase.text}</Text>{phrase.translation ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 3 }}>{phrase.translation}</Text> : null}</View><View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: selected ? t.colors.acc : t.colors.soft, alignItems: "center", justifyContent: "center" }}><Icon name={selected ? "check" : "plus"} s={14} c={selected ? t.colors.onAcc : t.colors.ink3} /></View></Pressable>; })}
-        </ScrollView>
-        <Pill tone="ghost" full onPress={onClose}>Done</Pill>
-      </View>
-    </Sheet>
+    <PickerSheet
+      open={open}
+      multiple
+      title={title}
+      subtitle={subtitle}
+      sections={sections}
+      selectedIds={[...linkedIds]}
+      searchPlaceholder="How can I say this?"
+      emptyLabel="Saved phrases will appear here."
+      busyId={busy}
+      onSelect={(id) => void toggle(id)}
+      onClose={onClose}
+    />
   );
 }
 
@@ -2336,25 +2391,51 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
     });
   };
 
+  // Same flat list the quick-capture sheet uses: a situation names its topic,
+  // so choosing one settles both.
+  const organizeSections: PickerSection[] = [
+    {
+      key: "situations",
+      title: "SITUATIONS",
+      rows: situations.map((item) => ({
+        id: item.id,
+        label: item.title,
+        sublabel: topics.find((topic) => topic.id === item.topicId)?.name ?? "",
+      })),
+    },
+    {
+      key: "topics",
+      title: "NO SITUATION YET",
+      rows: topics.map((topic) => ({ id: `${TOPIC_ROW_PREFIX}${topic.id}`, label: `Unsorted · ${topic.name}`, sublabel: "Topic only" })),
+    },
+  ].filter((section) => section.rows.length > 0);
+
   const openOrganizer = () => {
     setNextTopicId(note?.topicId ?? null);
     setNextSituationId(note?.situationId ?? null);
     setOrganizeOpen(true);
   };
-  const saveOrganizer = async () => {
+  // Picking is the whole decision, so the picker saves on tap instead of
+  // asking for a second confirming press. `nextTopicId`/`nextSituationId` are
+  // still the source of truth for what is highlighted.
+  const saveOrganizer = async (topicIdArg?: string | null, situationIdArg?: string | null) => {
     const base = savedRef.current;
-    if (!base || !nextTopicId) return;
-    const selectedSituation = situations.find((item) => item.id === nextSituationId);
+    const nextTopic_ = topicIdArg === undefined ? nextTopicId : topicIdArg;
+    const nextSituation_ = situationIdArg === undefined ? nextSituationId : situationIdArg;
+    if (!base || !nextTopic_) return;
+    const selectedSituation = situations.find((item) => item.id === nextSituation_);
     setOrganizing(true);
     try {
-      await updateSpeakingNote(id, { title, goal, body, topicId: nextTopicId, situationId: nextSituationId });
-      const nextTopic = topics.find((item) => item.id === nextTopicId);
-      const next = { ...base, title: title.trim(), goal: goal.trim(), body: body.trim(), topicId: nextTopicId, topicName: nextTopic?.name ?? null, situationId: nextSituationId, situationTitle: selectedSituation?.title ?? null, status: nextSituationId ? "active" : "unsorted" } as SpeakingNote;
+      await updateSpeakingNote(id, { title, goal, body, topicId: nextTopic_, situationId: nextSituation_ });
+      const nextTopic = topics.find((item) => item.id === nextTopic_);
+      const next = { ...base, title: title.trim(), goal: goal.trim(), body: body.trim(), topicId: nextTopic_, topicName: nextTopic?.name ?? null, situationId: nextSituation_, situationTitle: selectedSituation?.title ?? null, status: nextSituation_ ? "active" : "unsorted" } as SpeakingNote;
       savedRef.current = next;
       setNote(next);
+      setNextTopicId(nextTopic_);
+      setNextSituationId(nextSituation_);
       setOrganizeOpen(false);
       nav.invalidateSpeakingData();
-      nav.notify(nextSituationId ? "Note organized" : "Saved to Unsorted");
+      nav.notify(nextSituation_ ? "Note organized" : "Saved to Unsorted");
     } catch (caught) {
       Alert.alert("Couldn’t organize note", caught instanceof Error ? caught.message : "Try again.");
     } finally {
@@ -2576,13 +2657,25 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
         onClose={() => setPickerOpen(false)}
         onChanged={() => void load()}
       />
-      <Sheet open={organizeOpen} title="Organize note" subtitle="Topic is required. Situation can stay Unsorted until later." onClose={() => setOrganizeOpen(false)}>
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 12, gap: 16 }}>
-          <View style={{ gap: 8 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: c.faint }}>TOPIC · REQUIRED</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{topics.map((topic) => <Chip key={topic.id} active={topic.id === nextTopicId} onPress={() => { setNextTopicId(topic.id); setNextSituationId(null); }}>{topic.name}</Chip>)}</View></View>
-          <View style={{ gap: 8 }}><Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 0.55, color: c.faint }}>SITUATION · OPTIONAL</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}><Chip active={nextSituationId === null} onPress={() => setNextSituationId(null)}>Unsorted</Chip>{situations.filter((item) => item.topicId === nextTopicId).map((situation) => <Chip key={situation.id} active={situation.id === nextSituationId} onPress={() => setNextSituationId(situation.id)}>{situation.title}</Chip>)}</View></View>
-          <Pill full onPress={organizing ? undefined : () => void saveOrganizer()}>{organizing ? "Saving…" : "Save organization"}</Pill>
-        </ScrollView>
-      </Sheet>
+      <PickerSheet
+        open={organizeOpen}
+        title="Organize note"
+        subtitle="Pick a situation, or just its topic and sort it later."
+        sections={organizeSections}
+        selectedIds={nextSituationId ? [nextSituationId] : nextTopicId ? [`${TOPIC_ROW_PREFIX}${nextTopicId}`] : []}
+        searchPlaceholder="Find a situation or topic"
+        emptyLabel="Create a topic first, from Studio."
+        busyId={organizing ? (nextSituationId ?? `${TOPIC_ROW_PREFIX}${nextTopicId ?? ""}`) : null}
+        onSelect={(rowId) => {
+          if (rowId.startsWith(TOPIC_ROW_PREFIX)) {
+            void saveOrganizer(rowId.slice(TOPIC_ROW_PREFIX.length), null);
+            return;
+          }
+          const situation = situations.find((item) => item.id === rowId);
+          if (situation) void saveOrganizer(situation.topicId, situation.id);
+        }}
+        onClose={() => { if (!organizing) setOrganizeOpen(false); }}
+      />
     </>
   );
 }
