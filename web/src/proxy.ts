@@ -13,10 +13,9 @@ import { createServerClient } from "@supabase/ssr";
 //     security boundary — real enforcement is RLS + per-route user_id checks
 //     (the proxy doc explicitly warns proxy alone is insufficient).
 
-// Routes that require a session. The product is app-only, so `/` is the
-// authenticated web app home. Kept as a constant so it's statically analyzable.
+// Routes that require a session. `/` stays public because its Server Component
+// chooses between the public landing and authenticated app home.
 const PROTECTED_PREFIXES = [
-  "/",
   "/app",
   "/bookmarks",
   "/phrases",
