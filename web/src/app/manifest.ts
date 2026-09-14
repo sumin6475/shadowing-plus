@@ -5,10 +5,9 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Saylo",
     short_name: "Saylo",
     description: "Build and practise the English you need for real life.",
-    // Installed PWA opens straight into the app (/), not the marketing landing.
-    // Logged-out users still get bounced to /login by the proxy. scope stays "/"
-    // so the PWA controls both the landing and the app.
-    start_url: "/app",
+    // Installed PWA opens straight into the app. Logged-out users are bounced
+    // to /login by the proxy; scope stays "/" so all app routes are controlled.
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",

@@ -382,7 +382,7 @@ export default function BookmarksPage() {
       } catch {
         /* ignore */
       }
-      router.push("/app");
+      router.push("/");
     },
     [router],
   );

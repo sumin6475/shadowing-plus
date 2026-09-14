@@ -48,7 +48,7 @@ export default function FocusPage() {
       } catch {
         /* ignore */
       }
-      router.push("/app");
+      router.push("/");
     },
     [router],
   );

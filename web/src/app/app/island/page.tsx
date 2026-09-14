@@ -228,7 +228,7 @@ export default function IslandPage() {
       } catch {
         /* ignore */
       }
-      router.push("/app");
+      router.push("/");
     },
     [router],
   );

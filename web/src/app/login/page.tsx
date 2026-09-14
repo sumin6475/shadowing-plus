@@ -22,7 +22,7 @@ function passwordChecks(pw: string) {
 function LoginForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const next = searchParams.get("next") ?? "/app";
+  const next = searchParams.get("next") ?? "/";
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -37,7 +37,7 @@ function LoginForm() {
   const [confirmSent, setConfirmSent] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
 
-  const safeNext = next.startsWith("/") ? next : "/app";
+  const safeNext = next.startsWith("/") ? next : "/";
 
   const emailValid = EMAIL_RE.test(email.trim());
   const pw = passwordChecks(password);

@@ -21,7 +21,7 @@ const SHELL: React.CSSProperties = {
 };
 
 function safeNext(value: string | null): string {
-  return value?.startsWith("/") ? value : "/app";
+  return value?.startsWith("/") ? value : "/";
 }
 
 /**

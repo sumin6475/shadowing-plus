@@ -262,7 +262,7 @@ export default function PhrasesPage() {
       } catch {
         /* ignore */
       }
-      router.push("/app");
+      router.push("/");
     },
     [router],
   );

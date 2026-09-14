@@ -907,7 +907,7 @@ export default function PlayerPage({
               </button>
             ) : (
               <Link
-                href="/app"
+                href="/"
                 style={{ color: "var(--accent-text)", marginLeft: 6 }}
               >
                 Back to library
@@ -933,7 +933,7 @@ export default function PlayerPage({
                 </button>
               </>
             ) : (
-              <Link href="/app" className="m-clip-reload">
+              <Link href="/" className="m-clip-reload">
                 Back to library
               </Link>
             )}
