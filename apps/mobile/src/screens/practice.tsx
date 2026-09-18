@@ -12,13 +12,13 @@ import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-ses
 import { useTheme } from "@/design/theme";
 import { BackBar, Badge, Card, Icon, Pill, Screen, Sect, Serif, Stagger, Wave } from "@/design/ui";
 import {
-  fetchPhraseStories,
-  linkPhraseToStory,
+  fetchPhraseSituations,
+  linkPhraseToSituation,
   recordPhraseEvent,
   type PhraseItem,
-  type PhraseStoryRef,
+  type PhraseSituationRef,
 } from "@/lib/phrases";
-import { fetchAllStories, type StoryChoice } from "@/lib/speaking-world";
+import { fetchSituationChoices, type SituationChoice } from "@/lib/studio-model";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import type { Nav } from "./nav";
 
@@ -51,26 +51,26 @@ function PhraseSummaryCard({ p }: { p: PhraseItem }) {
 // ── Practice hub ────────────────────────────────────────────────────────────
 export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }) {
   const t = useTheme();
-  const [stories, setStories] = useState<PhraseStoryRef[] | null>(null);
+  const [situations, setSituations] = useState<PhraseSituationRef[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Bumped on every open so the sheet below remounts: its search box, story list
+  // Bumped on every open so the sheet below remounts: its search box, Situation list
   // and in-flight link all start clean without a prop-to-state reset effect.
   const [pickerSeq, setPickerSeq] = useState(0);
   const p = item;
 
   const load = useCallback(async () => {
     if (!p || p.id === "sample") {
-      setStories([]);
+      setSituations([]);
       return;
     }
     try {
-      setStories(await fetchPhraseStories(p.id));
+      setSituations(await fetchPhraseSituations(p.id));
     } catch {
-      setStories([]);
+      setSituations([]);
     }
   }, [p]);
   useEffect(() => {
-    // `load`'s no-phrase/sample branch calls setStories synchronously, which
+    // `load`'s no-phrase/sample branch clears the list synchronously, which
     // react-hooks/set-state-in-effect flags when the effect body invokes it
     // directly. Yielding one microtask first keeps the same load, the same
     // trigger and the same deps — only the render-phase setState is gone.
@@ -91,11 +91,11 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
     );
   }
 
-  const talkWithStory = (story: PhraseStoryRef) => {
+  const talkWithSituation = (situation: PhraseSituationRef) => {
     nav.startTalk({
-      ctx: story.title,
-      storyId: story.id,
-      prompt: `Try to use “${p.text}” while telling this story.`,
+      ctx: situation.title,
+      situationId: situation.id,
+      prompt: `Try to use “${p.text}” in this situation.`,
       from: "phrases",
     });
   };
@@ -128,42 +128,42 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
           </Pressable>
 
           <Sect
-            title="Related stories"
-            action="+ Add story"
+            title="Related situations"
+            action="+ Add situation"
             onAction={() => {
               setPickerSeq((n) => n + 1);
               setPickerOpen(true);
             }}
           />
 
-          {stories === null ? (
+          {situations === null ? (
             <View style={{ paddingVertical: 28, alignItems: "center" }}>
               <ActivityIndicator color={t.colors.acc} />
             </View>
-          ) : stories.length === 0 ? (
+          ) : situations.length === 0 ? (
             <Card style={{ alignItems: "center", paddingVertical: 24 }}>
-              <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }}>No stories linked yet</Text>
+              <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }}>No situations linked yet</Text>
               <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
-                Link a story and practice this phrase inside it.
+                Link a situation and practice this phrase inside it.
               </Text>
             </Card>
           ) : (
             <>
-              {stories.map((story) => (
-                <Card key={story.id} style={{ paddingVertical: 13, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
+              {situations.map((situation) => (
+                <Card key={situation.id} style={{ paddingVertical: 13, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
                     <Icon name="sparkle" s={17} c={t.colors.accD} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{story.title}</Text>
+                    <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{situation.title}</Text>
                     <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>
-                      {story.versionCount} version{story.versionCount === 1 ? "" : "s"}
+                      {situation.noteCount} note{situation.noteCount === 1 ? "" : "s"}
                     </Text>
                   </View>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Talk “${story.title}” using this phrase`}
-                    onPress={() => talkWithStory(story)}
+                    accessibilityLabel={`Talk in “${situation.title}” using this phrase`}
+                    onPress={() => talkWithSituation(situation)}
                     style={({ pressed }) => ({
                       width: 40,
                       height: 40,
@@ -185,15 +185,15 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
           )}
         </Stagger>
       </Screen>
-      <AddStorySheet
+      <AddSituationSheet
         key={pickerSeq}
         open={pickerOpen}
         phrase={p}
-        linked={stories ?? []}
+        linked={situations ?? []}
         onClose={() => setPickerOpen(false)}
         onLinked={() => {
           setPickerOpen(false);
-          nav.notify("Story linked");
+          nav.notify("Situation linked");
           void load();
         }}
       />
@@ -201,8 +201,8 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
   );
 }
 
-// Bottom sheet: search all stories, tap to link one to this phrase.
-function AddStorySheet({
+// Bottom sheet: search all Situations, then link one to this Phrase.
+function AddSituationSheet({
   open,
   phrase,
   linked,
@@ -211,13 +211,13 @@ function AddStorySheet({
 }: {
   open: boolean;
   phrase: PhraseItem;
-  linked: PhraseStoryRef[];
+  linked: PhraseSituationRef[];
   onClose: () => void;
   onLinked: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const [all, setAll] = useState<StoryChoice[] | null>(null);
+  const [all, setAll] = useState<SituationChoice[] | null>(null);
   const [q, setQ] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -233,7 +233,7 @@ function AddStorySheet({
     let alive = true;
     void (async () => {
       try {
-        const next = await fetchAllStories();
+        const next = await fetchSituationChoices();
         if (alive) setAll(next);
       } catch {
         if (alive) setAll([]);
@@ -249,11 +249,11 @@ function AddStorySheet({
     (s) => !linkedIds.has(s.id) && (!q.trim() || s.title.toLowerCase().includes(q.trim().toLowerCase())),
   );
 
-  const pick = async (story: StoryChoice) => {
+  const pick = async (story: SituationChoice) => {
     if (savingId) return;
     setSavingId(story.id);
     try {
-      await linkPhraseToStory(phrase.id, story.id, "learner");
+      await linkPhraseToSituation(phrase.id, story.id, "learner");
       onLinked();
     } catch (e) {
       Alert.alert("Couldn’t link", e instanceof Error ? e.message : "Try again.");
@@ -290,7 +290,7 @@ function AddStorySheet({
             <TextInput
               value={q}
               onChangeText={setQ}
-              placeholder="Find in stories"
+              placeholder="Find in situations"
               placeholderTextColor={t.colors.ink3}
               autoCorrect={false}
               autoCapitalize="none"
@@ -304,13 +304,13 @@ function AddStorySheet({
               </View>
             ) : choices.length === 0 ? (
               <Text style={{ fontSize: 13.5, color: t.colors.ink3, textAlign: "center", paddingVertical: 24, lineHeight: 20 }}>
-                {q.trim() ? "No story matches that." : "Every story is already linked."}
+                {q.trim() ? "No situation matches that." : "Every situation is already linked."}
               </Text>
             ) : (
               (() => {
-                // fetchAllStories is newest-first, so the top slice is "Recents".
+                // fetchSituationChoices is newest-first, so the top slice is "Recents".
                 const sectioned = !q.trim() && choices.length > 3;
-                const row = (story: StoryChoice, first: boolean) => (
+                const row = (story: SituationChoice, first: boolean) => (
                   <Pressable
                     key={story.id}
                     onPress={() => void pick(story)}
@@ -328,7 +328,7 @@ function AddStorySheet({
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }} numberOfLines={1}>{story.title}</Text>
-                      {story.domainName ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>{story.domainName}</Text> : null}
+                      {story.topicName ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>{story.topicName}</Text> : null}
                     </View>
                     {savingId === story.id ? <ActivityIndicator color={t.colors.acc} /> : <Icon name="plus" s={16} w={2.2} c={t.colors.accD} />}
                   </Pressable>

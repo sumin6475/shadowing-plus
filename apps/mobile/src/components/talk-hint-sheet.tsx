@@ -76,12 +76,12 @@ const fromNotePhrase = (item: NotePhrase): HintPhrase => ({
 
 /** Load every phrase attached to the Note being practised, or — when the
  *  attempt names only a Situation — every phrase in that Situation. */
-async function loadLinkedPhrases(input: { storyId?: string | null; messageId?: string | null }): Promise<HintPhrase[]> {
-  if (input.messageId) {
-    const note = await fetchSpeakingNote(input.messageId);
+async function loadLinkedPhrases(input: { situationId?: string | null; noteId?: string | null }): Promise<HintPhrase[]> {
+  if (input.noteId) {
+    const note = await fetchSpeakingNote(input.noteId);
     if (note) return (await fetchNotePhrases(note)).map(fromNotePhrase);
   }
-  if (input.storyId) return (await fetchSituationPhrases(input.storyId)).map(fromNotePhrase);
+  if (input.situationId) return (await fetchSituationPhrases(input.situationId)).map(fromNotePhrase);
   return [];
 }
 
@@ -313,23 +313,23 @@ function SourceModal({
 
 export function TalkHintSheet({
   todayPhrases,
-  storyId,
-  messageId,
+  situationId,
+  noteId,
   talkSessionId,
   fallbackPrompt,
   style,
 }: {
   todayPhrases: PhraseItem[];
-  storyId?: string | null;
-  messageId?: string | null;
+  situationId?: string | null;
+  noteId?: string | null;
   /** Resolves the saved talk_session id, so a tick can be tied to this attempt. */
   talkSessionId?: () => Promise<string | null>;
   fallbackPrompt: string;
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
-  const linkedAvailable = Boolean(messageId || storyId);
-  const linkedLabel = messageId ? "This note" : "This situation";
+  const linkedAvailable = Boolean(noteId || situationId);
+  const linkedLabel = noteId ? "This note" : "This situation";
   const [source, setSource] = useState<TalkHintSource>(() => {
     const saved = talkHintSource();
     return saved === "linked" && !linkedAvailable ? "today" : saved;
@@ -384,7 +384,7 @@ export function TalkHintSheet({
   useEffect(() => {
     if (source !== "linked" || linked || !linkedAvailable) return;
     let active = true;
-    loadLinkedPhrases({ storyId, messageId })
+    loadLinkedPhrases({ situationId, noteId })
       .then((items) => {
         if (active) setLinked(items);
       })
@@ -394,7 +394,7 @@ export function TalkHintSheet({
     return () => {
       active = false;
     };
-  }, [source, linked, linkedAvailable, storyId, messageId]);
+  }, [source, linked, linkedAvailable, situationId, noteId]);
 
   const pick = (next: TalkHintSource) => {
     if (next === "linked") setLinkedError(false);

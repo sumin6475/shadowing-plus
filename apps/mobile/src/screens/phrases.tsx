@@ -612,7 +612,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
     setMenuOpen(false);
     confirmDelete({
       title: "Delete this phrase?",
-      message: "It will be removed from your Phrase Bank and linked stories.",
+      message: "It will be removed from your Phrase Bank and linked Situations.",
       deleteLabel: "Delete phrase",
       onConfirm: () => {
         void (async () => {

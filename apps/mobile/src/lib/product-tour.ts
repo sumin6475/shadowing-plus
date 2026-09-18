@@ -53,7 +53,7 @@ const COPY: Record<L1, TourCopy> = {
       },
       tabs: {
         title: "Phrases is your bank",
-        body: "Every phrase you keep ends up here, with the moment it came from. Studio next to it holds your stories, and the mic circle opens Talk from anywhere.",
+        body: "Every phrase you keep ends up here, with the moment it came from. Studio holds your situations and notes, and the mic circle opens Talk from anywhere.",
       },
     },
     next: "Next",

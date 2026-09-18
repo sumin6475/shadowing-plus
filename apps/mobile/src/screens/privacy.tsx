@@ -94,7 +94,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           title="What we store"
           lines={[
             "Your account email and profile (name, goal, and optional photo).",
-            "Your saved phrases, stories, session transcripts, and practice history.",
+            "Your saved phrases, speaking notes, attempt transcripts, and practice history.",
             "Learning content is protected by your account. Profile photos are stored with Supabase for display in the app.",
           ]}
         />
@@ -105,7 +105,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           lines={[
             "Practice recordings stay on this device. They are never uploaded.",
             "Speech is turned into text on your device by iOS speech recognition.",
-            "You can delete any recording from its session screen.",
+            "You can delete any recording from its attempt screen.",
           ]}
         />
 
@@ -149,8 +149,8 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           icon="x"
           title="Deleting your data"
           lines={[
-            "Recordings: delete in the app, from any session.",
-            "Phrases and stories: delete in the app, anytime.",
+            "Recordings: delete in the app, from any attempt.",
+            "Phrases and speaking notes: remove them in the app anytime.",
             "Your whole account: Profile → Delete account. Everything is removed right away.",
           ]}
         />

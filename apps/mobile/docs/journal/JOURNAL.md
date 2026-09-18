@@ -8,6 +8,17 @@
 
 ## 항목
 
+### 2026-09-14 · 리팩터 · Studio 정본 언어와 단일 IA
+- **무엇**: 활성 제품 언어를 Topic → Situation → Speaking Note → Attempt로 통일. 구형 World/Island 화면과 7개 라우트를 제거하고, DB 물리명은 `studio-persistence.ts`에 격리. 발견 가능한 과거 문서에는 Current/Historical/Outdated 상태를 추가.
+- **검증**: mobile typecheck PASS, lint baseline PASS(기존 경고 1), iOS export PASS(2,121 modules), 구형 화면/라우트/import 검색 0건, 문서 링크 14개 파일 PASS.
+- **산출물**: [quality/2026-09-14-canonical-studio-language-cleanup.md](quality/2026-09-14-canonical-studio-language-cleanup.md)
+
+### 2026-09-14 · 문서 · IA·기능·데이터·시스템 기준선
+- **무엇**: 실제 모바일 라우트, 데이터 접근 계층, 전체 Supabase 마이그레이션, 웹·확장·워커 경계를 읽고 현재 상태 문서 6개를 작성. UI의 Topic/Situation/Speaking Note와 DB의 domain/story/message 명칭을 정식 매핑.
+- **원칙**: 현재 구현과 계획을 분리하고, 기능마다 단일 주 화면·소유 데이터·복귀 경로를 명시한다.
+- **검증**: 문서 6개 존재/비어 있지 않음, 내부 문서 링크 5개 대상 존재, 문서 외 추적 파일 변경 없음.
+- **산출물**: [문서 인덱스](../../../../docs/DOCUMENTATION.md), [품질 스냅샷](quality/2026-09-14-architecture-documentation-baseline.md)
+
 ### 2026-08-25 · 검증 · TestFlight submit build 19
 - **무엇**: EAS build `5aea4b81` (1.0.0 / 19)를 App Store Connect에 업로드. 큐 ~42분 후 Apple에 전달됨.
 - **검증**: `npx eas-cli submit --platform ios --profile production --id 5aea4b81-9140-445b-a947-942996bb6f12 --non-interactive --wait` exit 0.

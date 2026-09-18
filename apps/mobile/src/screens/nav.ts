@@ -4,19 +4,17 @@
 import type { TabId } from "@/design/ui";
 
 export type ViewName =
+  | "profile"
+  | "mvpPhrase"
+  | "mvpNote"
+  | "quickCapture"
+  | "mirrorRecord"
   | "phrase"
   | "review"
   | "practiceHub"
   | "rehearsal"
-  | "island"
-  | "newIsland"
-  | "domain"
-  | "story"
-  | "message"
-  | "newMessage"
-  | "recs"
-  | "session"
-  | "feedback"
+  | "attempt"
+  | "coachingFeedback"
   | "library"
   | "libItem"
   | "capture"
@@ -37,7 +35,7 @@ export type ViewName =
   | "situationAttempts"
   | "speakingNote"
   | "topicsList"
-  | "sessionsList"
+  | "attemptsList"
   | "situationsList";
 
 /** Where a pushed screen should be restored to. `stack` is the detail stack to
@@ -54,9 +52,9 @@ export interface TalkCtx {
   prompt?: string | null;
   beats?: string[] | null;
   from?: TabId;
-  /** Link the saved talk_session to a Speaking World story/message, if any. */
-  storyId?: string | null;
-  messageId?: string | null;
+  /** Link the saved Attempt to its Situation and Speaking Note, if any. */
+  situationId?: string | null;
+  noteId?: string | null;
   /** Where to land when the attempt ends. Without it Talk falls back to
    *  `nav.go(from)`, which clears the detail stack and drops the learner on a
    *  tab root instead of the note they were practising. */

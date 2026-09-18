@@ -134,7 +134,7 @@ function RootNavigator() {
       .catch((error) => {
         if (!active) return;
         setImportState("error");
-        setImportError(error instanceof Error ? error.message : "We couldn’t save your first story.");
+        setImportError(error instanceof Error ? error.message : "We couldn’t save your first Speaking Note.");
       });
     return () => {
       active = false;
@@ -233,7 +233,7 @@ function ImportingStory({ error, onRetry }: { error: string | null; onRetry: () 
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: t.colors.bg }}>
       {error ? null : <ActivityIndicator size="large" color={t.colors.acc} />}
       <Text style={{ marginTop: 22, fontFamily: "Newsreader", fontSize: 32, textAlign: "center", color: t.colors.ink }}>
-        {error ? "Your story is still here." : "Adding your first story…"}
+        {error ? "Your Speaking Note is still here." : "Adding your first Speaking Note…"}
       </Text>
       <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, textAlign: "center", color: t.colors.ink2 }}>
         {error ?? "We’re saving the beats, phrase, and your first Talk."}

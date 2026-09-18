@@ -205,7 +205,7 @@ function StudioSituationRow({ situation, first, icon = "calendar", onPress }: { 
 }
 
 // Browse rows re-open the views that lost their entry point when the old
-// Speaking World home was removed: the stats dashboard, the attempts list, and
+// The old collection home was removed: the stats dashboard, attempts list, and
 // the Topic screen. PRD: organizing/browsing paths sit below the practice zone.
 function BrowseRow({ icon, label, caption, first, onPress }: { icon: IconName; label: string; caption: string; first?: boolean; onPress: () => void }) {
   const t = useTheme();
@@ -307,8 +307,8 @@ function startNotePractice(nav: Nav, note: SpeakingNote) {
     sub: note.goal || note.situationTitle,
     prompt: note.body || note.goal || null,
     from: "topics",
-    storyId: note.situationId,
-    messageId: note.id,
+    situationId: note.situationId,
+    noteId: note.id,
     // Close the loop: ending the attempt lands back on this note with the new
     // attempt open, so the next try starts from the repair you just read.
     returnTo: { tab: "topics", stack: [{ name: "speakingNote", props: { id: note.id, justPracticed: true } }] },
@@ -840,7 +840,7 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
                   icon="wave2"
                   label="All attempts"
                   caption="Every practice recording you have made"
-                  onPress={() => nav.push("sessionsList")}
+                  onPress={() => nav.push("attemptsList")}
                 />
                 <BrowseRow
                   icon="gauge"
@@ -1655,7 +1655,7 @@ export function StudioSituationScreen({ id, topicId, title, nav }: { id: string;
                 <Text style={{ fontSize: 16, fontWeight: "600", lineHeight: 21, color: c.ink }}>Start your first attempt</Text>
                 <Text style={{ fontSize: 13, lineHeight: 18, color: c.sub, marginTop: 3 }}>Free talk — you don’t need a note to begin.</Text>
               </View>
-              <MicButton c={c} filled label="Start a free talk attempt" onPress={() => nav.startTalk({ ctx: situationTitle, from: "topics", storyId: id })} />
+              <MicButton c={c} filled label="Start a free talk attempt" onPress={() => nav.startTalk({ ctx: situationTitle, from: "topics", situationId: id })} />
             </View>
           )}
         </View>
@@ -1823,6 +1823,45 @@ function SituationListRow({ c, situation, first, onPress }: { c: SituationTokens
         <Icon name="chev" s={12} w={1.8} c={c.faint} />
       </View>
     </Pressable>
+  );
+}
+
+/** Canonical Topic browser. This replaces the old collection screen and routes
+ * directly into the current Studio Topic detail. */
+export function TopicsListScreen({ nav }: { nav: Nav }) {
+  const c = useSituationTokens();
+  const [topics, setTopics] = useState<StudioTopic[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try { setTopics(await fetchStudioTopics()); setError(null); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn’t load your topics."); }
+  }, []);
+  const revision = nav.speakingDataRevision;
+  useEffect(() => { void Promise.resolve().then(load); }, [load, revision]);
+  return (
+    <Screen style={{ gap: 0 }} bottomPad={40}>
+      <BackBar onBack={nav.pop} />
+      <View style={{ paddingHorizontal: TEXT_PUSH }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", letterSpacing: 0.72, color: c.accent, marginTop: 14, marginBottom: 6 }}>YOUR STUDIO</Text>
+        <Serif style={{ fontSize: 31, lineHeight: 35, color: c.ink }}>Topics</Serif>
+      </View>
+      <View style={{ height: 20 }} />
+      {topics === null && !error ? <SituationCenter c={c}><ActivityIndicator color={c.accent} /></SituationCenter> : error ? <ErrorCard message={error} retry={load} /> : (
+        <View style={situationCard(c)}>
+          {(topics ?? []).length ? (topics ?? []).map((topic, index) => (
+            <Pressable key={topic.id} onPress={() => nav.push("studioTopic", { id: topic.id, name: topic.name })} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 18, paddingRight: 16, paddingVertical: 15, borderTopWidth: index === 0 ? 0 : hairline, borderTopColor: c.hair }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15.5, fontWeight: "600", color: c.ink }}>{topic.name}</Text>
+                  <Text style={{ fontSize: 12.5, color: c.sub, marginTop: 4 }}>{topic.situationCount} situation{topic.situationCount === 1 ? "" : "s"}</Text>
+                </View>
+                <Icon name="chev" s={12} w={1.8} c={c.faint} />
+              </View>
+            </Pressable>
+          )) : <SituationEmpty c={c} body="Topics you create will collect here." />}
+        </View>
+      )}
+    </Screen>
   );
 }
 

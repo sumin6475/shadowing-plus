@@ -15,27 +15,14 @@ import { useTheme, type Theme } from "@/design/theme";
 import { deleteAccount } from "@/lib/account";
 import { useAuth } from "@/lib/auth";
 import { firstLanguage, L1_LABEL } from "@/lib/first-language";
-import { phrasesPerDay } from "@/lib/daily-phrases";
-import { dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
 import { englishLevel, ENGLISH_LEVEL_LABEL } from "@/lib/english-level";
 import { fetchPhrases } from "@/lib/phrases";
 import { openLegalUrl, TERMS_OF_SERVICE_URL } from "@/lib/legal";
-import { resetProductTour } from "@/lib/product-tour";
-import { PREVIEW_FEATURES } from "@/lib/release-flags";
 import { reminderSummary } from "@/lib/reminders";
-import { talkFocus, TALK_FOCUS_LABEL } from "@/lib/talk-focus";
 import { themePref, THEME_PREF_LABEL } from "@/lib/theme-pref";
 import { Avatar, Card, Icon, Screen, Stagger } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
-
-function StatusChip({ t, label }: { t: Theme; label: string }) {
-  return (
-    <View style={{ backgroundColor: t.colors.accS, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3 }}>
-      <Text style={{ fontSize: 11, fontWeight: "800", color: t.colors.accD, letterSpacing: 0.4 }}>{label}</Text>
-    </View>
-  );
-}
 
 function SettingsRow({
   t,
@@ -110,7 +97,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
     if (deleting) return;
     Alert.alert(
       "Delete your account?",
-      "Your phrases, stories, sessions, and profile will be permanently deleted. This can’t be undone.",
+      "Your phrases, speaking notes, attempts, and profile will be permanently deleted. This can’t be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -181,7 +168,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         >
           <Icon name="back" s={18} w={2.2} c={t.colors.ink} />
         </Pressable>
-        <Text style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: t.colors.ink, marginRight: 44 }}>Profile</Text>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: t.colors.ink, marginRight: 44 }}>Settings</Text>
       </View>
 
       {/* Identity */}
@@ -195,38 +182,10 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         </Pressable>
       </View>
 
-      {/* Library is the personal/TestFlight surface only. It has TWO entry
-          points and both are flag-gated: this card, and the clip source row on
-          the phrase detail screen (phrases.tsx — "In context" → `libItem`), so
-          a release build has no route into it. Any new link to `library` or
-          `libItem` must be gated the same way, or the App Store build reaches
-          the unfinished screen (Guideline 2.1, App Completeness). */}
-      {PREVIEW_FEATURES ? (
-        <Card onPress={() => nav.push("library")} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <Icon name="book" s={22} w={1.8} c={t.colors.ink2} />
-          <Text style={{ fontSize: 16.5, fontWeight: "600", color: t.colors.ink }}>Library</Text>
-          <StatusChip t={t} label="BETA" />
-          <View style={{ flex: 1 }} />
-          <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />
-        </Card>
-      ) : null}
-
       <SettingsGroup t={t} title="Preferences">
         <SettingsRow t={t} icon="translate" label="English level" detail={ENGLISH_LEVEL_LABEL[englishLevel()]} onPress={() => nav.push("englishLevel")} />
         <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("firstLanguage")} />
-        <SettingsRow t={t} icon="sparkle" label="Feedback focus" detail={TALK_FOCUS_LABEL[talkFocus()]} onPress={() => nav.push("feedbackFocus")} />
         <SettingsRow t={t} icon="contrast" label="Theme" detail={THEME_PREF_LABEL[themePref()]} onPress={() => nav.push("themePref")} last />
-      </SettingsGroup>
-
-      <SettingsGroup t={t} title="Practice">
-        <SettingsRow
-          t={t}
-          icon="clock"
-          label="Daily speaking goal"
-          detail={formatDailySpeakingGoal(dailySpeakingGoalMinutes(session?.user?.user_metadata))}
-          onPress={() => nav.push("dailySpeakingGoal")}
-        />
-        <SettingsRow t={t} icon="text" label="Phrases per day" detail={String(phrasesPerDay())} onPress={() => nav.push("phrasesPerDay")} last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Notifications">
@@ -236,15 +195,6 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       <SettingsGroup t={t} title="Account">
         <SettingsRow t={t} icon="export" label="Export my phrases" detail={exporting ? "Preparing…" : undefined} onPress={() => void exportPhrases()} />
         <SettingsRow t={t} icon="help" label="Help & feedback" onPress={openFeedbackMail} />
-        <SettingsRow
-          t={t}
-          icon="bulb"
-          label="Show tips again"
-          onPress={() => {
-            void resetProductTour();
-            Alert.alert("Tips are back on", "Open Today to see the walkthrough again.");
-          }}
-        />
         <SettingsRow t={t} icon="shield" label="Privacy" onPress={() => nav.push("privacy")} />
         <SettingsRow t={t} icon="text" label="Terms of Service" onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)} />
         <SettingsRow t={t} label="Log out" danger onPress={() => signOut()} />

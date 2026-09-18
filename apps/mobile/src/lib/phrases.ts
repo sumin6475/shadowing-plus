@@ -666,7 +666,7 @@ export async function createPhrase(
       if (fingerprintError) throw new Error(fingerprintError.message);
     }
     if (input.storyId)
-      await linkPhraseToStory(existingId, input.storyId, "capture");
+      await linkPhraseToSituation(existingId, input.storyId, "capture");
     return { result: "already", id: existingId };
   }
 
@@ -734,7 +734,7 @@ export async function createPhrase(
     throw new Error(error?.message ?? "Couldn’t save this phrase.");
 
   const id = data.id as string;
-  if (input.storyId) await linkPhraseToStory(id, input.storyId, "capture");
+  if (input.storyId) await linkPhraseToSituation(id, input.storyId, "capture");
   // Saving stays instant. The cloud pronunciation is generated in the
   // background and first-tap generation remains the fallback if this fails.
   void prewarmPhraseSpeech(id).catch(() => {});
@@ -830,14 +830,14 @@ export async function updatePhraseDetails(
   void prewarmPhraseEmbedding(id);
 }
 
-/** Stories a phrase is linked to — the Practice hub's "Related stories". */
-export interface PhraseStoryRef {
+/** Situations a Phrase is linked to in the Practice hub. */
+export interface PhraseSituationRef {
   id: string;
   title: string;
-  versionCount: number;
+  noteCount: number;
 }
 
-export async function fetchPhraseStories(phraseItemId: string): Promise<PhraseStoryRef[]> {
+export async function fetchPhraseSituations(phraseItemId: string): Promise<PhraseSituationRef[]> {
   const { data, error } = await supabase
     .from("phrase_story_links")
     .select("stories(id, title, status, messages(count))")
@@ -850,12 +850,12 @@ export async function fetchPhraseStories(phraseItemId: string): Promise<PhraseSt
     .map((story) => ({
       id: story.id,
       title: story.title || "Untitled story",
-      versionCount: (one(story.messages as { count: number }[] | { count: number } | null) as { count: number } | null)?.count ?? 0,
+      noteCount: (one(story.messages as { count: number }[] | { count: number } | null) as { count: number } | null)?.count ?? 0,
     }));
 }
 
 /** Phrases captured into a story — the “useful language” strip on the folio. */
-export async function fetchStoryPhrases(
+export async function fetchPhrasesForSituation(
   storyId: string,
 ): Promise<Pick<PhraseItem, "id" | "text" | "translation">[]> {
   type StoryPhraseRow = {
@@ -881,7 +881,7 @@ export async function fetchStoryPhrases(
     .map((item) => ({ id: item.id, text: item.text, translation: item.meaning ?? item.meaning_ko ?? null }));
 }
 
-export async function linkPhraseToStory(
+export async function linkPhraseToSituation(
   phraseItemId: string,
   storyId: string,
   source: "learner" | "capture" | "suggested" | "used" = "learner",

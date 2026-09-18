@@ -18,7 +18,7 @@ import { ProductTourProvider, TourTarget } from "@/components/product-tour";
 import { reviewedOnLocalDay, todaysPhrases } from "@/lib/daily-phrases";
 import { fetchPhrases, weeklyCounts, type PhraseItem } from "@/lib/phrases";
 import { useAuth } from "@/lib/auth";
-import { fetchRecentTalkedStory, type RecentTalkedStory } from "@/lib/speaking-world";
+import { fetchRecentAttemptSituation, type RecentAttemptSituation } from "@/lib/studio-model";
 import type { Nav } from "./nav";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -38,14 +38,14 @@ function todayLabel(): string {
 
 // Hero line: rotates daily (deterministic — day number, no flicker across
 // renders) so the invitation stays fresh. The story rotates daily too, across
-// the distinct stories in recent Talk sessions (fetchRecentTalkedStory).
-function heroCopy(storyTitle: string | null): string {
+// the distinct situations in recent Talk attempts (fetchRecentAttemptSituation).
+function heroCopy(situationTitle: string | null): string {
   const day = Math.floor(Date.now() / 86_400_000);
-  if (storyTitle) {
+  if (situationTitle) {
     const variants = [
-      `Your “${storyTitle}” story is waiting`,
-      `Make “${storyTitle}” smoother today`,
-      `One more take of “${storyTitle}”?`,
+      `Your “${situationTitle}” situation is waiting`,
+      `Make “${situationTitle}” smoother today`,
+      `One more take of “${situationTitle}”?`,
     ];
     return variants[day % variants.length];
   }
@@ -70,7 +70,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const { session } = useAuth();
   const [items, setItems] = useState<PhraseItem[] | null>(null);
   const [reviewToday, setReviewToday] = useState<PhraseItem[]>([]);
-  const [recentStory, setRecentStory] = useState<RecentTalkedStory | null>(null);
+  const [recentStory, setRecentStory] = useState<RecentAttemptSituation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [statsAsOf, setStatsAsOf] = useState(0);
@@ -119,7 +119,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
 
   useEffect(() => {
     let active = true;
-    fetchRecentTalkedStory()
+    fetchRecentAttemptSituation()
       .then((story) => {
         if (active) setRecentStory(story);
       })
@@ -135,7 +135,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
     setRefreshing(true);
     await Promise.all([
       load(),
-      fetchRecentTalkedStory()
+      fetchRecentAttemptSituation()
         .then(setRecentStory)
         .catch(() => setRecentStory(null)),
     ]);
@@ -159,10 +159,10 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const startSpeaking = () => {
     if (recentStory) {
       nav.startTalk({
-        ctx: recentStory.storyTitle,
-        storyId: recentStory.storyId,
-        messageId: recentStory.messageId,
-        prompt: recentStory.beats[0] ?? "Tell this story in your own words.",
+        ctx: recentStory.situationTitle,
+        situationId: recentStory.situationId,
+        noteId: recentStory.noteId,
+        prompt: recentStory.beats[0] ?? "Say what you want to communicate in your own words.",
         beats: recentStory.beats,
         from: "today",
       });
@@ -212,7 +212,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
           Start the day with practice
         </Text>
         <Serif style={{ fontSize: 26, lineHeight: 33, color: "#fff", marginTop: 10 }}>
-          {heroCopy(recentStory?.storyTitle ?? null)}
+          {heroCopy(recentStory?.situationTitle ?? null)}
         </Serif>
         {/* Pill tone="white" now owns a scheme-independent pair (#FFFFFF fill,
             BRAND.dark label — 17.10:1). The old textStyle accD override is gone:

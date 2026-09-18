@@ -1020,4 +1020,4 @@ export function promptFeedbackNote(opts: {
 
 // The tab bar is native now (expo-router NativeTabs in src/app/(app)/_layout);
 // only the shared tab id type remains here so screens keep a single import.
-export type TabId = "today" | "phrases" | "speak" | "topics" | "sessions";
+export type TabId = "today" | "phrases" | "speak" | "topics";

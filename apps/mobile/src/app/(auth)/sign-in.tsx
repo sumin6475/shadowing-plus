@@ -146,7 +146,7 @@ export default function SignInScreen() {
   const notice = confirmationEmail
     ? {
         title: "Check your email",
-        body: `We sent a confirmation link to ${confirmationEmail}. Your first story is saved on this device—come back and sign in after confirming.`,
+        body: `We sent a confirmation link to ${confirmationEmail}. Your first Speaking Note is saved on this device—come back and sign in after confirming.`,
       }
     : resetEmail
       ? {
@@ -180,8 +180,8 @@ export default function SignInScreen() {
                 <Text style={[styles.wordmark, { color: c.text }]}>Saylo</Text>
                 <Text style={[styles.subtitle, { color: c.text3 }]}>
                   {mode === "sign_up"
-                    ? "Create an account and start building your speaking world."
-                    : "Sign in to keep building your speaking world."}
+                    ? "Keep your phrases, notes, and speaking moments together."
+                    : "Your phrases. Your notes. Your voice."}
                 </Text>
               </View>
 

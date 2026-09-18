@@ -1,5 +1,8 @@
 # Shadowing+ Mobile
 
+> **Status: Outdated.** Setup history and the “not runnable” statement below predate the current TestFlight product.
+> **Reviewed:** 2026-09-14 · **Replacement:** [`../../docs/DOCUMENTATION.md`](../../docs/DOCUMENTATION.md)
+
 > **Status: work in progress — not runnable end-to-end yet.** Phase 0 (auth +
 > authed API call) is written but unverified on device: the app depends on
 > `@expo/ui` and `expo-glass-effect`, which are native modules Expo Go does not

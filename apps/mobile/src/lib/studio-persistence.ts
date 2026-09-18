@@ -1,7 +1,7 @@
-// speaking-world.ts — the Speaking World tree (migration 020), RLS-scoped via
-// the anon+session client. Domain → Story → Message → beats. The initial world
-// is seeded client-side on first use (a migration can't seed per-user).
-import { storyPromptFor } from "./story-prompts";
+// Persistence adapter for the canonical Studio model. The deployed migration
+// still names these rows domains/stories/messages/talk_sessions. Keep those
+// identifiers here so screens and product-facing modules use current terms.
+import { situationPromptFor } from "./situation-prompts";
 import { supabase } from "./supabase";
 
 export interface Domain {
@@ -154,7 +154,7 @@ export async function seedInitialWorld(): Promise<void> {
       title,
       status: "draft",
       position: j,
-      summary: storyPromptFor(title),
+      summary: situationPromptFor(title),
     }));
     if (rows.length) await supabase.from("stories").insert(rows);
   }
@@ -350,7 +350,7 @@ export async function archiveDomain(id: string): Promise<void> {
 }
 
 export async function createStory(domainId: string | null, title: string): Promise<string | null> {
-  const prompt = storyPromptFor(title);
+  const prompt = situationPromptFor(title);
   const { data, error } = await supabase
     .from("stories")
     .insert({ domain_id: domainId, title: title.trim(), status: "draft", ...(prompt ? { summary: prompt } : {}) })

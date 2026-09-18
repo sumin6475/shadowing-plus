@@ -124,7 +124,7 @@ export function RemindersScreen({ nav }: { nav: Nav }) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1, gap: 6 }}>
             <Text style={labelStyle(t.colors.accD)}>SELF-TALKING</Text>
-            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Speak from your stories</Text>
+            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Practice your speaking notes</Text>
             <Text style={{ fontSize: 13.5, lineHeight: 19, color: t.colors.ink2 }}>
               A local nudge at a time you choose, in this phone’s timezone.
             </Text>

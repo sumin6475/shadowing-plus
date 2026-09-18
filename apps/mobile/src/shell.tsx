@@ -21,37 +21,67 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Icon, type TabId } from "@/design/ui";
 import { useTheme } from "@/design/theme";
 import { CaptureScope } from "@/design-capture/provider";
-import { TodayScreen } from "@/screens/today";
-import { PhrasesScreen, PhraseRoute, ReviewFlow } from "@/screens/phrases";
+import {
+  PhraseBank,
+  NotesStudio,
+  PhraseChecklist,
+  NoteEditor,
+  QuickCapture,
+  MvpProfile,
+  MirrorRecord,
+} from "@/screens/mvp";
+import type { MirrorSession } from "@/lib/mvp";
+import { PhraseRoute, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
-import { DomainScreen, StoryScreen, MessageScreen, MessageCreate, RecsScreen, SessionsScreen, SessionDetail, SessionFeedbackDetail, TopicsListScreen } from "@/screens/world";
-import { IslandDetail, IslandCreate } from "@/screens/islands";
+import {
+  AttemptDetailScreen,
+  AttemptsScreen,
+  CoachingFeedbackScreen,
+} from "@/screens/attempts";
 import { LibraryScreen, LibItem } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
 import { SpeakingStudioScreen } from "@/screens/studio";
-import { AllSituationsScreen, SituationAttemptsScreen, SituationPhrasesScreen, SpeakingNoteScreen, StudioHomeScreen, StudioSituationScreen, StudioTopicScreen } from "@/screens/studio-information";
-import { EditProfileScreen, EnglishLevelScreen, FeedbackFocusScreen, FirstLanguageScreen, PhrasesPerDayScreen, DailySpeakingGoalScreen, ThemeScreen } from "@/screens/edit-profile";
+import {
+  AllSituationsScreen,
+  SituationAttemptsScreen,
+  SituationPhrasesScreen,
+  SpeakingNoteScreen,
+  StudioSituationScreen,
+  StudioTopicScreen,
+  TopicsListScreen,
+} from "@/screens/studio-information";
+import {
+  EditProfileScreen,
+  EnglishLevelScreen,
+  FeedbackFocusScreen,
+  FirstLanguageScreen,
+  PhrasesPerDayScreen,
+  DailySpeakingGoalScreen,
+  ThemeScreen,
+} from "@/screens/edit-profile";
 import { RemindersScreen } from "@/screens/reminders";
 import { PrivacyScreen } from "@/screens/privacy";
-import { CaptureFab, PhraseCaptureScreen, type CaptureImageAsset, type ClipCaptureSeed } from "@/screens/capture";
+import {
+  PhraseCaptureScreen,
+  type CaptureImageAsset,
+  type ClipCaptureSeed,
+} from "@/screens/capture";
 import { PracticeHubScreen, QuickRehearsalScreen } from "@/screens/practice";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
-import type { TalkSession } from "@/lib/speaking-world";
+import type { Attempt } from "@/lib/studio-model";
 
 interface StackEntry {
   name: ViewName;
   props: Record<string, unknown>;
 }
 
-/** Tab id → route path inside the (app) group. `sessions` has no tab of its
- * own anymore; it lands on the Studio tab (the sessions list is a pushed view). */
+/** Tab id → route path inside the signed-in Expo Router group. */
 const TAB_PATHS = {
   today: "/",
   phrases: "/phrases",
   speak: "/talk",
   topics: "/studio",
-  sessions: "/studio",
 } as const satisfies Record<TabId, string>;
 
 interface ShellState {
@@ -90,7 +120,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [talkCtx, setTalkCtx] = useState<TalkCtx | undefined>(undefined);
   const [speakKey, setSpeakKey] = useState(0);
-  const [notice, setNotice] = useState<{ message: string; shownAt: number } | null>(null);
+  const [notice, setNotice] = useState<{
+    message: string;
+    shownAt: number;
+  } | null>(null);
   const [talkFocused, setTalkFocusedState] = useState(false);
   const [speakingDataRevision, setSpeakingDataRevision] = useState(0);
 
@@ -101,7 +134,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => {
-      setNotice((current) => (current?.shownAt === notice.shownAt ? null : current));
+      setNotice((current) =>
+        current?.shownAt === notice.shownAt ? null : current,
+      );
     }, 1800);
     return () => clearTimeout(timer);
   }, [notice]);
@@ -146,7 +181,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       },
       restore: ({ tab, stack: entries }) => {
         seededTab.current = tab;
-        setStack(entries.map((entry) => ({ name: entry.name, props: entry.props ?? {} })));
+        setStack(
+          entries.map((entry) => ({
+            name: entry.name,
+            props: entry.props ?? {},
+          })),
+        );
         router.navigate(TAB_PATHS[tab]);
       },
       startTalk: (ctx) => {
@@ -163,11 +203,33 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<ShellState>(
-    () => ({ nav, stack, talkCtx, speakKey, notice, talkFocused, setTalkFocused, resetTalk, onTabFocused }),
-    [nav, stack, talkCtx, speakKey, notice, talkFocused, setTalkFocused, resetTalk, onTabFocused],
+    () => ({
+      nav,
+      stack,
+      talkCtx,
+      speakKey,
+      notice,
+      talkFocused,
+      setTalkFocused,
+      resetTalk,
+      onTabFocused,
+    }),
+    [
+      nav,
+      stack,
+      talkCtx,
+      speakKey,
+      notice,
+      talkFocused,
+      setTalkFocused,
+      resetTalk,
+      onTabFocused,
+    ],
   );
 
-  return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;
+  return (
+    <ShellContext.Provider value={value}>{children}</ShellContext.Provider>
+  );
 }
 
 /** One native tab's content: the base screen, or the pushed detail stack when
@@ -200,12 +262,22 @@ export function TabHost({ tab }: { tab: TabId }) {
   const stack = focused ? shell.stack : [];
   const top = stack[stack.length - 1];
   const prev = stack.length >= 2 ? stack[stack.length - 2] : undefined;
-  const captureOverLibItem = top?.name === "capture" && prev?.name === "libItem";
-  const libItemEntry = captureOverLibItem ? prev : top?.name === "libItem" ? top : undefined;
+  const captureOverLibItem =
+    top?.name === "capture" && prev?.name === "libItem";
+  const libItemEntry = captureOverLibItem
+    ? prev
+    : top?.name === "libItem"
+      ? top
+      : undefined;
   // Enable edge-swipe-back only when a pushed view is on top and it uses the
   // standard nav.pop back (capture runs its own unsaved-draft guard; review is
   // a native sheet with its own leave-confirm).
-  const swipeBackEnabled = focused && !!top && top.name !== "capture" && top.name !== "review";
+  const swipeBackEnabled =
+    focused &&
+    !!top &&
+    top.name !== "capture" &&
+    top.name !== "review" &&
+    top.name !== "mvpNote";
 
   // iOS-style left-edge swipe = back. The in-app stack isn't a native
   // navigator, so we drive nav.pop() from an edge Pan. runOnJS keeps the JS
@@ -226,17 +298,33 @@ export function TabHost({ tab }: { tab: TabId }) {
   if (tab === "speak") {
     content = (
       <View style={{ flex: 1 }}>
-        <View style={{ flex: 1 }} pointerEvents={top ? "none" : "auto"} collapsable={false}>
-          {focused ? <TalkScreen key={shell.speakKey} nav={nav} talkCtx={shell.talkCtx} /> : null}
+        <View
+          style={{ flex: 1 }}
+          pointerEvents={top ? "none" : "auto"}
+          collapsable={false}
+        >
+          {focused ? (
+            <TalkScreen
+              key={shell.speakKey}
+              nav={nav}
+              talkCtx={shell.talkCtx}
+            />
+          ) : null}
         </View>
-        {top ? <View style={styles.captureOverlay}>{renderView(top, nav)}</View> : null}
+        {top ? (
+          <View style={styles.captureOverlay}>{renderView(top, nav)}</View>
+        ) : null}
       </View>
     );
   } else if (libItemEntry) {
     const libProps = libItemEntry.props;
     content = (
       <View style={{ flex: 1 }}>
-        <View style={{ flex: 1 }} pointerEvents={captureOverLibItem ? "none" : "auto"} collapsable={false}>
+        <View
+          style={{ flex: 1 }}
+          pointerEvents={captureOverLibItem ? "none" : "auto"}
+          collapsable={false}
+        >
           <LibItem
             key={String(libProps.id ?? "clip")}
             nav={nav}
@@ -246,9 +334,7 @@ export function TabHost({ tab }: { tab: TabId }) {
           />
         </View>
         {captureOverLibItem && top ? (
-          <View style={styles.captureOverlay}>
-            {renderView(top, nav)}
-          </View>
+          <View style={styles.captureOverlay}>{renderView(top, nav)}</View>
         ) : null}
       </View>
     );
@@ -268,58 +354,60 @@ export function TabHost({ tab }: { tab: TabId }) {
     content = renderTab(tab, nav);
   }
 
-  const showCaptureFab =
-    focused &&
-    tab !== "speak" &&
-    tab !== "topics" &&
-    top?.name !== "capture" &&
-    top?.name !== "phrase" &&
-    top?.name !== "review" &&
-    top?.name !== "practiceHub" &&
-    top?.name !== "rehearsal" &&
-    top?.name !== "libItem" &&
-    top?.name !== "editProfile" &&
-    top?.name !== "firstLanguage" &&
-    top?.name !== "feedbackFocus" &&
-    top?.name !== "phrasesPerDay" &&
-    top?.name !== "dailySpeakingGoal" &&
-    top?.name !== "reminders" &&
-    top?.name !== "studio" &&
-    top?.name !== "studioTopic" &&
-    top?.name !== "situation" &&
-    top?.name !== "situationPhrases" &&
-    top?.name !== "situationAttempts" &&
-    top?.name !== "speakingNote";
-
   return (
     <CaptureScope active={focused}>
-    <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
-      {content}
-      {swipeBackEnabled ? (
-        <GestureDetector gesture={backSwipe}>
-          <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 22, zIndex: 90 }} />
-        </GestureDetector>
-      ) : null}
-      {showCaptureFab ? <CaptureFab nav={nav} aboveTabs={false} /> : null}
-      {focused && shell.notice ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: 18,
-            right: 18,
-            bottom: Math.max(insets.bottom, 12) + 20,
-            alignItems: "center",
-            zIndex: 120,
-          }}
-        >
-          <View style={[{ minHeight: 42, borderRadius: 999, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: t.colors.pill }, t.shadowLg]}>
-            <Icon name="check" s={15} w={2.6} c="#fff" />
-            <Text style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}>{shell.notice.message}</Text>
+      <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+        {content}
+        {swipeBackEnabled ? (
+          <GestureDetector gesture={backSwipe}>
+            <View
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 22,
+                zIndex: 90,
+              }}
+            />
+          </GestureDetector>
+        ) : null}
+        {focused && shell.notice ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 18,
+              right: 18,
+              bottom: Math.max(insets.bottom, 12) + 20,
+              alignItems: "center",
+              zIndex: 120,
+            }}
+          >
+            <View
+              style={[
+                {
+                  minHeight: 42,
+                  borderRadius: 999,
+                  paddingHorizontal: 18,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  backgroundColor: t.colors.pill,
+                },
+                t.shadowLg,
+              ]}
+            >
+              <Icon name="check" s={15} w={2.6} c="#fff" />
+              <Text
+                style={{ fontSize: 13.5, fontWeight: "600", color: "#fff" }}
+              >
+                {shell.notice.message}
+              </Text>
+            </View>
           </View>
-        </View>
-      ) : null}
-    </View>
+        ) : null}
+      </View>
     </CaptureScope>
   );
 }
@@ -327,12 +415,11 @@ export function TabHost({ tab }: { tab: TabId }) {
 function renderTab(tab: TabId, nav: Nav): React.ReactNode {
   switch (tab) {
     case "today":
-      return <TodayScreen nav={nav} />;
+      return <PhraseBank nav={nav} />;
     case "phrases":
-      return <PhrasesScreen nav={nav} />;
+      return <PhraseBank nav={nav} />;
     case "topics":
-    case "sessions":
-      return <StudioHomeScreen nav={nav} />;
+      return <NotesStudio nav={nav} />;
     case "speak":
       return null; // handled in TabHost (needs focus + key)
   }
@@ -341,46 +428,76 @@ function renderTab(tab: TabId, nav: Nav): React.ReactNode {
 function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
   const p = entry.props;
   switch (entry.name) {
+    case "profile":
+      return <MvpProfile nav={nav} />;
+    case "mvpPhrase":
+      return <PhraseChecklist nav={nav} id={p.id as string} />;
+    case "mvpNote":
+      return <NoteEditor key={p.id as string} nav={nav} id={p.id as string} />;
+    case "quickCapture":
+      return <QuickCapture nav={nav} />;
+    case "mirrorRecord":
+      return <MirrorRecord nav={nav} session={p.session as MirrorSession} />;
     case "phrase":
-      return <PhraseRoute nav={nav} item={p.item as PhraseItem | undefined} id={p.id as string | undefined} />;
-    case "review":
-      return <ReviewFlow nav={nav} item={p.item as PhraseItem | undefined} queue={p.queue as PhraseItem[] | undefined} />;
-    case "practiceHub":
-      return <PracticeHubScreen nav={nav} item={p.item as PhraseItem | undefined} />;
-    case "rehearsal":
-      return <QuickRehearsalScreen nav={nav} item={p.item as PhraseItem | undefined} />;
-    case "island":
-      return <IslandDetail nav={nav} id={p.id as string} />;
-    case "newIsland":
-      return <IslandCreate nav={nav} domainId={p.domainId as string | undefined} domainName={p.domainName as string | undefined} />;
-    case "domain":
-      return <DomainScreen nav={nav} id={p.id as string} name={p.name as string | undefined} />;
-    case "story":
       return (
-        <StoryScreen
+        <PhraseRoute
           nav={nav}
-          id={p.id as string}
-          title={p.title as string | undefined}
-          domainId={p.domainId as string | undefined}
-          domainName={p.domainName as string | undefined}
+          item={p.item as PhraseItem | undefined}
+          id={p.id as string | undefined}
         />
       );
-    case "message":
-      return <MessageScreen nav={nav} id={p.id as string | undefined} label={p.label as string | undefined} storyId={p.storyId as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
-    case "newMessage":
-      return <MessageCreate nav={nav} storyId={p.storyId as string | undefined} storyTitle={p.storyTitle as string | undefined} />;
-    case "recs":
-      return <RecsScreen nav={nav} />;
-    case "session":
-      return <SessionDetail nav={nav} session={p.session as TalkSession | undefined} />;
-    case "feedback":
-      return <SessionFeedbackDetail nav={nav} feedbackId={p.id as string | undefined} />;
+    case "review":
+      return (
+        <ReviewFlow
+          nav={nav}
+          item={p.item as PhraseItem | undefined}
+          queue={p.queue as PhraseItem[] | undefined}
+        />
+      );
+    case "practiceHub":
+      return (
+        <PracticeHubScreen nav={nav} item={p.item as PhraseItem | undefined} />
+      );
+    case "rehearsal":
+      return (
+        <QuickRehearsalScreen
+          nav={nav}
+          item={p.item as PhraseItem | undefined}
+        />
+      );
+    case "attempt":
+      return (
+        <AttemptDetailScreen
+          nav={nav}
+          attempt={p.attempt as Attempt | undefined}
+        />
+      );
+    case "coachingFeedback":
+      return (
+        <CoachingFeedbackScreen
+          nav={nav}
+          feedbackId={p.id as string | undefined}
+        />
+      );
     case "library":
       return <LibraryScreen nav={nav} />;
     case "libItem":
-      return <LibItem nav={nav} id={p.id as string} title={p.title as string | undefined} covered={p.covered === true} />;
+      return (
+        <LibItem
+          nav={nav}
+          id={p.id as string}
+          title={p.title as string | undefined}
+          covered={p.covered === true}
+        />
+      );
     case "capture":
-      return <PhraseCaptureScreen nav={nav} imageAsset={p.imageAsset as CaptureImageAsset | undefined} clipSeed={p.clipSeed as ClipCaptureSeed | undefined} />;
+      return (
+        <PhraseCaptureScreen
+          nav={nav}
+          imageAsset={p.imageAsset as CaptureImageAsset | undefined}
+          clipSeed={p.clipSeed as ClipCaptureSeed | undefined}
+        />
+      );
     case "settings":
       return <SettingsScreen nav={nav} />;
     case "editProfile":
@@ -404,21 +521,57 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "studio":
       return <SpeakingStudioScreen nav={nav} />;
     case "studioTopic":
-      return <StudioTopicScreen nav={nav} id={p.id as string} name={p.name as string | undefined} />;
+      return (
+        <StudioTopicScreen
+          nav={nav}
+          id={p.id as string}
+          name={p.name as string | undefined}
+        />
+      );
     case "situation":
-      return <StudioSituationScreen nav={nav} id={p.id as string} topicId={p.topicId as string} title={p.title as string | undefined} />;
+      return (
+        <StudioSituationScreen
+          nav={nav}
+          id={p.id as string}
+          topicId={p.topicId as string}
+          title={p.title as string | undefined}
+        />
+      );
     case "situationPhrases":
-      return <SituationPhrasesScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
+      return (
+        <SituationPhrasesScreen
+          nav={nav}
+          id={p.id as string}
+          title={p.title as string | undefined}
+        />
+      );
     case "situationAttempts":
-      return <SituationAttemptsScreen nav={nav} id={p.id as string} title={p.title as string | undefined} />;
+      return (
+        <SituationAttemptsScreen
+          nav={nav}
+          id={p.id as string}
+          title={p.title as string | undefined}
+        />
+      );
     case "speakingNote":
-      return <SpeakingNoteScreen nav={nav} id={p.id as string} justPracticed={p.justPracticed === true} />;
+      return (
+        <SpeakingNoteScreen
+          nav={nav}
+          id={p.id as string}
+          justPracticed={p.justPracticed === true}
+        />
+      );
     case "topicsList":
       return <TopicsListScreen nav={nav} />;
-    case "sessionsList":
-      return <SessionsScreen nav={nav} stacked />;
+    case "attemptsList":
+      return <AttemptsScreen nav={nav} />;
     case "situationsList":
-      return <AllSituationsScreen nav={nav} initialFilter={p.filter as string | undefined} />;
+      return (
+        <AllSituationsScreen
+          nav={nav}
+          initialFilter={p.filter as string | undefined}
+        />
+      );
   }
 }
 

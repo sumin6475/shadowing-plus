@@ -1,9 +1,9 @@
-// studio-information.ts — revised Studio IA over the shipped Speaking World
+// Active Studio IA over the deployed persistence
 // tables. Physical legacy table names stay in place for backward compatibility:
 // domains=Topics, stories=Situations, messages=Speaking Notes,
 // talk_sessions=Practice Attempts.
-import { fetchPhrases, linkPhraseToStory, recordPhraseEvent, type PhraseItem } from "./phrases";
-import { archiveDomain, archiveStory, createBeat, createDomain, createStory, fetchDomains, renameDomain } from "./speaking-world";
+import { fetchPhrases, linkPhraseToSituation, recordPhraseEvent, type PhraseItem } from "./phrases";
+import { archiveSituation, archiveTopic, createSituation, createSpeakingBeat, createTopic, fetchTopics, renameTopic } from "./studio-model";
 import { supabase } from "./supabase";
 
 export interface StudioTopic {
@@ -130,15 +130,15 @@ export function quickTitleFromBody(body: string): string {
 }
 
 export async function fetchStudioTopics(): Promise<StudioTopic[]> {
-  // fetchDomains owns first-use seeding, so a brand-new account never lands on
+  // fetchTopics owns first-use seeding, so a brand-new account never lands on
   // an empty Quick Note topic picker.
-  const domains = await fetchDomains();
+  const domains = await fetchTopics();
   return domains.map((row) => ({
     id: row.id,
     name: row.name,
     color: row.color,
     position: row.position,
-    situationCount: row.storyCount,
+    situationCount: row.situationCount,
   }));
 }
 
@@ -147,7 +147,7 @@ export async function fetchStudioTopics(): Promise<StudioTopic[]> {
 export async function createStudioTopic(name: string): Promise<string> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Enter a topic name.");
-  const id = await createDomain(trimmed);
+  const id = await createTopic(trimmed);
   if (!id) throw new Error("Couldn’t create this topic.");
   return id;
 }
@@ -155,13 +155,13 @@ export async function createStudioTopic(name: string): Promise<string> {
 export async function renameStudioTopic(id: string, name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Enter a topic name.");
-  await renameDomain(id, trimmed);
+  await renameTopic(id, trimmed);
 }
 
-/** Soft-archive a Topic. Refuses the learner's last open one — archiveDomain
+/** Soft-archive a Topic. Refuses the learner's last open one — archiveTopic
  *  explains why, and throws a message the UI can show verbatim. */
 export async function archiveStudioTopic(id: string): Promise<void> {
-  await archiveDomain(id);
+  await archiveTopic(id);
 }
 
 // Column ladder, widest first. Each rung drops the column a newer migration
@@ -455,7 +455,7 @@ function phraseFromNested(value: unknown, from: { noteId: string | null; noteTit
 }
 
 /** Phrases attached straight to a Situation. phrase_story_links is written by
- *  every capture (linkPhraseToStory) but Studio never read it, which is why a
+ *  every capture (linkPhraseToSituation) but Studio never read it, which is why a
  *  Situation with no Notes showed zero phrases. These carry no Note. */
 async function situationLinkedPhrases(situationId: string): Promise<NotePhrase[]> {
   const result = await loadNestedPhrases((nested) =>
@@ -518,12 +518,12 @@ export async function fetchSituationPhrases(situationId: string): Promise<NotePh
   return [...unique.values()];
 }
 
-/** Attach a phrase straight to a Situation. Delegates to linkPhraseToStory so
+/** Attach a phrase straight to a Situation. Delegates to linkPhraseToSituation so
  *  phrase_story_links keeps a single writer — and its 'learner' default is the
  *  point: that table's CHECK has no 'migration', which note_phrase_links does,
  *  so a source value must never be copied across from a Note link. */
 export async function addPhraseToSituation(situationId: string, phraseId: string): Promise<void> {
-  await linkPhraseToStory(phraseId, situationId);
+  await linkPhraseToSituation(phraseId, situationId);
 }
 
 /**
@@ -562,7 +562,7 @@ async function legacyUnsortedSituation(topicId: string): Promise<string> {
     .maybeSingle();
   if (existing.error) throw new Error(existing.error.message);
   if (existing.data?.id) return existing.data.id as string;
-  const id = await createStory(topicId, "Unsorted");
+  const id = await createSituation(topicId, "Unsorted");
   if (!id) throw new Error("Couldn’t create the Unsorted situation.");
   return id;
 }
@@ -594,8 +594,8 @@ export async function createQuickNote(input: QuickNoteInput): Promise<string> {
     const legacy = await supabase.from("messages").insert({ story_id: situationId, label: title }).select("id").single();
     if (legacy.error || !legacy.data?.id) throw new Error(legacy.error?.message ?? "Couldn’t save this note.");
     noteId = legacy.data.id as string;
-    await createBeat(noteId, `Goal: ${input.goal.trim()}`, 0);
-    await createBeat(noteId, input.body.trim(), 1);
+    await createSpeakingBeat(noteId, `Goal: ${input.goal.trim()}`, 0);
+    await createSpeakingBeat(noteId, input.body.trim(), 1);
   } else {
     throw new Error(modern.error?.message ?? "Couldn’t save this note.");
   }
@@ -645,7 +645,7 @@ export async function linkPhraseToNote(input: { noteId: string; phraseId: string
   );
   if (!error) return;
   if (looksLikeMissingStudioSchema(error.message) && input.situationId) {
-    await linkPhraseToStory(input.phraseId, input.situationId);
+    await linkPhraseToSituation(input.phraseId, input.situationId);
     return;
   }
   throw new Error(error.message);
@@ -674,7 +674,7 @@ export async function createStudioSituation(input: { topicId: string; title: str
     .single();
   if (!result.error && result.data?.id) return result.data.id as string;
   if (result.error && looksLikeMissingStudioSchema(result.error.message)) {
-    const id = await createStory(input.topicId, input.title);
+    const id = await createSituation(input.topicId, input.title);
     if (!id) throw new Error("Couldn’t create this situation.");
     return id;
   }
@@ -697,10 +697,10 @@ export async function renameStudioSituation(id: string, title: string): Promise<
   if (error) throw new Error(error.message);
 }
 
-/** Soft-archive a situation. Reuses archiveStory so stories.status has one
+/** Soft-archive a situation. Reuses archiveSituation so stories.status has one
  *  updater — a hard delete would cascade to its notes, beats and attempts. */
 export async function archiveStudioSituation(id: string): Promise<void> {
-  await archiveStory(id);
+  await archiveSituation(id);
 }
 
 /** Star a situation. Modelled on setPhraseFavorite: the column lands in 029, so
