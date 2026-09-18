@@ -1313,3 +1313,13 @@ Sheet가 쓰던 구조로 통일.
 **검증.** tsc 통과, `test:mvp` 4/4 (isBlankNote 케이스 추가), 변경 파일 eslint 0. 시뮬레이터에서 속도 토글, 새 노트 → 뒤로 → pull-to-refresh 후에도 노트 수 7 유지 확인.
 
 **남은 것 (워크스루에서 찾음, 미착수).** Studio 카드 "0 POINTS"(`-`/`•` 줄만 셈) · Phrases 홈 로딩 중 "All 0"/빈 히어로 깜빡임 · Profile 시간 "77 min 31s" 표기 + transcript 없는 59분 세션 · 날짜 포맷 혼재 · 소문자 라벨에 넓은 자간.
+
+## 2026-09-18 — Phrases 홈 Figma 적용 + Talk 탭 편입
+
+**만든 것.** Figma 프레임 + PM 메뉴구조 노트대로 Phrases 홈을 다시 짰다(`7c5987e`). 헤더(타이틀 / +·필터 캡슐 / 48pt 프로필, Studio도 동일), 히어로 캐러셀(스피킹 카드 + "Today's phrases for you" done/total), 기간별 그룹 리스트(Today / Yesterday / Last 7 days / Last 30 days / Earlier), 검색·스테이지 필터는 필터 시트로. Pretendard 4웨이트 + Instrument Serif 번들. Talk는 바 안의 세 번째 탭. 결정 → `decisions/0025-phrases-home-daily-picks-and-three-tab-bar.md`
+
+**원칙.** 제품 규칙(오늘의 픽, 기간 분류)은 화면이 아니라 순수 함수에 둔다 — 그래야 "하루 동안 카운트가 거꾸로 안 간다" 같은 약속을 테스트로 고정할 수 있다. 테스트가 처음 틀렸던 건 코드가 아니라 테스트였다(8월은 31일).
+
+**걸린 것.** `Pill full`은 `flex: 1`이라 세로 컨테이너(필터 시트) 안에서 높이 0으로 접혔다 — "Show results" 버튼이 안 보임. 시트에선 `alignSelf: "stretch"`로.
+
+**검증.** tsc 통과, `test:mvp` 6/6(todaysPicks·periodOf 추가), 변경 파일 eslint 0. 시뮬레이터: 헤더·히어로 두 장·그룹 리스트, 필터 시트(스테이지 선택 → 점 표시 + "35 Collected phrases · Clear", 검색 0건 → 빈 상태), Studio 헤더, Talk 탭 진입 확인.
