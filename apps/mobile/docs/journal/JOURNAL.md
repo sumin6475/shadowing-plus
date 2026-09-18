@@ -1323,3 +1323,13 @@ Sheet가 쓰던 구조로 통일.
 **걸린 것.** `Pill full`은 `flex: 1`이라 세로 컨테이너(필터 시트) 안에서 높이 0으로 접혔다 — "Show results" 버튼이 안 보임. 시트에선 `alignSelf: "stretch"`로.
 
 **검증.** tsc 통과, `test:mvp` 6/6(todaysPicks·periodOf 추가), 변경 파일 eslint 0. 시뮬레이터: 헤더·히어로 두 장·그룹 리스트, 필터 시트(스테이지 선택 → 점 표시 + "35 Collected phrases · Clear", 검색 0건 → 빈 상태), Studio 헤더, Talk 탭 진입 확인.
+
+## 2026-09-18 — 폰트 앱 전체 교체 + 필터를 네이티브 메뉴로
+
+**만든 것.** (`009bac0`) 26개 파일의 `Text`/`TextInput`을 `design/text.tsx` 래퍼로 교체 — style에 fontFamily가 없으면 fontWeight에 맞는 Pretendard 패밀리를 붙인다. SERIF = Instrument Serif(Newsreader 대체). 필터 버튼은 바텀 시트 대신 `@expo/ui` 네이티브 Menu(인라인 Picker, 체크마크). 검색은 `SEARCH_ENABLED=false`로 숨김. ADR 0025에 개정으로 기록.
+
+**원칙.** RN엔 전역 기본 폰트가 없다 — 앱 전체 폰트는 "모든 화면이 우리 Text를 쓰게" 하는 한 지점에서 결정한다. 정적 웨이트 폰트는 웨이트마다 패밀리가 달라서, 래퍼가 fontWeight → 패밀리 이름으로 바꿔준다. 네이티브 모듈을 JS에서 새로 쓰기 전에 설치된 빌드 바이너리에 그 뷰(`MenuView`)가 있는지 먼저 확인.
+
+**걸린 것.** 프로젝트 보안 훅(환경변수 파일 보호용)이 환경변수 참조 문자열이 든 명령을 막음 — 우회하지 않고 플래그를 상수로 만듦.
+
+**검증.** tsc 통과, `test:mvp` 6/6, 변경 29개 파일 eslint 에러 0(경고 1은 기존 `phrases.tsx:1026`). 시뮬레이터: 필터 메뉴가 버튼에서 펼쳐짐 → Collected 선택 → 점 + 요약 줄, Clear. Phrase 상세·Studio·Profile에서 Pretendard/Instrument Serif 확인.

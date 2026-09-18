@@ -28,3 +28,9 @@ Figma의 Phrases 홈 프레임과 PM 메뉴구조 노트가 들어왔다. 세 �
 - 나머지 화면(Profile, 노트 편집기 등)은 아직 Newsreader/Inter — 화면 간 타이포가 섞인 상태.
 - 즐겨찾기 필터는 PM이 미정(제거 쪽으로 기울어짐)이라 넣지 않았다.
 - **재검토 조건**: 사용자가 "오늘의 픽"이 매일 같은 오래된 표현만 보여준다고 느끼면(오래된 Collected가 쌓여 새 표현이 픽에 안 들어옴) 선정 규칙을 바꾼다. Talk 탭을 바에 넣은 뒤 녹음 진입이 줄면 원형 복귀를 검토.
+
+## 개정 (2026-09-18, 같은 날)
+- **필터 = 네이티브 iOS 풀다운 메뉴**(버튼에서 바로 리스트), 바텀 시트 기각 — Sumin 결정. `@expo/ui` Menu + inline Picker(체크마크, 개수 표시). 기존 dev 빌드에 ExpoUI `MenuView`가 이미 링크돼 있어 재빌드 불필요.
+- **검색은 `SEARCH_ENABLED`(release-flags, false)로 숨김.** 메뉴 안에 텍스트 필드를 둘 수 없어서, 켜면 메뉴에 "Search" 항목 → 헤더 아래 인라인 검색창.
+- **폰트 앱 전체 적용:** Pretendard(모든 Text/TextInput, `design/text.tsx`) + Instrument Serif(SERIF 상수, Newsreader 대체). Newsreader·Inter는 더 이상 로드하지 않음. "나머지 화면은 아직 Newsreader/Inter" 결과 항목은 해소.
+- **Studio**는 검색이 꺼진 동안 필터 항목이 없어 `+`만 노출.
