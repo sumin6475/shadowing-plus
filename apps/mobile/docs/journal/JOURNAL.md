@@ -1301,3 +1301,15 @@ Sheet가 쓰던 구조로 통일.
 아래에 **다른 topic에 만들겠다는** 버튼이 붙었다. 결과가 0일 때만 뜨게 수정.
 
 `npm run validate` exit 0. 시뮬레이터에서 검색·섹션·생성·단일선택·다중선택 전부 확인.
+
+## 2026-09-17 — MVP 커밋 + 시뮬레이터 폴리시 1차 (Pill 에러, 빈 노트)
+
+**만든 것.** 커밋 안 된 채로 시뮬레이터에서 돌던 MVP(Phrases·Studio·Profile, migration 031)를 `6249f00`으로 먼저 커밋. 그다음 시뮬레이터 워크스루로 찾은 것 중 두 개를 고침 → `6d9d3b3`.
+- **Pill 라벨 에러**: `{rate}× speed`가 배열이라 `<Text>` 밖에서 렌더 → 빈 캡슐 + LogBox 에러. `Pill`이 string/number 혼합을 라벨로 처리. → `postmortems/2026-09-17-pill-number-child-threw-text-error.md`
+- **빈 노트 누적**: "New note"가 입력 전에 row를 만들어서, 그냥 나가면 "Untitled note"가 남고 Phrases 히어로가 그 빈 노트로 초대했다. 템플릿 그대로인 노트는 나갈 때 삭제(Talk로 갈 땐 유지), 히어로는 빈 노트를 건너뜀.
+
+**원칙.** 호출부 하나를 고치지 말고 오분류하는 분기(컴포넌트)를 고친다. "생성 즉시 저장"은 취소 경로에서 쓰레기를 남긴다 — 나가는 길에 되돌린다.
+
+**검증.** tsc 통과, `test:mvp` 4/4 (isBlankNote 케이스 추가), 변경 파일 eslint 0. 시뮬레이터에서 속도 토글, 새 노트 → 뒤로 → pull-to-refresh 후에도 노트 수 7 유지 확인.
+
+**남은 것 (워크스루에서 찾음, 미착수).** Studio 카드 "0 POINTS"(`-`/`•` 줄만 셈) · Phrases 홈 로딩 중 "All 0"/빈 히어로 깜빡임 · Profile 시간 "77 min 31s" 표기 + transcript 없는 59분 세션 · 날짜 포맷 혼재 · 소문자 라벨에 넓은 자간.
