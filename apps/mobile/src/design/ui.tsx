@@ -440,6 +440,14 @@ export function Pill({
   const h = small ? Motif.buttonHeight.medium : Motif.buttonHeight.large;
   const fs = small ? 15 : 17;
   const fx = usePressFx(0.955);
+  // `{rate}× speed` arrives as [1, "× speed"], not a string — treat any mix of
+  // strings and numbers as a label, or RN throws "Text strings must be rendered
+  // within a <Text>" and the capsule renders empty.
+  const isLabel =
+    children != null &&
+    (Array.isArray(children) ? children : [children]).every(
+      (c) => typeof c === "string" || typeof c === "number",
+    );
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -468,7 +476,7 @@ export function Pill({
           a tone's foreground changes. */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
         {icon ? <Icon name={icon} s={small ? 15 : 17} w={2} c={tv.fg} /> : null}
-        {typeof children === "string" ? (
+        {isLabel ? (
           <Text style={[{ color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
             {children}
           </Text>

@@ -5,6 +5,8 @@ import {
   phraseStage,
   readyAt,
   durationLabel,
+  isBlankNote,
+  NOTE_TEMPLATE,
 } from "../src/lib/mvp-model.ts";
 const empty = {
   pronounced_at: null,
@@ -47,4 +49,13 @@ test("duration reflects seconds without rounding a minute up", () => {
   assert.equal(durationLabel(59.9), "59s");
   assert.equal(durationLabel(60), "1 min");
   assert.equal(durationLabel(192), "3 min 12s");
+});
+
+test("an untouched new note is blank, any real word is not", () => {
+  assert.equal(isBlankNote("", NOTE_TEMPLATE), true);
+  assert.equal(isBlankNote("  ", ""), true);
+  assert.equal(isBlankNote("", "Opening\n-\n•  \n\nClosing"), true);
+  assert.equal(isBlankNote("meetup", NOTE_TEMPLATE), false);
+  assert.equal(isBlankNote("", "Opening\n- aa"), false);
+  assert.equal(isBlankNote("", "The starting point"), false);
 });

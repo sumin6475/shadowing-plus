@@ -23,6 +23,14 @@ export const readyAt = (p: Progress) =>
     ? Math.max(...STEPS.map((key) => Date.parse(p[key]!)))
     : 0;
 export const NOTE_TEMPLATE = "Opening\n- \n\nBody\n- \n\nClosing\n- ";
+/** True when a note holds nothing but the untouched template: no title, and
+ *  no line beyond the section headings and empty bullets. */
+export const isBlankNote = (title: string, body: string) =>
+  !title.trim() &&
+  body
+    .split("\n")
+    .map((l) => l.replace(/^[-•]\s*/, "").trim())
+    .every((l) => !l || /^(Opening|Body|Closing)$/.test(l));
 export function durationLabel(seconds: number) {
   const value = Math.max(0, Math.floor(seconds));
   return value < 60

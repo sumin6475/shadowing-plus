@@ -29,6 +29,7 @@ import {
   deleteNote,
   deleteSentence,
   durationLabel,
+  isBlankNote,
   loadMirrorSessions,
   loadNote,
   loadNotes,
@@ -196,7 +197,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
   const [filter, setFilter] = useState("All"),
     [query, setQuery] = useState("");
   const phrases = state.data?.phrases ?? [],
-    recent = state.data?.notes[0];
+    recent = state.data?.notes.find((n) => !isBlankNote(n.title, n.body));
   const ready = phrases
     .filter((p) => readyAt(p) > 0)
     .sort((a, b) => readyAt(b) - readyAt(a))[0];
@@ -948,7 +949,8 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
     saved = useRef(""),
     queue = useRef(Promise.resolve()),
     loaded = useRef(false),
-    alive = useRef(true);
+    alive = useRef(true),
+    speaking = useRef(false);
   const load = useCallback(async () => {
     try {
       const n = await loadNote(id);
@@ -1022,18 +1024,41 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
     return () => clearTimeout(timer);
   }, [title, body, flush]);
   // Also flush on route teardown, so a gesture back cannot silently drop edits.
-  const flushRef = useRef(flush);
+  // "New note" inserts a row up front, so a note left untouched is discarded on
+  // the way out instead of piling up as "Untitled note". Talk keeps it: the
+  // mirror returns to this note.
+  const discardIfBlank = useCallback(async () => {
+    const { title, body } = current.current;
+    if (!loaded.current || speaking.current || !isBlankNote(title, body))
+      return false;
+    loaded.current = false;
+    await queue.current.catch(() => {});
+    await deleteNote(id);
+    await AsyncStorage.removeItem(draftKey);
+    nav.invalidateSpeakingData();
+    return true;
+  }, [id, nav, draftKey]);
+  const flushRef = useRef(flush),
+    discardRef = useRef(discardIfBlank);
   useEffect(() => {
     flushRef.current = flush;
-  }, [flush]);
+    discardRef.current = discardIfBlank;
+  }, [flush, discardIfBlank]);
   useEffect(
     () => () => {
-      if (loaded.current) void flushRef.current().catch(() => {});
+      void discardRef
+        .current()
+        .then((gone) => {
+          if (!gone && loaded.current) return flushRef.current();
+        })
+        .catch(() => {});
     },
     [],
   );
   const leave = async (talk = false) => {
     try {
+      speaking.current = talk;
+      if (!talk && (await discardIfBlank())) return nav.pop();
       await flush();
       if (talk)
         nav.startTalk({
