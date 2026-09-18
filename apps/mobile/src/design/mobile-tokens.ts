@@ -24,6 +24,16 @@ import type { ViewStyle } from "react-native";
 export const SERIF = "Newsreader";
 /** UI face loaded by the root _layout; not yet the default UI family. */
 export const FONT_UI = "Inter";
+/** Figma faces for the MVP screens (Phrases, Studio): Pretendard for UI,
+ *  Instrument Serif for display lines. Set the family, never fontWeight —
+ *  a weight on a static face makes iOS fall back to the system font. */
+export const FONT = {
+  regular: "Pretendard",
+  medium: "Pretendard-Medium",
+  semibold: "Pretendard-SemiBold",
+  bold: "Pretendard-Bold",
+  display: "InstrumentSerif",
+} as const;
 
 // ── oklch → sRGB ───────────────────────────────────────────────────────────
 // Standard OKLab → linear sRGB → gamma. Deterministic (no Date/Math.random).

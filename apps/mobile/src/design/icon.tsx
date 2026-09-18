@@ -21,6 +21,7 @@ export type IconName =
   | "bell"
   | "gear"
   | "sliders"
+  | "filter"
   | "ear"
   | "pen"
   | "arrow"
@@ -188,6 +189,9 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
           <Path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
         </G>
       );
+      break;
+    case "filter":
+      body = <Path {...common} d="M3.5 6.5h17M7 12h10M10 17.5h4" />;
       break;
     case "sliders":
       body = (

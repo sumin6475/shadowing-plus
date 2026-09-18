@@ -59,6 +59,11 @@ function RootNavigator() {
     Inter: require("../../assets/fonts/Inter18pt-Regular.ttf"),
     "Inter-Medium": require("../../assets/fonts/Inter18pt-Medium.ttf"),
     "Inter-SemiBold": require("../../assets/fonts/Inter18pt-SemiBold.ttf"),
+    Pretendard: require("../../assets/fonts/Pretendard-Regular.otf"),
+    "Pretendard-Medium": require("../../assets/fonts/Pretendard-Medium.otf"),
+    "Pretendard-SemiBold": require("../../assets/fonts/Pretendard-SemiBold.otf"),
+    "Pretendard-Bold": require("../../assets/fonts/Pretendard-Bold.otf"),
+    InstrumentSerif: require("../../assets/fonts/InstrumentSerif-Regular.ttf"),
   });
 
   // Load saved first language + talk-focus before first render so greetings

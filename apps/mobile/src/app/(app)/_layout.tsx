@@ -1,6 +1,6 @@
 // (app)/_layout.tsx — the native iOS tab bar (UITabBar via expo-router's
-// NativeTabs). Two destinations + Talk as a separated `search`-role item,
-// which iOS 26 renders as the detached circle beside the bar (Liquid Glass).
+// NativeTabs). Three destinations — Phrases / Studio / Talk — in one bar, so
+// every main feature is one tap away (PM menu structure, 2026-09-18).
 // The in-app detail stack lives in ShellProvider; while a detail view or the
 // full-screen Talk mirror is open the bar hides, matching the old shell.
 import { NativeTabs } from "expo-router/unstable-native-tabs";
@@ -30,7 +30,7 @@ function AppTabs() {
         />
         <NativeTabs.Trigger.Label>Studio</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="talk" role="search">
+      <NativeTabs.Trigger name="talk">
         <NativeTabs.Trigger.Icon sf="mic.fill" />
         <NativeTabs.Trigger.Label>Talk</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>

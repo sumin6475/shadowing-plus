@@ -9,7 +9,9 @@ import {
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,6 +20,10 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FONT } from "@/design/mobile-tokens";
+import { phrasesPerDay } from "@/lib/daily-phrases";
 import { Avatar, BackBar, Card, Icon, Pill, Screen, Serif } from "@/design/ui";
 import { useTheme } from "@/design/theme";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
@@ -35,12 +41,15 @@ import {
   loadNotes,
   loadPhraseBank,
   loadSentences,
+  periodOf,
   phraseStage,
-  readyAt,
+  practicedOn,
   saveNote,
   setStep,
   STEPS,
+  todaysPicks,
   type MirrorSession,
+  type Period,
   type MvpPhrase,
   type Note,
   type Sentence,
@@ -112,48 +121,229 @@ function ErrorCard({
 }
 function Header({
   nav,
-  eyebrow,
   title,
   add,
+  addLabel,
+  filter,
+  filtered,
 }: {
   nav: Nav;
-  eyebrow: string;
   title: string;
-  add?: () => void;
+  add: () => void;
+  addLabel: string;
+  filter: () => void;
+  filtered: boolean;
 }) {
   const t = useTheme();
   return (
-    <View style={{ gap: 14, paddingTop: 8, paddingBottom: 6 }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        paddingTop: 4,
+        paddingBottom: 4,
+      }}
+    >
+      <Text
+        accessibilityRole="header"
+        style={{ flex: 1, fontFamily: FONT.bold, fontSize: 32, color: t.colors.ink }}
+      >
+        {title}
+      </Text>
+      {/* Quick action + filter share one capsule (Figma ButtonGroup). */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "space-between",
+          gap: 20,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          borderRadius: 100,
+          backgroundColor: t.colors.card,
         }}
       >
-        <Label>{eyebrow}</Label>
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          {add ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={addLabel}
+          onPress={add}
+          hitSlop={8}
+        >
+          <Icon name="plus" s={28} w={1.75} c={t.colors.ink} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={filtered ? "Filter, active" : "Filter"}
+          onPress={filter}
+          hitSlop={8}
+        >
+          <Icon name="filter" s={28} w={1.75} c={t.colors.ink} />
+          {filtered ? (
+            <View
+              style={{
+                position: "absolute",
+                top: 1,
+                right: -1,
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: t.colors.acc,
+              }}
+            />
+          ) : null}
+        </Pressable>
+      </View>
+      <View
+        style={{
+          borderRadius: 24,
+          shadowColor: "#000",
+          shadowOpacity: 0.08,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 4 },
+        }}
+      >
+        <Avatar s={48} onPress={() => nav.push("profile")} />
+      </View>
+    </View>
+  );
+}
+/** Search (+ an optional stage filter) behind the header's filter icon. */
+function FilterSheet({
+  open,
+  onClose,
+  query,
+  setQuery,
+  placeholder,
+  stages,
+  stage,
+  setStage,
+}: {
+  open: boolean;
+  onClose: () => void;
+  query: string;
+  setQuery: (q: string) => void;
+  placeholder: string;
+  stages?: { label: string; count: number }[];
+  stage?: string;
+  setStage?: (s: string) => void;
+}) {
+  const t = useTheme(),
+    insets = useSafeAreaInsets();
+  return (
+    <Modal
+      visible={open}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close filter"
+        style={{ flex: 1 }}
+        onPress={onClose}
+      />
+      <KeyboardAvoidingView behavior="padding">
+        <View
+          style={{
+            backgroundColor: t.colors.bg,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 20,
+            paddingBottom: insets.bottom + 16,
+            gap: 16,
+            shadowColor: "#000",
+            shadowOpacity: 0.12,
+            shadowRadius: 20,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text style={{ fontFamily: FONT.bold, fontSize: 20, color: t.colors.ink }}>
+              Filter
+            </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Save a phrase"
-              onPress={add}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: t.colors.card,
-                alignItems: "center",
-                justifyContent: "center",
+              hitSlop={10}
+              onPress={() => {
+                setQuery("");
+                setStage?.("All");
               }}
             >
-              <Icon name="plus" c={t.colors.ink} />
+              <Text style={{ fontFamily: FONT.semibold, fontSize: 15, color: t.colors.acc }}>
+                Reset
+              </Text>
             </Pressable>
+          </View>
+          <Field
+            accessibilityLabel={placeholder}
+            placeholder={placeholder}
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+            onSubmitEditing={onClose}
+            clearButtonMode="while-editing"
+            style={{ backgroundColor: t.colors.card, fontFamily: FONT.regular }}
+          />
+          {stages && setStage ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {stages.map(({ label, count }) => {
+                const on = label === stage;
+                return (
+                  <Pressable
+                    key={label}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    onPress={() => setStage(label)}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: 100,
+                      backgroundColor: on ? t.colors.acc : t.colors.card,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: FONT.semibold,
+                        fontSize: 14,
+                        color: on ? t.colors.onAcc : t.colors.ink2,
+                      }}
+                    >
+                      {`${label} ${count}`}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           ) : null}
-          <Avatar onPress={() => nav.push("profile")} />
+          {/* Not `full`: that sets flex 1, which collapses to 0 in a column. */}
+          <Pill style={{ alignSelf: "stretch" }} onPress={onClose}>
+            Show results
+          </Pill>
         </View>
-      </View>
-      <Serif style={{ fontSize: 36, lineHeight: 40 }}>{title}</Serif>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+function FilterSummary({ text, clear }: { text: string; clear: () => void }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <Text
+        numberOfLines={1}
+        style={{ flex: 1, fontFamily: FONT.medium, fontSize: 14, color: t.colors.ink2 }}
+      >
+        {text}
+      </Text>
+      <Pressable accessibilityRole="button" hitSlop={10} onPress={clear}>
+        <Text style={{ fontFamily: FONT.semibold, fontSize: 14, color: t.colors.acc }}>
+          Clear
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -190,88 +380,95 @@ const loadHome = async () => {
   const [phrases, notes] = await Promise.all([loadPhraseBank(), loadNotes()]);
   return { phrases, notes };
 };
+const HERO_CARD = {
+  width: 271,
+  height: 200,
+  borderRadius: 20,
+  padding: 20,
+  justifyContent: "space-between",
+  overflow: "hidden",
+} as const;
 export function PhraseBank({ nav }: { nav: Nav }) {
   const t = useTheme(),
     state = useRefresh(loadHome, nav.speakingDataRevision),
     voice = usePhraseSpeech();
   const [filter, setFilter] = useState("All"),
-    [query, setQuery] = useState("");
+    [query, setQuery] = useState(""),
+    [sheet, setSheet] = useState(false);
   const phrases = state.data?.phrases ?? [],
     recent = state.data?.notes.find((n) => !isBlankNote(n.title, n.body));
-  const ready = phrases
-    .filter((p) => readyAt(p) > 0)
-    .sort((a, b) => readyAt(b) - readyAt(a))[0];
+  const now = new Date(),
+    picks = todaysPicks(phrases, phrasesPerDay(), now),
+    done = picks.filter((p) => practicedOn(p, now)).length,
+    next = picks.find((p) => !practicedOn(p, now)) ?? picks[0];
+  const filtering = filter !== "All" || !!query.trim();
   const filtered = phrases
     .filter(
       (p) =>
         (filter === "All" || phraseStage(p) === filter) &&
         `${p.text} ${p.translation ?? ""}`
           .toLowerCase()
-          .includes(query.toLowerCase()),
+          .includes(query.trim().toLowerCase()),
     )
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  const groups = new Map<string, MvpPhrase[]>();
+  // Newest first, so the Map fills Today → Earlier in order.
+  const groups = new Map<Period, MvpPhrase[]>();
   for (const p of filtered) {
-    const d = new Date(p.createdAt),
-      today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const label =
-      d >= today
-        ? "Today"
-        : d >= yesterday
-          ? "Yesterday"
-          : d.toLocaleDateString(undefined, {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            });
+    const label = periodOf(p.createdAt, now);
     groups.set(label, [...(groups.get(label) ?? []), p]);
   }
+  const clear = () => {
+    setFilter("All");
+    setQuery("");
+  };
   return (
     <Screen
       refreshControl={
         <RefreshControl
-          refreshing={state.loading}
+          refreshing={state.loading && !!state.data}
           onRefresh={() => void state.refresh()}
         />
       }
     >
       <Header
         nav={nav}
-        eyebrow="YOUR PHRASE BANK"
-        title={"English you\nchose to keep."}
+        title="Phrases"
         add={() => nav.push("quickCapture")}
+        addLabel="Save a phrase"
+        filter={() => setSheet(true)}
+        filtered={filtering}
       />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 12, paddingVertical: 5 }}
+        style={{ marginHorizontal: -18 }}
+        contentContainerStyle={{ gap: 16, paddingHorizontal: 18, paddingVertical: 4 }}
       >
-        <View
-          style={{
-            width: 258,
-            minHeight: 208,
-            borderRadius: 26,
-            padding: 22,
-            backgroundColor: "#16213E",
-            justifyContent: "space-between",
-            gap: 18,
-          }}
+        <LinearGradient
+          colors={["#010101", "#2E395A", "#E1DFDC"]}
+          locations={[0, 0.5, 1]}
+          style={HERO_CARD}
         >
-          <Text style={{ color: "#BEC9E0", fontSize: 12 }}>
-            A little practice, in your own words.
-          </Text>
-          <Serif numberOfLines={4} style={{ fontSize: 26, color: "#fff" }}>
-            {recent
-              ? `Your “${recent.title || "Untitled note"}” note is waiting.`
-              : "Make a little room\nfor your voice."}
-          </Serif>
-          <Pill
-            tone="white"
-            full
-            icon="mic"
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: "#FFFFFF" }}>
+              Start the day with practice.
+            </Text>
+            <Text
+              numberOfLines={3}
+              style={{
+                fontFamily: FONT.display,
+                fontSize: 24,
+                lineHeight: 28,
+                color: "#FFFFFF",
+              }}
+            >
+              {recent
+                ? `Your “${recent.title || "Untitled"}” note is waiting.`
+                : "Make a little room for your voice."}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
             onPress={() =>
               nav.startTalk({
                 ctx: recent?.title || "Free talk",
@@ -280,81 +477,70 @@ export function PhraseBank({ nav }: { nav: Nav }) {
                 from: "phrases",
               })
             }
-          >
-            Speak
-          </Pill>
-        </View>
-        <Card
-          onPress={() =>
-            ready
-              ? nav.push("mvpPhrase", { id: ready.id })
-              : phrases[0]
-                ? nav.push("mvpPhrase", { id: phrases[0].id })
-                : nav.push("quickCapture")
-          }
-          style={{
-            width: 215,
-            minHeight: 208,
-            justifyContent: "space-between",
-            padding: 22,
-          }}
-        >
-          <Label>TODAY’S PHRASE</Label>
-          <Serif style={{ fontSize: 29 }}>
-            {ready?.text ?? "Your first\nready phrase."}
-          </Serif>
-          <Copy>
-            {ready?.translation ?? "Complete three small steps. Make it yours."}
-          </Copy>
-          <Text
-            style={{ color: t.colors.acc, fontSize: 12, fontWeight: "700" }}
-          >
-            {ready ? "Ready to say ↗" : "Start with one phrase →"}
-          </Text>
-        </Card>
-      </ScrollView>
-      <Field
-        accessibilityLabel="Search phrases"
-        placeholder="Search your phrases"
-        value={query}
-        onChangeText={setQuery}
-      />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 7 }}
-      >
-        {["All", "Collected", "Learning", "Ready"].map((f) => (
-          <Pressable
-            key={f}
-            accessibilityRole="button"
-            accessibilityState={{ selected: f === filter }}
-            onPress={() => setFilter(f)}
             style={{
-              paddingHorizontal: 13,
-              paddingVertical: 12,
-              borderRadius: 24,
-              backgroundColor: f === filter ? t.colors.acc : t.colors.card,
+              backgroundColor: "#FAFAFA",
+              borderRadius: 100,
+              paddingVertical: 14,
+              alignItems: "center",
             }}
           >
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: "600",
-                color: f === filter ? t.colors.onAcc : t.colors.ink2,
-              }}
-            >
-              {f}{" "}
-              {
-                phrases.filter((p) => f === "All" || phraseStage(p) === f)
-                  .length
-              }
+            <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: "#0A0A0A" }}>
+              Speaking
             </Text>
           </Pressable>
-        ))}
+        </LinearGradient>
+        <View style={[HERO_CARD, { backgroundColor: t.colors.card }]}>
+          <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: t.colors.ink }}>
+            Today’s phrases for you.
+          </Text>
+          <Text
+            accessibilityLabel={
+              state.data ? `${done} of ${picks.length} practiced today` : "Loading"
+            }
+            style={{
+              fontFamily: FONT.bold,
+              fontSize: 28,
+              color: t.colors.ink,
+              textAlign: "center",
+            }}
+          >
+            {state.data ? `${done}/${picks.length || phrasesPerDay()}` : "–"}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              next ? nav.push("mvpPhrase", { id: next.id }) : nav.push("quickCapture")
+            }
+            style={{
+              backgroundColor: t.colors.acc,
+              borderRadius: 100,
+              paddingVertical: 14,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: t.colors.onAcc }}>
+              {!picks.length
+                ? "ADD A PHRASE"
+                : done === picks.length
+                  ? "ALL DONE"
+                  : done
+                    ? "CONTINUE"
+                    : "START"}
+            </Text>
+          </Pressable>
+        </View>
       </ScrollView>
+      {filtering ? (
+        <FilterSummary
+          text={`${filtered.length} ${filter === "All" ? "" : `${filter} `}phrase${filtered.length === 1 ? "" : "s"}${query.trim() ? ` matching “${query.trim()}”` : ""}`}
+          clear={clear}
+        />
+      ) : null}
       <ErrorCard error={state.error} retry={() => void state.refresh()} />
-      {!state.loading && !state.error && filtered.length === 0 ? (
+      {!state.data && state.loading ? (
+        <ActivityIndicator style={{ marginTop: 24 }} />
+      ) : null}
+      {state.data && !state.error && filtered.length === 0 ? (
         <Card>
           <Serif style={{ fontSize: 26 }}>
             {phrases.length ? "Nothing here yet." : "Good words find you."}
@@ -372,92 +558,113 @@ export function PhraseBank({ nav }: { nav: Nav }) {
         </Card>
       ) : null}
       {[...groups].map(([label, items]) => (
-        <View key={label} style={{ gap: 9, marginTop: 8 }}>
-          <Label>{label.toUpperCase()}</Label>
+        <View key={label} style={{ gap: 8 }}>
+          <Text
+            accessibilityRole="header"
+            style={{
+              fontFamily: FONT.bold,
+              fontSize: 14,
+              color: t.colors.ink,
+              paddingHorizontal: 2,
+              paddingTop: 12,
+            }}
+          >
+            {label.toUpperCase()}
+          </Text>
           <View
             style={{
               backgroundColor: t.colors.card,
-              borderRadius: 22,
-              overflow: "hidden",
+              borderRadius: 24,
+              paddingHorizontal: 20,
+              paddingVertical: 12,
             }}
           >
-            {items.map((p, i) => (
-              <View
-                key={p.id}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingLeft: 9,
-                  borderTopWidth: i ? 0.5 : 0,
-                  borderColor: t.colors.sep,
-                }}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Play ${p.text}`}
-                  onPress={() => void voice.toggle(p.id, p.text)}
+            {items.map((p, i) => {
+              const playing = voice.speakingId === p.id;
+              return (
+                <View
+                  key={p.id}
                   style={{
-                    width: 44,
-                    height: 54,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {voice.loadingId === p.id ? (
-                    <ActivityIndicator />
-                  ) : (
-                    <Icon
-                      name={voice.speakingId === p.id ? "pause" : "speaker"}
-                      s={17}
-                      c={t.colors.acc}
-                    />
-                  )}
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`${p.text}, ${phraseStage(p)}, ${completedSteps(p)} of 3 complete`}
-                  onPress={() => nav.push("mvpPhrase", { id: p.id })}
-                  style={{
-                    flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
-                    minHeight: 64,
-                    paddingRight: 15,
-                    gap: 12,
+                    paddingVertical: 16,
+                    borderBottomWidth: i < items.length - 1 ? 1 : 0,
+                    // Figma's divider is a whisper (#EAEAEA at 50%); the theme's
+                    // sep reads as a rule. Dark mode keeps sep so it stays visible.
+                    borderColor: t.dark ? t.colors.sep : "rgba(234,234,234,0.5)",
                   }}
                 >
-                  <Text
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${playing ? "Stop" : "Play"} ${p.text}`}
+                    onPress={() => void voice.toggle(p.id, p.text)}
+                    hitSlop={10}
                     style={{
-                      flex: 1,
-                      fontWeight: "600",
-                      fontSize: 16,
-                      color: t.colors.ink,
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: t.colors.bg,
+                      borderWidth: 1,
+                      borderColor: t.colors.sep,
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
                   >
-                    {p.text}
-                  </Text>
-                  <View style={{ flexDirection: "row", gap: 3 }}>
-                    {STEPS.map((step) => (
-                      <View
-                        key={step}
-                        style={{
-                          height: 5,
-                          width: 5,
-                          borderRadius: 3,
-                          backgroundColor: p[step]
-                            ? t.colors.acc
-                            : t.colors.sep,
-                        }}
+                    {voice.loadingId === p.id ? (
+                      <ActivityIndicator size="small" style={{ transform: [{ scale: 0.6 }] }} />
+                    ) : (
+                      <Icon
+                        name={playing ? "pause" : "speaker"}
+                        s={12}
+                        c={playing ? t.colors.acc : t.colors.ink3}
                       />
-                    ))}
-                  </View>
-                  <Icon name="chev" s={13} c={t.colors.ink3} />
-                </Pressable>
-              </View>
-            ))}
+                    )}
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${p.text}, ${phraseStage(p)}, open details`}
+                    onPress={() => nav.push("mvpPhrase", { id: p.id })}
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginLeft: 6,
+                      gap: 12,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        flex: 1,
+                        fontFamily: FONT.semibold,
+                        fontSize: 16,
+                        color: t.colors.ink,
+                      }}
+                    >
+                      {p.text}
+                    </Text>
+                    <Icon name="chev" s={14} c={t.colors.ink2} />
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         </View>
       ))}
+      <FilterSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        query={query}
+        setQuery={setQuery}
+        placeholder="Search your phrases"
+        stages={["All", "Collected", "Learning", "Ready"].map((label) => ({
+          label,
+          count: phrases.filter((p) => label === "All" || phraseStage(p) === label)
+            .length,
+        }))}
+        stage={filter}
+        setStage={setFilter}
+      />
     </Screen>
   );
 }
@@ -830,6 +1037,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
   const t = useTheme();
   const state = useRefresh(loadNotes, nav.speakingDataRevision),
     [query, setQuery] = useState(""),
+    [sheet, setSheet] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const create = async () => {
@@ -846,7 +1054,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
     }
   };
   const notes = (state.data ?? []).filter((n) =>
-    `${n.title} ${n.body}`.toLowerCase().includes(query.toLowerCase()),
+    `${n.title} ${n.body}`.toLowerCase().includes(query.trim().toLowerCase()),
   );
   return (
     <Screen
@@ -859,18 +1067,25 @@ export function NotesStudio({ nav }: { nav: Nav }) {
     >
       <Header
         nav={nav}
-        eyebrow="STUDIO"
-        title={"Notes for what\nyou’ll say next."}
+        title="Studio"
+        add={() => void create()}
+        addLabel="New note"
+        filter={() => setSheet(true)}
+        filtered={!!query.trim()}
       />
-      <Field
-        accessibilityLabel="Search notes"
-        value={query}
-        onChangeText={setQuery}
+      {query.trim() ? (
+        <FilterSummary
+          text={`${notes.length} note${notes.length === 1 ? "" : "s"} matching “${query.trim()}”`}
+          clear={() => setQuery("")}
+        />
+      ) : null}
+      <FilterSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        query={query}
+        setQuery={setQuery}
         placeholder="Search notes"
       />
-      <Pill full icon="plus" onPress={() => void create()}>
-        {busy ? "Creating…" : "New note"}
-      </Pill>
       <ErrorCard
         error={state.error || error}
         retry={() => {
