@@ -7,7 +7,9 @@
 // this screen renders outside ThemeProvider, so it cannot read slots. The design uses
 // Figtree; we stand in with Inter (already loaded), keeping the brand retint.
 import { useEffect, useRef, useState } from "react";
-import { Dimensions, Pressable, Text, View } from "react-native";
+import { Dimensions, Pressable, View } from "react-native";
+import { Text } from "@/design/text";
+import { FONT } from "@/design/mobile-tokens";
 import Svg, { Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
@@ -116,7 +118,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
     <View style={{ overflow: "hidden" }}>
       <Text
         style={{
-          fontFamily: "Inter-SemiBold",
+          fontFamily: FONT.semibold,
           fontSize: headSize,
           lineHeight: headLH,
           letterSpacing: -2.5 * k,
@@ -140,7 +142,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
           position: "absolute",
           left: 24,
           top: insets.top + 10,
-          fontFamily: "Inter-SemiBold",
+          fontFamily: FONT.semibold,
           fontSize: 68 * k,
           letterSpacing: -1 * k,
           color: C.pale,
@@ -183,7 +185,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
         {headLine("in English.", l2)}
         <Text
           style={{
-            fontFamily: "Inter-Medium",
+            fontFamily: FONT.medium,
             fontSize: subSize,
             fontWeight: "500",
             color: C.sub,
@@ -215,7 +217,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
           transform: [{ translateY: (1 - btnE) * 120 * k }],
         }}
       >
-        <Text style={{ fontFamily: "Inter-SemiBold", fontSize: 52 * k, color: C.btnText }}>Get started</Text>
+        <Text style={{ fontFamily: FONT.semibold, fontSize: 52 * k, color: C.btnText }}>Get started</Text>
         <View
           pointerEvents="none"
           style={{
@@ -254,8 +256,8 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
             opacity: clamp(btnP * 1.8, 0, 1),
           }}
         >
-          <Text style={{ fontFamily: "Inter-Medium", fontSize: 40 * k, color: C.sub }}>
-            Already have an account? <Text style={{ fontFamily: "Inter-SemiBold", color: C.pale, textDecorationLine: "underline" }}>Log in</Text>
+          <Text style={{ fontFamily: FONT.medium, fontSize: 40 * k, color: C.sub }}>
+            Already have an account? <Text style={{ fontFamily: FONT.semibold, color: C.pale, textDecorationLine: "underline" }}>Log in</Text>
           </Text>
         </Pressable>
       ) : null}

@@ -16,7 +16,8 @@
 //   BRAND.main (#162555) on #FFFFFF          = 14.7:1
 //   #FFFFFF check glyph on BRAND.main        = 14.7:1
 import { memo, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
+import { Text } from "@/design/text";
 import * as Haptics from "expo-haptics";
 import Reanimated, { Easing, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
 

@@ -1,6 +1,7 @@
 // library.tsx — Library tab: list + add sheet, clip focus reader.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Dimensions, Modal, Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { Text } from "@/design/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { VideoView, useVideoPlayer } from "expo-video";

@@ -7,10 +7,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { usePostHog } from "posthog-react-native";
 

@@ -2,7 +2,8 @@
 // feedback. The immediate post-talk result and the historical Session detail
 // route both render this, so a future styling change updates both surfaces.
 import type { ReactNode } from "react";
-import { StyleProp, Text, View, ViewStyle } from "react-native";
+import { StyleProp, View, ViewStyle } from "react-native";
+import { Text } from "@/design/text";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { Icon, gradientStops } from "@/design/ui";

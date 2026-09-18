@@ -1,11 +1,13 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, Text, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, useColorScheme, View } from "react-native";
+import { Text } from "@/design/text";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
+import { SERIF } from "@/design/mobile-tokens";
 import { usePostHog } from "posthog-react-native";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -52,13 +54,10 @@ function RootNavigator() {
   const [importAttempt, setImportAttempt] = useState(0);
 
   // Saylo design-system fonts, loaded at runtime (expo-font is already in the
-  // dev client, so no native rebuild). Newsreader = editorial serif hero; Inter
-  // (per weight — RN needs an explicit family per static weight) for UI text.
+  // dev client, so no native rebuild). Pretendard, one family per static
+  // weight, is the UI face (design/text.tsx applies it); Instrument Serif is
+  // the display serif.
   const [fontsLoaded] = useFonts({
-    Newsreader: require("../../assets/fonts/Newsreader36pt-Regular.ttf"),
-    Inter: require("../../assets/fonts/Inter18pt-Regular.ttf"),
-    "Inter-Medium": require("../../assets/fonts/Inter18pt-Medium.ttf"),
-    "Inter-SemiBold": require("../../assets/fonts/Inter18pt-SemiBold.ttf"),
     Pretendard: require("../../assets/fonts/Pretendard-Regular.otf"),
     "Pretendard-Medium": require("../../assets/fonts/Pretendard-Medium.otf"),
     "Pretendard-SemiBold": require("../../assets/fonts/Pretendard-SemiBold.otf"),
@@ -237,7 +236,7 @@ function ImportingStory({ error, onRetry }: { error: string | null; onRetry: () 
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: t.colors.bg }}>
       {error ? null : <ActivityIndicator size="large" color={t.colors.acc} />}
-      <Text style={{ marginTop: 22, fontFamily: "Newsreader", fontSize: 32, textAlign: "center", color: t.colors.ink }}>
+      <Text style={{ marginTop: 22, fontFamily: SERIF, fontSize: 32, textAlign: "center", color: t.colors.ink }}>
         {error ? "Your Speaking Note is still here." : "Adding your first Speaking Note…"}
       </Text>
       <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, textAlign: "center", color: t.colors.ink2 }}>

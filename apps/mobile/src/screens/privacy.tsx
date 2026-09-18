@@ -5,7 +5,8 @@
 // App Store Connect also needs a hosted privacy policy URL; this screen is the
 // in-app companion, not a replacement.
 import { useState } from "react";
-import { Alert, Linking, Switch, Text, View } from "react-native";
+import { Alert, Linking, Switch, View } from "react-native";
+import { Text } from "@/design/text";
 
 import { useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Screen, Stagger } from "@/design/ui";

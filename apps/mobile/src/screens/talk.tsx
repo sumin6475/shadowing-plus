@@ -5,9 +5,9 @@ import {
   Linking,
   Pressable,
   ScrollView,
-  Text,
   View,
 } from "react-native";
+import { Text } from "@/design/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { MirrorPreview } from "@/components/mirror-preview";

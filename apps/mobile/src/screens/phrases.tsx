@@ -1,7 +1,9 @@
 // phrases.tsx — Phrase Bank tab: list + chart, detail, review flow. Backed by
 // the canonical `phrase_items` collection; transcript bookmarks are separate.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
+import { SERIF } from "@/design/mobile-tokens";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -974,7 +976,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                 autoFocus
                 placeholder="Phrase"
                 placeholderTextColor={t.colors.ink3}
-                style={{ fontSize: 29, lineHeight: 36, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 10, padding: 0 }}
+                style={{ fontSize: 29, lineHeight: 36, fontFamily: SERIF, color: t.colors.ink, marginTop: 10, padding: 0 }}
               />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 15 }}>
                 {PHRASE_KINDS.map((entry) => <Chip key={entry.value} active={editKind === entry.value} onPress={() => setEditKind(entry.value)}>{entry.label}</Chip>)}

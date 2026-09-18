@@ -9,7 +9,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type RefreshControlProps,
   type ScrollViewProps,
@@ -17,6 +16,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { Text } from "./text";
 import Reanimated, { FadeInDown } from "react-native-reanimated";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -61,13 +61,12 @@ export function toneColor(t: Theme, name: string): string {
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────
-// Newsreader reads ~10% smaller than the Georgia it replaced, so scale every
-// serif's fontSize + lineHeight once here — the whole app compensates uniformly
-// without editing each call site. Per-site fontSize still sets relative size;
-// this only nudges the overall serif scale up.
-const SERIF_SCALE = 1.1;
+// The brand serif renders at its Figma sizes as given. (Newsreader, the serif
+// before 2026-09-18, needed a 1.1 scale for its small x-height; keep this hook
+// in case a future face does too.)
+const SERIF_SCALE = 1;
 
-// Newsreader draws Latin only (564 glyphs). For text in another script, use a
+// The brand serif (Instrument Serif) draws Latin only. For text in another script, use a
 // serif that actually has the glyphs instead of letting iOS cascade that line
 // into the system SANS. Both faces below ship with iOS, so they cost no bundle
 // size. Korean and Chinese have no serif on iOS (a free one is 16–23 MB to
@@ -81,25 +80,25 @@ const HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
 interface SerifFace {
   fontFamily: string;
-  /** Newsreader's small x-height needs SERIF_SCALE; the other faces don't. */
+  /** Only the brand serif takes SERIF_SCALE; the fallback faces don't. */
   scale: number;
   /** Negative tracking suits a Latin serif; it crowds CJK. */
   tracking: boolean;
 }
 
-const NEWSREADER_FACE: SerifFace = { fontFamily: SERIF, scale: SERIF_SCALE, tracking: true };
+const BRAND_SERIF_FACE: SerifFace = { fontFamily: SERIF, scale: SERIF_SCALE, tracking: true };
 
 /** The serif that can draw `text`. Han without kana is ambiguous — Chinese and
  *  Japanese share those code points but not their glyph shapes — so the
  *  learner's first language decides. Mincho on Chinese text would show a
  *  Taiwanese learner Japanese letterforms. */
 function serifFace(text: string): SerifFace {
-  if (Platform.OS !== "ios") return NEWSREADER_FACE;
+  if (Platform.OS !== "ios") return BRAND_SERIF_FACE;
   if (KANA.test(text) || (HAN.test(text) && firstLanguage() === "ja")) {
     return { fontFamily: SERIF_MINCHO, scale: 1, tracking: false };
   }
   if (CYRILLIC.test(text)) return { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true };
-  return NEWSREADER_FACE;
+  return BRAND_SERIF_FACE;
 }
 
 function textOf(node: ReactNode): string {
@@ -117,12 +116,11 @@ export function serifInputFace(text: string, tracking: number): TextStyle {
 
 /**
  * `strong` is not a style flag, it is a different face. Only
- * Newsreader36pt-Regular is bundled, so fontWeight on a Newsreader run matches
+ * InstrumentSerif-Regular is bundled, so fontWeight on a brand-serif run matches
  * nothing and iOS quietly draws Regular — the bold never arrives and nothing
  * warns you. The system serif (New York) ships every weight, costs no bundle,
  * and is already this design system's serif for Cyrillic, so a bold serif run
- * goes there instead. It needs no SERIF_SCALE: its x-height is not Newsreader's
- * small one. Text that Newsreader cannot draw at all still routes by script.
+ * goes there instead, without SERIF_SCALE. Text that Newsreader cannot draw at all still routes by script.
  */
 export function Serif({
   children,
@@ -137,7 +135,7 @@ export function Serif({
 }) {
   const text = textOf(children);
   const natural = serifFace(text);
-  const face: SerifFace = strong && natural === NEWSREADER_FACE ? { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true } : natural;
+  const face: SerifFace = strong && natural === BRAND_SERIF_FACE ? { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true } : natural;
   const flat = StyleSheet.flatten(style) as TextStyle | undefined;
   const scaled: TextStyle = {};
   if (face.scale !== 1) {

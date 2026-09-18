@@ -4,7 +4,8 @@
 // never records audio). Falls back to a dark surface on denial and offers a
 // Settings + retry path once iOS refuses to re-prompt.
 import { useEffect } from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/design/text";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { BRAND } from "@/design/mobile-tokens";

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
+import { Text } from "@/design/text";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
 import { TalkFeedbackDetail } from "@/components/talk-feedback-detail";

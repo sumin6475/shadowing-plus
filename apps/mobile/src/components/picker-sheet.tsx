@@ -10,7 +10,8 @@
 // enough to need one. Lifted from the Add-to-a-story sheet in practice.tsx,
 // which already worked this way.
 import { useMemo, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { hairline, useTheme } from "@/design/theme";

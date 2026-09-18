@@ -9,10 +9,9 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Motif, TypeScale } from "@/constants/cobalt";

@@ -6,7 +6,8 @@
 // kept only for status (in_progress / awaiting_sign_in / completed) so the
 // root gate keeps working.
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/design/text";
 import { useCameraPermissions } from "expo-camera";
 import * as Notifications from "expo-notifications";
 import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";

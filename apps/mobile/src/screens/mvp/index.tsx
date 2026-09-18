@@ -9,19 +9,25 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Linking,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  Button,
+  Host,
+  Image,
+  Menu,
+  Picker,
+  Text as SwiftText,
+} from "@expo/ui/swift-ui";
+import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
+import { SEARCH_ENABLED } from "@/lib/release-flags";
 import { FONT } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
 import { Avatar, BackBar, Card, Icon, Pill, Screen, Serif } from "@/design/ui";
@@ -119,22 +125,33 @@ function ErrorCard({
     </Card>
   );
 }
+/** What the header's filter button offers. Its list drops down from the
+ *  button (native iOS menu) — options with a checkmark on the current one. */
+interface FilterMenu {
+  options: { label: string; count?: number }[];
+  selected: string;
+  onSelect: (label: string) => void;
+  /** Shown only while SEARCH_ENABLED. */
+  onSearch?: () => void;
+}
 function Header({
   nav,
   title,
   add,
   addLabel,
-  filter,
-  filtered,
+  menu,
+  filtered = false,
 }: {
   nav: Nav;
   title: string;
   add: () => void;
   addLabel: string;
-  filter: () => void;
-  filtered: boolean;
+  menu?: FilterMenu;
+  filtered?: boolean;
 }) {
   const t = useTheme();
+  const search = SEARCH_ENABLED ? menu?.onSearch : undefined;
+  const hasFilter = !!menu && (menu.options.length > 0 || !!search);
   return (
     <View
       style={{
@@ -157,7 +174,7 @@ function Header({
           flexDirection: "row",
           alignItems: "center",
           gap: 20,
-          paddingVertical: 10,
+          height: 48,
           paddingHorizontal: 12,
           borderRadius: 100,
           backgroundColor: t.colors.card,
@@ -171,27 +188,53 @@ function Header({
         >
           <Icon name="plus" s={28} w={1.75} c={t.colors.ink} />
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={filtered ? "Filter, active" : "Filter"}
-          onPress={filter}
-          hitSlop={8}
-        >
-          <Icon name="filter" s={28} w={1.75} c={t.colors.ink} />
-          {filtered ? (
-            <View
-              style={{
-                position: "absolute",
-                top: 1,
-                right: -1,
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: t.colors.acc,
-              }}
-            />
-          ) : null}
-        </Pressable>
+        {hasFilter && menu ? (
+          <View>
+            <Host matchContents>
+              <Menu
+                label={
+                  <Image
+                    systemName="line.3.horizontal.decrease"
+                    size={22}
+                    color={t.colors.ink}
+                  />
+                }
+              >
+                {search ? (
+                  <Button label="Search" systemImage="magnifyingglass" onPress={search} />
+                ) : null}
+                {menu.options.length ? (
+                  <Picker
+                    label="Show"
+                    selection={menu.selected}
+                    onSelectionChange={(v) => menu.onSelect(String(v))}
+                    modifiers={[pickerStyle("inline")]}
+                  >
+                    {menu.options.map((o) => (
+                      <SwiftText key={o.label} modifiers={[tag(o.label)]}>
+                        {o.count === undefined ? o.label : `${o.label}  ${o.count}`}
+                      </SwiftText>
+                    ))}
+                  </Picker>
+                ) : null}
+              </Menu>
+            </Host>
+            {filtered ? (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  top: -2,
+                  right: -4,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: t.colors.acc,
+                }}
+              />
+            ) : null}
+          </View>
+        ) : null}
       </View>
       <View
         style={{
@@ -207,126 +250,40 @@ function Header({
     </View>
   );
 }
-/** Search (+ an optional stage filter) behind the header's filter icon. */
-function FilterSheet({
-  open,
-  onClose,
+/** Inline search under the header — only reachable while SEARCH_ENABLED. */
+function SearchBar({
   query,
   setQuery,
   placeholder,
-  stages,
-  stage,
-  setStage,
+  close,
 }: {
-  open: boolean;
-  onClose: () => void;
   query: string;
   setQuery: (q: string) => void;
   placeholder: string;
-  stages?: { label: string; count: number }[];
-  stage?: string;
-  setStage?: (s: string) => void;
+  close: () => void;
 }) {
-  const t = useTheme(),
-    insets = useSafeAreaInsets();
+  const t = useTheme();
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <Field
+        autoFocus
+        accessibilityLabel={placeholder}
+        placeholder={placeholder}
+        value={query}
+        onChangeText={setQuery}
+        returnKeyType="search"
+        clearButtonMode="while-editing"
+        style={{ flex: 1, backgroundColor: t.colors.card }}
+      />
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Close filter"
-        style={{ flex: 1 }}
-        onPress={onClose}
-      />
-      <KeyboardAvoidingView behavior="padding">
-        <View
-          style={{
-            backgroundColor: t.colors.bg,
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            padding: 20,
-            paddingBottom: insets.bottom + 16,
-            gap: 16,
-            shadowColor: "#000",
-            shadowOpacity: 0.12,
-            shadowRadius: 20,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text style={{ fontFamily: FONT.bold, fontSize: 20, color: t.colors.ink }}>
-              Filter
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              hitSlop={10}
-              onPress={() => {
-                setQuery("");
-                setStage?.("All");
-              }}
-            >
-              <Text style={{ fontFamily: FONT.semibold, fontSize: 15, color: t.colors.acc }}>
-                Reset
-              </Text>
-            </Pressable>
-          </View>
-          <Field
-            accessibilityLabel={placeholder}
-            placeholder={placeholder}
-            value={query}
-            onChangeText={setQuery}
-            returnKeyType="search"
-            onSubmitEditing={onClose}
-            clearButtonMode="while-editing"
-            style={{ backgroundColor: t.colors.card, fontFamily: FONT.regular }}
-          />
-          {stages && setStage ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {stages.map(({ label, count }) => {
-                const on = label === stage;
-                return (
-                  <Pressable
-                    key={label}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: on }}
-                    onPress={() => setStage(label)}
-                    style={{
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                      borderRadius: 100,
-                      backgroundColor: on ? t.colors.acc : t.colors.card,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: FONT.semibold,
-                        fontSize: 14,
-                        color: on ? t.colors.onAcc : t.colors.ink2,
-                      }}
-                    >
-                      {`${label} ${count}`}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-          {/* Not `full`: that sets flex 1, which collapses to 0 in a column. */}
-          <Pill style={{ alignSelf: "stretch" }} onPress={onClose}>
-            Show results
-          </Pill>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        accessibilityLabel="Close search"
+        hitSlop={10}
+        onPress={close}
+      >
+        <Icon name="x" s={18} c={t.colors.ink2} />
+      </Pressable>
+    </View>
   );
 }
 function FilterSummary({ text, clear }: { text: string; clear: () => void }) {
@@ -394,7 +351,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
     voice = usePhraseSpeech();
   const [filter, setFilter] = useState("All"),
     [query, setQuery] = useState(""),
-    [sheet, setSheet] = useState(false);
+    [searching, setSearching] = useState(false);
   const phrases = state.data?.phrases ?? [],
     recent = state.data?.notes.find((n) => !isBlankNote(n.title, n.body));
   const now = new Date(),
@@ -435,9 +392,29 @@ export function PhraseBank({ nav }: { nav: Nav }) {
         title="Phrases"
         add={() => nav.push("quickCapture")}
         addLabel="Save a phrase"
-        filter={() => setSheet(true)}
+        menu={{
+          options: ["All", "Collected", "Learning", "Ready"].map((label) => ({
+            label,
+            count: phrases.filter((p) => label === "All" || phraseStage(p) === label)
+              .length,
+          })),
+          selected: filter,
+          onSelect: setFilter,
+          onSearch: () => setSearching(true),
+        }}
         filtered={filtering}
       />
+      {searching ? (
+        <SearchBar
+          query={query}
+          setQuery={setQuery}
+          placeholder="Search your phrases"
+          close={() => {
+            setSearching(false);
+            setQuery("");
+          }}
+        />
+      ) : null}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -651,20 +628,6 @@ export function PhraseBank({ nav }: { nav: Nav }) {
           </View>
         </View>
       ))}
-      <FilterSheet
-        open={sheet}
-        onClose={() => setSheet(false)}
-        query={query}
-        setQuery={setQuery}
-        placeholder="Search your phrases"
-        stages={["All", "Collected", "Learning", "Ready"].map((label) => ({
-          label,
-          count: phrases.filter((p) => label === "All" || phraseStage(p) === label)
-            .length,
-        }))}
-        stage={filter}
-        setStage={setFilter}
-      />
     </Screen>
   );
 }
@@ -1037,7 +1000,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
   const t = useTheme();
   const state = useRefresh(loadNotes, nav.speakingDataRevision),
     [query, setQuery] = useState(""),
-    [sheet, setSheet] = useState(false),
+    [searching, setSearching] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const create = async () => {
@@ -1070,22 +1033,32 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         title="Studio"
         add={() => void create()}
         addLabel="New note"
-        filter={() => setSheet(true)}
+        menu={{
+          options: [],
+          selected: "",
+          onSelect: () => {},
+          onSearch: () => setSearching(true),
+        }}
         filtered={!!query.trim()}
       />
+      {searching ? (
+        <SearchBar
+          query={query}
+          setQuery={setQuery}
+          placeholder="Search notes"
+          close={() => {
+            setSearching(false);
+            setQuery("");
+          }}
+        />
+      ) : null}
       {query.trim() ? (
         <FilterSummary
           text={`${notes.length} note${notes.length === 1 ? "" : "s"} matching “${query.trim()}”`}
           clear={() => setQuery("")}
         />
       ) : null}
-      <FilterSheet
-        open={sheet}
-        onClose={() => setSheet(false)}
-        query={query}
-        setQuery={setQuery}
-        placeholder="Search notes"
-      />
+
       <ErrorCard
         error={state.error || error}
         retry={() => {
@@ -1324,7 +1297,7 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
               );
             }}
             style={{
-              fontFamily: "Newsreader",
+              fontFamily: FONT.display,
               fontSize: 36,
               lineHeight: 42,
               color: t.colors.ink,

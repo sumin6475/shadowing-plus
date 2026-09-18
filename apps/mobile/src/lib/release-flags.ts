@@ -11,3 +11,7 @@
 
 /** True in dev/preview builds; always false in the App Store build. */
 export const PREVIEW_FEATURES = process.env.EXPO_PUBLIC_PREVIEW_FEATURES === "1";
+
+/** Phrase/note search in the header filter menu. Hidden until its design is
+ *  settled (2026-09-18) — flip to true to bring it back. */
+export const SEARCH_ENABLED = false;

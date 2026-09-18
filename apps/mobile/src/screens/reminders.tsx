@@ -2,7 +2,8 @@
 // enable, daily/weekly, weekdays, local time. Banner copy preview + test ping
 // are __DEV__-only (ship builds omit this; keep for internal copy refinement).
 import { useCallback, useEffect, useState } from "react";
-import { AppState, Linking, Pressable, Switch, Text, View } from "react-native";
+import { AppState, Linking, Pressable, Switch, View } from "react-native";
+import { Text } from "@/design/text";
 import { usePostHog } from "posthog-react-native";
 
 import { useTheme } from "@/design/theme";

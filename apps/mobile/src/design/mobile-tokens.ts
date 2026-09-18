@@ -21,9 +21,10 @@
 import type { ViewStyle } from "react-native";
 
 // ── Fonts ─────────────────────────────────────────────────────────────────
-export const SERIF = "Newsreader";
-/** UI face loaded by the root _layout; not yet the default UI family. */
-export const FONT_UI = "Inter";
+/** Brand serif (Figma, 2026-09-18) — replaced Newsreader app-wide. */
+export const SERIF = "InstrumentSerif";
+/** Default UI face; applied to every Text/TextInput by design/text.tsx. */
+export const FONT_UI = "Pretendard";
 /** Figma faces for the MVP screens (Phrases, Studio): Pretendard for UI,
  *  Instrument Serif for display lines. Set the family, never fontWeight —
  *  a weight on a static face makes iOS fall back to the system font. */

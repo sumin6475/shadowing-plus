@@ -1,6 +1,7 @@
 // Studio analytics: speaking time, active Topics/Situations, and Phrase insights.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, Text, View } from "react-native";
+import { ActivityIndicator, RefreshControl, View } from "react-native";
+import { Text } from "@/design/text";
 import Svg, { Circle } from "react-native-svg";
 
 import { BRAND } from "@/design/mobile-tokens";

@@ -5,11 +5,11 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  Text,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { Text } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 
 import { useTheme } from "@/design/theme";

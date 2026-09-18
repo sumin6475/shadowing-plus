@@ -7,7 +7,8 @@
 // clip link in phrases.tsx, is gated by the same flag). A placeholder reaching
 // the App Store binary is a Guideline 2.1 rejection — keep it that way.
 import { useState, type ReactNode } from "react";
-import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, Share, StyleSheet, View } from "react-native";
+import { Text } from "@/design/text";
 
 import { usePostHog } from "posthog-react-native";
 

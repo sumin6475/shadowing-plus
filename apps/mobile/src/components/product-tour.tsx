@@ -33,9 +33,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text } from "@/design/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, Mask, Rect } from "react-native-svg";
 

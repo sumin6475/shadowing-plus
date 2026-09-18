@@ -2,7 +2,8 @@
 // user_metadata). First language and Feedback focus are their own screens and
 // persist locally, like Reminders.
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { hairline, useTheme } from "@/design/theme";

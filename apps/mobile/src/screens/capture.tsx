@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, InteractionManager, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, InteractionManager, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
+import { SERIF } from "@/design/mobile-tokens";
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
@@ -832,7 +834,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         ) : (
           <CaptureLabel label="PHRASE TO KEEP" tag="Required" />
         )}
-        <TextInput value={text} onChangeText={(value) => { setText(value); if (error) setError(null); }} placeholder="e.g. take the plunge" placeholderTextColor={t.colors.ink3} style={{ fontSize: 20, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 9, padding: 0 }} />
+        <TextInput value={text} onChangeText={(value) => { setText(value); if (error) setError(null); }} placeholder="e.g. take the plunge" placeholderTextColor={t.colors.ink3} style={{ fontSize: 20, fontFamily: SERIF, color: t.colors.ink, marginTop: 9, padding: 0 }} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 14 }}>
           {KINDS.map((item) => <Chip key={item.value} active={kind === item.value} onPress={() => setKind(item.value)}>{item.label}</Chip>)}
         </ScrollView>
@@ -991,7 +993,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
                   autoFocus
                   placeholder="Phrase"
                   placeholderTextColor={t.colors.ink3}
-                  style={{ fontSize: 27, lineHeight: 34, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 9, padding: 0 }}
+                  style={{ fontSize: 27, lineHeight: 34, fontFamily: SERIF, color: t.colors.ink, marginTop: 9, padding: 0 }}
                 />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 14 }}>
                   {KINDS.map((item) => <Chip key={item.value} active={savedEditKind === item.value} onPress={() => setSavedEditKind(item.value)}>{item.label}</Chip>)}
@@ -1015,7 +1017,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
                     <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                   </View>
                 </View>
-                <Text style={{ fontSize: 29, lineHeight: 37, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 9 }}>{selectedSaved.text}</Text>
+                <Text style={{ fontSize: 29, lineHeight: 37, fontFamily: SERIF, color: t.colors.ink, marginTop: 9 }}>{selectedSaved.text}</Text>
                 <View style={{ alignSelf: "flex-start", borderRadius: 999, backgroundColor: t.colors.accS, paddingHorizontal: 13, paddingVertical: 7, marginTop: 10 }}>
                   <Text style={{ fontSize: 13.5, fontWeight: "600", color: t.colors.accD }}>{KINDS.find((item) => item.value === selectedSaved.kind)?.label ?? "Expression"}</Text>
                 </View>
