@@ -1356,3 +1356,13 @@ Sheet가 쓰던 구조로 통일.
 **검증.** tsc 통과, `test:mvp` 8/8(시간·날짜·타이머 케이스 추가), eslint 에러 0. 시뮬레이터에서 Profile "3 h 4 min spoken in total", 세션 날짜 "Sep 12" 확인. 타이머 수정은 시뮬레이터에 음성 인식이 없어 런타임 확인 불가 — 단위 테스트까지가 근거.
 
 **남은 판단.** 과거 세션 행의 부풀려진 seconds는 그대로다(합계에 포함). 정리 여부는 Sumin 결정.
+
+## 2026-09-20 — 앱 안에서 세션 삭제 (빨간 버튼 + 스와이프)
+
+**만든 것.** (`8e309b9`) 세션 상세에 빨간 "Delete session"(`Pill tone="danger"` 신설 — AA 검증된 `warn` 색 + 12% 배경), Profile 목록은 스와이프 삭제(`SwipeRow`, 기존 빨간 패널 재사용). 둘 다 `confirmDelete`로 길이를 문장에 넣어 확인받는다.
+
+**원칙.** 삭제 순서는 "되돌릴 수 있는 쪽이 먼저 깨지게" — 녹음 파일을 먼저 지우고 행을 지운다. 행이 그 파일을 가리키는 유일한 포인터라, 반대로 하면 아무도 닿을 수 없는 파일이 남는다. 행만 남고 오디오가 없는 상태는 화면에서 복구 가능.
+
+**맥락.** 부풀려진 과거 세션 정리를 SQL 대신 앱에서 하기로 함(`supabase/maintenance/2026-09-20-delete-empty-long-talk-sessions.sql`은 미실행 상태로 남겨둠 — 대량 정리가 필요해지면 쓸 수 있다).
+
+**검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: 스와이프 → 빨간 Delete 패널 → 확인 다이얼로그("59 min 6s of speaking, and its recording, will be removed.") → **Cancel로 종료(실제 삭제는 Sumin 몫이라 하지 않음)**. 상세 화면의 빨간 버튼 렌더 확인.
