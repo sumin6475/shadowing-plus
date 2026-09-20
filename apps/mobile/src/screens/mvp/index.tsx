@@ -41,6 +41,8 @@ import {
   createNote,
   deleteNote,
   deleteSentence,
+  dateLabel,
+  dateTimeLabel,
   durationLabel,
   isBlankNote,
   loadMirrorSessions,
@@ -805,7 +807,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
           <Serif style={{ fontSize: 43 }}>{p.text}</Serif>
           <Copy>{p.translation || "An expression to make your own."}</Copy>
           <Label>
-            {p.source} · {new Date(p.createdAt).toLocaleDateString()}
+            {p.source} · {dateLabel(p.createdAt)}
           </Label>
           <View style={{ flexDirection: "row", gap: 5, marginVertical: 10 }}>
             {STEPS.map((step) => (
@@ -884,7 +886,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                   </Text>
                   <Label>
                     {p[step]
-                      ? `DONE · ${new Date(p[step]!).toLocaleDateString()}`
+                      ? `DONE · ${dateLabel(p[step]!)}`
                       : [
                           "Listen, repeat, then check",
                           "Find a voice and a context",
@@ -1538,7 +1540,7 @@ export function MvpProfile({ nav }: { nav: Nav }) {
                   style={{ flex: 1, alignItems: "center", gap: 9 }}
                 >
                   <View
-                    accessibilityLabel={`${d.date.toLocaleDateString()}: ${durationLabel(d.seconds)}`}
+                    accessibilityLabel={`${dateLabel(d.date)}: ${durationLabel(d.seconds)}`}
                     style={{
                       height: Math.max(3, (d.seconds / max) * 75),
                       width: "100%",
@@ -1608,7 +1610,7 @@ export function MvpProfile({ nav }: { nav: Nav }) {
                   <Text style={{ color: t.colors.ink, fontWeight: "600" }}>
                     {durationLabel(s.seconds)} of speaking
                   </Text>
-                  <Label>{new Date(s.created_at).toLocaleDateString()}</Label>
+                  <Label>{dateLabel(s.created_at)}</Label>
                 </View>
                 <Text
                   numberOfLines={2}
@@ -1639,7 +1641,7 @@ export function MirrorRecord({
   return (
     <Screen>
       <BackBar title="My records" onBack={nav.pop} />
-      <Label>{new Date(session.created_at).toLocaleString()}</Label>
+      <Label>{dateTimeLabel(session.created_at)}</Label>
       <Serif style={{ fontSize: 40 }}>
         {durationLabel(session.seconds)} of speaking.
       </Serif>

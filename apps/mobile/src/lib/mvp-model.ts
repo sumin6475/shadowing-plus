@@ -67,7 +67,39 @@ export const isBlankNote = (title: string, body: string) =>
     .every((l) => !l || /^(Opening|Body|Closing)$/.test(l));
 export function durationLabel(seconds: number) {
   const value = Math.max(0, Math.floor(seconds));
-  return value < 60
-    ? `${value}s`
-    : `${Math.floor(value / 60)} min${value % 60 ? ` ${value % 60}s` : ""}`;
+  if (value < 60) return `${value}s`;
+  const minutes = Math.floor(value / 60),
+    rest = value % 60;
+  // Past an hour, seconds are noise and "77 min 31s" stops reading as a time.
+  if (minutes < 60) return rest ? `${minutes} min ${rest}s` : `${minutes} min`;
+  const hours = Math.floor(minutes / 60),
+    left = minutes % 60;
+  return left ? `${hours} h ${left} min` : `${hours} h`;
 }
+/** One date format for the whole app: "Sep 12", and the year only when it
+ *  isn't this one. Numeric locale dates (9/12/2026) read as noise next to it. */
+export function dateLabel(iso: string | number | Date, now = new Date()) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+/** Same date, plus the clock — for a single session's own screen. */
+export function dateTimeLabel(iso: string | number | Date, now = new Date()) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${dateLabel(date, now)} · ${date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+/** Speaking time is time spent speaking, not time with the screen open: a
+ *  mirror left running in silence must not keep adding seconds. A tick counts
+ *  only within this much of the last words the recognizer returned — long
+ *  enough to carry a normal pause between sentences. */
+export const SPEECH_IDLE_GRACE_MS = 10_000;
+export const tickCountsAsSpeaking = (nowMs: number, lastHeardMs: number) =>
+  nowMs - lastHeardMs <= SPEECH_IDLE_GRACE_MS;

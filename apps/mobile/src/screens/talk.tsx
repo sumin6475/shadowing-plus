@@ -23,6 +23,7 @@ import {
   saveMirrorSession,
   todayReadyPhrases,
   durationLabel,
+  tickCountsAsSpeaking,
   type MvpPhrase,
 } from "@/lib/mvp";
 import type { Nav, TalkCtx } from "./nav";
@@ -72,9 +73,22 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       .then(setTodayPhrases)
       .catch(() => setTodayPhrases([]));
   }, []);
+  // Speaking time, not screen time. The timer used to tick for as long as the
+  // recognizer ran, so a mirror left open in silence banked whole minutes
+  // (59-minute sessions with no transcript). Now a tick only counts while new
+  // words are still arriving, within SPEECH_IDLE_GRACE_MS of the last ones.
+  const heardAt = useRef(0);
+  useEffect(() => {
+    // Every new word (interim results included) refreshes the window.
+    heardAt.current = Date.now();
+  }, [speech.transcript]);
   useEffect(() => {
     if (phase !== "live" || !speech.recognizing) return;
-    const timer = setInterval(() => setSec((s) => s + 1), 1000);
+    heardAt.current = Date.now();
+    const timer = setInterval(() => {
+      if (tickCountsAsSpeaking(Date.now(), heardAt.current))
+        setSec((s) => s + 1);
+    }, 1000);
     return () => clearInterval(timer);
   }, [phase, speech.recognizing]);
   useEffect(() => {

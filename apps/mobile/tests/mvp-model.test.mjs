@@ -7,6 +7,10 @@ import {
   durationLabel,
   isBlankNote,
   NOTE_TEMPLATE,
+  dateLabel,
+  dateTimeLabel,
+  tickCountsAsSpeaking,
+  SPEECH_IDLE_GRACE_MS,
   todaysPicks,
   practicedOn,
   periodOf,
@@ -52,6 +56,10 @@ test("duration reflects seconds without rounding a minute up", () => {
   assert.equal(durationLabel(59.9), "59s");
   assert.equal(durationLabel(60), "1 min");
   assert.equal(durationLabel(192), "3 min 12s");
+  // Past an hour, hours and minutes — "77 min 31s" was unreadable.
+  assert.equal(durationLabel(3600), "1 h");
+  assert.equal(durationLabel(4651), "1 h 17 min");
+  assert.equal(durationLabel(7260), "2 h 1 min");
 });
 
 test("an untouched new note is blank, any real word is not", () => {
@@ -93,4 +101,21 @@ test("periods follow calendar days, not 24-hour windows", () => {
   assert.equal(periodOf(at(10), now), "Last 30 days");
   assert.equal(periodOf(new Date(2026, 7, 19, 12).toISOString(), now), "Last 30 days");
   assert.equal(periodOf(new Date(2026, 7, 18, 12).toISOString(), now), "Earlier");
+});
+
+test("dates read the same everywhere, with the year only when it differs", () => {
+  const now = new Date(2026, 8, 20);
+  assert.equal(dateLabel(new Date(2026, 8, 12), now), "Sep 12");
+  assert.equal(dateLabel(new Date(2025, 11, 31), now), "Dec 31, 2025");
+  assert.equal(dateLabel("not a date", now), "");
+  assert.match(dateTimeLabel(new Date(2026, 8, 12, 13, 5), now), /^Sep 12 · /);
+});
+
+test("a silent mirror stops banking speaking time", () => {
+  const now = 1_000_000;
+  assert.equal(tickCountsAsSpeaking(now, now), true);
+  assert.equal(tickCountsAsSpeaking(now, now - 3000), true, "a pause between sentences still counts");
+  assert.equal(tickCountsAsSpeaking(now, now - SPEECH_IDLE_GRACE_MS - 1), false);
+  // The 59-minute silent session: only the grace window could ever be counted.
+  assert.equal(tickCountsAsSpeaking(now, now - 59 * 60_000), false);
 });
