@@ -31,7 +31,17 @@ import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { SEARCH_ENABLED } from "@/lib/release-flags";
 import { FONT } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
-import { Avatar, BackBar, Card, Icon, Pill, Screen, Serif } from "@/design/ui";
+import {
+  Avatar,
+  BackBar,
+  Card,
+  confirmDelete,
+  Icon,
+  Pill,
+  Screen,
+  Serif,
+  SwipeRow,
+} from "@/design/ui";
 import { useTheme } from "@/design/theme";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
 import { createPhrase, deletePhrase } from "@/lib/phrases";
@@ -39,6 +49,7 @@ import {
   addSentence,
   completedSteps,
   createNote,
+  deleteMirrorSession,
   deleteNote,
   deleteSentence,
   dateLabel,
@@ -1597,10 +1608,23 @@ export function MvpProfile({ nav }: { nav: Nav }) {
             </Card>
           ) : (
             sessions.slice(0, 20).map((s) => (
-              <Card
+              <SwipeRow
                 key={s.id}
-                onPress={() => nav.push("mirrorRecord", { session: s })}
+                onDelete={() =>
+                  confirmDelete({
+                    title: "Delete this session?",
+                    message: `${durationLabel(s.seconds)} of speaking, and its recording, will be removed.`,
+                    onConfirm: () =>
+                      void deleteMirrorSession(s)
+                        .then(() => {
+                          nav.invalidateSpeakingData();
+                          return state.refresh();
+                        })
+                        .catch(() => {}),
+                  })
+                }
               >
+              <Card onPress={() => nav.push("mirrorRecord", { session: s })}>
                 <View
                   style={{
                     flexDirection: "row",
@@ -1624,6 +1648,7 @@ export function MvpProfile({ nav }: { nav: Nav }) {
                   {s.transcript || "No transcript captured."}
                 </Text>
               </Card>
+              </SwipeRow>
             ))
           )}
         </>
@@ -1638,6 +1663,8 @@ export function MirrorRecord({
   nav: Nav;
   session: MirrorSession;
 }) {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState<string | null>(null);
   return (
     <Screen>
       <BackBar title="My records" onBack={nav.pop} />
@@ -1656,6 +1683,31 @@ export function MirrorRecord({
           Open note
         </Pill>
       ) : null}
+      <Pill
+        tone="danger"
+        style={{ alignSelf: "stretch" }}
+        onPress={() =>
+          confirmDelete({
+            title: "Delete this session?",
+            message: "Its transcript and recording will be removed.",
+            onConfirm: () => {
+              setBusy(true);
+              void deleteMirrorSession(session)
+                .then(() => {
+                  nav.invalidateSpeakingData();
+                  nav.pop();
+                })
+                .catch((e) => {
+                  setBusy(false);
+                  setError(message(e));
+                });
+            },
+          })
+        }
+      >
+        {busy ? "Deleting…" : "Delete session"}
+      </Pill>
+      <ErrorCard error={error} retry={() => setError(null)} />
     </Screen>
   );
 }

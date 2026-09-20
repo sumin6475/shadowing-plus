@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { deleteTalkSessionAudio } from "./talk-audio";
 import { NOTE_TEMPLATE, readyAt, type Progress, type Step } from "./mvp-model";
 export * from "./mvp-model";
 export interface MvpPhrase extends Progress {
@@ -21,6 +22,7 @@ export interface Sentence {
 }
 export interface MirrorSession {
   id: string;
+  audio_key: string | null;
   note_id: string | null;
   transcript: string | null;
   seconds: number;
@@ -148,7 +150,7 @@ export async function loadMirrorSessions(): Promise<MirrorSession[]> {
   for (let start = 0; ; start += 1000) {
     const { data, error } = await supabase
       .from("talk_sessions")
-      .select("id,note_id,transcript,seconds,duration_seconds,created_at")
+      .select("id,note_id,transcript,seconds,duration_seconds,audio_key,created_at")
       .order("created_at", { ascending: false })
       .order("id")
       .range(start, start + 999);
@@ -161,6 +163,22 @@ export async function loadMirrorSessions(): Promise<MirrorSession[]> {
     );
     if (data.length < 1000) return rows;
   }
+}
+/** Delete a session and the recording it points at. The row carries the only
+ *  pointer to that file, so the audio goes first — a failed row delete leaves
+ *  a session without audio, which is recoverable; the reverse orphans a file
+ *  nothing can reach. */
+export async function deleteMirrorSession(session: {
+  id: string;
+  audio_key: string | null;
+}) {
+  if (session.audio_key)
+    await deleteTalkSessionAudio(session.id, session.audio_key);
+  const { error } = await supabase
+    .from("talk_sessions")
+    .delete()
+    .eq("id", session.id);
+  if (error) throw new Error(error.message);
 }
 export async function saveMirrorSession(input: {
   id: string;

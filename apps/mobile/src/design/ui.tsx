@@ -392,7 +392,7 @@ export function Block({
 }
 
 // ── Pill (capsule button) ──────────────────────────────────────────────────
-type PillTone = "acc" | "dark" | "soft" | "white" | "card" | "ghost" | "tint";
+type PillTone = "acc" | "dark" | "soft" | "white" | "card" | "ghost" | "tint" | "danger";
 // Scheme-independent light capsule used by tone="white". Kept off the theme on
 // purpose: this capsule is drawn on the brand gradient, which is the same navy
 // ramp in light and dark, so its fill must not track the color scheme.
@@ -433,6 +433,9 @@ export function Pill({
     card: { bg: t.colors.card, fg: t.colors.ink, shadow: true },
     ghost: { bg: "transparent", fg: t.colors.ink2 },
     tint: { bg: t.colors.soft, fg: t.colors.ink },
+    // Destructive. `warn` is the AA-checked error pair; at 12% it stays a
+    // capsule you can read, not a red block competing with the primary action.
+    danger: { bg: `${t.colors.warn}1F`, fg: t.colors.warn },
   };
   const tv = tones[tone];
   const h = small ? Motif.buttonHeight.medium : Motif.buttonHeight.large;
