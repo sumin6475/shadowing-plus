@@ -18,6 +18,7 @@ import {
 import { Text, TextInput } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Path, Rect } from "react-native-svg";
 import {
   Button,
   Host,
@@ -337,6 +338,106 @@ const loadHome = async () => {
   const [phrases, notes] = await Promise.all([loadPhraseBank(), loadNotes()]);
   return { phrases, notes };
 };
+/** One period's rows, as one rounded card (Figma). */
+function SectionCard({ label, children }: { label: string; children: ReactNode }) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: 8 }}>
+      <Text
+        accessibilityRole="header"
+        style={{
+          fontFamily: FONT.bold,
+          fontSize: 14,
+          color: t.colors.ink,
+          paddingHorizontal: 2,
+          paddingTop: 12,
+        }}
+      >
+        {label.toUpperCase()}
+      </Text>
+      <View
+        style={{
+          backgroundColor: t.colors.card,
+          borderRadius: 24,
+          paddingHorizontal: 20,
+          paddingVertical: 12,
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+/** A row inside a SectionCard: 16pt padding, hairline between rows. */
+function Row({ last, children }: { last: boolean; children: ReactNode }) {
+  const t = useTheme();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 16,
+        borderBottomWidth: last ? 0 : 1,
+        // Figma's divider is a whisper (#EAEAEA at 50%); the theme's sep reads
+        // as a rule. Dark mode keeps sep so it stays visible.
+        borderColor: t.dark ? t.colors.sep : "rgba(234,234,234,0.5)",
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+/** The 24pt circle a row starts with (button.svg), holding any glyph. */
+function RowCircle({ children }: { children?: ReactNode }) {
+  const t = useTheme();
+  // Light mode is the Figma file verbatim; dark mode swaps the near-white
+  // circle for the theme's so it doesn't glow on a dark card.
+  const ring = t.dark ? t.colors.sep : "#F2F2F7";
+  return (
+    <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={24} height={24} viewBox="0 0 24 24" style={{ position: "absolute" }}>
+        <Rect x={0.5} y={0.5} width={23} height={23} rx={11.5} fill={ring} fillOpacity={0.5} />
+        <Rect x={0.5} y={0.5} width={23} height={23} rx={11.5} stroke={ring} fill="none" />
+      </Svg>
+      {children}
+    </View>
+  );
+}
+/** The glyph colour inside RowCircle, from button.svg. */
+const ROW_GLYPH = "#A6A7A3";
+/** Figma's listen button (button.svg, 24pt): a grey speaker in that circle.
+ *  While playing, the same circle holds a navy pause. */
+const SPEAKER_D =
+  "M13.2292 17.625C13.6461 17.625 13.9464 17.3184 13.9464 16.9077V7.12913C13.9464 6.71845 13.6461 6.375 13.2169 6.375C12.9166 6.375 12.7141 6.50997 12.3892 6.81655L9.68555 9.37296C9.64077 9.41002 9.58409 9.42963 9.52598 9.42815H7.70539C6.84087 9.42815 6.375 9.9003 6.375 10.8198V13.1986C6.375 14.1183 6.84087 14.5902 7.70539 14.5902H9.52598C9.58745 14.5902 9.64265 14.6085 9.68555 14.6453L12.3892 17.2266C12.6835 17.5023 12.9289 17.625 13.2292 17.625ZM16.711 14.7189C16.9195 14.8661 17.2201 14.8172 17.3977 14.5781C17.8761 13.9341 18.1641 12.9903 18.1641 12.0277C18.1641 11.0651 17.8698 10.1271 17.3977 9.47105C17.2198 9.23197 16.9258 9.18279 16.711 9.3298C16.4416 9.50767 16.4107 9.82052 16.6069 10.0902C16.9627 10.5684 17.1772 11.2979 17.1772 12.0275C17.1772 12.7573 16.9501 13.4868 16.6009 13.971C16.4168 14.2347 16.4476 14.5347 16.711 14.7189Z";
+function ListenButton({ state }: { state: "idle" | "loading" | "playing" }) {
+  const t = useTheme();
+  return (
+    <RowCircle>
+      {state === "loading" ? (
+        <ActivityIndicator size="small" style={{ transform: [{ scale: 0.6 }] }} />
+      ) : (
+        <Svg width={24} height={24} viewBox="0 0 24 24">
+          {state === "idle" ? (
+            <Path d={SPEAKER_D} fill={ROW_GLYPH} />
+          ) : (
+            <>
+              <Rect x={8.5} y={7.5} width={2.4} height={9} rx={1.2} fill={t.colors.acc} />
+              <Rect x={13.1} y={7.5} width={2.4} height={9} rx={1.2} fill={t.colors.acc} />
+            </>
+          )}
+        </Svg>
+      )}
+    </RowCircle>
+  );
+}
+/** First real line of a note — headings and bullet markers dropped. */
+const notePreview = (body: string) =>
+  body
+    .replace(/Opening|Body|Closing/g, "")
+    .split("\n")
+    .map((l) => l.replace(/^[-•]\s*/, "").trim())
+    .filter(Boolean)
+    .join(" · ") || "A blank page for your next conversation.";
 const HERO_CARD = {
   width: 271,
   height: 200,
@@ -535,98 +636,56 @@ export function PhraseBank({ nav }: { nav: Nav }) {
         </Card>
       ) : null}
       {[...groups].map(([label, items]) => (
-        <View key={label} style={{ gap: 8 }}>
-          <Text
-            accessibilityRole="header"
-            style={{
-              fontFamily: FONT.bold,
-              fontSize: 14,
-              color: t.colors.ink,
-              paddingHorizontal: 2,
-              paddingTop: 12,
-            }}
-          >
-            {label.toUpperCase()}
-          </Text>
-          <View
-            style={{
-              backgroundColor: t.colors.card,
-              borderRadius: 24,
-              paddingHorizontal: 20,
-              paddingVertical: 12,
-            }}
-          >
-            {items.map((p, i) => {
-              const playing = voice.speakingId === p.id;
-              return (
-                <View
-                  key={p.id}
+        <SectionCard key={label} label={label}>
+          {items.map((p, i) => {
+            const playing = voice.speakingId === p.id;
+            return (
+              <Row key={p.id} last={i === items.length - 1}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${playing ? "Stop" : "Play"} ${p.text}`}
+                  onPress={() => void voice.toggle(p.id, p.text)}
+                  hitSlop={10}
+                >
+                  <ListenButton
+                    state={
+                      voice.loadingId === p.id
+                        ? "loading"
+                        : playing
+                          ? "playing"
+                          : "idle"
+                    }
+                  />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${p.text}, ${phraseStage(p)}, open details`}
+                  onPress={() => nav.push("mvpPhrase", { id: p.id })}
                   style={{
+                    flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
-                    paddingVertical: 16,
-                    borderBottomWidth: i < items.length - 1 ? 1 : 0,
-                    // Figma's divider is a whisper (#EAEAEA at 50%); the theme's
-                    // sep reads as a rule. Dark mode keeps sep so it stays visible.
-                    borderColor: t.dark ? t.colors.sep : "rgba(234,234,234,0.5)",
+                    marginLeft: 6,
+                    gap: 12,
                   }}
                 >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${playing ? "Stop" : "Play"} ${p.text}`}
-                    onPress={() => void voice.toggle(p.id, p.text)}
-                    hitSlop={10}
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      backgroundColor: t.colors.bg,
-                      borderWidth: 1,
-                      borderColor: t.colors.sep,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {voice.loadingId === p.id ? (
-                      <ActivityIndicator size="small" style={{ transform: [{ scale: 0.6 }] }} />
-                    ) : (
-                      <Icon
-                        name={playing ? "pause" : "speaker"}
-                        s={12}
-                        c={playing ? t.colors.acc : t.colors.ink3}
-                      />
-                    )}
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${p.text}, ${phraseStage(p)}, open details`}
-                    onPress={() => nav.push("mvpPhrase", { id: p.id })}
+                  <Text
+                    numberOfLines={2}
                     style={{
                       flex: 1,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      marginLeft: 6,
-                      gap: 12,
+                      fontFamily: FONT.semibold,
+                      fontSize: 16,
+                      color: t.colors.ink,
                     }}
                   >
-                    <Text
-                      numberOfLines={2}
-                      style={{
-                        flex: 1,
-                        fontFamily: FONT.semibold,
-                        fontSize: 16,
-                        color: t.colors.ink,
-                      }}
-                    >
-                      {p.text}
-                    </Text>
-                    <Icon name="chev" s={14} c={t.colors.ink2} />
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-        </View>
+                    {p.text}
+                  </Text>
+                  <Icon name="chev" s={14} c={t.colors.ink2} />
+                </Pressable>
+              </Row>
+            );
+          })}
+        </SectionCard>
       ))}
     </Screen>
   );
@@ -1019,6 +1078,12 @@ export function NotesStudio({ nav }: { nav: Nav }) {
   const notes = (state.data ?? []).filter((n) =>
     `${n.title} ${n.body}`.toLowerCase().includes(query.trim().toLowerCase()),
   );
+  // loadNotes returns newest first, so the Map fills Today → Earlier in order.
+  const groups = new Map<Period, Note[]>();
+  for (const n of notes) {
+    const label = periodOf(n.updated_at);
+    groups.set(label, [...(groups.get(label) ?? []), n]);
+  }
   return (
     <Screen
       refreshControl={
@@ -1066,9 +1131,6 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           void state.refresh();
         }}
       />
-      <View style={{ marginTop: 14 }}>
-        <Label>RECENT NOTES · {notes.length}</Label>
-      </View>
       {!state.loading && !notes.length && !state.error ? (
         <Card>
           <Serif style={{ fontSize: 28 }}>
@@ -1081,44 +1143,69 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           </Copy>
         </Card>
       ) : null}
-      {notes.map((n) => (
-        <Card
-          key={n.id}
-          onPress={() => nav.push("mvpNote", { id: n.id })}
-          style={{ gap: 10, padding: 21 }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Text
-              style={{
-                flex: 1,
-                fontSize: 18,
-                fontWeight: "600",
-                color: t.colors.ink,
-              }}
-            >
-              {n.title || "Untitled note"}
-            </Text>
-            <Label>
-              {new Date(n.updated_at).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
-            </Label>
-          </View>
-          <Copy>
-            {n.body
-              .replace(/Opening|Body|Closing/g, "")
-              .split("\n")
-              .map((l) => l.replace(/^[-•]\s*/, ""))
-              .filter((l) => l.trim())
-              .slice(0, 3)
-              .join(" · ") || "A blank page for your next conversation."}
-          </Copy>
-          <Label>
-            {n.body.split("\n").filter((l) => /^[-•]\s*\S/.test(l)).length}{" "}
-            POINTS · OPEN NOTE ↗
-          </Label>
-        </Card>
+      {[...groups].map(([label, items]) => (
+        <SectionCard key={label} label={label}>
+          {items.map((n, i) => {
+            const title = n.title || "Untitled note";
+            return (
+              <Row key={n.id} last={i === items.length - 1}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Speak with ${title}`}
+                  hitSlop={10}
+                  onPress={() =>
+                    nav.startTalk({
+                      ctx: title,
+                      noteId: n.id,
+                      beats: n.body.split("\n"),
+                      from: "topics",
+                      returnTo: {
+                        tab: "topics",
+                        stack: [{ name: "mvpNote", props: { id: n.id } }],
+                      },
+                    })
+                  }
+                >
+                  <RowCircle>
+                    <Icon name="mic" s={12} c={ROW_GLYPH} />
+                  </RowCircle>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${title}, open note`}
+                  onPress={() => nav.push("mvpNote", { id: n.id })}
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginLeft: 6,
+                    gap: 12,
+                  }}
+                >
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontFamily: FONT.semibold,
+                        fontSize: 16,
+                        color: t.colors.ink,
+                      }}
+                    >
+                      {title}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontFamily: FONT.regular, fontSize: 14, color: t.colors.ink3 }}
+                    >
+                      {notePreview(n.body)}
+                    </Text>
+                  </View>
+                  <Icon name="chev" s={14} c={t.colors.ink2} />
+                </Pressable>
+              </Row>
+            );
+          })}
+        </SectionCard>
       ))}
     </Screen>
   );
