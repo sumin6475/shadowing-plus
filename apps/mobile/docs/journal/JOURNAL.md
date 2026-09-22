@@ -1366,3 +1366,15 @@ Sheet가 쓰던 구조로 통일.
 **맥락.** 부풀려진 과거 세션 정리를 SQL 대신 앱에서 하기로 함(`supabase/maintenance/2026-09-20-delete-empty-long-talk-sessions.sql`은 미실행 상태로 남겨둠 — 대량 정리가 필요해지면 쓸 수 있다).
 
 **검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: 스와이프 → 빨간 Delete 패널 → 확인 다이얼로그("59 min 6s of speaking, and its recording, will be removed.") → **Cancel로 종료(실제 삭제는 Sumin 몫이라 하지 않음)**. 상세 화면의 빨간 버튼 렌더 확인.
+
+## 2026-09-22 — "+" 한 페이지로 합치기 (타이핑 · 카메라 · 앨범 OCR)
+
+**만든 것.** (`73449a0`) MVP의 "+" 페이지가 타이핑만 되던 걸, 예전 capture 화면의 OCR을 되살려 한 페이지로 합쳤다. Camera / Photos → `extractPhraseFromImage` → **같은 입력칸을 채운다**(사진은 미리보기 + 읽어낸 텍스트 카드로 보여주고, Save 전까지 아무것도 저장 안 됨). 사진에서 온 표현은 `source: "image_ocr"` + 읽어낸 텍스트를 context로 저장. Delete note도 다른 전체폭 버튼처럼 늘림.
+
+**걸린 것 — 모델이 프롬프트의 예시값을 그대로 돌려줬다.** 글자 없는 사진(시뮬레이터 샘플 꽃 사진)에서 phrase 칸에 `all legible text`, meaning 칸에 `short English meaning`이 채워졌다. 원인은 앱이 아니라 `supabase/functions/phrase-capture`의 프롬프트: 반환 JSON 예시 문자열을 모델이 그대로 복사했다. 앱에서 그 예시값 목록 + 빈 문자열을 "못 읽음"으로 처리 → "No English text found. Type it instead."
+
+**원칙.** 자동 채움은 사용자가 고칠 수 있는 칸에만 넣는다 — 잘못 읽어도 지우면 그만인 상태로. 그리고 못 읽었을 때는 카드 한 곳에서만 말한다(같은 말을 배너로 한 번 더 하면서 아무 일도 안 하는 "Try again"을 붙이지 않는다).
+
+**검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: 앨범 선택 → 썸네일 + "READING THE PHOTO…" → 채움(첫 시도) / 못 읽음 안내(수정 후) 확인. 카메라 경로는 시뮬레이터에 카메라가 없어 미검증 — 실기기 확인 필요.
+
+**남은 것.** 프롬프트 쪽 근본 수정(예시값 대신 스키마 설명, "글자 없으면 빈 문자열")은 Edge Function 배포가 필요해서 손대지 않음. 예전 `capture.tsx`도 같은 함수를 쓰므로 같은 증상이 있을 수 있다.
