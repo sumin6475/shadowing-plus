@@ -1378,3 +1378,11 @@ Sheet가 쓰던 구조로 통일.
 **검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: 앨범 선택 → 썸네일 + "READING THE PHOTO…" → 채움(첫 시도) / 못 읽음 안내(수정 후) 확인. 카메라 경로는 시뮬레이터에 카메라가 없어 미검증 — 실기기 확인 필요.
 
 **남은 것.** 프롬프트 쪽 근본 수정(예시값 대신 스키마 설명, "글자 없으면 빈 문자열")은 Edge Function 배포가 필요해서 손대지 않음. 예전 `capture.tsx`도 같은 함수를 쓰므로 같은 증상이 있을 수 있다.
+
+## 2026-09-22 (2) — "+"를 원래 캡처 화면으로 되돌리고, 카메라·앨범을 그 안에 넣음
+
+**되돌린 것.** (`06cc527`) 앞 항목에서 만든 간소화 페이지(QuickCapture)를 버리고, "+"는 원래 `PhraseCaptureScreen`(route `capture`)을 연다. Context + 번역, Paste, Fill from context, Phrase to keep + 종류 칩, Refresh with AI, Meaning, How it's used, MORE, Save to Phrase Bank — 이미 잘 돌던 화면이 그대로 돌아왔다. 3갈래 메뉴(찍기/앨범/텍스트) 대신 **Camera·Photos 칩을 그 화면 Paste 옆에** 넣어 한 페이지에서 셋 다 된다. 예시값 되돌림 방어도 이 화면으로 옮겼다.
+
+**원칙 — 새로 만들기 전에 이미 있는 화면을 먼저 찾는다.** MVP 화면을 새로 쓰면서 `capture.tsx`의 기능(문맥·AI 초안·종류 분류·OCR)을 모르고 타이핑 전용 페이지를 만들었다. Sumin이 예전 스크린샷을 보여주기 전까지 그 손실이 드러나지 않았다. "MVP용으로 새 화면"이라는 말은 **기존 화면을 대체하라는 뜻이 아니었다.**
+
+**검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: "+" → 원래 화면(Camera/Photos 포함) → 앨범 선택 → From photo 모드(미리보기·Take again/Choose another·Detected text) → 글자 없는 사진은 칸을 채우지 않음. 카메라는 시뮬레이터에 없어 미검증.
