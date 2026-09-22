@@ -228,6 +228,15 @@ export function CaptureFab({ nav, aboveTabs }: { nav: Nav; aboveTabs: boolean })
   );
 }
 
+/** Strings the phrase-capture prompt uses as its own example values. A photo
+ *  with nothing to read comes back as these rather than as an empty answer. */
+const TEMPLATE_ECHO = [
+  "all legible text",
+  "exact substring",
+  "short english meaning",
+  "natural english translation",
+  "the supplied text",
+];
 export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; imageAsset?: CaptureImageAsset; clipSeed?: ClipCaptureSeed }) {
   const t = useTheme();
   const posthog = usePostHog();
@@ -340,6 +349,15 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
       const compact = await rendered.saveAsync({ base64: true, compress: 0.78, format: ImageManipulator.SaveFormat.JPEG });
       if (!compact.base64) throw new Error("Couldn’t prepare this photo.");
       const draft = await extractPhraseFromImage(compact.base64);
+      // A photo with no readable English makes the model echo the JSON example
+      // it was given ("all legible text", "exact substring"), which would
+      // otherwise land in the fields as if it had read something.
+      const echoed = (value: string) =>
+        !value.trim() || TEMPLATE_ECHO.some((e) => value.trim().toLowerCase().startsWith(e));
+      if (echoed(draft.contextText) && echoed(draft.suggestedPhrase)) {
+        setError("No English text in this photo. Try another, or type it below.");
+        return;
+      }
       applyPhraseDraft(draft);
       setDetectedText(draft.contextText);
       setDetectedTranslation(draft.contextTranslation);
@@ -360,6 +378,38 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     processedImageRef.current = true;
     void readImageAsset(imageAsset);
   }, [imageAsset, readImageAsset]);
+
+  const [picking, setPicking] = useState(false);
+  const pickPhoto = async (origin: CaptureImageAsset["origin"]) => {
+    if (picking || reading) return;
+    setPicking(true);
+    try {
+      if (origin === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            "Camera access needed",
+            "Allow camera access to capture English from a book, a screen, or anything around you.",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => void Linking.openSettings() },
+            ],
+          );
+          return;
+        }
+      }
+      const picked = origin === "camera"
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], cameraType: ImagePicker.CameraType.back, quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
+      if (picked.canceled) return;
+      const asset = picked.assets[0];
+      await readImageAsset({ uri: asset.uri, width: asset.width, height: asset.height, origin });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Couldn’t open that photo.");
+    } finally {
+      setPicking(false);
+    }
+  };
 
   const fillFromClipSeed = useCallback(async (seed: ClipCaptureSeed) => {
     const input = seed.contextText.trim();
@@ -790,6 +840,17 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
             <Pill tone="soft" small icon="sparkle" onPress={canFill ? () => void fillFromContext() : undefined} style={{ opacity: canFill ? 1 : 0.5 }}>
               {filling ? "Filling…" : "Fill from context"}
             </Pill>
+          ) : null}
+
+          {!imageUri && !clipSeed ? (
+            <>
+              <Pill tone="tint" small icon="camera" onPress={() => void pickPhoto("camera")}>
+                {picking ? "Opening…" : "Camera"}
+              </Pill>
+              <Pill tone="tint" small icon="photo" onPress={() => void pickPhoto("library")}>
+                Photos
+              </Pill>
+            </>
           ) : null}
 
           {selection.end > selection.start ? (

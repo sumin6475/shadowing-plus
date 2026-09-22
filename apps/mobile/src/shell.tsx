@@ -27,7 +27,6 @@ import {
   NotesStudio,
   PhraseChecklist,
   NoteEditor,
-  QuickCapture,
   MvpProfile,
   MirrorRecord,
 } from "@/screens/mvp";
@@ -435,8 +434,6 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <PhraseChecklist nav={nav} id={p.id as string} />;
     case "mvpNote":
       return <NoteEditor key={p.id as string} nav={nav} id={p.id as string} />;
-    case "quickCapture":
-      return <QuickCapture nav={nav} />;
     case "mirrorRecord":
       return <MirrorRecord nav={nav} session={p.session as MirrorSession} />;
     case "phrase":
