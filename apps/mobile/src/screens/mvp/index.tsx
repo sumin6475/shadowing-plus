@@ -18,6 +18,10 @@ import {
 import { Text, TextInput } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image as Photo } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
+import { extractPhraseFromImage } from "@/lib/phrase-capture";
 import Svg, { Path, Rect } from "react-native-svg";
 import {
   Button,
@@ -704,12 +708,89 @@ export function PhraseBank({ nav }: { nav: Nav }) {
   );
 }
 
+/** Strings the phrase-capture prompt uses as its own example values. */
+const TEMPLATE_ECHO = [
+  "all legible text",
+  "exact substring",
+  "short english meaning",
+  "the supplied text",
+];
 export function QuickCapture({ nav }: { nav: Nav }) {
   const [text, setText] = useState(""),
     [meaning, setMeaning] = useState(""),
     [source, setSource] = useState(""),
+    [photo, setPhoto] = useState<string | null>(null),
+    [scanned, setScanned] = useState(""),
+    [reading, setReading] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  // One page: type it, or read it off a photo. The photo only fills these same
+  // fields — nothing is saved until Save, so a bad read is just text to edit.
+  const readPhoto = async (from: "camera" | "library") => {
+    if (reading || busy) return;
+    setError(null);
+    try {
+      if (from === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            "Camera access needed",
+            "Allow camera access to capture English from a book, a screen, or anything around you.",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => void Linking.openSettings() },
+            ],
+          );
+          return;
+        }
+      }
+      const picked =
+        from === "camera"
+          ? await ImagePicker.launchCameraAsync({
+              mediaTypes: ["images"],
+              cameraType: ImagePicker.CameraType.back,
+              quality: 1,
+            })
+          : await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ["images"],
+              quality: 1,
+            });
+      if (picked.canceled) return;
+      const asset = picked.assets[0];
+      setPhoto(asset.uri);
+      setReading(true);
+      // Full-size photos are megabytes of base64; 1600px keeps the text legible.
+      const manipulator = ImageManipulator.ImageManipulator.manipulate(asset.uri);
+      if (asset.width > 1600) manipulator.resize({ width: 1600, height: null });
+      const rendered = await manipulator.renderAsync();
+      const compact = await rendered.saveAsync({
+        base64: true,
+        compress: 0.78,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
+      if (!compact.base64) throw new Error("Couldn’t prepare this photo.");
+      const draft = await extractPhraseFromImage(compact.base64);
+      // A photo with no text makes the model echo the JSON template it was
+      // given ("all legible text", "short English meaning"), which would
+      // otherwise land in the fields as if it had read something.
+      const unread = (value: string) =>
+        !value.trim() || TEMPLATE_ECHO.includes(value.trim().toLowerCase());
+      // The photo card says so on its own; a second banner with a "Try again"
+      // that only dismisses would be noise.
+      if (unread(draft.contextText) && unread(draft.suggestedPhrase)) {
+        setScanned("");
+        return;
+      }
+      setScanned(draft.contextText);
+      setText(draft.suggestedPhrase || draft.contextText);
+      if (draft.meaning && !unread(draft.meaning)) setMeaning(draft.meaning);
+      if (!source) setSource(from === "camera" ? "A photo I took" : "A photo");
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setReading(false);
+    }
+  };
   const save = async () => {
     if (busy || !text.trim()) return;
     setBusy(true);
@@ -718,8 +799,11 @@ export function QuickCapture({ nav }: { nav: Nav }) {
       await createPhrase({
         text: text.trim(),
         meaning,
-        source: "manual",
+        // Keep how it arrived: the photo's text becomes the phrase's context.
+        source: photo ? "image_ocr" : "manual",
         sourceLabel: source || undefined,
+        context: scanned || undefined,
+        imageUri: photo ?? undefined,
       });
       nav.invalidateSpeakingData();
       nav.pop();
@@ -734,11 +818,58 @@ export function QuickCapture({ nav }: { nav: Nav }) {
     <Screen>
       <BackBar title="Phrases" onBack={nav.pop} />
       <Serif style={{ fontSize: 36 }}>Save a phrase.</Serif>
-      <Copy>No time now? Keep it and come back later.</Copy>
+      <Copy>Type it, or read it off a photo. No time now? Keep it and come back later.</Copy>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Pill
+          tone="tint"
+          icon="camera"
+          style={{ flex: 1 }}
+          onPress={() => void readPhoto("camera")}
+        >
+          Camera
+        </Pill>
+        <Pill
+          tone="tint"
+          icon="photo"
+          style={{ flex: 1 }}
+          onPress={() => void readPhoto("library")}
+        >
+          Photos
+        </Pill>
+      </View>
+      {photo ? (
+        <Card style={{ gap: 12 }}>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <Photo
+              source={{ uri: photo }}
+              style={{ width: 64, height: 64, borderRadius: 12 }}
+              contentFit="cover"
+              accessibilityLabel="The photo you picked"
+            />
+            <View style={{ flex: 1, gap: 4, justifyContent: "center" }}>
+              <Label>{reading ? "READING THE PHOTO…" : "TEXT IN THIS PHOTO"}</Label>
+              {reading ? (
+                <ActivityIndicator style={{ alignSelf: "flex-start" }} />
+              ) : (
+                <Copy>{scanned || "No English text found. Type it instead."}</Copy>
+              )}
+            </View>
+          </View>
+          <Pill
+            tone="ghost"
+            onPress={() => {
+              setPhoto(null);
+              setScanned("");
+            }}
+          >
+            Remove photo
+          </Pill>
+        </Card>
+      ) : null}
       <Label>PHRASE</Label>
       <Field
         accessibilityLabel="Phrase"
-        autoFocus
+        multiline
         value={text}
         onChangeText={setText}
         placeholder="Something worth keeping"
@@ -757,11 +888,11 @@ export function QuickCapture({ nav }: { nav: Nav }) {
         onChangeText={setSource}
         placeholder="A podcast, a friend, a moment…"
       />
-      <ErrorCard error={error} retry={() => void save()} />
+      <ErrorCard error={error} retry={() => setError(null)} />
       <Pill
         full
-        style={{ opacity: busy || !text.trim() ? 0.5 : 1 }}
-        onPress={busy || !text.trim() ? undefined : () => void save()}
+        style={{ opacity: busy || reading || !text.trim() ? 0.5 : 1 }}
+        onPress={busy || reading || !text.trim() ? undefined : () => void save()}
       >
         {busy ? "Saving…" : "Save to Collected"}
       </Pill>
@@ -1438,6 +1569,7 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
           </Pill>
           <Pill
             tone="ghost"
+            style={{ alignSelf: "stretch" }}
             onPress={() =>
               Alert.alert(
                 "Delete this note?",
