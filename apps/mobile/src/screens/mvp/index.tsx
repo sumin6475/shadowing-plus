@@ -18,10 +18,6 @@ import {
 import { Text, TextInput } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Image as Photo } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
-import { extractPhraseFromImage } from "@/lib/phrase-capture";
 import Svg, { Path, Rect } from "react-native-svg";
 import {
   Button,
@@ -48,7 +44,7 @@ import {
 } from "@/design/ui";
 import { useTheme } from "@/design/theme";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
-import { createPhrase, deletePhrase } from "@/lib/phrases";
+import { deletePhrase } from "@/lib/phrases";
 import {
   addSentence,
   completedSteps,
