@@ -18,6 +18,8 @@ import {
 import { Text, TextInput } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import * as Haptics from "expo-haptics";
+import { SymbolView } from "expo-symbols";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Rect } from "react-native-svg";
 import {
@@ -779,6 +781,46 @@ function PlayCircle({
     </View>
   );
 }
+/** A player-style toggle beside the play circle: no words, each tap moves to
+ *  the next state, and a non-default state is drawn in the accent — the way
+ *  Music and Podcasts mark shuffle, repeat and speed. 64pt wide on both sides
+ *  so the play circle stays centred whatever the glyph's width. */
+function TransportToggle({
+  label,
+  value,
+  active,
+  onPress,
+  children,
+}: {
+  label: string;
+  value: string;
+  active: boolean;
+  onPress: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityValue={{ text: value }}
+      accessibilityState={{ selected: active }}
+      hitSlop={6}
+      onPress={() => {
+        void Haptics.selectionAsync();
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        width: 64,
+        height: 44,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: pressed ? 0.45 : 1,
+      })}
+    >
+      {children}
+    </Pressable>
+  );
+}
 /** Reminders' row circle: 22pt, 1.5pt hairline stroke; filled with a check
  *  once the sentence is saved. */
 const ROW_RADIO = 22;
@@ -1002,9 +1044,37 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
               <View style={{ marginLeft: STEP_INDENT, gap: 10 }}>
               {index === 0 ? (
                 <>
-                  {/* Play is the one big control; speed and repeat are its
-                      settings, stacked beside it like Music's transport. */}
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                  {/* A transport row, as in Music: the play circle centred, its
+                      two settings flanking it as bare glyphs that change state
+                      on tap. The line under it says the state in words. */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 18,
+                      paddingVertical: 4,
+                    }}
+                  >
+                    <TransportToggle
+                      label="Playback speed"
+                      value={`${rate}×`}
+                      active={rate !== 1}
+                      onPress={() => {
+                        void voice.stop();
+                        setRate(rate === 1 ? 0.75 : 1);
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: FONT.semibold,
+                          fontSize: 17,
+                          color: rate !== 1 ? t.colors.acc : t.colors.ink2,
+                        }}
+                      >
+                        {`${rate}×`}
+                      </Text>
+                    </TransportToggle>
                     <PlayCircle
                       state={
                         voice.loadingId === id
@@ -1018,37 +1088,65 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                       }
                       onPress={() => void voice.toggle(id, p.text)}
                     />
-                    <View style={{ flex: 1, flexDirection: "row", gap: 8 }}>
-                      <Pill
-                        tone="tint"
-                        small
-                        full
-                        onPress={() => {
-                          void voice.stop();
-                          setRate(rate === 1 ? 0.75 : 1);
-                        }}
-                      >
-                        {rate}× speed
-                      </Pill>
-                      <Pill
-                        tone="tint"
-                        small
-                        full
-                        icon="repeat"
-                        onPress={() => {
-                          void voice.stop();
-                          setRepeat(repeat === 1 ? 5 : 1);
-                        }}
-                      >
-                        {repeat === 1 ? "Once" : "5×"}
-                      </Pill>
-                    </View>
+                    <TransportToggle
+                      label="Repeat"
+                      value={repeat === 1 ? "Off" : "5 times"}
+                      active={repeat !== 1}
+                      onPress={() => {
+                        void voice.stop();
+                        setRepeat(repeat === 1 ? 5 : 1);
+                      }}
+                    >
+                      <View>
+                        <SymbolView
+                          name="repeat"
+                          size={22}
+                          weight="semibold"
+                          tintColor={repeat !== 1 ? t.colors.acc : t.colors.ink2}
+                        />
+                        {repeat !== 1 ? (
+                          <View
+                            style={{
+                              position: "absolute",
+                              top: -7,
+                              right: -10,
+                              minWidth: 15,
+                              height: 15,
+                              paddingHorizontal: 3,
+                              borderRadius: 8,
+                              backgroundColor: t.colors.acc,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontFamily: FONT.bold,
+                                fontSize: 10,
+                                color: t.colors.onAcc,
+                              }}
+                            >
+                              5
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </TransportToggle>
                   </View>
-                  <Hint>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      lineHeight: 19,
+                      color: t.colors.ink3,
+                      textAlign: "center",
+                    }}
+                  >
                     {voice.fallbackId === id
                       ? "Playing device voice. Tap again to repeat."
-                      : "Listen and repeat as often as you like."}
-                  </Hint>
+                      : `${rate === 1 ? "Normal speed" : "Slower, 0.75×"} · ${
+                          repeat === 1 ? "plays once" : "repeats 5 times"
+                        }`}
+                  </Text>
                 </>
               ) : index === 1 ? (
                 <>
