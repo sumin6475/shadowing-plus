@@ -913,8 +913,12 @@ export function SwipeRow({
   deleteLabel = "Delete",
   onFavorite,
   favorited,
+  flat,
 }: {
   children: ReactNode;
+  /** A row inside a list that is already a card (Reminders-style rows): no
+   *  fill, radius or shadow of its own — only the swipe. */
+  flat?: boolean;
   onDelete?: () => void;
   /** Label on the red right-hand panel. Defaults to "Delete"; override it when
    *  `onDelete` performs something softer (archive, hide) so the panel does not
@@ -960,10 +964,10 @@ export function SwipeRow({
     // to clip the row card's shadow into a visible gray box. The shadow lives
     // on this outer rounded wrapper instead (outside the clip), and the
     // Swipeable clips to the same rounded shape so revealed actions match.
-    <View style={[{ borderRadius: t.r, backgroundColor: t.colors.card }, t.shadowCard]}>
+    <View style={flat ? null : [{ borderRadius: t.r, backgroundColor: t.colors.card }, t.shadowCard]}>
       <Swipeable
         ref={ref}
-        containerStyle={{ borderRadius: t.r, overflow: "hidden" }}
+        containerStyle={flat ? { overflow: "hidden" } : { borderRadius: t.r, overflow: "hidden" }}
         renderRightActions={renderRight}
         renderLeftActions={renderLeft}
         overshootRight={false}

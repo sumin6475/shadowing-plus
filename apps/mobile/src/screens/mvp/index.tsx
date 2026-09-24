@@ -12,6 +12,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StyleSheet,
   View,
 } from "react-native";
 import { Text, TextInput } from "@/design/text";
@@ -27,7 +28,15 @@ import {
   Picker,
   Text as SwiftText,
 } from "@expo/ui/swift-ui";
-import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
+import {
+  buttonBorderShape,
+  buttonStyle,
+  controlSize,
+  frame,
+  pickerStyle,
+  tag,
+  tint,
+} from "@expo/ui/swift-ui/modifiers";
 import { SEARCH_ENABLED } from "@/lib/release-flags";
 import { FONT } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
@@ -709,6 +718,120 @@ export function PhraseBank({ nav }: { nav: Nav }) {
 const STEP_CHECK = 26,
   STEP_GUTTER = 12,
   STEP_INDENT = STEP_CHECK + STEP_GUTTER;
+/** The play control as iOS draws it: a Liquid Glass circle (iOS 26
+ *  `.glassProminent` + circle border shape) tinted with the app accent, 56pt —
+ *  comfortably over the 44pt minimum target. A native SwiftUI button, so it
+ *  gets the system press highlight and Reduce Transparency for free. */
+const PLAY_SIZE = 56;
+function PlayCircle({
+  state,
+  onPress,
+  label,
+}: {
+  state: "idle" | "loading" | "playing";
+  onPress: () => void;
+  label: string;
+}) {
+  const t = useTheme();
+  if (state === "loading")
+    return (
+      <View
+        accessibilityLabel="Loading voice"
+        style={{
+          width: PLAY_SIZE,
+          height: PLAY_SIZE,
+          borderRadius: PLAY_SIZE / 2,
+          backgroundColor: t.colors.accS,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator color={t.colors.accD} />
+      </View>
+    );
+  return (
+    <View
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={{ width: PLAY_SIZE, height: PLAY_SIZE }}
+    >
+      <Host matchContents>
+        <Button
+          onPress={onPress}
+          modifiers={[
+            buttonStyle("glassProminent"),
+            buttonBorderShape("circle"),
+            controlSize("extraLarge"),
+            tint(t.colors.acc),
+          ]}
+        >
+          {/* SwiftUI sizes a glass button from its label, not from a frame on
+              the button, so the label carries the size. */}
+          <Image
+            systemName={state === "playing" ? "pause.fill" : "play.fill"}
+            size={22}
+            color={t.colors.onAcc}
+            modifiers={[frame({ width: 28, height: 28 })]}
+          />
+        </Button>
+      </Host>
+    </View>
+  );
+}
+/** Reminders' row circle: 22pt, 1.5pt hairline stroke; filled with a check
+ *  once the sentence is saved. */
+const ROW_RADIO = 22;
+function RowRadio({ done }: { done: boolean }) {
+  const t = useTheme();
+  return (
+    <View
+      style={{
+        width: ROW_RADIO,
+        height: ROW_RADIO,
+        borderRadius: ROW_RADIO / 2,
+        borderWidth: done ? 0 : 1.5,
+        borderColor: t.colors.ink3,
+        backgroundColor: done ? t.colors.acc : "transparent",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {done ? <Icon name="check" s={13} w={2.4} c={t.colors.onAcc} /> : null}
+    </View>
+  );
+}
+/** One Reminders-style row: radio, 17pt text, hairline inset to the text. */
+function ReminderRow({
+  done,
+  last,
+  children,
+}: {
+  done: boolean;
+  last: boolean;
+  children: ReactNode;
+}) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+      <View style={{ paddingTop: 12 }}>
+        <RowRadio done={done} />
+      </View>
+      <View
+        style={{
+          flex: 1,
+          minHeight: 44,
+          justifyContent: "center",
+          paddingVertical: 10,
+          borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
+          borderBottomColor: t.colors.sep,
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
 /** Helper line under a step's controls — one level below body copy. */
 function Hint({ children }: { children: ReactNode }) {
   const t = useTheme();
@@ -879,41 +1002,47 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
               <View style={{ marginLeft: STEP_INDENT, gap: 10 }}>
               {index === 0 ? (
                 <>
-                  <Pill
-                    style={{ alignSelf: "stretch" }}
-                    icon={voice.speakingId === id ? "pause" : "speaker"}
-                    onPress={() => void voice.toggle(id, p.text)}
-                  >
-                    {voice.loadingId === id
-                      ? "Loading voice…"
-                      : voice.speakingId === id
-                        ? "Stop"
-                        : "Play pronunciation"}
-                  </Pill>
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Pill
-                      tone="tint"
-                      small
-                      full
-                      onPress={() => {
-                        void voice.stop();
-                        setRate(rate === 1 ? 0.75 : 1);
-                      }}
-                    >
-                      {rate}× speed
-                    </Pill>
-                    <Pill
-                      tone="tint"
-                      small
-                      full
-                      icon="repeat"
-                      onPress={() => {
-                        void voice.stop();
-                        setRepeat(repeat === 1 ? 5 : 1);
-                      }}
-                    >
-                      {repeat === 1 ? "Play once" : "Repeat 5×"}
-                    </Pill>
+                  {/* Play is the one big control; speed and repeat are its
+                      settings, stacked beside it like Music's transport. */}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                    <PlayCircle
+                      state={
+                        voice.loadingId === id
+                          ? "loading"
+                          : voice.speakingId === id
+                            ? "playing"
+                            : "idle"
+                      }
+                      label={
+                        voice.speakingId === id ? "Stop" : "Play pronunciation"
+                      }
+                      onPress={() => void voice.toggle(id, p.text)}
+                    />
+                    <View style={{ flex: 1, flexDirection: "row", gap: 8 }}>
+                      <Pill
+                        tone="tint"
+                        small
+                        full
+                        onPress={() => {
+                          void voice.stop();
+                          setRate(rate === 1 ? 0.75 : 1);
+                        }}
+                      >
+                        {rate}× speed
+                      </Pill>
+                      <Pill
+                        tone="tint"
+                        small
+                        full
+                        icon="repeat"
+                        onPress={() => {
+                          void voice.stop();
+                          setRepeat(repeat === 1 ? 5 : 1);
+                        }}
+                      >
+                        {repeat === 1 ? "Once" : "5×"}
+                      </Pill>
+                    </View>
                   </View>
                   <Hint>
                     {voice.fallbackId === id
@@ -946,71 +1075,73 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                 </>
               ) : (
                 <>
-                  {state.data?.sentences.map((s: Sentence) => (
-                    <View
-                      key={s.id}
-                      style={{
-                        backgroundColor: t.colors.soft,
-                        borderRadius: 14,
-                        padding: 13,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          flex: 1,
-                          fontSize: 15,
-                          lineHeight: 22,
-                          color: t.colors.ink,
-                        }}
-                      >
-                        {s.text}
-                      </Text>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Delete sentence"
-                        style={{ padding: 10 }}
-                        onPress={() =>
-                          Alert.alert(
-                            "Delete this sentence?",
-                            "Removing the last sentence resets this step.",
-                            [
-                              { text: "Cancel", style: "cancel" },
-                              {
-                                text: "Delete",
-                                style: "destructive",
-                                onPress: () =>
-                                  void mutate(() => deleteSentence(s.id)),
-                              },
-                            ],
-                          )
+                  {/* Reminders: saved rows with a filled check circle, then an
+                      always-present blank row that is the new-entry field.
+                      Return saves; swipe a row left to delete it. */}
+                  <View>
+                    {(state.data?.sentences ?? []).map((sentence: Sentence) => (
+                      <SwipeRow
+                        key={sentence.id}
+                        flat
+                        onDelete={() =>
+                          confirmDelete({
+                            title: "Delete this sentence?",
+                            message: "Removing the last sentence resets this step.",
+                            onConfirm: () =>
+                              void mutate(() => deleteSentence(sentence.id)),
+                          })
                         }
                       >
-                        <Icon name="x" s={14} c={t.colors.ink3} />
-                      </Pressable>
-                    </View>
-                  ))}
-                  <Field
-                    accessibilityLabel="Your sentence"
-                    multiline
-                    placeholder={`Use “${p.text}” in your own sentence…`}
-                    value={draft}
-                    onChangeText={setDraft}
-                  />
-                  <Pill
-                    tone="soft"
-                    style={{ alignSelf: "stretch" }}
-                    onPress={() =>
-                      void mutate(async () => {
-                        await addSentence(id, draft);
-                        setDraft("");
-                      })
-                    }
-                  >
-                    {busy ? "Saving…" : "Save sentence"}
-                  </Pill>
+                        <ReminderRow done last={false}>
+                          <Text
+                            style={{ fontSize: 17, lineHeight: 24, color: t.colors.ink }}
+                          >
+                            {sentence.text}
+                          </Text>
+                        </ReminderRow>
+                      </SwipeRow>
+                    ))}
+                    <ReminderRow done={false} last>
+                      <TextInput
+                        accessibilityLabel="Your sentence"
+                        multiline
+                        submitBehavior="blurAndSubmit"
+                        returnKeyType="done"
+                        placeholder={`Use “${p.text}” in a sentence`}
+                        placeholderTextColor={t.colors.ink3}
+                        value={draft}
+                        onChangeText={setDraft}
+                        onSubmitEditing={() => {
+                          if (!draft.trim() || busy) return;
+                          void mutate(async () => {
+                            await addSentence(id, draft);
+                            setDraft("");
+                          });
+                        }}
+                        style={{
+                          fontSize: 17,
+                          lineHeight: 24,
+                          color: t.colors.ink,
+                          padding: 0,
+                          minHeight: 48,
+                        }}
+                      />
+                    </ReminderRow>
+                  </View>
+                  {draft.trim() ? (
+                    <Pill
+                      tone="soft"
+                      style={{ alignSelf: "stretch" }}
+                      onPress={() =>
+                        void mutate(async () => {
+                          await addSentence(id, draft);
+                          setDraft("");
+                        })
+                      }
+                    >
+                      {busy ? "Saving…" : "Save sentence"}
+                    </Pill>
+                  ) : null}
                 </>
               )}
               </View>
