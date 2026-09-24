@@ -1420,3 +1420,13 @@ Sheet가 쓰던 구조로 통일.
 **원칙.** 정렬 문제는 대개 "왼쪽 정렬이라서"가 아니라 **기준선이 여러 개라서** 생긴다. 한 컨테이너 안에서는 왼쪽·오른쪽 기준선을 하나씩만 두고, 장식 요소(체크 원)는 거터로 빼서 본문 칼럼 밖에 둔다. 자간은 대문자 라벨 전용.
 
 **검증.** tsc 통과, eslint 에러 0. 시뮬레이터로 "As it is" 상세 위·아래 확인. 완료 상태(Done 강조색)·저장된 문장 목록·Ready의 "Use it in the mirror"는 데이터를 바꾸지 않고는 띄울 수 없어 화면 확인 못 함 — 스타일만 바뀐 부분.
+
+## 2026-09-24 (4) — 재생 버튼을 네이티브 글래스 원으로, 문장 칸을 리마인더 리스트로
+
+**리서치.** iOS 26 버튼은 `.buttonStyle(.glass / .glassProminent)` + 원형은 border shape로; HIG 최소 탭 44pt. 리마인더 앱 행 해부: 22pt 속 빈 원(radio), 완료 시 채워진 체크 원, 빈 행을 탭하면 커서 + 원이 생기고 Return으로 확정, 왼쪽 스와이프 삭제. 설치된 `@expo/ui`에 `buttonStyle("glassProminent")`, `buttonBorderShape("circle")`, `controlSize`, `tint`, `frame`이 전부 있고, MenuView 때 확인했듯 ExpoUI가 dev 빌드에 링크돼 있어 재빌드 없이 쓸 수 있었다.
+
+**만든 것.** (`cba15d1`) Play pronunciation 알약 → SwiftUI 네이티브 글래스 원(56pt, 앱 accent tint, play/pause SF 심볼), 로딩은 같은 크기 연한 원 + 스피너라 레이아웃이 안 튄다. 문장 단계는 리마인더 리스트: 저장된 문장 = 채워진 체크 원 행(17pt, 안쪽 hairline), 맨 아래 빈 원 행이 입력칸 — Return이 저장, 초안이 있을 때만 Save 알약 노출. 행 왼쪽 스와이프 → 삭제(기존 확인창 유지). 행마다 있던 "x" 제거. `SwipeRow`에 `flat` 추가(카드 안 행이라 자체 그림자·라운드 없음).
+
+**걸린 것.** SwiftUI 글래스 버튼은 버튼에 `frame`을 줘도 라벨 크기대로 그린다(≈40pt) → `controlSize("extraLarge")` + 라벨 Image에 frame 28로 56pt 확보. `SwipeRow`가 카드용 그림자·라운드를 자기 래퍼에 갖고 있어 리스트 행이 떠 있는 알약처럼 보임 → `flat` 옵션.
+
+**검증.** tsc 통과, eslint 에러 0, `test:mvp` 8/8. 시뮬레이터: 재생 원 탭 → 로딩 원 → 복귀, 빈 행 탭 → 입력 → Return → 체크 행 + 새 빈 행, 스와이프 → Delete → 확인창 → 삭제(테스트 문장은 지워서 데이터 원상 복구). 시뮬레이터 입력 언어가 한국어라 자모로 입력됐지만 흐름 검증엔 무관.
