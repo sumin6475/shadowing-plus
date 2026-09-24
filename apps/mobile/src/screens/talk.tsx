@@ -5,6 +5,7 @@ import {
   Linking,
   Pressable,
   ScrollView,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Text } from "@/design/text";
@@ -35,6 +36,8 @@ const fmt2 = (s: number) =>
 export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const t = useTheme(),
     insets = useSafeAreaInsets(),
+    { height: windowHeight } = useWindowDimensions(),
+    transcriptRef = useRef<ScrollView>(null),
     p0 = talkCtx ?? {},
     speech = useSpeechSession();
   const [phase, setPhase] = useState<"live" | "done">("live"),
@@ -213,7 +216,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               : "SESSION NOT SAVED"}
         </Text>
         <Serif style={{ fontSize: 44 }}>
-          {durationLabel(sec)}\nof speaking.
+          {`${durationLabel(sec)}\nof speaking.`}
         </Serif>
         <Text style={{ color: t.colors.ink2, fontSize: 15, lineHeight: 23 }}>
           A little more English, in your own voice.
@@ -235,40 +238,49 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           >
             TRANSCRIPT{p0.noteId ? ` · ${p0.ctx || "YOUR NOTE"}` : ""}
           </Text>
-          <Text
-            selectable
-            style={{ fontSize: 17, lineHeight: 28, color: t.colors.ink }}
+          {/* Capped, not grown: a long session would otherwise push the
+              actions a screen or two down. Short transcripts keep their own
+              height; long ones scroll inside the card. */}
+          <ScrollView
+            ref={transcriptRef}
+            style={{ maxHeight: Math.round(windowHeight * 0.36) }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+            onContentSizeChange={() => transcriptRef.current?.flashScrollIndicators()}
           >
-            {transcript ||
-              "The microphone didn’t capture any words. Your speaking time is still recorded."}
-          </Text>
+            <Text
+              selectable
+              style={{ fontSize: 17, lineHeight: 28, color: t.colors.ink }}
+            >
+              {transcript ||
+                "The microphone didn’t capture any words. Your speaking time is still recorded."}
+            </Text>
+          </ScrollView>
         </Card>
-        {movedUri || speech.audioUri ? (
-          <Pill
-            tone="soft"
-            icon={playStatus.playing ? "pause" : "play"}
-            onPress={() => {
-              if (playStatus.playing) player.pause();
-              else
-                void prepareSpeakerPlayback().then(() => {
-                  if (playStatus.didJustFinish) void player.seekTo(0);
-                  player.play();
-                });
-            }}
-          >
-            {playStatus.playing ? "Pause recording" : "Listen to yourself"}
-          </Pill>
-        ) : null}
-        {saveState === "saved" ? (
-          <>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {movedUri || speech.audioUri ? (
+            <Pill
+              full
+              tone="soft"
+              icon={playStatus.playing ? "pause" : "play"}
+              onPress={() => {
+                if (playStatus.playing) player.pause();
+                else
+                  void prepareSpeakerPlayback().then(() => {
+                    if (playStatus.didJustFinish) void player.seekTo(0);
+                    player.play();
+                  });
+              }}
+            >
+              {playStatus.playing ? "Pause" : "Listen back"}
+            </Pill>
+          ) : null}
+          {saveState === "saved" ? (
             <Pill full icon="mic" onPress={restart}>
               Speak again
             </Pill>
-            <Pill full tone="card" onPress={exit}>
-              {p0.noteId ? "Back to note" : "Back to Phrases"}
-            </Pill>
-          </>
-        ) : null}
+          ) : null}
+        </View>
       </Screen>
     );
   // ── mirror: live ──
