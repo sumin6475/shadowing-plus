@@ -1386,3 +1386,15 @@ Sheet가 쓰던 구조로 통일.
 **원칙 — 새로 만들기 전에 이미 있는 화면을 먼저 찾는다.** MVP 화면을 새로 쓰면서 `capture.tsx`의 기능(문맥·AI 초안·종류 분류·OCR)을 모르고 타이핑 전용 페이지를 만들었다. Sumin이 예전 스크린샷을 보여주기 전까지 그 손실이 드러나지 않았다. "MVP용으로 새 화면"이라는 말은 **기존 화면을 대체하라는 뜻이 아니었다.**
 
 **검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: "+" → 원래 화면(Camera/Photos 포함) → 앨범 선택 → From photo 모드(미리보기·Take again/Choose another·Detected text) → 글자 없는 사진은 칸을 채우지 않음. 카메라는 시뮬레이터에 없어 미검증.
+
+## 2026-09-24 — YouGlish를 앱 내 브라우저로 + 심사 문서 정정
+
+**만든 것.** (`d1ab6e6`) phrase 2단계 "Open YouGlish"를 `Linking.openURL`(사파리로 이탈) → `expo-web-browser` 페이지 시트(SFSafariViewController)로. Done 누르면 같은 phrase, 같은 스크롤 위치로 복귀. 버튼 아래 "브라우저에서 열림" 안내, Privacy에 "Links to other sites" 섹션(탭한 표현만 URL로 나간다), 제출 키트의 등급 설문 근거 정정.
+
+**판단 근거.** 링크는 유지, 임베드는 안 함 — YouGlish 위젯 약관은 모바일 앱 사용에 서면 허가, "Powered by YouGlish.com" 상시 표기, YouTube 약관·Google 정책 링크를 요구한다. 외부 링크는 이 의무가 붙지 않는다.
+
+**발견한 것.** 제출 키트에 "Unrestricted web access: No — 외부 브라우저는 OAuth뿐"이라고 적혀 있었는데 phrase 화면이 이미 브라우저를 열고 있었다. 답(No)은 유지하되 근거와 재검토 조건(URL 입력칸이 생기거나 임의 사이트를 열 때)을 적었다. **심사 답변 문서도 코드처럼 기능 추가 때마다 낡는다.**
+
+**걸린 것.** 커밋하려는데 `fatal: not a git repository: .../Code HQ/Shadowing Plus/.git/worktrees/Shadowing-Plus-mobile` — 메인 레포가 `Code HQ/` → `code-hq/`로 옮겨져 워크트리의 `.git` 포인터가 옛 경로를 가리키고 있었다. `git worktree repair <path>`로 포인터만 고침(Codex 워크트리 `~/.codex/worktrees/0c67`도 같이 수리됨).
+
+**검증.** tsc 통과, 변경 파일 eslint 에러 0. 시뮬레이터: 시트로 youglish.com 로드 → Done → 원래 화면 복귀, Privacy 새 섹션 렌더 확인. 웹 쪽 개인정보처리방침(`web/src/app/privacy`)은 웹 작업과 분리돼 있어 미수정 — 같은 문장 추가 필요.
