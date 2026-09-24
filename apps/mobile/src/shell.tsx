@@ -34,6 +34,7 @@ import { RemindersScreen } from "@/screens/reminders";
 import { PrivacyScreen } from "@/screens/privacy";
 import { CaptureFab, PhraseCaptureScreen, type CaptureImageAsset, type ClipCaptureSeed } from "@/screens/capture";
 import { PracticeHubScreen, QuickRehearsalScreen } from "@/screens/practice";
+import { SearchScreen } from "@/screens/search";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
 import type { TalkSession } from "@/lib/speaking-world";
@@ -288,7 +289,8 @@ export function TabHost({ tab }: { tab: TabId }) {
     top?.name !== "situation" &&
     top?.name !== "situationPhrases" &&
     top?.name !== "situationAttempts" &&
-    top?.name !== "speakingNote";
+    top?.name !== "speakingNote" &&
+    top?.name !== "search";
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
@@ -414,6 +416,8 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <TopicsListScreen nav={nav} />;
     case "sessionsList":
       return <SessionsScreen nav={nav} stacked />;
+    case "search":
+      return <SearchScreen nav={nav} visit={p.visit as number} />;
   }
 }
 

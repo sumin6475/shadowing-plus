@@ -621,7 +621,7 @@ export function StudioHomeScreen({ nav }: { nav: Nav }) {
   const fabBottom = Math.max(insets.bottom, 12) + 12;
   return (
     <>
-      <Screen style={{ gap: 0 }} bottomPad={112}>
+      <Screen style={{ gap: 0 }} bottomPad={112} onPullToSearch={() => nav.push("search", { visit: Date.now() })}>
         <View style={{ paddingHorizontal: 2, paddingTop: 4, paddingBottom: t.gap * 2 }}>
           <View style={{ minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Text style={{ fontSize: 12, fontWeight: "800", letterSpacing: 1.5, color: t.colors.accD }}>YOUR STUDIO</Text>

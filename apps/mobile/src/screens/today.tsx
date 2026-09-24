@@ -1,6 +1,6 @@
 // today.tsx — Today tab. Hero, this-week phrase saves, leftover review queue.
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 
 import { useTheme } from "@/design/theme";
@@ -62,7 +62,6 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const [reviewToday, setReviewToday] = useState<PhraseItem[]>([]);
   const [recentStory, setRecentStory] = useState<RecentTalkedStory | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [statsAsOf, setStatsAsOf] = useState(0);
   // Replay the entrance cascade whenever the tab regains focus (native tabs
   // keep this screen mounted).
@@ -104,16 +103,19 @@ export function TodayScreen({ nav }: { nav: Nav }) {
     };
   }, [session?.user.id]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([
-      load(),
+  // Pull-down opens Search now, so reload on every tab focus instead of
+  // pull-to-refresh. The first focus is covered by the mount effects above.
+  const focusCount = useRef(0);
+  useFocusEffect(
+    useCallback(() => {
+      focusCount.current += 1;
+      if (focusCount.current === 1) return;
+      void load();
       fetchRecentTalkedStory()
         .then(setRecentStory)
-        .catch(() => setRecentStory(null)),
-    ]);
-    setRefreshing(false);
-  }, [load]);
+        .catch(() => setRecentStory(null));
+    }, [load]),
+  );
 
   const all = items ?? [];
   const thisWeek = all.filter((p) => statsAsOf - new Date(p.createdAt).getTime() < 7 * 86_400_000).length;
@@ -157,7 +159,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   };
 
   return (
-    <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
+    <Screen onPullToSearch={() => nav.push("search", { visit: Date.now() })}>
       <Stagger replayKey={enterKey}>
       <View style={{ paddingHorizontal: 2, paddingTop: 4, paddingBottom: 2 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 44 }}>

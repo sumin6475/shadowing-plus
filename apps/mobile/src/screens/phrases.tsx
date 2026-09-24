@@ -1,7 +1,7 @@
 // phrases.tsx — Phrase Bank tab: list + chart, detail, review flow. Backed by
 // the canonical `phrase_items` collection; transcript bookmarks are separate.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -176,7 +176,6 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
   const speech = usePhraseSpeech();
   const [items, setItems] = useState<PhraseItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [statsAsOf, setStatsAsOf] = useState(0);
   const [q, setQ] = useState("");
   const [f, setF] = useState<PhraseStageFilterId>("all");
@@ -216,11 +215,15 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
     return () => clearTimeout(timer);
   }, [load]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }, [load]);
+  // Pull-down opens Search now, so reload on every tab focus instead of
+  // pull-to-refresh. The first focus is covered by the mount effect above.
+  const focusCount = useRef(0);
+  useFocusEffect(
+    useCallback(() => {
+      focusCount.current += 1;
+      if (focusCount.current > 1) void load();
+    }, [load]),
+  );
 
   // Optimistically drop the row, then delete; restore it if the delete fails.
   const removePhrase = useCallback(async (id: string) => {
@@ -327,7 +330,7 @@ export function PhrasesScreen({ nav }: { nav: Nav }) {
 
   return (
     <Screen
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}
+      onPullToSearch={() => nav.push("search", { visit: Date.now() })}
       onScroll={handleScroll}
     >
       <Stagger replayKey={enterKey}>

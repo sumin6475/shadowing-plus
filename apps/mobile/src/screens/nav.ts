@@ -37,7 +37,8 @@ export type ViewName =
   | "situationAttempts"
   | "speakingNote"
   | "topicsList"
-  | "sessionsList";
+  | "sessionsList"
+  | "search";
 
 /** Where a pushed screen should be restored to. `stack` is the detail stack to
  *  rebuild on `tab`, bottom-first — an empty stack lands on the tab's base
