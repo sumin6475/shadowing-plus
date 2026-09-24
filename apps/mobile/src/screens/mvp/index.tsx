@@ -704,6 +704,20 @@ export function PhraseBank({ nav }: { nav: Nav }) {
   );
 }
 
+/** Step card geometry: the check circle sits in a gutter, and the step's
+ *  body hangs from the title's left edge (circle + gap). */
+const STEP_CHECK = 26,
+  STEP_GUTTER = 12,
+  STEP_INDENT = STEP_CHECK + STEP_GUTTER;
+/** Helper line under a step's controls — one level below body copy. */
+function Hint({ children }: { children: ReactNode }) {
+  const t = useTheme();
+  return (
+    <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>
+      {children}
+    </Text>
+  );
+}
 export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
   const [rate, setRate] = useState(1),
     [repeat, setRepeat] = useState(1);
@@ -747,15 +761,28 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
         ) : null
       ) : (
         <>
-          <Label>
-            {phraseStage(p).toUpperCase()} · {completedSteps(p)} OF 3
-          </Label>
-          <Serif style={{ fontSize: 43 }}>{p.text}</Serif>
-          <Copy>{p.translation || "An expression to make your own."}</Copy>
-          <Label>
-            {p.source} · {dateLabel(p.createdAt)}
-          </Label>
-          <View style={{ flexDirection: "row", gap: 5, marginVertical: 10 }}>
+          <View style={{ alignItems: "center", gap: 10, paddingTop: 6 }}>
+            <Label>
+              {phraseStage(p).toUpperCase()} · {completedSteps(p)} OF 3
+            </Label>
+            <Serif style={{ fontSize: 43, lineHeight: 50, textAlign: "center" }}>
+              {p.text}
+            </Serif>
+            <Text
+              style={{
+                fontSize: 17,
+                lineHeight: 24,
+                color: t.colors.ink2,
+                textAlign: "center",
+              }}
+            >
+              {p.translation || "An expression to make your own."}
+            </Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3, textAlign: "center" }}>
+              {p.source} · {dateLabel(p.createdAt)}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 5, marginVertical: 8 }}>
             {STEPS.map((step) => (
               <View
                 key={step}
@@ -792,16 +819,16 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                 }}
                 style={{
                   flexDirection: "row",
-                  gap: 12,
+                  gap: STEP_GUTTER,
                   alignItems: "center",
                   minHeight: 44,
                 }}
               >
                 <View
                   style={{
-                    height: 26,
-                    width: 26,
-                    borderRadius: 13,
+                    height: STEP_CHECK,
+                    width: STEP_CHECK,
+                    borderRadius: STEP_CHECK / 2,
                     borderWidth: 1.5,
                     borderColor: p[step] ? t.colors.acc : t.colors.ink3,
                     backgroundColor: p[step] ? t.colors.acc : "transparent",
@@ -830,20 +857,30 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                       ][index]
                     }
                   </Text>
-                  <Label>
+                  <Text
+                    style={{
+                      fontSize: 13.5,
+                      color: p[step] ? t.colors.acc : t.colors.ink3,
+                      fontWeight: p[step] ? "600" : "400",
+                    }}
+                  >
                     {p[step]
-                      ? `DONE · ${dateLabel(p[step]!)}`
+                      ? `Done · ${dateLabel(p[step]!)}`
                       : [
                           "Listen, repeat, then check",
                           "Find a voice and a context",
                           "At least one saved sentence",
                         ][index]}
-                  </Label>
+                  </Text>
                 </View>
               </Pressable>
+              {/* Everything under the title hangs from the title's left edge;
+                  the check circle is a gutter, not part of the column. */}
+              <View style={{ marginLeft: STEP_INDENT, gap: 10 }}>
               {index === 0 ? (
                 <>
                   <Pill
+                    style={{ alignSelf: "stretch" }}
                     icon={voice.speakingId === id ? "pause" : "speaker"}
                     onPress={() => void voice.toggle(id, p.text)}
                   >
@@ -857,6 +894,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                     <Pill
                       tone="tint"
                       small
+                      full
                       onPress={() => {
                         void voice.stop();
                         setRate(rate === 1 ? 0.75 : 1);
@@ -867,6 +905,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                     <Pill
                       tone="tint"
                       small
+                      full
                       icon="repeat"
                       onPress={() => {
                         void voice.stop();
@@ -876,11 +915,11 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                       {repeat === 1 ? "Play once" : "Repeat 5×"}
                     </Pill>
                   </View>
-                  <Copy>
+                  <Hint>
                     {voice.fallbackId === id
                       ? "Playing device voice. Tap again to repeat."
                       : "Listen and repeat as often as you like."}
-                  </Copy>
+                  </Hint>
                 </>
               ) : index === 1 ? (
                 <>
@@ -891,6 +930,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                   <Pill
                     tone="tint"
                     icon="link"
+                    style={{ alignSelf: "stretch" }}
                     onPress={() =>
                       void WebBrowser.openBrowserAsync(
                         `https://youglish.com/pronounce/${encodeURIComponent(p.text)}/english`,
@@ -900,9 +940,9 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                   >
                     Open YouGlish
                   </Pill>
-                  <Copy>
+                  <Hint>
                     Real videos from youglish.com, opened in a browser inside Saylo.
-                  </Copy>
+                  </Hint>
                 </>
               ) : (
                 <>
@@ -961,6 +1001,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                   />
                   <Pill
                     tone="soft"
+                    style={{ alignSelf: "stretch" }}
                     onPress={() =>
                       void mutate(async () => {
                         await addSentence(id, draft);
@@ -972,12 +1013,13 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                   </Pill>
                 </>
               )}
+              </View>
             </Card>
           ))}
           <ErrorCard error={error} retry={() => setError(null)} />
           {phraseStage(p) === "Ready" ? (
             <Pill
-              full
+              style={{ alignSelf: "stretch", marginTop: 6 }}
               icon="mic"
               onPress={() => nav.startTalk({ from: "phrases" })}
             >
@@ -986,6 +1028,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
           ) : null}
           <Pill
             tone="ghost"
+            style={{ alignSelf: "stretch" }}
             onPress={() =>
               Alert.alert(
                 "Delete this phrase?",
