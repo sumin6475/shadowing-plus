@@ -9,7 +9,6 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -17,6 +16,7 @@ import {
 } from "react-native";
 import { Text, TextInput } from "@/design/text";
 import { useFocusEffect } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Rect } from "react-native-svg";
 import {
@@ -883,17 +883,27 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                   </Copy>
                 </>
               ) : index === 1 ? (
-                <Pill
-                  tone="tint"
-                  icon="link"
-                  onPress={() =>
-                    void Linking.openURL(
-                      `https://youglish.com/pronounce/${encodeURIComponent(p.text)}/english`,
-                    ).catch((e) => setError(message(e)))
-                  }
-                >
-                  Open YouGlish
-                </Pill>
+                <>
+                  {/* A browser sheet inside the app, not a jump to Safari: the
+                      learner comes back with Done, still on this phrase. The
+                      site itself stays outside the app — embedding YouGlish's
+                      widget in a mobile app needs their written permission. */}
+                  <Pill
+                    tone="tint"
+                    icon="link"
+                    onPress={() =>
+                      void WebBrowser.openBrowserAsync(
+                        `https://youglish.com/pronounce/${encodeURIComponent(p.text)}/english`,
+                        { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET },
+                      ).catch((e) => setError(message(e)))
+                    }
+                  >
+                    Open YouGlish
+                  </Pill>
+                  <Copy>
+                    Real videos from youglish.com, opened in a browser inside Saylo.
+                  </Copy>
+                </>
               ) : (
                 <>
                   {state.data?.sentences.map((s: Sentence) => (

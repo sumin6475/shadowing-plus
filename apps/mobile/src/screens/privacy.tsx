@@ -137,6 +137,16 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
         </Card>
 
         <Section
+          icon="link"
+          title="Links to other sites"
+          lines={[
+            "“Open YouGlish” on a phrase shows youglish.com in a browser inside the app, so you can hear the phrase in real videos.",
+            "Only the phrase you tapped is sent, as part of that web address. That site and the YouTube videos it plays have their own privacy policies.",
+            "Nothing is sent unless you tap the link.",
+          ]}
+        />
+
+        <Section
           icon="gauge"
           title="Usage analytics"
           lines={[
