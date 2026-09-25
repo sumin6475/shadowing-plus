@@ -23,6 +23,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import MaskedView from "@react-native-masked-view/masked-view";
 
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 
 import { useAuth } from "@/lib/auth";
 import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-photo";
@@ -692,16 +693,22 @@ function usePullToSearch(onPullToSearch: (() => void) | undefined, onScroll: Scr
   // goes up to 16ms. Keep the screen's own onScroll at its old ~120ms pace.
   const handleScroll = useMemo(() => {
     if (!enabled) return undefined;
-    const throttle = { last: -Infinity };
+    const state = { last: -Infinity, armed: false };
     return Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
       useNativeDriver: true,
-      listener: onScroll
-        ? (event: Parameters<NonNullable<ScrollViewProps["onScroll"]>>[0]) => {
-            if (event.timeStamp - throttle.last < 120) return;
-            throttle.last = event.timeStamp;
-            onScroll(event);
-          }
-        : undefined,
+      listener: (event: Parameters<NonNullable<ScrollViewProps["onScroll"]>>[0]) => {
+        // One light tap each time the pull crosses the threshold, so the
+        // learner feels when letting go will open Search.
+        const { contentOffset, contentInset } = event.nativeEvent;
+        const armed = contentOffset.y + (contentInset?.top ?? 0) <= -PULL_TO_SEARCH;
+        if (armed !== state.armed) {
+          state.armed = armed;
+          if (armed) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }
+        if (!onScroll || event.timeStamp - state.last < 120) return;
+        state.last = event.timeStamp;
+        onScroll(event);
+      },
     });
   }, [enabled, onScroll, scrollY]);
   if (!onPullToSearch) return null;
