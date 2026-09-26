@@ -14,7 +14,12 @@ import {
   todaysPicks,
   practicedOn,
   periodOf,
+  hintPicks,
+  outlinePoints,
+  compactDuration,
+  sessionStats,
 } from "../src/lib/mvp-model.ts";
+import { splitFigures } from "../src/lib/figures.ts";
 const empty = {
   pronounced_at: null,
   examples_seen_at: null,
@@ -118,4 +123,81 @@ test("a silent mirror stops banking speaking time", () => {
   assert.equal(tickCountsAsSpeaking(now, now - SPEECH_IDLE_GRACE_MS - 1), false);
   // The 59-minute silent session: only the grace window could ever be counted.
   assert.equal(tickCountsAsSpeaking(now, now - 59 * 60_000), false);
+});
+
+test("before the first words, no second counts as speaking", () => {
+  // heardAt starts at 0 ("never heard"): a mirror finished in silence saves
+  // 0 seconds instead of the old start-up grace (the "1s, no words" screen).
+  assert.equal(tickCountsAsSpeaking(Date.now(), 0), false);
+});
+
+test("mirror cards: the phrase you came from, then today's picks, then Ready", () => {
+  const now = new Date(2026, 8, 26, 12);
+  const at = (d) => new Date(2026, 8, d, 9).toISOString();
+  const done = (d) => ({ pronounced_at: at(d), examples_seen_at: at(d), own_example_at: at(d) });
+  const mk = (id, created, steps = {}) => ({ ...empty, id, createdAt: at(created), ...steps });
+  const phrases = [
+    mk("ready-old", 1, done(10)),
+    mk("ready-new", 2, done(20)),
+    mk("learning", 3, { pronounced_at: at(4) }),
+    mk("collected", 5),
+  ];
+  assert.deepEqual(
+    hintPicks(phrases, 5, now).map((p) => p.id),
+    ["learning", "collected", "ready-new", "ready-old"],
+    "picks first, then Ready by recency — every phrase is eligible",
+  );
+  assert.deepEqual(hintPicks(phrases, 2, now).map((p) => p.id), ["learning", "collected"]);
+  assert.deepEqual(
+    hintPicks(phrases, 3, now, "ready-old").map((p) => p.id),
+    ["ready-old", "learning", "collected"],
+    "the phrase you came from leads, once",
+  );
+  assert.deepEqual(hintPicks([], 5, now), []);
+});
+
+test("a note outline keeps its points, labelled by section", () => {
+  assert.deepEqual(outlinePoints(NOTE_TEMPLATE.split("\n")), [], "the untouched template has no points");
+  assert.deepEqual(
+    outlinePoints(["Opening", "- say hi", "", "Body", "-  ", "- the project", "a loose line"]),
+    [
+      { section: "Opening", text: "say hi" },
+      { section: "Body", text: "the project" },
+      { section: "Body", text: "a loose line" },
+    ],
+  );
+});
+
+test("session stats: words, different words, and a pace only once it means something", () => {
+  const stats = sessionStats("So I went, and I went again. It’s fine!", 60);
+  assert.equal(stats.words, 9);
+  assert.equal(stats.distinct, 7, "case and punctuation don't make a word new");
+  assert.equal(stats.wpm, 9);
+  assert.equal(sessionStats("three quick words", 2).wpm, null, "under 15 seconds");
+  assert.deepEqual(sessionStats("", 0), { words: 0, distinct: 0, wpm: null });
+});
+
+test("stat durations stay short enough for a grid cell", () => {
+  assert.equal(compactDuration(0), "0s");
+  assert.equal(compactDuration(48.9), "48s");
+  assert.equal(compactDuration(60), "1m");
+  assert.equal(compactDuration(192), "3m 12s");
+  assert.equal(compactDuration(4651), "1h 17m");
+  assert.equal(compactDuration(7200), "2h");
+});
+
+test("figures split out of serif text so a 1 never reads as an l", () => {
+  assert.deepEqual(splitFigures("11 min 4s"), [
+    { text: "11", figure: true },
+    { text: " min ", figure: false },
+    { text: "4", figure: true },
+    { text: "s", figure: false },
+  ]);
+  assert.deepEqual(splitFigures("at 1:05, 24/7"), [
+    { text: "at ", figure: false },
+    { text: "1:05", figure: true },
+    { text: ", ", figure: false },
+    { text: "24/7", figure: true },
+  ]);
+  assert.deepEqual(splitFigures("Phrases"), [{ text: "Phrases", figure: false }]);
 });

@@ -1,6 +1,6 @@
 // ui.tsx — shared primitives ported from sp-theme.jsx: Card, Hero, Block, Pill,
 // Chip, Badge, Avatar, Header, BackBar, Sect, Screen, Wave, StatTile, TabBar.
-import { Children as ReactChildren, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
+import { Children as ReactChildren, Fragment, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
 import {
   Alert,
   Animated,
@@ -31,9 +31,10 @@ import { useAuth } from "@/lib/auth";
 import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-photo";
 import { statusStageLabel } from "@/lib/phrases";
 import { firstLanguage } from "@/lib/first-language";
+import { splitFigures } from "@/lib/figures";
 
 import { Icon, type IconName } from "./icon";
-import { BRAND, Gradients, Motif, TypeScale } from "./mobile-tokens";
+import { BRAND, FONT, Gradients, Motif, TypeScale } from "./mobile-tokens";
 import { SERIF, hairline, statusColors, useTheme, type Theme } from "./theme";
 
 export { Icon } from "./icon";
@@ -102,6 +103,30 @@ function serifFace(text: string): SerifFace {
   return BRAND_SERIF_FACE;
 }
 
+/** Runs of figures inside brand-serif text take FONT.figure, so "11 min"
+ *  stops reading "ll min". Elements among the children pass through. */
+function withFigures(children: ReactNode): ReactNode {
+  const parts = Array.isArray(children) ? children : [children];
+  const plain = (c: unknown): c is string | number =>
+    typeof c === "string" || typeof c === "number";
+  if (!parts.some((c) => plain(c) && /\d/.test(String(c)))) return children;
+  return parts.map((c, i) =>
+    plain(c) ? (
+      splitFigures(String(c)).map((run, j) =>
+        run.figure ? (
+          <Text key={`${i}.${j}`} style={{ fontFamily: FONT.figure, letterSpacing: 0 }}>
+            {run.text}
+          </Text>
+        ) : (
+          run.text
+        ),
+      )
+    ) : (
+      <Fragment key={i}>{c}</Fragment>
+    ),
+  );
+}
+
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(textOf).join("");
@@ -148,7 +173,7 @@ export function Serif({
       numberOfLines={numberOfLines}
       style={[{ fontFamily: face.fontFamily, letterSpacing: face.tracking ? -0.2 : 0 }, style, scaled, strong ? { fontWeight: "700" } : null]}
     >
-      {children}
+      {face === BRAND_SERIF_FACE ? withFigures(children) : children}
     </Text>
   );
 }

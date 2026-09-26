@@ -1,16 +1,18 @@
 // MVP mirror: preserve the camera and controls; save transcript + time, without coaching.
-import { useCallback, useEffect, useRef, useState } from "react";
+// Hint cards (./talk-hints) check a phrase off when the live transcript says it.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Alert,
   Linking,
   Pressable,
-  ScrollView,
   useWindowDimensions,
   View,
 } from "react-native";
 import { Text } from "@/design/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import * as Haptics from "expo-haptics";
 import { MirrorPreview } from "@/components/mirror-preview";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import { useTheme } from "@/design/theme";
@@ -19,16 +21,19 @@ import {
   prepareSpeakerPlayback,
   registerPlaybackStopper,
 } from "@/lib/audio-session";
+import { phrasesPerDay } from "@/lib/daily-phrases";
 import { saveTalkSessionAudio, talkAudioUri } from "@/lib/talk-audio";
 import {
+  loadHintPhrases,
+  outlinePoints,
   saveMirrorSession,
-  todayReadyPhrases,
-  durationLabel,
   tickCountsAsSpeaking,
-  type MvpPhrase,
+  type HintPhrase,
 } from "@/lib/mvp";
+import { phraseIndex, spokenWords } from "@/lib/phrase-use";
 import type { Nav, TalkCtx } from "./nav";
-const FROST = "rgba(20,22,28,0.65)";
+import { PhraseChipsCard, SessionStatsCard, TranscriptCard } from "./session-stats";
+import { FROST, HintDeck, USED, UsedToast } from "./talk-hints";
 const CAMERA_ACC = "#6E8DD5";
 const CAMERA_ON_ACC = "#0D1A3B";
 const fmt2 = (s: number) =>
@@ -37,15 +42,22 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   const t = useTheme(),
     insets = useSafeAreaInsets(),
     { height: windowHeight } = useWindowDimensions(),
-    transcriptRef = useRef<ScrollView>(null),
     p0 = talkCtx ?? {},
     speech = useSpeechSession();
+  // A note's outline is the deck's first card; with one, the deck starts open.
+  const note = useMemo(() => {
+    const points = outlinePoints(p0.beats ?? []);
+    return points.length ? { title: p0.ctx || "Your note", points } : null;
+  }, [p0.beats, p0.ctx]);
   const [phase, setPhase] = useState<"live" | "done">("live"),
     [sec, setSec] = useState(0),
     [ctx, setCtx] = useState(p0.ctx || "Free talk"),
     [dd, setDd] = useState(false),
-    [hintOpen, setHintOpen] = useState(Boolean(p0.noteId));
-  const [todayPhrases, setTodayPhrases] = useState<MvpPhrase[]>([]),
+    [hintOpen, setHintOpen] = useState(note !== null),
+    // Whether the cards were on screen at all — the result only reports on
+    // phrases the learner could see (or used anyway).
+    [hintSeen, setHintSeen] = useState(note !== null);
+  const [cards, setCards] = useState<HintPhrase[]>([]),
     [transcript, setTranscript] = useState(""),
     [micDenied, setMicDenied] = useState(false),
     [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
@@ -71,23 +83,66 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       }),
     [player],
   );
+  // Cards load once; they open the deck unless the learner already chose.
+  const hintTouched = useRef(false);
   useEffect(() => {
-    void todayReadyPhrases()
-      .then(setTodayPhrases)
-      .catch(() => setTodayPhrases([]));
-  }, []);
+    let active = true;
+    void loadHintPhrases(phrasesPerDay(), p0.phraseId)
+      .then((next) => {
+        if (!active) return;
+        setCards(next);
+        if (next.length && !hintTouched.current) {
+          setHintOpen(true);
+          setHintSeen(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [p0.phraseId]);
+  // Which cards were said, and where: derived from the transcript, never
+  // stored, so the result screen reports exactly what the saved words show.
+  const spoken = phase === "live" ? speech.transcript : transcript;
+  const usage = useMemo(() => {
+    if (!cards.length || !spoken) return cards.map(() => -1);
+    const words = spokenWords(spoken);
+    return cards.map((card) => phraseIndex(words, card.text));
+  }, [cards, spoken]);
+  const usedIds = useMemo(
+    () => new Set(cards.filter((_, i) => usage[i] >= 0).map((card) => card.id)),
+    [cards, usage],
+  );
+  // The most recently used card is the one said furthest into the talk.
+  const latest = cards.reduce<HintPhrase | null>(
+    (best, card, i) =>
+      usage[i] >= 0 && (!best || usage[i] > usage[cards.indexOf(best)]) ? card : best,
+    null,
+  );
+  const latestId = latest?.id ?? null,
+    latestText = latest?.text ?? "";
+  const announced = useRef<string | null>(null);
+  useEffect(() => {
+    if (phase !== "live" || !latestId || announced.current === latestId) return;
+    announced.current = latestId;
+    // iOS mutes haptics while the mic records unless the audio session opts
+    // in; the card's check and the toast carry the moment either way.
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    AccessibilityInfo.announceForAccessibility(`Used ${latestText}`);
+  }, [phase, latestId, latestText]);
   // Speaking time, not screen time. The timer used to tick for as long as the
   // recognizer ran, so a mirror left open in silence banked whole minutes
   // (59-minute sessions with no transcript). Now a tick only counts while new
-  // words are still arriving, within SPEECH_IDLE_GRACE_MS of the last ones.
+  // words are still arriving, within SPEECH_IDLE_GRACE_MS of the last ones —
+  // and nothing counts before the first words: heardAt 0 means "never heard",
+  // so finishing in silence is 0 seconds, not the start-up grace.
   const heardAt = useRef(0);
   useEffect(() => {
     // Every new word (interim results included) refreshes the window.
-    heardAt.current = Date.now();
+    if (speech.transcript) heardAt.current = Date.now();
   }, [speech.transcript]);
   useEffect(() => {
     if (phase !== "live" || !speech.recognizing) return;
-    heardAt.current = Date.now();
     const timer = setInterval(() => {
       if (tickCountsAsSpeaking(Date.now(), heardAt.current))
         setSec((s) => s + 1);
@@ -122,7 +177,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         id: sessionId.current,
         noteId: p0.noteId,
         transcript: text,
-        seconds: sec,
+        // Words were heard, so some speaking happened even if the talk ended
+        // before the first one-second tick.
+        seconds: Math.max(1, sec),
       });
       setSavedId(id);
       setSaveState("saved");
@@ -160,7 +217,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     const text = speech.stop();
     setTranscript(text);
     setPhase("done");
-    void persist(text);
+    // Nothing heard, nothing saved: an empty session is only noise in the
+    // learner's records. The recording can still be played on the result.
+    if (text.trim()) void persist(text);
   };
   const exit = useCallback(() => {
     if (p0.returnTo) nav.restore(p0.returnTo);
@@ -184,80 +243,96 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       ],
     );
   const restart = () => {
-    if (saveState !== "saved") return;
+    if (saveState !== "saved" && transcript.trim()) return;
     nav.startTalk({ ...p0 });
   };
-  if (phase === "done")
+  if (phase === "done") {
+    const empty = !transcript.trim();
+    const showPhrases = !empty && cards.length > 0 && (usedIds.size > 0 || hintSeen);
     return (
-      <Screen>
-        <BackBar
-          title="Mirror"
-          onBack={() => {
-            if (saveState === "saved") exit();
-            else
-              Alert.alert(
-                "Keep this session open",
-                "Retry saving before leaving so you don’t lose your transcript.",
-              );
-          }}
-        />
-        <Text
-          style={{
-            fontSize: 12,
-            fontWeight: "700",
-            letterSpacing: 1,
-            color: t.colors.ink3,
-          }}
-        >
-          {saveState === "saved"
-            ? "SESSION SAVED"
-            : saveState === "saving"
-              ? "SAVING YOUR SESSION…"
-              : "SESSION NOT SAVED"}
-        </Text>
-        <Serif style={{ fontSize: 44 }}>
-          {`${durationLabel(sec)}\nof speaking.`}
-        </Serif>
-        <Text style={{ color: t.colors.ink2, fontSize: 15, lineHeight: 23 }}>
-          A little more English, in your own voice.
-        </Text>
-        {saveErr ? (
-          <Card>
-            <Text style={{ color: t.colors.warn }}>{saveErr}</Text>
-            <Pill onPress={() => void persist(transcript)}>Retry save</Pill>
-          </Card>
-        ) : null}
-        <Card style={{ gap: 16 }}>
+      <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+        <Screen bottomPad={12}>
+          <BackBar
+            title="Mirror"
+            onBack={() => {
+              if (empty || saveState === "saved") exit();
+              else
+                Alert.alert(
+                  "Keep this session open",
+                  "Retry saving before leaving so you don’t lose your transcript.",
+                );
+            }}
+          />
           <Text
             style={{
-              color: t.colors.ink3,
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: "700",
               letterSpacing: 1,
+              color: t.colors.ink3,
             }}
           >
-            TRANSCRIPT{p0.noteId ? ` · ${p0.ctx || "YOUR NOTE"}` : ""}
+            {empty
+              ? "NOTHING SAVED"
+              : saveState === "saved"
+                ? "SESSION SAVED"
+                : saveState === "saving"
+                  ? "SAVING YOUR SESSION…"
+                  : "SESSION NOT SAVED"}
           </Text>
-          {/* Capped, not grown: a long session would otherwise push the
-              actions a screen or two down. Short transcripts keep their own
-              height; long ones scroll inside the card. */}
-          <ScrollView
-            ref={transcriptRef}
-            style={{ maxHeight: Math.round(windowHeight * 0.36) }}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator
-            onContentSizeChange={() => transcriptRef.current?.flashScrollIndicators()}
-          >
-            <Text
-              selectable
-              style={{ fontSize: 17, lineHeight: 28, color: t.colors.ink }}
-            >
-              {transcript ||
-                "The microphone didn’t capture any words. Your speaking time is still recorded."}
-            </Text>
-          </ScrollView>
-        </Card>
-        <View style={{ flexDirection: "row", gap: 10 }}>
+          {empty ? (
+            <>
+              <Serif style={{ fontSize: 44, lineHeight: 50 }}>No words caught.</Serif>
+              <Text style={{ color: t.colors.ink2, fontSize: 15, lineHeight: 23 }}>
+                The mic didn’t pick up any speech, so this session wasn’t saved.
+                Check that you aren’t muted, then try again.
+              </Text>
+            </>
+          ) : (
+            <>
+              {saveErr ? (
+                <Card>
+                  <Text style={{ color: t.colors.warn }}>{saveErr}</Text>
+                  <Pill onPress={() => void persist(transcript)}>Retry save</Pill>
+                </Card>
+              ) : null}
+              <SessionStatsCard
+                transcript={transcript}
+                seconds={Math.max(1, sec)}
+                phrases={showPhrases ? { used: usedIds.size, total: cards.length } : null}
+              />
+              {showPhrases ? (
+                <PhraseChipsCard
+                  phrases={cards.map((card) => ({
+                    id: card.id,
+                    text: card.text,
+                    used: usedIds.has(card.id),
+                  }))}
+                  onOpen={(id) => nav.push("mvpPhrase", { id })}
+                />
+              ) : null}
+              {/* Capped, not grown: a long session scrolls inside the card
+                  instead of pushing the rest a screen or two down. */}
+              <TranscriptCard
+                transcript={transcript}
+                label={`TRANSCRIPT${p0.noteId ? ` · ${(p0.ctx || "your note").toUpperCase()}` : ""}`}
+                maxHeight={Math.round(windowHeight * 0.32)}
+                onCopied={() => nav.notify("Transcript copied")}
+              />
+            </>
+          )}
+        </Screen>
+        {/* Pinned, so the actions sit in the same place however long the
+            transcript is. */}
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 10,
+            paddingHorizontal: 18,
+            paddingTop: 10,
+            paddingBottom: insets.bottom + 10,
+            backgroundColor: t.colors.bg,
+          }}
+        >
           {movedUri || speech.audioUri ? (
             <Pill
               full
@@ -275,14 +350,15 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               {playStatus.playing ? "Pause" : "Listen back"}
             </Pill>
           ) : null}
-          {saveState === "saved" ? (
+          {empty || saveState === "saved" ? (
             <Pill full icon="mic" onPress={restart}>
-              Speak again
+              {empty ? "Try again" : "Speak again"}
             </Pill>
           ) : null}
         </View>
-      </Screen>
+      </View>
     );
+  }
   // ── mirror: live ──
   const live = phase === "live";
   const subPill = p0.sub || (ctx !== "Free talk" ? ctx : null);
@@ -566,76 +642,16 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           ) : null}
 
           {hintOpen ? (
-            <View
-              style={{
-                position: "absolute",
-                left: 14,
-                right: 14,
-                bottom: insets.bottom + 132,
-                maxHeight: 310,
-                zIndex: 15,
-                backgroundColor: FROST,
-                borderRadius: 24,
-                padding: 20,
-              }}
-            >
-              <ScrollView contentContainerStyle={{ gap: 14 }}>
-                <Text
-                  style={{
-                    color: "#BCC9DF",
-                    fontSize: 11,
-                    fontWeight: "700",
-                    letterSpacing: 1,
-                  }}
-                >
-                  TODAY’S PHRASES
-                </Text>
-                <View
-                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
-                >
-                  {todayPhrases.map((p) => (
-                    <View
-                      key={p.id}
-                      style={{
-                        backgroundColor: "rgba(255,255,255,0.15)",
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 18,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>
-                        {p.text}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-                {!todayPhrases.length ? (
-                  <Text style={{ color: "#fff", lineHeight: 22 }}>
-                    Ready phrases will appear here. For now, speak freely.
-                  </Text>
-                ) : null}
-                {p0.beats?.length ? (
-                  <>
-                    <Text
-                      style={{
-                        color: "#BCC9DF",
-                        fontSize: 11,
-                        fontWeight: "700",
-                        letterSpacing: 1,
-                      }}
-                    >
-                      {p0.ctx || "YOUR NOTE"}
-                    </Text>
-                    <Text
-                      style={{ color: "#fff", fontSize: 16, lineHeight: 25 }}
-                    >
-                      {p0.beats.join("\n")}
-                    </Text>
-                  </>
-                ) : null}
-              </ScrollView>
-            </View>
-          ) : null}
+            <HintDeck
+              cards={cards}
+              usedIds={usedIds}
+              latestId={latestId}
+              note={note}
+              bottom={insets.bottom + 132}
+            />
+          ) : (
+            <UsedToast phrase={latest} bottom={insets.bottom + 140} />
+          )}
 
           {/* bottom controls — Hint · record indicator · Finish */}
           <View
@@ -654,8 +670,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <View style={{ alignItems: "center", gap: 8 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Show phrases and note"
-                onPress={() => setHintOpen((open) => !open)}
+                accessibilityLabel={hintOpen ? "Hide phrase cards" : "Show phrase cards"}
+                onPress={() => {
+                  hintTouched.current = true;
+                  setHintSeen(true);
+                  setHintOpen((open) => !open);
+                }}
                 style={{
                   backgroundColor: hintOpen
                     ? CAMERA_ACC
@@ -676,6 +696,27 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                   w={1.9}
                   c={hintOpen ? CAMERA_ON_ACC : "#fff"}
                 />
+                {usedIds.size ? (
+                  <View
+                    accessibilityElementsHidden
+                    style={{
+                      position: "absolute",
+                      top: -2,
+                      right: -2,
+                      minWidth: 22,
+                      height: 22,
+                      paddingHorizontal: 6,
+                      borderRadius: 11,
+                      backgroundColor: USED,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+                      {usedIds.size}
+                    </Text>
+                  </View>
+                ) : null}
               </Pressable>
               <Text
                 style={{

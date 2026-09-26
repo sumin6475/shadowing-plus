@@ -34,6 +34,10 @@ export const FONT = {
   semibold: "Pretendard-SemiBold",
   bold: "Pretendard-Bold",
   display: "InstrumentSerif",
+  /** Numbers set as display (stats, big counts). Instrument Serif draws "1"
+   *  exactly like "l", so figures use the iOS system serif (New York), whose
+   *  1 has a flag and a foot. */
+  figure: "ui-serif",
 } as const;
 
 // ── oklch → sRGB ───────────────────────────────────────────────────────────

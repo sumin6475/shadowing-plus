@@ -87,6 +87,7 @@ import {
 } from "@/lib/mvp";
 import { useAuth } from "@/lib/auth";
 import type { Nav } from "../nav";
+import { SessionStatsCard, TranscriptCard } from "../session-stats";
 
 const message = (e: unknown) =>
   e instanceof Error ? e.message : "Please try again.";
@@ -1235,7 +1236,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
             <Pill
               style={{ alignSelf: "stretch", marginTop: 6 }}
               icon="mic"
-              onPress={() => nav.startTalk({ from: "phrases" })}
+              onPress={() => nav.startTalk({ from: "phrases", phraseId: p.id })}
             >
               Use it in the mirror
             </Pill>
@@ -1865,15 +1866,11 @@ export function MirrorRecord({
     <Screen>
       <BackBar title="My records" onBack={nav.pop} />
       <Label>{dateTimeLabel(session.created_at)}</Label>
-      <Serif style={{ fontSize: 40 }}>
-        {durationLabel(session.seconds)} of speaking.
-      </Serif>
-      <Card>
-        <Label>TRANSCRIPT</Label>
-        <Copy>
-          {session.transcript || "No transcript was captured for this session."}
-        </Copy>
-      </Card>
+      <SessionStatsCard transcript={session.transcript ?? ""} seconds={session.seconds} />
+      <TranscriptCard
+        transcript={session.transcript ?? ""}
+        onCopied={() => nav.notify("Transcript copied")}
+      />
       {session.note_id ? (
         <Pill onPress={() => nav.push("mvpNote", { id: session.note_id })}>
           Open note

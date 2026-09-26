@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { deleteTalkSessionAudio } from "./talk-audio";
-import { NOTE_TEMPLATE, readyAt, type Progress, type Step } from "./mvp-model";
+import { NOTE_TEMPLATE, hintPicks, type Progress, type Step } from "./mvp-model";
 export * from "./mvp-model";
 export interface MvpPhrase extends Progress {
   id: string;
@@ -66,11 +66,28 @@ export async function loadPhraseBank(): Promise<MvpPhrase[]> {
     if (data.length < 1000) return phrases;
   }
 }
-export async function todayReadyPhrases() {
-  return (await loadPhraseBank())
-    .filter((p) => readyAt(p) > 0)
-    .sort((a, b) => readyAt(b) - readyAt(a))
-    .slice(0, 3);
+/** A mirror hint card: the phrase, plus the learner's latest sentence with it. */
+export interface HintPhrase extends MvpPhrase {
+  sentence: string | null;
+}
+/** The phrases to try while speaking (see `hintPicks`), each with the newest
+ *  sentence the learner wrote for it. The sentences are a nicety: if they
+ *  fail to load, the cards still come back without them. */
+export async function loadHintPhrases(
+  count: number,
+  firstId?: string | null,
+): Promise<HintPhrase[]> {
+  const picks = hintPicks(await loadPhraseBank(), count, new Date(), firstId);
+  if (!picks.length) return [];
+  const { data } = await supabase
+    .from("phrase_examples")
+    .select("phrase_id,text")
+    .in("phrase_id", picks.map((p) => p.id))
+    .order("created_at", { ascending: false });
+  const latest = new Map<string, string>();
+  for (const row of data ?? [])
+    if (!latest.has(row.phrase_id)) latest.set(row.phrase_id, row.text);
+  return picks.map((p) => ({ ...p, sentence: latest.get(p.id) ?? null }));
 }
 export async function setStep(id: string, step: Step, checked: boolean) {
   const { error } = await supabase
