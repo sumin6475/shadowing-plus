@@ -2,7 +2,7 @@
 // a card off the moment its phrase is said (see lib/phrase-use), and the deck
 // moves on to the next one. A note's outline rides along as the first card,
 // its points ticked by hand. Everything here draws over the camera.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 import { Text } from "@/design/text";
 import { Icon } from "@/design/ui";
@@ -26,13 +26,17 @@ type Page =
   | { kind: "phrase"; card: HintPhrase }
   | { kind: "empty" };
 
-/** A card's check, popping in when it turns on. */
+/** A card's check, popping in at the moment it turns on. */
 function UsedMark({ used }: { used: boolean }) {
-  // A fresh value each time `used` flips, so turning on always pops from small.
-  const scale = useMemo(() => new Animated.Value(used ? 0.4 : 1), [used]);
-  useEffect(() => {
-    if (used)
+  const scale = useMemo(() => new Animated.Value(1), []);
+  const was = useRef(used);
+  // Layout effect: shrink before the first frame of the check is painted.
+  useLayoutEffect(() => {
+    if (used && !was.current) {
+      scale.setValue(0.4);
       Animated.spring(scale, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }).start();
+    }
+    was.current = used;
   }, [used, scale]);
   if (!used)
     return (
@@ -191,14 +195,18 @@ function NotePage({
   );
 }
 
-/** The frosted card deck above the mirror's controls. */
+/** The frosted card deck above the mirror's controls. It stays mounted while
+ *  hidden, so the page, an opened card and ticked note points survive the
+ *  Hint button. */
 export function HintDeck({
+  visible,
   cards,
   usedIds,
   latestId,
   note,
   bottom,
 }: {
+  visible: boolean;
   cards: HintPhrase[];
   usedIds: Set<string>;
   /** The phrase used most recently — the deck moves on from it. */
@@ -216,12 +224,8 @@ export function HintDeck({
     ],
     [cards, note],
   );
-  // Open on the first phrase still to use, not on one already checked off.
-  const [first] = useState(() =>
-    Math.max(0, pages.findIndex((p) => p.kind === "phrase" && !usedIds.has(p.card.id))),
-  );
-  const [page, setPage] = useState(first);
-  const pageRef = useRef(first);
+  const [page, setPage] = useState(0);
+  const pageRef = useRef(0);
   const deck = useRef<ScrollView>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [covered, setCovered] = useState<number[]>([]);
@@ -250,6 +254,9 @@ export function HintDeck({
   const usedCount = cards.filter((c) => usedIds.has(c.id)).length;
   return (
     <View
+      pointerEvents={visible ? "auto" : "none"}
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
       style={{
         position: "absolute",
         left: 14,
@@ -259,6 +266,7 @@ export function HintDeck({
         backgroundColor: FROST,
         borderRadius: 24,
         overflow: "hidden",
+        opacity: visible ? 1 : 0,
       }}
     >
       <ScrollView
@@ -266,7 +274,6 @@ export function HintDeck({
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        contentOffset={{ x: first * pageW, y: 0 }}
         scrollEventThrottle={16}
         onScroll={(e) => {
           const i = Math.round(e.nativeEvent.contentOffset.x / pageW);
@@ -340,21 +347,40 @@ export function HintDeck({
 }
 
 /** With the deck hidden, a used phrase still gets its moment: a pill that
- *  fades in over the controls and away again. */
-export function UsedToast({ phrase, bottom }: { phrase: HintPhrase | null; bottom: number }) {
+ *  fades in over the controls and away again. Mounted for the whole session
+ *  and keyed on the phrase, so toggling the deck never replays an old one. */
+export function UsedToast({
+  phrase,
+  hidden,
+  bottom,
+}: {
+  phrase: HintPhrase | null;
+  /** True while the deck is showing — the card itself carries the moment. */
+  hidden: boolean;
+  bottom: number;
+}) {
   const opacity = useMemo(() => new Animated.Value(0), []);
+  const run = useRef<Animated.CompositeAnimation | null>(null);
+  const hiddenNow = useRef(hidden);
+  useEffect(() => {
+    hiddenNow.current = hidden;
+    if (hidden) {
+      run.current?.stop();
+      opacity.setValue(0);
+    }
+  }, [hidden, opacity]);
   const id = phrase?.id;
   useEffect(() => {
-    if (!id) return;
+    if (!id || hiddenNow.current) return;
     opacity.setValue(0);
-    const run = Animated.sequence([
+    run.current = Animated.sequence([
       Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
       Animated.delay(2200),
       Animated.timing(opacity, { toValue: 0, duration: 260, useNativeDriver: true }),
     ]);
-    run.start();
-    return () => run.stop();
+    run.current.start();
   }, [id, opacity]);
+  useEffect(() => () => run.current?.stop(), []);
   if (!phrase) return null;
   return (
     <Animated.View

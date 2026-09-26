@@ -641,17 +641,15 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </View>
           ) : null}
 
-          {hintOpen ? (
-            <HintDeck
-              cards={cards}
-              usedIds={usedIds}
-              latestId={latestId}
-              note={note}
-              bottom={insets.bottom + 132}
-            />
-          ) : (
-            <UsedToast phrase={latest} bottom={insets.bottom + 140} />
-          )}
+          <HintDeck
+            visible={hintOpen}
+            cards={cards}
+            usedIds={usedIds}
+            latestId={latestId}
+            note={note}
+            bottom={insets.bottom + 132}
+          />
+          <UsedToast phrase={latest} hidden={hintOpen} bottom={insets.bottom + 140} />
 
           {/* bottom controls — Hint · record indicator · Finish */}
           <View
