@@ -66,6 +66,7 @@ import {
   type CaptureImageAsset,
   type ClipCaptureSeed,
 } from "@/screens/capture";
+import { SearchScreen } from "@/screens/search";
 import { PracticeHubScreen, QuickRehearsalScreen } from "@/screens/practice";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
@@ -434,6 +435,8 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <PhraseChecklist nav={nav} id={p.id as string} />;
     case "mvpNote":
       return <NoteEditor key={p.id as string} nav={nav} id={p.id as string} />;
+    case "search":
+      return <SearchScreen nav={nav} visit={p.visit as number} />;
     case "mirrorRecord":
       return <MirrorRecord nav={nav} session={p.session as MirrorSession} />;
     case "phrase":

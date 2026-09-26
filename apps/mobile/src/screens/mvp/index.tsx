@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   View,
@@ -68,6 +67,7 @@ import {
   durationLabel,
   isBlankNote,
   loadMirrorSessions,
+  notePreview,
   loadNote,
   loadNotes,
   loadPhraseBank,
@@ -363,7 +363,7 @@ const loadHome = async () => {
   return { phrases, notes };
 };
 /** One period's rows, as one rounded card (Figma). */
-function SectionCard({ label, children }: { label: string; children: ReactNode }) {
+export function SectionCard({ label, children }: { label: string; children: ReactNode }) {
   const t = useTheme();
   return (
     <View style={{ gap: 8 }}>
@@ -393,7 +393,7 @@ function SectionCard({ label, children }: { label: string; children: ReactNode }
   );
 }
 /** A row inside a SectionCard: 16pt padding, hairline between rows. */
-function Row({ last, children }: { last: boolean; children: ReactNode }) {
+export function Row({ last, children }: { last: boolean; children: ReactNode }) {
   const t = useTheme();
   return (
     <View
@@ -454,14 +454,6 @@ function ListenButton({ state }: { state: "idle" | "loading" | "playing" }) {
     </RowCircle>
   );
 }
-/** First real line of a note — headings and bullet markers dropped. */
-const notePreview = (body: string) =>
-  body
-    .replace(/Opening|Body|Closing/g, "")
-    .split("\n")
-    .map((l) => l.replace(/^[-•]\s*/, "").trim())
-    .filter(Boolean)
-    .join(" · ") || "A blank page for your next conversation.";
 const HERO_CARD = {
   width: 271,
   height: 200,
@@ -504,14 +496,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
     setQuery("");
   };
   return (
-    <Screen
-      refreshControl={
-        <RefreshControl
-          refreshing={state.loading && !!state.data}
-          onRefresh={() => void state.refresh()}
-        />
-      }
-    >
+    <Screen onPullToSearch={() => nav.push("search", { visit: Date.now() })}>
       <Header
         nav={nav}
         title="Phrases"
@@ -1315,14 +1300,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
     groups.set(label, [...(groups.get(label) ?? []), n]);
   }
   return (
-    <Screen
-      refreshControl={
-        <RefreshControl
-          refreshing={state.loading}
-          onRefresh={() => void state.refresh()}
-        />
-      }
-    >
+    <Screen onPullToSearch={() => nav.push("search", { visit: Date.now() })}>
       <Header
         nav={nav}
         title="Studio"

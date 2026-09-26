@@ -70,7 +70,7 @@
     "verify:release-config": "node ./scripts/verify-release-config.mjs",
     "verify:rls": "node ./scripts/verify-rls-isolation.mjs",
     "validate": "npm run verify:release-config && npm run typecheck && npm run lint:baseline && npm run export:ios",
-    "test:mvp": "node --test tests/mvp-model.test.mjs"
+    "test:mvp": "node --test tests/mvp-model.test.mjs tests/search-model.test.mjs"
   },
   "private": true
 }

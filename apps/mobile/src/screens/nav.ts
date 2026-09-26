@@ -7,6 +7,7 @@ export type ViewName =
   | "profile"
   | "mvpPhrase"
   | "mvpNote"
+  | "search"
   | "mirrorRecord"
   | "phrase"
   | "review"

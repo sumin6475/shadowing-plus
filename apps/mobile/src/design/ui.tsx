@@ -25,6 +25,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import MaskedView from "@react-native-masked-view/masked-view";
 
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 
 import { useAuth } from "@/lib/auth";
 import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-photo";
@@ -708,6 +709,7 @@ export function Screen({
   scrollEnabled = true,
   onScroll,
   scrollRef,
+  onPullToSearch,
 }: {
   children: ReactNode;
   noPad?: boolean;
@@ -722,15 +724,20 @@ export function Screen({
   /** Handle on the underlying ScrollView — e.g. the product tour scrolling a
    *  coach-mark target into view. Purely additive; nothing else reads it. */
   scrollRef?: Ref<ScrollView>;
+  /** Pull down past the top and release to open Search. Takes the place of
+   *  pull-to-refresh, so don't pass it with `refreshControl`. iOS only
+   *  (Android has no negative overscroll offset). */
+  onPullToSearch?: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const pull = usePullToSearch(onPullToSearch, onScroll);
   // Progressive top frost: full (translucent) over the status bar, then a long,
   // gentle multi-stop fade to nothing well below it so there's no visible edge.
   const frostH = insets.top + 40;
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
-      <ScrollView
+      <Animated.ScrollView
         ref={scrollRef}
         style={{ flex: 1, backgroundColor: t.colors.bg }}
         contentContainerStyle={[
@@ -750,11 +757,12 @@ export function Screen({
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
         refreshControl={refreshControl}
-        onScroll={onScroll}
-        scrollEventThrottle={onScroll ? 120 : undefined}
+        onScroll={pull ? pull.onScroll : onScroll}
+        onScrollEndDrag={pull?.onScrollEndDrag}
+        scrollEventThrottle={pull ? 16 : onScroll ? 120 : undefined}
       >
         {children}
-      </ScrollView>
+      </Animated.ScrollView>
       {/* Progressive top frost: a BlurView masked by a vertical gradient, so the
           blur is present (translucent, ~55%) over the status bar and fades fully
           to nothing just below it — no hard boundary line. Purely visual. */}
@@ -775,7 +783,81 @@ export function Screen({
           <BlurView tint="systemUltraThinMaterial" style={{ flex: 1 }} />
         </MaskedView>
       ) : null}
+      {pull ? <PullSearchHint scrollY={pull.scrollY} top={insets.top} /> : null}
     </View>
+  );
+}
+
+// ── Pull to search ──────────────────────────────────────────────────────────
+// From the cloud session's PR #11: pull past the top of a tab and let go to
+// open Search. A pill appears while pulling, fills with the accent once
+// letting go would open Search, and a light haptic marks that moment.
+/** How far (pt) past the top the learner must pull before release opens Search. */
+const PULL_TO_SEARCH = 76;
+
+function usePullToSearch(onPullToSearch: (() => void) | undefined, onScroll: ScrollViewProps["onScroll"]) {
+  // useMemo (not a ref) keeps the Animated.Value off the render-time ref-read path.
+  const scrollY = useMemo(() => new Animated.Value(0), []);
+  const enabled = !!onPullToSearch;
+  // The hint animates every frame (native driver), so the event rate goes to
+  // 16ms; the screen's own onScroll keeps its ~120ms pace.
+  const handleScroll = useMemo(() => {
+    if (!enabled) return undefined;
+    const state = { last: -Infinity, armed: false };
+    return Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+      useNativeDriver: true,
+      listener: (event: Parameters<NonNullable<ScrollViewProps["onScroll"]>>[0]) => {
+        const { contentOffset, contentInset } = event.nativeEvent;
+        const armed = contentOffset.y + (contentInset?.top ?? 0) <= -PULL_TO_SEARCH;
+        if (armed !== state.armed) {
+          state.armed = armed;
+          if (armed) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }
+        if (!onScroll || event.timeStamp - state.last < 120) return;
+        state.last = event.timeStamp;
+        onScroll(event);
+      },
+    });
+  }, [enabled, onScroll, scrollY]);
+  if (!onPullToSearch) return null;
+  return {
+    scrollY,
+    onScroll: handleScroll,
+    onScrollEndDrag: (event: Parameters<NonNullable<ScrollViewProps["onScrollEndDrag"]>>[0]) => {
+      const { contentOffset, contentInset } = event.nativeEvent;
+      if (contentOffset.y + (contentInset?.top ?? 0) <= -PULL_TO_SEARCH) onPullToSearch();
+    },
+  };
+}
+
+/** Search pill revealed in the gap above the content while pulling. It fills
+ *  with the accent once the pull passes the threshold (release = open). */
+function PullSearchHint({ scrollY, top }: { scrollY: Animated.Value; top: number }) {
+  const t = useTheme();
+  const opacity = scrollY.interpolate({ inputRange: [-PULL_TO_SEARCH, -18], outputRange: [1, 0], extrapolate: "clamp" });
+  const scale = scrollY.interpolate({ inputRange: [-PULL_TO_SEARCH, -18], outputRange: [1, 0.86], extrapolate: "clamp" });
+  // Centred in the revealed gap (content padding is top + 8).
+  const translateY = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [(200 + 8) / 2 - 17, 8 / 2 - 17], extrapolate: "clamp" });
+  const armed = scrollY.interpolate({ inputRange: [-PULL_TO_SEARCH - 1, -PULL_TO_SEARCH + 1], outputRange: [1, 0], extrapolate: "clamp" });
+  const pill: ViewStyle = { height: 34, borderRadius: 17, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 7 };
+  return (
+    <Animated.View
+      pointerEvents="none"
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      style={{ position: "absolute", top, left: 0, right: 0, alignItems: "center", opacity, transform: [{ translateY }, { scale }] }}
+    >
+      <View style={[pill, { backgroundColor: t.colors.card, borderWidth: hairline, borderColor: t.ring }, t.shadowCard]}>
+        <Icon name="search" s={15} w={2.2} c={t.colors.ink2} />
+        <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.ink2 }}>Search</Text>
+      </View>
+      <Animated.View style={[StyleSheet.absoluteFill, { alignItems: "center", opacity: armed }]}>
+        <View style={[pill, { backgroundColor: t.colors.acc }]}>
+          <Icon name="search" s={15} w={2.2} c={t.colors.onAcc} />
+          <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.onAcc }}>Search</Text>
+        </View>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
