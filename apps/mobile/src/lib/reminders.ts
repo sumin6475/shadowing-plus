@@ -20,7 +20,7 @@ const SELF_TALK_TEST_ID = "saylo.selftalk.test";
 
 export const SELF_TALK_COPY = {
   title: "Time for a little self-talk",
-  body: "One short round of Speak is enough. Pick a story beat and say it out loud.",
+  body: "One short round of Talk is enough. Pick a Speaking Note and say it out loud.",
 };
 
 export type ReminderFrequency = "daily" | "weekly";

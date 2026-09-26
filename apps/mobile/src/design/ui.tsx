@@ -1,14 +1,14 @@
 // ui.tsx — shared primitives ported from sp-theme.jsx: Card, Hero, Block, Pill,
 // Chip, Badge, Avatar, Header, BackBar, Sect, Screen, Wave, StatTile, TabBar.
-import { Children as ReactChildren, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Children as ReactChildren, Fragment, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
 import {
   Alert,
   Animated,
   Easing,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type RefreshControlProps,
   type ScrollViewProps,
@@ -16,6 +16,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { Text } from "./text";
 import Reanimated, { FadeInDown } from "react-native-reanimated";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,19 +25,29 @@ import { LinearGradient } from "expo-linear-gradient";
 import MaskedView from "@react-native-masked-view/masked-view";
 
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 
 import { useAuth } from "@/lib/auth";
 import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-photo";
 import { statusStageLabel } from "@/lib/phrases";
+import { firstLanguage } from "@/lib/first-language";
+import { splitFigures } from "@/lib/figures";
 
 import { Icon, type IconName } from "./icon";
-import { Motif, TypeScale } from "./mobile-tokens";
+import { BRAND, FONT, Gradients, Motif, TypeScale } from "./mobile-tokens";
 import { SERIF, hairline, statusColors, useTheme, type Theme } from "./theme";
 
 export { Icon } from "./icon";
 export type { IconName } from "./icon";
 
 export type Tone = "butter" | "sky" | "sage" | "blush" | "acc" | "accS" | "soft";
+
+/** LinearGradient's `colors` needs a >=2 tuple, but the shared `Gradients.*`
+ *  ramps are plain string[] — re-form the two required stops instead of casting. */
+export function gradientStops(colors: string[]): readonly [string, string, ...string[]] {
+  const [first, second, ...rest] = colors;
+  return [first, second, ...rest];
+}
 
 export function toneColor(t: Theme, name: string): string {
   const map: Record<string, string> = {
@@ -52,20 +63,117 @@ export function toneColor(t: Theme, name: string): string {
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────
-// Newsreader reads ~10% smaller than the Georgia it replaced, so scale every
-// serif's fontSize + lineHeight once here — the whole app compensates uniformly
-// without editing each call site. Per-site fontSize still sets relative size;
-// this only nudges the overall serif scale up.
-const SERIF_SCALE = 1.1;
+// The brand serif renders at its Figma sizes as given. (Newsreader, the serif
+// before 2026-09-18, needed a 1.1 scale for its small x-height; keep this hook
+// in case a future face does too.)
+const SERIF_SCALE = 1;
 
-export function Serif({ children, style, numberOfLines }: { children: ReactNode; style?: StyleProp<TextStyle>; numberOfLines?: number }) {
+// The brand serif (Instrument Serif) draws Latin only. For text in another script, use a
+// serif that actually has the glyphs instead of letting iOS cascade that line
+// into the system SANS. Both faces below ship with iOS, so they cost no bundle
+// size. Korean and Chinese have no serif on iOS (a free one is 16–23 MB to
+// bundle), so they keep today's behavior: Newsreader, cascading to the system
+// font. Measured and decided in docs/release/first-language-readiness.md §3.4.
+const SERIF_SYSTEM = "ui-serif"; // New York: Latin, Cyrillic, Vietnamese
+const SERIF_MINCHO = "Hiragino Mincho ProN"; // Japanese
+const KANA = /[\u3040-\u30ff\u31f0-\u31ff]/;
+const CYRILLIC = /[\u0400-\u04ff]/;
+const HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
+interface SerifFace {
+  fontFamily: string;
+  /** Only the brand serif takes SERIF_SCALE; the fallback faces don't. */
+  scale: number;
+  /** Negative tracking suits a Latin serif; it crowds CJK. */
+  tracking: boolean;
+}
+
+const BRAND_SERIF_FACE: SerifFace = { fontFamily: SERIF, scale: SERIF_SCALE, tracking: true };
+
+/** The serif that can draw `text`. Han without kana is ambiguous — Chinese and
+ *  Japanese share those code points but not their glyph shapes — so the
+ *  learner's first language decides. Mincho on Chinese text would show a
+ *  Taiwanese learner Japanese letterforms. */
+function serifFace(text: string): SerifFace {
+  if (Platform.OS !== "ios") return BRAND_SERIF_FACE;
+  if (KANA.test(text) || (HAN.test(text) && firstLanguage() === "ja")) {
+    return { fontFamily: SERIF_MINCHO, scale: 1, tracking: false };
+  }
+  if (CYRILLIC.test(text)) return { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true };
+  return BRAND_SERIF_FACE;
+}
+
+/** Runs of figures inside brand-serif text take FONT.figure, so "11 min"
+ *  stops reading "ll min". Elements among the children pass through. */
+function withFigures(children: ReactNode): ReactNode {
+  const parts = Array.isArray(children) ? children : [children];
+  const plain = (c: unknown): c is string | number =>
+    typeof c === "string" || typeof c === "number";
+  if (!parts.some((c) => plain(c) && /\d/.test(String(c)))) return children;
+  return parts.map((c, i) =>
+    plain(c) ? (
+      splitFigures(String(c)).map((run, j) =>
+        run.figure ? (
+          <Text key={`${i}.${j}`} style={{ fontFamily: FONT.figure, letterSpacing: 0 }}>
+            {run.text}
+          </Text>
+        ) : (
+          run.text
+        ),
+      )
+    ) : (
+      <Fragment key={i}>{c}</Fragment>
+    ),
+  );
+}
+
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  return "";
+}
+
+/** Font family + tracking for a serif TextInput, following what the learner
+ *  types — a note title can be in any language. */
+export function serifInputFace(text: string, tracking: number): TextStyle {
+  const face = serifFace(text);
+  return { fontFamily: face.fontFamily, letterSpacing: face.tracking ? tracking : 0 };
+}
+
+/**
+ * `strong` is not a style flag, it is a different face. Only
+ * InstrumentSerif-Regular is bundled, so fontWeight on a brand-serif run matches
+ * nothing and iOS quietly draws Regular — the bold never arrives and nothing
+ * warns you. The system serif (New York) ships every weight, costs no bundle,
+ * and is already this design system's serif for Cyrillic, so a bold serif run
+ * goes there instead, without SERIF_SCALE. Text that Newsreader cannot draw at all still routes by script.
+ */
+export function Serif({
+  children,
+  style,
+  numberOfLines,
+  strong,
+}: {
+  children: ReactNode;
+  style?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+  strong?: boolean;
+}) {
+  const text = textOf(children);
+  const natural = serifFace(text);
+  const face: SerifFace = strong && natural === BRAND_SERIF_FACE ? { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true } : natural;
   const flat = StyleSheet.flatten(style) as TextStyle | undefined;
   const scaled: TextStyle = {};
-  if (typeof flat?.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * SERIF_SCALE);
-  if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * SERIF_SCALE);
+  if (face.scale !== 1) {
+    if (typeof flat?.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * face.scale);
+    if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * face.scale);
+  }
   return (
-    <Text numberOfLines={numberOfLines} style={[{ fontFamily: SERIF, letterSpacing: -0.2 }, style, scaled]}>
-      {children}
+    <Text
+      numberOfLines={numberOfLines}
+      style={[{ fontFamily: face.fontFamily, letterSpacing: face.tracking ? -0.2 : 0 }, style, scaled, strong ? { fontWeight: "700" } : null]}
+    >
+      {face === BRAND_SERIF_FACE ? withFigures(children) : children}
     </Text>
   );
 }
@@ -229,16 +337,20 @@ export function Hero({
     borderRadius: t.r,
     padding: t.padc + 9,
     overflow: "hidden",
+    // Dark mode only: the navy ramp would otherwise melt into the #000 page.
+    ...(t.dark ? { borderWidth: hairline, borderColor: "rgba(255,255,255,0.10)" } : null),
     ...t.shadowLg,
   };
   const inner = (
     <>
       <LinearGradient
-        colors={t.dark ? ["#4C7EF0", "#2E56BC"] : ["#5B8CFF", "#2F62E8"]}
+        colors={gradientStops(Gradients.brand)}
         start={{ x: 0.1, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
+      {/* Bloom only — the old bottom-left navy lobe (#142878) sat between the
+          two brand darks and was invisible against them. */}
       <View
         style={{
           position: "absolute",
@@ -247,18 +359,7 @@ export function Hero({
           width: 160,
           height: 160,
           borderRadius: 80,
-          backgroundColor: "rgba(255,255,255,0.16)",
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          left: -28,
-          bottom: -48,
-          width: 120,
-          height: 120,
-          borderRadius: 60,
-          backgroundColor: "rgba(20,40,120,0.12)",
+          backgroundColor: "rgba(255,255,255,0.11)",
         }}
       />
       {children}
@@ -317,7 +418,12 @@ export function Block({
 }
 
 // ── Pill (capsule button) ──────────────────────────────────────────────────
-type PillTone = "acc" | "dark" | "soft" | "white" | "ghost" | "tint";
+type PillTone = "acc" | "dark" | "soft" | "white" | "card" | "ghost" | "tint" | "danger";
+// Scheme-independent light capsule used by tone="white". Kept off the theme on
+// purpose: this capsule is drawn on the brand gradient, which is the same navy
+// ramp in light and dark, so its fill must not track the color scheme.
+const PILL_LIGHT_BG = "#FFFFFF";
+const PILL_LIGHT_FG = BRAND.dark;
 export function Pill({
   children,
   onPress,
@@ -339,17 +445,36 @@ export function Pill({
 }) {
   const t = useTheme();
   const tones: Record<PillTone, { bg: string; fg: string; shadow?: boolean }> = {
-    acc: { bg: t.colors.acc, fg: "#fff" },
+    acc: { bg: t.colors.acc, fg: t.colors.onAcc },
     dark: { bg: t.colors.pill, fg: "#fff" },
     soft: { bg: t.colors.accS, fg: t.colors.accD },
-    white: { bg: t.colors.card, fg: t.colors.ink, shadow: true },
+    // `white` means "a light capsule sitting on a brand surface" — it must NOT
+    // follow t.colors.card into dark mode (#1C1C1E), which measures 1.16:1 on
+    // the Hero's #0D1A3B end and 2.14:1 on its #344E91 end and simply vanishes.
+    // Fixed pair in both schemes: #FFFFFF fill (17.1:1 on #0D1A3B, 7.5:1 on
+    // #344E91) with BRAND.dark label on it (17.1:1).
+    white: { bg: PILL_LIGHT_BG, fg: PILL_LIGHT_FG, shadow: true },
+    // What `white` used to be. For a raised capsule on the ordinary page
+    // background, where a fixed #FFFFFF fill would shout in dark mode.
+    card: { bg: t.colors.card, fg: t.colors.ink, shadow: true },
     ghost: { bg: "transparent", fg: t.colors.ink2 },
     tint: { bg: t.colors.soft, fg: t.colors.ink },
+    // Destructive. `warn` is the AA-checked error pair; at 12% it stays a
+    // capsule you can read, not a red block competing with the primary action.
+    danger: { bg: `${t.colors.warn}1F`, fg: t.colors.warn },
   };
   const tv = tones[tone];
   const h = small ? Motif.buttonHeight.medium : Motif.buttonHeight.large;
   const fs = small ? 15 : 17;
   const fx = usePressFx(0.955);
+  // `{rate}× speed` arrives as [1, "× speed"], not a string — treat any mix of
+  // strings and numbers as a label, or RN throws "Text strings must be rendered
+  // within a <Text>" and the capsule renders empty.
+  const isLabel =
+    children != null &&
+    (Array.isArray(children) ? children : [children]).every(
+      (c) => typeof c === "string" || typeof c === "number",
+    );
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -373,9 +498,12 @@ export function Pill({
         { transform: [{ scale: fx.scale }] },
       ]}
     >
+      {/* `tv.fg` reaches a string child only — RN does not cascade color across a
+          View. A non-string child must color itself, and must be re-checked when
+          a tone's foreground changes. */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
         {icon ? <Icon name={icon} s={small ? 15 : 17} w={2} c={tv.fg} /> : null}
-        {typeof children === "string" ? (
+        {isLabel ? (
           <Text style={[{ color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
             {children}
           </Text>
@@ -605,6 +733,8 @@ export function Screen({
   refreshControl,
   scrollEnabled = true,
   onScroll,
+  scrollRef,
+  onPullToSearch,
 }: {
   children: ReactNode;
   noPad?: boolean;
@@ -616,15 +746,24 @@ export function Screen({
   scrollEnabled?: boolean;
   /** Scroll events (throttled) — e.g. incremental list loading near the end. */
   onScroll?: ScrollViewProps["onScroll"];
+  /** Handle on the underlying ScrollView — e.g. the product tour scrolling a
+   *  coach-mark target into view. Purely additive; nothing else reads it. */
+  scrollRef?: Ref<ScrollView>;
+  /** Pull down past the top and release to open Search. Takes the place of
+   *  pull-to-refresh, so don't pass it with `refreshControl`. iOS only
+   *  (Android has no negative overscroll offset). */
+  onPullToSearch?: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const pull = usePullToSearch(onPullToSearch, onScroll);
   // Progressive top frost: full (translucent) over the status bar, then a long,
   // gentle multi-stop fade to nothing well below it so there's no visible edge.
   const frostH = insets.top + 40;
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
-      <ScrollView
+      <Animated.ScrollView
+        ref={scrollRef}
         style={{ flex: 1, backgroundColor: t.colors.bg }}
         contentContainerStyle={[
           {
@@ -643,11 +782,12 @@ export function Screen({
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
         refreshControl={refreshControl}
-        onScroll={onScroll}
-        scrollEventThrottle={onScroll ? 120 : undefined}
+        onScroll={pull ? pull.onScroll : onScroll}
+        onScrollEndDrag={pull?.onScrollEndDrag}
+        scrollEventThrottle={pull ? 16 : onScroll ? 120 : undefined}
       >
         {children}
-      </ScrollView>
+      </Animated.ScrollView>
       {/* Progressive top frost: a BlurView masked by a vertical gradient, so the
           blur is present (translucent, ~55%) over the status bar and fades fully
           to nothing just below it — no hard boundary line. Purely visual. */}
@@ -668,7 +808,81 @@ export function Screen({
           <BlurView tint="systemUltraThinMaterial" style={{ flex: 1 }} />
         </MaskedView>
       ) : null}
+      {pull ? <PullSearchHint scrollY={pull.scrollY} top={insets.top} /> : null}
     </View>
+  );
+}
+
+// ── Pull to search ──────────────────────────────────────────────────────────
+// From the cloud session's PR #11: pull past the top of a tab and let go to
+// open Search. A pill appears while pulling, fills with the accent once
+// letting go would open Search, and a light haptic marks that moment.
+/** How far (pt) past the top the learner must pull before release opens Search. */
+const PULL_TO_SEARCH = 76;
+
+function usePullToSearch(onPullToSearch: (() => void) | undefined, onScroll: ScrollViewProps["onScroll"]) {
+  // useMemo (not a ref) keeps the Animated.Value off the render-time ref-read path.
+  const scrollY = useMemo(() => new Animated.Value(0), []);
+  const enabled = !!onPullToSearch;
+  // The hint animates every frame (native driver), so the event rate goes to
+  // 16ms; the screen's own onScroll keeps its ~120ms pace.
+  const handleScroll = useMemo(() => {
+    if (!enabled) return undefined;
+    const state = { last: -Infinity, armed: false };
+    return Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+      useNativeDriver: true,
+      listener: (event: Parameters<NonNullable<ScrollViewProps["onScroll"]>>[0]) => {
+        const { contentOffset, contentInset } = event.nativeEvent;
+        const armed = contentOffset.y + (contentInset?.top ?? 0) <= -PULL_TO_SEARCH;
+        if (armed !== state.armed) {
+          state.armed = armed;
+          if (armed) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }
+        if (!onScroll || event.timeStamp - state.last < 120) return;
+        state.last = event.timeStamp;
+        onScroll(event);
+      },
+    });
+  }, [enabled, onScroll, scrollY]);
+  if (!onPullToSearch) return null;
+  return {
+    scrollY,
+    onScroll: handleScroll,
+    onScrollEndDrag: (event: Parameters<NonNullable<ScrollViewProps["onScrollEndDrag"]>>[0]) => {
+      const { contentOffset, contentInset } = event.nativeEvent;
+      if (contentOffset.y + (contentInset?.top ?? 0) <= -PULL_TO_SEARCH) onPullToSearch();
+    },
+  };
+}
+
+/** Search pill revealed in the gap above the content while pulling. It fills
+ *  with the accent once the pull passes the threshold (release = open). */
+function PullSearchHint({ scrollY, top }: { scrollY: Animated.Value; top: number }) {
+  const t = useTheme();
+  const opacity = scrollY.interpolate({ inputRange: [-PULL_TO_SEARCH, -18], outputRange: [1, 0], extrapolate: "clamp" });
+  const scale = scrollY.interpolate({ inputRange: [-PULL_TO_SEARCH, -18], outputRange: [1, 0.86], extrapolate: "clamp" });
+  // Centred in the revealed gap (content padding is top + 8).
+  const translateY = scrollY.interpolate({ inputRange: [-200, 0], outputRange: [(200 + 8) / 2 - 17, 8 / 2 - 17], extrapolate: "clamp" });
+  const armed = scrollY.interpolate({ inputRange: [-PULL_TO_SEARCH - 1, -PULL_TO_SEARCH + 1], outputRange: [1, 0], extrapolate: "clamp" });
+  const pill: ViewStyle = { height: 34, borderRadius: 17, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 7 };
+  return (
+    <Animated.View
+      pointerEvents="none"
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      style={{ position: "absolute", top, left: 0, right: 0, alignItems: "center", opacity, transform: [{ translateY }, { scale }] }}
+    >
+      <View style={[pill, { backgroundColor: t.colors.card, borderWidth: hairline, borderColor: t.ring }, t.shadowCard]}>
+        <Icon name="search" s={15} w={2.2} c={t.colors.ink2} />
+        <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.ink2 }}>Search</Text>
+      </View>
+      <Animated.View style={[StyleSheet.absoluteFill, { alignItems: "center", opacity: armed }]}>
+        <View style={[pill, { backgroundColor: t.colors.acc }]}>
+          <Icon name="search" s={15} w={2.2} c={t.colors.onAcc} />
+          <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.onAcc }}>Search</Text>
+        </View>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -789,20 +1003,34 @@ export function Row({ children, gap, style }: { children: ReactNode; gap?: numbe
 
 // ── SwipeRow ─────────────────────────────────────────────────────────────────
 // Wrap a list row (usually a <Card>) with iOS swipe actions:
-//   • right→left drag reveals a red Delete (onDelete)
-//   • left→right drag reveals a cobalt Favorite (onFavorite)
+//   • right→left drag reveals a red action, labelled "Delete" by default —
+//     pass `deleteLabel` when the handler is not destructive (e.g. "Archive"),
+//     so the panel's wording matches the confirm dialog that follows
+//   • left→right drag reveals a brand-accent Favorite (onFavorite)
 // Each side is opt-in — pass only the handlers a row supports. Tapping an action
 // closes the row first, then runs the handler. The wrapped child still taps
 // through for navigation. Requires GestureHandlerRootView (see _layout).
-const DELETE_RED = "#E5484D";
+// Deeper than the #E5484D used elsewhere, because this panel is the one place
+// red carries TEXT: white on #E5484D is 3.91:1, on #D70015 it is 5.38:1. The
+// panel itself stays above the 3:1 non-text floor on both grounds.
+const DELETE_RED = "#D70015";
 export function SwipeRow({
   children,
   onDelete,
+  deleteLabel = "Delete",
   onFavorite,
   favorited,
+  flat,
 }: {
   children: ReactNode;
+  /** A row inside a list that is already a card (Reminders-style rows): no
+   *  fill, radius or shadow of its own — only the swipe. */
+  flat?: boolean;
   onDelete?: () => void;
+  /** Label on the red right-hand panel. Defaults to "Delete"; override it when
+   *  `onDelete` performs something softer (archive, hide) so the panel does not
+   *  promise a destructive action it will not take. */
+  deleteLabel?: string;
   onFavorite?: () => void;
   favorited?: boolean;
 }) {
@@ -818,7 +1046,7 @@ export function SwipeRow({
         const scale = drag.interpolate({ inputRange: [-88, -32, 0], outputRange: [1, 0.85, 0.5], extrapolate: "clamp" });
         return (
           <Pressable onPress={() => run(onDelete)} style={{ width: 84, marginLeft: 8, borderRadius: t.r, backgroundColor: DELETE_RED, alignItems: "center", justifyContent: "center" }}>
-            <Animated.Text style={{ color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: -0.1, transform: [{ scale }] }}>Delete</Animated.Text>
+            <Animated.Text style={{ color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: -0.1, transform: [{ scale }] }}>{deleteLabel}</Animated.Text>
           </Pressable>
         );
       }
@@ -830,8 +1058,8 @@ export function SwipeRow({
         return (
           <Pressable onPress={() => run(onFavorite)} style={{ width: 88, marginRight: 8, borderRadius: t.r, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
             <Animated.View style={{ alignItems: "center", transform: [{ scale }] }}>
-              <Icon name="star" s={19} c="#fff" />
-              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700", marginTop: 3 }}>{favorited ? "Unfave" : "Favorite"}</Text>
+              <Icon name="star" s={19} c={t.colors.onAcc} />
+              <Text style={{ color: t.colors.onAcc, fontSize: 11, fontWeight: "700", marginTop: 3 }}>{favorited ? "Unfave" : "Favorite"}</Text>
             </Animated.View>
           </Pressable>
         );
@@ -843,10 +1071,10 @@ export function SwipeRow({
     // to clip the row card's shadow into a visible gray box. The shadow lives
     // on this outer rounded wrapper instead (outside the clip), and the
     // Swipeable clips to the same rounded shape so revealed actions match.
-    <View style={[{ borderRadius: t.r, backgroundColor: t.colors.card }, t.shadowCard]}>
+    <View style={flat ? null : [{ borderRadius: t.r, backgroundColor: t.colors.card }, t.shadowCard]}>
       <Swipeable
         ref={ref}
-        containerStyle={{ borderRadius: t.r, overflow: "hidden" }}
+        containerStyle={flat ? { overflow: "hidden" } : { borderRadius: t.r, overflow: "hidden" }}
         renderRightActions={renderRight}
         renderLeftActions={renderLeft}
         overshootRight={false}
@@ -912,4 +1140,4 @@ export function promptFeedbackNote(opts: {
 
 // The tab bar is native now (expo-router NativeTabs in src/app/(app)/_layout);
 // only the shared tab id type remains here so screens keep a single import.
-export type TabId = "today" | "phrases" | "speak" | "topics" | "sessions";
+export type TabId = "today" | "phrases" | "speak" | "topics";

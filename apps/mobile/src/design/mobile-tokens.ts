@@ -10,7 +10,8 @@
 //     backgrounds (#fbf9f4), Instrument Serif, Pretendard UI, 8px rhythm,
 //     12–16px radius, layered warm-black shadows.
 //   • The mobile app renders the iOS SYSTEM palette by default (light
-//     #F2F2F7 / dark #000 base) with the single cobalt accent #3B6EE1 and the
+//     #F2F2F7 / dark #000 base) with the BRAND navy ramp (#0D1A3B dark →
+//     #162555 main → #344E91 light — one OKLCH hue family, 265–267) and the
 //     Newsreader serif. It keeps its own numeric geometry (26pt card radius,
 //     13pt gaps) that intentionally differs from the web scale.
 //   • `PALETTES.warm` below is the legacy Cobalt Editorial port kept only for
@@ -20,9 +21,24 @@
 import type { ViewStyle } from "react-native";
 
 // ── Fonts ─────────────────────────────────────────────────────────────────
-export const SERIF = "Newsreader";
-/** UI face loaded by the root _layout; not yet the default UI family. */
-export const FONT_UI = "Inter";
+/** Brand serif (Figma, 2026-09-18) — replaced Newsreader app-wide. */
+export const SERIF = "InstrumentSerif";
+/** Default UI face; applied to every Text/TextInput by design/text.tsx. */
+export const FONT_UI = "Pretendard";
+/** Figma faces for the MVP screens (Phrases, Studio): Pretendard for UI,
+ *  Instrument Serif for display lines. Set the family, never fontWeight —
+ *  a weight on a static face makes iOS fall back to the system font. */
+export const FONT = {
+  regular: "Pretendard",
+  medium: "Pretendard-Medium",
+  semibold: "Pretendard-SemiBold",
+  bold: "Pretendard-Bold",
+  display: "InstrumentSerif",
+  /** Numbers set as display (stats, big counts). Instrument Serif draws "1"
+   *  exactly like "l", so figures use the iOS system serif (New York), whose
+   *  1 has a flag and a foot. */
+  figure: "ui-serif",
+} as const;
 
 // ── oklch → sRGB ───────────────────────────────────────────────────────────
 // Standard OKLab → linear sRGB → gamma. Deterministic (no Date/Math.random).
@@ -47,7 +63,9 @@ function oklchToRgb(L: number, C: number, Hdeg: number): string {
   return `rgb(${to255(r)},${to255(g)},${to255(bl)})`;
 }
 
-const SP_H = 262; // cobalt hue
+// Stays 262 though the brand moved to navy: it feeds 12 derived tone slots behind
+// statusColors/toneColor, and the navies sit ~4° away — moving it only costs chip separation.
+const SP_H = 262;
 
 export type Palette = "ios" | "warm";
 export type Density = "regular" | "compact";
@@ -63,6 +81,14 @@ export interface ColorSlots {
   acc: string;
   accD: string;
   accS: string;
+  // Foreground on top of `acc`: dark mode's lighter navy needs ink, not white.
+  onAcc: string;
+  // Error/destructive TEXT. Replaces #E5484D, which measured 3.91:1 on the light
+  // card and 4.35:1 on the dark card — both under the 4.5:1 WCAG AA floor for
+  // normal text, i.e. the one string explaining a failure was the least legible
+  // on screen. These pass on card AND page bg: #D70015 = 5.38:1 on #ffffff /
+  // 4.83:1 on #F2F2F7; #FF6961 = 6.03:1 on #1C1C1E / 7.45:1 on #000.
+  warn: string;
   butter: string;
   sky: string;
   sage: string;
@@ -87,9 +113,11 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       ink: "#111114",
       ink2: "rgba(60,60,67,0.6)",
       ink3: "rgba(60,60,67,0.3)",
-      acc: "#3B6EE1",
-      accD: "#2E56BC",
-      accS: "rgba(59,110,225,0.11)",
+      acc: "#162555",
+      accD: "#344E91",
+      accS: "rgba(22,37,85,0.11)",
+      onAcc: "#FFFFFF",
+      warn: "#D70015",
       butter: P(0.94, 0.045),
       sky: P(0.965, 0.025),
       sage: P(0.915, 0.06),
@@ -106,9 +134,11 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       ink: "#ffffff",
       ink2: "rgba(235,235,245,0.6)",
       ink3: "rgba(235,235,245,0.3)",
-      acc: "#3B6EE1",
+      acc: "#6E8DD5",
       accD: "#8FACEF",
-      accS: "rgba(59,110,225,0.28)",
+      accS: "rgba(110,141,213,0.28)",
+      onAcc: "#0D1A3B",
+      warn: "#FF6961",
       butter: P(0.33, 0.07),
       sky: P(0.29, 0.05),
       sage: P(0.37, 0.085),
@@ -131,6 +161,8 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       acc: oklchToRgb(0.62, 0.155, 38),
       accD: oklchToRgb(0.53, 0.155, 38),
       accS: oklchToRgb(0.945, 0.034, 38),
+      onAcc: "#FFFFFF",
+      warn: "#D70015",
       butter: W(false, 92),
       sky: W(false, 240),
       sage: W(false, 140),
@@ -150,6 +182,8 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       acc: oklchToRgb(0.62, 0.155, 38),
       accD: oklchToRgb(0.72, 0.132, 38),
       accS: oklchToRgb(0.32, 0.062, 38),
+      onAcc: "#FFFFFF",
+      warn: "#FF6961",
       butter: W(true, 92),
       sky: W(true, 240),
       sage: W(true, 140),
@@ -165,6 +199,19 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
 export function mobileColors(dark: boolean, palette: Palette = "ios"): ColorSlots {
   return PALETTES[palette][dark ? "dark" : "light"];
 }
+
+// ── Brand ramp ────────────────────────────────────────────────────────────
+export const BRAND = { dark: "#0D1A3B", main: "#162555", light: "#344E91" } as const;
+
+// Not `as const`: expo-linear-gradient's `colors` wants a mutable string[].
+export const Gradients = {
+  /** Hero and any full-bleed brand surface. Dark -> main -> light. */
+  brand: ["#0D1A3B", "#162555", "#344E91"],
+  /** Secondary brand cards — lighter than the hero so they do not compete with it. */
+  brandLift: ["#162555", "#344E91"],
+  /** The 1.5pt lifted border around a brand card. Stays light on purpose. */
+  brandEdge: ["#A9C7FF", "#D5E3FF", "#7BA7F6"],
+};
 
 // ── Motif geometry (design-system/ios-motif-spec.md) ─────────────────────
 // Controls are always full capsules; rows are 52pt; three button heights only.

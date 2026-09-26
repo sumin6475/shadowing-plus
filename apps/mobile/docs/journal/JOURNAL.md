@@ -8,6 +8,17 @@
 
 ## 항목
 
+### 2026-09-14 · 리팩터 · Studio 정본 언어와 단일 IA
+- **무엇**: 활성 제품 언어를 Topic → Situation → Speaking Note → Attempt로 통일. 구형 World/Island 화면과 7개 라우트를 제거하고, DB 물리명은 `studio-persistence.ts`에 격리. 발견 가능한 과거 문서에는 Current/Historical/Outdated 상태를 추가.
+- **검증**: mobile typecheck PASS, lint baseline PASS(기존 경고 1), iOS export PASS(2,121 modules), 구형 화면/라우트/import 검색 0건, 문서 링크 14개 파일 PASS.
+- **산출물**: [quality/2026-09-14-canonical-studio-language-cleanup.md](quality/2026-09-14-canonical-studio-language-cleanup.md)
+
+### 2026-09-14 · 문서 · IA·기능·데이터·시스템 기준선
+- **무엇**: 실제 모바일 라우트, 데이터 접근 계층, 전체 Supabase 마이그레이션, 웹·확장·워커 경계를 읽고 현재 상태 문서 6개를 작성. UI의 Topic/Situation/Speaking Note와 DB의 domain/story/message 명칭을 정식 매핑.
+- **원칙**: 현재 구현과 계획을 분리하고, 기능마다 단일 주 화면·소유 데이터·복귀 경로를 명시한다.
+- **검증**: 문서 6개 존재/비어 있지 않음, 내부 문서 링크 5개 대상 존재, 문서 외 추적 파일 변경 없음.
+- **산출물**: [문서 인덱스](../../../../docs/DOCUMENTATION.md), [품질 스냅샷](quality/2026-09-14-architecture-documentation-baseline.md)
+
 ### 2026-08-25 · 검증 · TestFlight submit build 19
 - **무엇**: EAS build `5aea4b81` (1.0.0 / 19)를 App Store Connect에 업로드. 큐 ~42분 후 Apple에 전달됨.
 - **검증**: `npx eas-cli submit --platform ios --profile production --id 5aea4b81-9140-445b-a947-942996bb6f12 --non-interactive --wait` exit 0.
@@ -667,3 +678,788 @@
 - **막힌 것**: 027 복구의 end-to-end 확인(talk 세션 → 피드백 저장)은 **시뮬레이터에서 불가능**. `Failed to initialize recognizer` — iOS Simulator의 SFSpeechRecognizer 제약이라 실기기가 필요하다.
 
 <!-- 새 항목은 이 위에 추가 (최신이 위로). -->
+
+## 2026-09-09 — Speaking Note detail + the practice return loop (spec §4 + §6)
+
+**Built.** Rebuilt `SpeakingNoteScreen` on the confirmed Situation Detail design
+language, and closed the say → fix → say-again loop.
+
+- **Autosave.** 800ms debounce plus a flush on unmount; the manual `Save` chip
+  is gone and the BackBar right slot now only reports `Saving…` / `Saved ✓` /
+  `Not saved · Retry`. A blank title is treated as "still typing", never
+  written — a nameless note is unfindable.
+- **No form labels.** The `SPEAKING GOAL` caps label is gone; goal and body are
+  separated by position, weight and a hairline, per the PRD's "closer to Apple
+  Notes" framing.
+- **Chips 4 → 2.** `How can I say this?` opened the same `PhrasePicker` as
+  `Link phrase`, and `Record idea` is the same call as the new sticky CTA. What
+  is left is one action per thing you can add.
+- **Sticky `Start practice`**, hidden while the keyboard is up.
+- **`nav.restore(target)`** (new on the Nav contract): switch tabs *and* rebuild
+  a detail stack there. `TalkCtx.returnTo` carries it, so ending an attempt
+  started from a note lands back on that note instead of `nav.go` clearing the
+  stack onto the Studio root. A `seededTab` ref stops the tab-focus effect from
+  wiping the stack it was just handed.
+
+**Principle applied.** A loop is only a loop if the return leg exists. The
+attempt UI, the repair text and the note were all already built — the thing that
+made practice feel like a dead end was one `nav.go` that threw the stack away.
+
+**Verified on the simulator (iPhone 17 Pro, light + dark).** Typing the goal
+showed `Saved ✓` and survived a pop/re-enter round trip through Supabase;
+`Start practice` → back landed on the note, and back from there landed on the
+Studio root with the tab bar restored; a free talk with no `returnTo` still
+falls back to `nav.go("today")`.
+
+**Not verified.** The expanded-attempt row and the `justPracticed` auto-expand
+need an attempt that carries a `repairSuggestion`. Every existing attempt reads
+`No fix suggested` because migration 027 was missing until today, and the
+simulator can't record (`Failed to initialize recognizer` — `SFSpeechRecognizer`
+is device-only). Both need a real-device pass.
+
+Gates: typecheck PASS · lint 0 errors / 15 warnings (baseline) · `export:ios` PASS.
+
+- 디자인 기획서: [Speaking Note 상세 (세부)](../product/speaking-note-design-brief.md) — 현재 화면의 시각적 실패 9가지, 실측 데이터, 상태 10종, 제약. PR #5로 들어간 구조는 유지하고 비주얼만 다시 잡기 위한 문서.
+
+## 2026-09-09 — Speaking Note detail, redesigned from `Speaking Note.html`
+
+Imported the returned design from Claude Design and rebuilt the surface. The IA
+from PR #5 is unchanged; every change below is visual or interaction.
+
+Nine visual failures named in the brief, and what the design did about each:
+
+| 문제 | 반영 |
+|---|---|
+| 본문 아래 빈 구멍 | 최소 높이 제거 — 내용에 맞춰 줄어든다 |
+| 본문이 편집 가능해 보이지 않음 | 카드로 감싸고 우측 상단 `Edit` |
+| 층이 2개로 읽힘 | 목표를 Newsreader 세리프로 — 시스템 본문과 서체로 갈림 |
+| 아래 절반이 균질 | 비어 있는 블록은 카드 대신 고스트 한 줄 |
+| Previous Attempts 정보 0 | `No fix suggested` 삭제, `—`만. 고스트가 설명 |
+| CTA가 제일 무거움 | 바+헤어라인 → 떠 있는 캡슐 + 그라디언트 frost |
+| 액센트를 부차적인 것에 다 씀 | 보조 액션 칩 2개 제거 |
+| placeholder가 콘텐츠처럼 보임 | faint로 낮추고 문구 교체 |
+| 저장 상태가 떠 있음 | BackBar 우측 고정 슬롯, `Saved`는 2초 후 사라짐 |
+
+New: a post-practice fix sheet (`justPracticed` + `repairSuggestion`), an
+`InputAccessoryView` bar saying "Autosaves as you type", and Previous Attempts
+promoted above Linked Phrases for the visit you arrive on from an attempt.
+
+**Fixed on the way through.** A live iOS appearance switch repainted `Text` but
+not `TextInput`, leaving the whole note dark-on-dark. The header block is now
+keyed on the scheme so it remounts. Pre-existing, not introduced here.
+
+**Reverted.** Registering `Newsreader36pt-Italic.ttf` for the design's italic
+goal line turned *every* serif in the app italic — iOS resolves a second file
+onto the same family regardless of the key it was registered under. The goal
+stays upright; serif-vs-system already separates it from the body.
+
+Gates: typecheck PASS · lint 0 errors / 15 warnings (baseline) · `export:ios` PASS.
+Verified on the simulator: light, dark (cold launch), and a live appearance
+switch. Not verified: the fix sheet and the accessory bar — no attempt carries a
+`repairSuggestion` yet, and the simulator won't raise a software keyboard.
+
+- 디자인 기획서 업데이트: [Speaking Note 상세 (세부)](../product/speaking-note-design-brief.md) §12 — 결정 8건과 디자인에서 벗어난 3건.
+
+- 폰트 통일: Studio 플로우의 섹션 헤더를 Newsreader → 시스템 볼드 22/800으로. Studio 홈(`Recent notes`)과 같은 관용구가 되고, 세리프는 각 화면의 히어로 제목에만 남는다. `SituationSection` 하나만 바꾸면 Situation 상세·Speaking Note·푸시된 목록 화면이 함께 따라온다.
+
+- 노트 본문: 카드는 4줄 고정 프리뷰(미리보기 전용)로, 편집은 전체 화면 모달로 분리.
+  `Edit`는 첫 줄과 같은 라인에 절대배치하고, 그 아래로 가로 그라디언트를 깔아 칩
+  쪽으로 길어진 글자가 사라지게 했다(RN에 float가 없어 배제는 광학적으로 처리).
+  넘치면 하단이 세로로 페이드되고 아래에 옅은 회색 `… more`. 카드 아무 곳이나
+  누르면 읽기 모드 모달, `Edit`을 누르면 바로 편집 모드로 열린다. 모달은 오른쪽 위
+  토글(펜 ↔ 체크)로 읽기/쓰기를 바꾸고 하단 `Done`으로 닫는다.
+  **함정:** Yoga는 텍스트를 "주어진 공간" 기준으로 측정하므로 클립 박스(100pt) 안에서
+  재면 어떤 길이의 노트든 `layout.height === 100`으로 나와 잘림을 감지할 수 없다.
+  측정용 래퍼를 `height: 4000`으로 두고 그 안에서 재도록 바꿔서 해결.
+
+---
+
+## 2026-09-10 — 앱스토어 제출 준비: 감사 · 첫 실행 코치마크 · 스크린샷 기획
+
+**만든 것 1 — 제출 감사.** 코드/보안/권한을 실제로 읽고 2026년 9월 기준 가이드라인에
+대조했다: [app-store-submission-audit.md](../release/app-store-submission-audit.md).
+이미 통과한 것(5.1.1(v) 계정 삭제, 5.1.2(i) OpenAI 동의, 2.5.14 녹음 표시, 4.8 Apple
+로그인 게이팅, 온디바이스 STT, 번들 내 시크릿 0건)과 **막는 것 6건**(앱 타깃
+privacy manifest 부재, "Coming soon" 플레이스홀더 5곳, 웹 개인정보처리방침이 모바일
+현실을 안 담음, 리뷰용 데모 계정, 연령등급 설문, Library 탭 결정)을 분리했다.
+
+**만든 것 2 — 첫 로그인 코치마크.** Today 탭에서 딤 + 스포트라이트 4스텝.
+`src/lib/product-tour.ts`(영속화 + L1별 문구), `src/components/product-tour.tsx`
+(측정·마스크·카드). 타깃은 `<TourTarget>`으로 감싸 `measureInWindow`로 재고,
+구멍은 `react-native-svg`의 `Mask` 하나로 뚫는다. 설정에 "Show tips again" 추가.
+
+**배운 원칙 — 플랫폼과 싸우지 말고 이용한다.** 네이티브 탭바가 modal 위에 그려진다는
+걸 발견하고, 탭바 스텝은 구멍을 뚫는 대신 **화면 전체만 딤 처리**하도록 뒤집었다.
+딤이 안 걸리는 탭바가 그대로 스포트라이트가 된다. 함께 배운 것: 가시성 판정은
+**타깃 크기에 상대적**이어야 하고, 등록된 스텝은 조용히 사라지는 대신
+**degrade**해야 한다.
+→ [postmortem](postmortems/2026-09-10-nativetabs-bar-draws-above-modal.md)
+
+**만든 것 3 — 스크린샷 기획.** 6프레임 서사(EN/KO 카피 포함) + 캡처·합성 파이프라인:
+[app-store-screenshots-plan.md](../release/app-store-screenshots-plan.md).
+필요한 건 6.9" 1320×2868 한 세트뿐(iPad 미지원). **폰 화면은 이미지 모델로 만들지
+않는다** — 실제 빌드와 다른 UI는 2.3.3 리젝 사유다.
+
+**게이트**: `npm run validate` PASS (release-config · typecheck 0 errors ·
+lint 0 errors/15 warnings · `export:ios`). 시뮬레이터(iPhone 17 Pro, iOS 26)에서
+4스텝 전부와 완료 후 재실행 안 뜨는 것까지 확인.
+
+**아직 안 한 것**: 감사 문서의 블로커 6건은 전부 미착수 — 문서화만 했다.
+
+---
+
+## 2026-09-10 (2) — 제출 블로커 6건 처리
+
+**B1 privacy manifest.** `app.json`에 `expo.ios.privacyManifests` 추가 →
+`expo prebuild`가 `ios/Saylo/PrivacyInfo.xcprivacy`를 실제로 생성하는 것까지 확인.
+식별자는 기억이 아니라 **Apple 문서 JSON에서 뽑았다** (`NSPrivacyCollectedDataTypePhotosorVideos`
+— "or"가 소문자다. 이런 건 틀리면 리젝이다). Audio Data는 **일부러 뺐고**, 누가
+나중에 추가하면 `verify:release-config`가 실패하도록 막아 뒀다.
+
+**B2 + B6 플레이스홀더/Library.** `src/lib/release-flags.ts` 하나로 통일.
+`EXPO_PUBLIC_PREVIEW_FEATURES`는 eas.json의 `development`/`preview`에만 있고
+`production`엔 없다. 뒤에 아무것도 없는 4개 행은 그냥 삭제, Recommendations와
+Library는 플래그 뒤로. **원칙: "곧 나와요"는 App Review에게 "안 만들어졌어요"로 읽힌다.**
+
+**B3 개인정보처리방침.** 웹 `/privacy`에 모바일 현실을 넣었다 — 녹음은 기기에만,
+카메라/사진, OpenAI 동의와 철회 경로, PostHog, 인앱 계정 삭제. 빌드로 프리렌더
+확인(`○ /privacy`).
+**한 번 틀렸다가 바로잡은 것:** `feat/studio-note-loop` 워크트리에 옛 Shadowing+
+방침이 보이길래 "머지하면 라이브 방침이 되돌아간다"고 적었는데, **틀렸다.**
+`git merge-tree`로 확인: 그 브랜치는 `0a494a7`(2026-07-31)에서 갈라진 뒤 77커밋
+동안 **`web/`을 한 번도 건드리지 않았다.** git은 스냅샷이 아니라 3-way diff로
+머지하므로 main의 web 커밋 18개는 그대로 살아남는다. 그냥 뒤처져 있을 뿐.
+**교훈: "파일이 옛날 내용이다"와 "브랜치가 그 파일을 되돌린다"는 다른 얘기다.**
+수정 자체는 main 기반인 studio 워크트리에 넣었다(그쪽이 배포 경로).
+
+**B4 + B5는 코드로 못 닫는다.** 계정 생성(비밀번호 입력)과 App Store Connect 폼이라
+`docs/release/app-review-submission-kit.md`로 넘겼다 — 리뷰 계정 시딩 체크리스트,
+붙여넣을 리뷰 노트 전문, 연령등급 답안, 그리고 manifest와 **정확히 일치하는**
+App Privacy 라벨 표.
+
+**결정 1건 — 투어 언어.** 기기 로케일이 아니라 **영어 기본**, 학습자가 설정에서
+모국어를 고르면 그때 L1. 로케일은 추측이지 선택이 아니다(이 시뮬레이터 로케일이
+`en_KR`인데 한국어 투어가 떴던 게 증거).
+→ [ADR 0021](decisions/0021-first-run-tour-language-english-default.md)
+
+**게이트**: 모바일 `npm run validate` PASS · 웹 `npm run build` PASS(`/privacy` 정적) ·
+시뮬레이터에서 투어 언어 양쪽 경로 확인.
+
+**주의**: prebuild가 `ios/`를 새로 만들면서 타깃 폴더가 `ios/Shadowing` → `ios/Saylo`로
+바뀌고 Pods가 지워졌다. EAS는 매번 prebuild하니 영향 없지만, **로컬 네이티브 빌드 전엔
+`npx pod-install`** 필요.
+
+---
+
+## 2026-09-10 (3) — Phrases 강조 · 다국어(N:1) 실사용 점검
+
+**Phrases 탭 강조.** 탭바 스텝이 "이 줄 전체"를 가리키던 걸 **Phrases 하나**를
+가리키도록 바꿨다. 네이티브 탭바는 모달 위에 그려져서 구멍을 뚫을 수 없으니,
+바로 **위에 캐럿**을 띄우는 방식.
+
+**두 번 틀리고 세 번째에 맞춘 좌표.** 캐럿이 처음엔 60pt 위, 다음엔 탭 아이콘
+위를 덮었다. 화면에 값을 직접 찍어서 끝냈다:
+`win=402x874 cont=874 insB=83 insT=62`.
+→ **모달은 화면 전체 높이가 맞고**, 탭 네비게이터 안에서는
+`react-native-safe-area-context`가 **탭바 높이를 이미 bottom inset에 포함**한다
+(83 = 49 바 + 34 홈 인디케이터). 그래서 `height - insets.bottom`이 곧 탭바 상단.
+여기에 바 높이를 또 빼서 두 번 틀렸다.
+**교훈: 레이아웃을 추론하지 말고 한 번 찍어보면 5분에 끝난다.**
+
+**N:1 점검 — 고르면 아무 일도 안 일어나고 있었다.** Settings에 es/ru가 있었지만
+**언어를 골라도 앱에서 바뀌는 게 없었다.** L1을 쓰라고 만든 `stuckNoteCopy()`는
+**호출부가 하나도 없는 죽은 코드**였고, 사진 캡처는 **모두에게 한국어 뜻**을 줬다.
+→ 전수 점검 결과: [first-language-readiness.md](../release/first-language-readiness.md)
+
+**고친 것 2개.**
+1. `phrase-capture` Edge Function의 하드코딩 한국어 **6곳**을 `${lang}`으로. 클라가
+   `first_language`를 실어 보낸다(서버는 알 방법이 없다 — L1은 컬럼이 아니니까).
+   구버전 빌드는 필드가 없어서 `ko`로 폴백(주석에 제거 조건 명시).
+2. L1이 **계정에도 저장**된다. 전엔 AsyncStorage뿐이라 재설치하면 사라지고 서버도
+   못 봤다. 이제 기기 우선, 없으면 계정.
+
+**남은 건 버그가 아니라 결정** — AI 코칭 영어 고정, 앱 크롬 영어 고정,
+`meaning_ko` 컬럼명, Newsreader에 키릴/한글 없음(스페인어는 완전 커버).
+
+**검증**: `npm run validate` PASS. 시뮬레이터에서 `first_language=es`로
+투어가 스페인어로("Empieza aquí") **세리프 그대로** 렌더되는 것까지 확인.
+(한국어/러시아어는 시스템 폰트로 폴백된다 — 문서 §3.4.)
+
+**주의**: `phrase-capture`는 앱 빌드가 아니라
+`supabase functions deploy phrase-capture`로 따로 배포해야 반영된다.
+
+---
+
+## 2026-09-10 — 번체 중국어 + 일본어 L1 추가 (타깃: 대만 우선)
+
+러시아어 대신 중국어·일본어가 급하다는 판단. 언어별 구현 난이도를 **측정해서**
+비교했고, 그 결과가 결정을 바꿨다.
+
+**측정한 것 (추정 아님).**
+- 번들 TTF cmap을 직접 파싱: Inter는 라틴+키릴+베트남/터키/폴란드, **CJK 없음**.
+  Newsreader(제목 세리프, 564자)는 **라틴만**. 한국어가 이미 두 서체 다 시스템
+  폰트로 폴백 중 → CJK는 새로운 종류의 리스크가 아니다.
+- 언어당 코드 비용은 어떤 언어든 동일: **번역 문자열 14개 + 등록 라인 5줄**.
+  갈리는 건 (a) 로케일 파서가 버티는지 (b) 폰트 (c) 스토어 규정, 이 3개뿐.
+
+**그래서 바뀐 판단 2개.**
+1. **중국어만 로케일 파서를 깬다.** `deviceLang()`이 `split("-")[0]`이라
+   `zh-Hant-TW`와 `zh-Hans-CN`이 둘 다 `zh`로 뭉개졌다. 후보 중 유일하게 `L1`
+   타입 자체를 건드리게 만드는 언어. → `localeToL1()`로 교체(스크립트 서브태그
+   우선, 없으면 지역에서 유도).
+2. **싱가포르는 번체가 아니라 간체다.** "대만+홍콩+싱가포르"는 한 스크립트가
+   아니라 두 스크립트다. 번체만 넣고 간체는 보류 — 대신 간체 device는 **잘못된
+   스크립트 대신 영어로** 폴백하게 했다(`zh-Hans`는 파서가 뱉지만 SUPPORTED엔
+   없음). 나중에 추가할 때 순수 additive.
+
+**ICP는 무관해졌다.** 본토 스토어 등재만 ICP 등록번호(중국 법인 필요)를 요구하고,
+대만·홍콩·싱가포르는 일반 스토어프론트다. 타깃을 대만으로 잡은 순간 블로커가
+연기된 게 아니라 사라졌다.
+
+**두 번째 언어로 일본어를 고른 이유**: 포르투갈어와 한계 비용이 동률(14문자열)이고
+오히려 pt는 세리프가 살아남는다. 그런데 중국어가 어차피 CJK 타이포그래피 결정을
+강제하므로, 일본어는 그걸 **재사용**하고 pt는 전선을 하나 더 연다.
+
+**검증**
+- `localeToL1` 순수 함수 18케이스 전부 통과 (zh-Hant-TW/zh-TW/zh-HK/zh-Hant-HK →
+  zh-Hant; zh-Hans-CN/zh-CN/zh-Hans-SG/zh-SG/zh → zh-Hans; ja/ko/en/es/ru/th 정상).
+- 시뮬레이터에서 `zh-Hant` 투어 4스텝 전부 렌더 확인 — 글리프가 번체
+  (檔案/隱私/個/裡/連/當), Phrases 캐럿·탭바 스텝 정상.
+- `ja`도 렌더 확인 — 한자가 **일본 자형**(音声認識/処理/内容/残ります)으로 떴다.
+  한자 통합(Han unification) 오폴백 없음.
+- `npm run validate` PASS (0 errors, 15 warnings = 기존 베이스라인).
+
+**아직 검증 안 된 것**: `app.json`에 넣은 `CFBundleLocalizations`는 Info.plist
+변경이라 **네이티브 재빌드 전엔 효과가 없다.** 위 시뮬레이터 확인은 그것 없이
+통과한 것이고(문자열에 가나·번체 고유자가 섞여 있어서 iOS가 맞게 골랐을 가능성이
+높다), 한자만으로 된 문자열에서는 여전히 필요할 수 있다.
+
+→ 결정 기록: [ADR 0022](decisions/0022-traditional-chinese-and-japanese-l1.md)
+
+**주의**: `phrase-capture` / `talk-stuck` Edge Function도 고쳤다 — 앱 빌드가 아니라
+`supabase functions deploy <name>`으로 따로 배포해야 반영된다.
+
+**같은 날 — 스크린샷 플랜에 zh-Hant 추가하면서 발견한 오류.** 기존 §5.2가
+"ko 세트는 기기 언어를 한국어로 설정하면 투어·인사·Stuck 메모가 전부 바뀐다"고
+적혀 있었는데 **틀렸다.** 시뮬레이터에서 zh-Hant/ja로 확인한 결과 앱 크롬(인사, 날짜,
+This week, Today, 탭 라벨)은 **어떤 L1에서도 영어**다(ADR 0021 의도대로). L1을 따라가는
+표면은 셋뿐 — 투어(그것도 Settings에서 **명시적으로 고른 뒤에만**, 기기 로케일로는 안 됨),
+Stuck 메모, phrase 글로스. 그래서 로케일당 raw 캡처 6장을 다시 찍을 필요가 없다:
+6장 한 번 + 글로스가 보이는 **프레임 4만 로케일별로** 재촬영 = 8장.
+
+캡션 템플릿 주의도 추가: Newsreader에 CJK가 없으니 zh-Hant/ko 헤드라인은 시스템 CJK
+서체로 — zh-Hant는 **PingFang TC**(SC를 쓰면 같은 코드포인트를 간체 자형으로 그린다).
+
+**같은 날 (2) — 일본어 캡션 추가 + §3 재구성.** 로케일이 4개(en/ko/zh-Hant/ja)가 되면서
+캡션을 한 테이블에 다 넣으면 7열이라 못 읽는다. 프레임 표는 EN만 남기고, §3.1에
+**로케일별 표 3개**(Headline / Subhead)로 분리 — 네이티브 리뷰어가 한 세트를 위에서
+아래로 읽을 수 있게. 캡처는 6장 + 프레임4 로케일별 3장 = 9장, 렌더는 24프레임.
+
+폰트 규칙에 항목 하나 추가: **CJK 한 서체로 두 로케일을 처리하면 안 된다.** zh-Hant와
+ja는 같은 코드포인트의 인쇄 자형이 다르니(한자 통합) PingFang으로 일본어를 그리면
+"중국어처럼 보이는 한자"가 된다 — 일본어 독자가 가장 먼저 알아채는 티. zh-Hant는
+PingFang TC, ja는 Hiragino Sans, ko는 Apple SD Gothic Neo.
+
+**같은 날 (3) — Edge Function 2개 배포, 그리고 배포 직전에 잡은 버그.**
+`supabase functions deploy` 직전 diff를 읽다가 발견: `learnerLanguage()`가 코드를
+`toLowerCase()` 하는데 맵 키는 `"zh-Hant"`라 **매칭이 안 됐다.** 번체 학습자가 전부
+`DEFAULT_L1="ko"`로 떨어져서 **한국어 뜻**을 받을 뻔했다. 에러도 안 난다 — `??` 폴백이
+삼켜버리니까. L1에 처음으로 2글자가 아닌 코드가 들어오면서 생긴 문제.
+
+키를 소문자로 맞추고 이유를 주석에 박았다. 배포 전 8케이스 확인
+(zh-Hant/ja/ko/es/ru/en → 정상, ""/null/"xx" → ko 폴백 의도대로).
+
+배포 완료 (project `hetcnrmzrksbjoeczeze`):
+- `phrase-capture` → version 8, ACTIVE, 2026-09-10 12:01:23
+- `talk-stuck` → version 4, ACTIVE, 2026-09-10 12:01:37
+
+→ 포스트모템: [2026-09-10-l1-code-lowercased-before-lookup.md](postmortems/2026-09-10-l1-code-lowercased-before-lookup.md)
+
+**아직 안 한 것**: 실기기에서 `first_language=zh-Hant`로 사진 캡처를 돌려 번체 뜻이
+실제로 오는지는 미검증(앱 빌드가 필요하다). 배포 자체는 version/updated_at으로 확인.
+
+---
+
+## 2026-09-10 — 네이비 리컬러 + Studio CRUD + Situation 즐겨찾기
+
+세 파트를 14 에이전트 워크플로로 빌드하고, 구현을 못 본 홀드아웃 리뷰어로 적대적
+검증했다. **기능보다 측정이 결정을 바꿨다.**
+
+**측정이 뒤집은 것 2개.**
+1. `#162555`를 accent 전체에 쓰면 **본문 잉크 `#111114` 대비 1.28:1** — "See all",
+   링크, 활성 탭이 그냥 검은 글씨로 읽힌다. 역할별로 갈랐다: 큰 채움 `acc`=#162555,
+   작은 인터랙티브 텍스트 `accD`=#344E91.
+2. **다크 모드는 세 색 다 못 쓴다** (검정 대비 1.23 / 1.43 / 2.64, UI 최소 3.0 미달).
+   같은 hue 266 계열을 L=0.65로 연장해 `#6E8DD5`(6.43:1)를 만들었다.
+
+**`onAcc` 슬롯을 새로 만든 게 핵심.** 다크 `acc`가 *밝은* 네이비라, 앱 전반의
+`"#fff"` 관행이 맞는 값에서 3.02:1로 뒤집힌다. 1차 리뷰가 미이관 10곳을 찾았고
+그중 하나가 **첫 실행 투어를 넘길 수 있는 유일한 버튼**이었다.
+
+`SP_H`는 262 유지 — 새 브랜드와 4° 차이라 눈에 안 보이는데 파생 12슬롯이 흔들린다.
+
+**히어로 카드**(요청대로 따로 처리): 3스톱 램프, 흰 블룸 0.16→0.11(어두운 바탕에서
+훨씬 세게 읽힘), **네이비 로브 삭제**(#142878이 새 두 다크 사이에 묻힘), 다크에서만
+헤어라인 링.
+
+**Studio**: topic/situation 생성·이름변경·아카이브(**하드 삭제 아님** — 캐스케이드가
+연습 녹음·전사를 지운다), situation 레벨 phrase 추가/삭제(이미 살아 있던
+`phrase_story_links`를 Studio가 **읽지 않고 있었다**), phrase별 출처 노트 표시,
+별+토스트+Favorites 섹션+See all 페이지.
+
+**검증**: `npm run validate` exit 0 (0 errors / 15 warnings = 기존 베이스라인),
+시뮬레이터 라이트·다크 양쪽 확인. 렌더된 프레임 색상 센서스에서 **옛 코발트
+`#3B6EE1` 0픽셀** — `useSituationTokens`가 테마를 가리던 100KB 화면군까지 포함해
+리컬러가 완전히 도달했다.
+
+**놓칠 뻔한 것**: `is_favorite`를 select에 넣기 전에 `looksLikeMissingStudioSchema`
+정규식을 먼저 넓혔다. 안 그랬으면 029 미적용 상태에서 `Promise.all`이 통째로 reject돼
+**Studio 홈 전체가 빈 화면**이 됐다.
+
+→ [ADR 0023](decisions/0023-navy-brand-palette-and-slot-mapping.md)
+→ [포스트모템](postmortems/2026-09-10-pill-white-tone-fix-blanked-a-label.md) — 대비 수정이
+   버튼 라벨을 지워버린 회귀
+
+**미적용**: 마이그레이션 029(`stories.is_favorite`)는 CLI가 없어 SQL Editor에 직접
+붙여야 한다. 그때까지 Favorites 섹션은 안 뜨고 별은 실패한다(빈 화면은 아니다).
+
+**같은 날 — 029 적용 후 실기기(시뮬레이터) E2E 확인.** 원장이 손으로 쓰는 거라 그 자체는
+증거가 아니어서, 앱에서 루프를 돌려 확인했다:
+1. situation 상세 헤더의 빈 별 → 탭 → **채워짐** (029 미적용이면 "Favorites are temporarily
+   unavailable."이 떴을 것이므로, 이게 컬럼 존재의 실질 증거다)
+2. 홈에 **Favorites 섹션이 나타나고**, 해당 situation이 "Your situations"에서는 **빠졌다**
+   (같은 행 중복 방지 동작 확인)
+3. Favorites의 "See all" → 새 Situations 페이지가 **Favorites 칩이 선택된 채로** 열림
+   (`shell.tsx`가 `initialFilter`를 안 넘겨주던 것을 고친 결과 — 리뷰 2차가 잡았다)
+4. 칩 구성: `All 19 / Favorites 1 / About me 5 / Ideas 4 / Daily life 3 / Experiences 3 /
+   Work·Study 4` — topic별 카운트 칩 + Favorites, 설계대로.
+5. Useful Phrases에 **"From 30-second version"** 출처 표기와 개별 제거(×) 버튼 렌더 확인.
+
+---
+
+## 2026-09-10 — 릴리스 정리: warn 토큰, lint 래칫, 그리고 리컬러가 남긴 구멍들
+
+**lint 15 → 3.** cap을 정확히 3으로 래칫했다(올리지 않는다 — 경고를 추가하려면 하나를
+먼저 고쳐야 한다). `warn` 슬롯을 토큰으로 승격(#D70015 / #FF6961, 측정 5.38:1 / 6.03:1),
+죽은 `stuckNoteCopy` 제거, `expo-speech-recognition`을 정확히 56.0.1로 고정.
+Android 권한은 **안 건드렸다** — 에이전트가 미사용을 증명하지 못했고, 증명 없이 지웠다면
+안드로이드 오디오가 조용히 깨졌을 것이다.
+
+**네이티브 스플래시가 빈 화면이었다.** `splash-icon.png`가 흰색 Expo 기본 로고인데 배경이
+`#fbf9f4`라 아무것도 안 보였다. 배경을 `#162555`로 맞춰 JS 스플래시와 이음매를 없앴고,
+Expo 로고는 제거했다 — 네이비 위에선 오히려 *보이게* 되어 Expo 로고를 Saylo 마크로
+출시하는 꼴이 된다.
+
+**리컬러가 만든 구멍 3개** (전부 홀드아웃 리뷰가 찾음):
+1. **아무도 로그인 화면을 안 열었다.** `auth-palette.ts`가 테마와 별도 레이어라 모든
+   패스가 비껴갔다. 다크 모드 "Sign in" 라벨이 3.26:1 — 리컬러 전엔 4.66:1로 통과였으니
+   **내가 깬 것**이고, 신규 사용자와 App Review가 처음 보는 화면이다.
+2. `mirror-preview.tsx`의 "Open Settings"가 카메라 placeholder 위 **1.08:1**. `talk.tsx`가
+   이미 `CAMERA_ACC`로 푼 문제인데 이 파일만 빠졌다.
+3. **수정이 같은 버튼의 다른 상태를 깼다** — `onAccent`를 무조건 적용했는데 채움은
+   `canSubmit ? accent : accentSoft`다. `canSubmit`은 busy일 때 false가 되므로 인증
+   왕복 내내 스피너가 1.15:1로 안 보인다. 앱의 기존 `soft` 톤 관례(`{bg: accS, fg: accD}`)를
+   따라 전경이 채움을 따라가게 고쳤다(5.76 / 6.59).
+
+**마지막 text-on-red**: 스와이프 패널 라벨만 `#E5484D` 위 흰색 3.91:1로 남아 있었다.
+패널 채움을 `#D70015`로 바꿔 5.38:1. 파괴적 동작을 구분하는 유일한 단어였다.
+
+**검증**: `npm run validate` exit 0, 0 errors / 3 warnings (cap 3).
+
+→ [포스트모템](postmortems/2026-09-10-only-entry-point-was-never-checked.md) — "유일한
+   진입점"이라는 **확인 안 된 주장**이 App Store 빌드에 Guideline 2.1 구멍을 남겼다.
+   감사 문서 §B6은 틀린 원문을 지우지 않고 그대로 둔 채 정정했다 — 오류 자체가 교훈이라서.
+
+---
+
+## 2026-09-10 — 언어 정책 확정, 새 아이콘, prebuild
+
+**언어 정책(ADR 0024).** AI 피드백은 영어, 표현 뜻풀이는 학습자 L1, 노트·자유 메모는
+어떤 언어든. `talk-diagnose`의 6개 필드 중 3개(`said`, `improvedSentence`,
+`diagnosisTag`)는 어차피 영어여야 해서, 나머지만 L1로 바꾸면 카드 하나에 두 언어가
+섞인다.
+
+**"노트는 어떤 언어든"은 기본값이 아니라 지켜야 하는 약속이었다.** `quickTitleFromBody`가
+라틴 구두점+공백으로만 문장을 나눠서, 중국어·일본어 노트(마침표 `。！？` 뒤에 공백이
+없다)는 **문단 전체가 제목**이 됐다. 그리고 `slice(0, 61)`이 UTF-16 단위로 잘라서 이모지를
+반쪽으로 끊었다(`�`). 격리 테스트: zh-Hant 53자→12자, ja 31자→12자, 이모지 경계 lone
+surrogate 해소, en/ko/소수점 문장은 변화 없음.
+
+**새 아이콘.** 받은 PNG는 흰 여백 14px + 둥근 모서리가 구워진 1254px라, iOS의 슈퍼타원
+마스크와 겹쳐 흰 테두리가 생겼을 것이다. 마크만 알파로 추출해 브랜드 그라데이션 위에
+풀블리드로 다시 뽑았다 — 1024² RGB(App Store는 알파 금지), 마크 74%.
+
+**prebuild.** 성공했지만 `pod install`이 `Unicode Normalization not appropriate for
+ASCII-8BIT (Encoding::CompatibilityError)`로 죽었다. 경로는 전부 ASCII — 원인은
+`LANG`/`LC_ALL`이 비어 있던 것. `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`로 통과.
+`CFBundleLocalizations`(en ko zh-Hant ja es ru)가 이제 실제 Info.plist에 들어갔다.
+
+→ [ADR 0024](decisions/0024-language-policy-per-surface.md)
+
+---
+
+## 2026-09-10 — `meaning_ko` → `meaning` (expand), 그리고 리뷰어 없이 한 리뷰
+
+**단순 RENAME을 안 한 이유.** 이 컬럼을 읽는 라이브 클라이언트가 둘 있다 — push하면
+자동 배포되는 웹(구 번들이 잠깐 서빙된다)과 테스터 폰에 **이미 설치된 TestFlight 빌드**
+(마이그레이션과 발맞춰 업데이트할 방법이 없다). RENAME은 둘 다에서 PostgREST 42703 →
+표현 목록이 빈 화면. 그래서 030은 `meaning`을 *추가*·백필하고 양방향 동기화 트리거를
+걸고, `meaning_ko` 삭제는 031로 미룬다. 코드 37곳 이관: 웹 5, 모바일 2, 엣지 함수 2.
+
+**게이트가 목록 밖의 독자를 찾았다.** 크롬 확장 `extension/content.js`가 `item.meaning_ko`를
+렌더하고 있었다 — 처음 뽑은 10개 파일 목록에 없었다. `item.meaning || item.meaning_ko`로.
+
+**리뷰 에이전트가 세션 한도로 죽어서 트리거 검토를 직접 했다.** 케이스를 전부 밟았다:
+구/신 클라이언트 INSERT, 의도적 NULL 지우기(양방향), 둘 다 다른 값(`meaning` 우선),
+둘 다 안 건드림(`UPDATE OF`라 발화 안 함), 재귀(BEFORE 트리거라 없음) — 전부 맞다.
+**구멍은 로직이 아니라 트랜잭션이었다.** `ADD COLUMN → 백필 → 트리거 생성`이 묶여 있지
+않아서 (1) 백필과 트리거 사이에 구 클라이언트가 쓰면 그 행은 영구히 어긋나고, (2) 부분
+실행 상태에서 엣지 함수가 배포되면 `phrase-embed`가 뜻풀이 없이 임베딩해 벡터가 **조용히**
+망가진다. 둘 다 에러가 안 난다는 게 핵심. `BEGIN; … COMMIT;`로 묶어 전부-아니면-전무로.
+원장의 붙여넣기 블록도 파일과 바이트 단위로 맞췄다.
+
+**내 아이콘 교체가 게이트를 깼다.** `verify-release-config.mjs`가 `saylo-icon-v2.png`를
+고정 검사하고 있었다. v3로 올렸다(1024² RGB 알파 없음 검사도 통과).
+`quickTitleFromBody`의 CJK·이모지 수정도 반영.
+
+**검증**: 모바일 `npm run validate` exit 0 (0 errors / 3 warnings, cap 3). 웹은 placeholder
+환경 변수로 `npm run build` 통과(실제 환경 변수 파일은 건드리지 않음).
+
+**미적용**: 030. **순서가 전부다** — 030 적용 → 검증 쿼리(0, 1) → 그다음 main push·엣지
+함수 배포. 웹과 엣지 함수는 `meaning`을 fallback 없이 조회한다(fallback은 모바일에만).
+
+---
+
+## 2026-09-10 — 030 적용, 엣지 함수 배포, 폰트 B
+
+**030 적용 확인.** 네가 받은 결과는 `trg = 1` 하나였다 — SQL Editor는 여러 문장을 실행하면
+**마지막 결과만** 보여준다. 첫 쿼리(백필 누락 = 0)는 따로 확인하지 않았지만, 마이그레이션을
+`BEGIN/COMMIT`으로 묶었기 때문에 트리거가 있으면 같은 트랜잭션의 백필도 커밋된 것이다.
+직전에 넣은 트랜잭션이 여기서 "두 번째 쿼리 하나로 전체를 증명"하는 값을 냈다.
+
+**엣지 함수 배포.** 배포 전 diff 재확인 — 두 파일 다 `meaning_ko` → `meaning` 순수 이름
+변경이고, 임베딩 입력 문자열이 같아서(트리거가 두 컬럼을 같게 유지) 기존 벡터와 새 벡터가
+어긋나지 않는다. `phrase-embed` v4, `talk-phrase-suggest` v4, ACTIVE.
+
+**폰트 B — 글자 종류로 세리프를 고른다.** `ui.tsx`에 `serifFace()`를 두고 `Serif` 컴포넌트와
+노트 편집기의 제목·목표 입력창이 쓰게 했다. 가나(또는 L1이 `ja`일 때의 한자) → Hiragino
+Mincho, 키릴 → New York(`ui-serif`), 나머지 → Newsreader. 둘 다 iOS 내장이라 **용량 0**.
+한자만 있는 문자열을 L1로 가르는 이유: Mincho로 중국어를 그리면 대만 학습자에게 일본
+자형을 보여준다. 크기 보정 1.1배는 Newsreader의 작은 x-height 전용이라 다른 폰트엔
+안 걸고, CJK는 자간 0.
+
+**검증** (시뮬레이터, 같은 투어 카드):
+- `ja` 「ここから始めましょう」 — 산세리프 → **Hiragino Mincho** (획 끝 세리프 확인)
+- `ru` 「Начните отсюда」 — 산세리프 → **New York**
+- 영어 제목은 Newsreader 그대로, 본문은 산세리프 그대로
+- `npm run validate` exit 0 (0 errors / 3 warnings)
+
+한국어·번체는 지금처럼 시스템 산세리프로 폴백한다. 대만 학습자가 노트 제목을 중국어로
+쓰는 게 보이면 Noto Serif TC 번들(+16MB)이 다음 단계.
+
+---
+
+## 2026-09-11 — `testflight` 빌드 프로필
+
+Library를 계속 쓰고 싶다는 결정. 그런데 TestFlight로 가는 건 `production` 프로필뿐이고,
+거기엔 미리보기 플래그가 없어서 빌드 23부터 Library가 사라질 참이었다(빌드 22는 게이트
+이전 커밋 `15e1426`이라 보였다).
+
+**추가:** `build.testflight` = `extends: production` + `EXPO_PUBLIC_PREVIEW_FEATURES=1`,
+`submit.testflight` = `extends: production`. production은 그대로 — 심사용이 깨끗하게 남는다.
+
+**진짜 위험은 설정이 아니라 App Store Connect였다.** 두 프로필이 같은 ASC 앱에 올라가고
+빌드 번호 카운터도 하나라, 목록에 "1.0.0 (23)", "(24)"가 **어느 프로필인지 표시 없이**
+섞인다. 심사 제출 때 testflight 빌드를 고르면 미완성 Library가 심사에 간다(B6와 같은 2.1
+노출). 막는 법: 제출 전 `eas build:list`로 번호의 프로필 확인(submission kit §6), 폰에선
+Settings에 Library 카드가 있으면 testflight 빌드.
+
+**릴리스 검사 확장:** testflight가 production을 상속하는지, 스토어 빌드로 남는지(누가
+`internal`로 바꾸면 TestFlight에 못 올라감), 두 플래그가 있는지. `npm run validate` exit 0.
+
+## 2026-09-12 — Self-talk 힌트 패널 재설계 + AI 피드백이 조용히 꺼져 있던 이유
+
+**AI 피드백.** 결과 화면의 두 빨간 카드는 서로 다른 두 장애가 아니라 **하나의 공통
+선행 조건**이었다. `diagnoseTalk`와 `suggestTalkPhrase` 둘 다 네트워크 이전에
+`requireAiProcessingConsent()`를 지나고, 동의 알림창의 "Privacy Policy" 버튼이
+`save(false)`를 호출하고 있었다 — 정책을 읽으려는 행동이 영구 거부로 기록된다. 화면은
+실제 에러를 고정 문구로 덮어써서 절대 성공할 수 없는 "Try again"만 보여줬고, 헤더는
+`diagState === "error"` 분기가 없어 **"Focus coaching is ready."** 라는 거짓 문장을
+출력했다. 셋 다 고침 → `postmortems/2026-09-12-privacy-policy-button-denied-ai-consent.md`.
+기기에서 토글 확인은 남아 있다.
+
+**원칙(적용).** *실패는 사용자가 행동할 수 있는 문장으로 말해야 한다.* 재시도로 고칠 수
+없는 실패에 재시도 버튼을 주면 사용자는 무한히 같은 벽을 친다. 그리고 상태 문구는 성공
+경로만 나열하면 안 된다 — 실패 분기를 빼먹으면 UI가 거짓말을 한다.
+
+**힌트 패널.** Story beats 탭을 걷어내고 한 개의 리스트로 바꿨다. 화면 상단 제목과
+중복이던 `TODAY'S TOPIC` 블록과 `REVIEW TODAY` 라벨을 지워 그만큼을 phrase에 줬다
+(리스트 높이 168 → 250). 각 행은 왼쪽 원형 체크박스(직접 표시, 햅틱 + squash-and-settle
+애니메이션)와, 그 외 영역을 누르면 Y축으로 뒤집혀 ① 표현 ② 뜻 ③ How it's used를 보여주는
+카드가 됐다. 뒤집기는 180° 한 번이 아니라 0→84° / -84°→0 두 구간으로 나눴다 — 뒷면이
+거울상으로 그려지지 않고, 앞뒤 높이가 달라도 된다.
+
+**설정.** 헤더 오른쪽 기어 → 딤 + 중앙 모달에서 보는 대상을 고른다(Today's phrases /
+This note · This situation). 선택은 AsyncStorage에 남는다(`src/lib/talk-hint-source.ts`,
+talk-focus와 같은 모양). Free talk은 연결된 대상이 없어 두 번째 선택지가 비활성이다.
+
+**색.** 이 패널은 항상 흰색인데 강조색만 색상 스킴을 따라가고 있었다 — 다크 모드 accent
+`#8FACEF`는 흰 바탕에서 2.25:1이라 체크된 상자가 체크로 안 읽힌다. camera 표면과 같은
+고정-표면 규칙을 반대로 적용해 브랜드 네이비로 고정했다(`#162555` on white = 14.7:1).
+
+`npm run validate` exit 0 (0 errors, 3 warnings, cap 3). expo-haptics 추가 →
+네이티브 모듈이라 다음 EAS 빌드부터 적용된다.
+
+**기기 확인 후 2차 수정.** 동의 원인 확정됨(토글 켜니 동작). 세 가지를 더 고쳤다.
+
+- 첫 탭에 UI 스레드가 스택 오버플로로 죽었다 — 애니메이션 완료 콜백 안에서 shared value에
+  대입하면 그 애니메이션이 취소되고 같은 콜백이 다시 불린다. `withSequence` 하나로 합침 →
+  `postmortems/2026-09-12-shared-value-write-inside-its-own-callback.md`.
+- 탭처럼 생긴 헤더를 없앴다. 리스트가 하나뿐인데 세그먼트 크롬이 **있지도 않은 두 번째 탭을
+  약속하고** 있었다. 제목은 가운데 평문, 기어는 배경 없이 그 두 번째 탭 자리에.
+- **동의는 말하기 전에 묻는다.** 5분을 말하고 나서야 코칭이 꺼져 있었다는 걸 아는 건 최악의
+  타이밍이다. 라이브 진입 시 마이크 권한 시트 다음에 물어본다. `Alert.alert`는 평문만 받아서
+  결정에 필요한 네 가지 사실(뭐가 되고, 뭐가 안 되고, 뭐가 나가고, 뭐가 안 나가는지)을
+  강조할 수 없으므로 실제 모달로 만들었다. Free talk에서 설정이 왜 잠기는지도 모달 안에 적었다.
+
+## 2026-09-12 — 카드가 아니라 패널이 돈다 + 체크가 곧 복습
+
+**뒤집는 단위를 잘못 잡았다.** 행 하나가 도는 게 아니라 **패널 전체**가 돈다. phrase를
+누르면 패널이 넘어가 그 표현 하나의 사전 항목이 되고(좌측 정렬, 패널 안에서 상하 중앙),
+다시 누르면 목록으로 돌아온다. 흰 카드 스타일을 talk.tsx에서 컴포넌트 안으로 옮겨야
+했다 — 회전하는 주체가 카드 자신이어야 하니까.
+
+**runOnJS로 객체를 넘기면 조용히 아무 일도 안 일어난다.** 면 교체를 워클릿 콜백에서
+`runOnJS(setDetail)(phrase)`로 했더니 크래시도 에러도 없이 패널이 그냥 안 돌았다. 객체를
+워클릿 클로저에 가두지 않고 JS 쪽 타이머로 교체하니 바로 동작. 86도에서는 패널이 거의
+옆면이라 한 프레임 어긋나도 안 보인다.
+
+**Newsreader에는 볼드가 없다.** `fontWeight: "700"`을 줘도 iOS는 조용히 Regular를 그린다 —
+번들된 건 `Newsreader36pt-Regular.ttf` 하나뿐이라 매칭될 굵은 페이스가 없고, 경고도 없다.
+`Serif`에 `strong`을 추가해 그 경우에만 시스템 세리프(New York)로 보낸다: 모든 굵기가 있고,
+번들 비용 0이며, 이미 키릴 세리프로 쓰고 있어 이 디자인 시스템 안의 얼굴이다.
+
+**체크는 진짜 복습이다.** 말로 직접 썼다는 건 카드에서 알아본 것보다 강한 증거라, Today와
+같은 1/3/7/30 사다리에 올린다(`submitVerdict(..., "good")` + `phrase_events`의 `used`).
+연결된 phrase 소스에는 스케줄 필드가 없어서 `fetchPhraseById`로 현재 행을 먼저 읽는다 —
+안 그러면 30일 간격짜리를 신규로 보고 내일로 끌어내린다. 체크 해제는 화면 표시만 되돌리고
+스케줄은 안 건드린다(실제로 말한 건 사실이니까).
+
+**그래서 드러난 진짜 버그:** Today는 마운트 때만 `load()`를 돌았다. 네이티브 탭이 화면을
+계속 살려두므로, 톡에서 체크하고 돌아와도 `5 / 5`가 그대로라 **체크가 아무것도 안 한 것처럼
+보였다.** 포커스마다 다시 읽게 고침. 시뮬레이터에서 `5 / 5` → `4 / 5` 확인.
+
+**설정 아이콘이 해였다.** `icon.tsx`의 `gear`는 `sun`과 같은 그림(원 + 광선 8개, 반지름만
+다름)이다. 쓰는 곳이 한 군데도 없어서 여태 안 걸렸다. 실제 `sliders` 글리프를 추가.
+
+`npm run validate` exit 0 (0 errors, 3 warnings, cap 3).
+
+## 2026-09-12 — 뒤집기가 "카드가 도는" 게 아니라 "가운데가 갈라지는" 것처럼 보였던 이유
+
+면을 교체하는 방식이었기 때문이다. 0→86도로 돌리고, 그 지점에서 내용을 바꾸고, -86도에서
+0으로 돌아왔다. 두 면의 높이가 다르니 **정확히 중간 지점에서 카드 크기가 바뀐다.** 회전
+중간의 리사이즈는 카드가 넘어가는 게 아니라 패널이 갈라지는 것으로 읽힌다.
+
+고친 방식: 고정 크기(300pt) 상자 안에 **두 면을 동시에 그려 쌓아두고**, 뒷면을 반 바퀴
+뒤에 세운 뒤 **둘을 함께** 0→180도로 한 번에 돌린다. 교체도 없고 리사이즈도 없다.
+어느 면이 보이는지는 `backfaceVisibility`가 아니라 90도에서의 opacity 하드 스위치가
+결정한다 — 90도는 카드가 정확히 옆면인 순간이고, 플랫폼이 회전된 뷰의 뒷면을 어떻게
+합성하는지에 기대지 않는다. 흰 카드 스타일은 talk.tsx에서 컴포넌트로 완전히 옮겼다:
+함께 도는 두 면이 각자 카드를 입고 있어야 한다.
+
+**원칙(적용).** *애니메이션 중간에 레이아웃을 바꾸지 마라.* 위치 변화만 있는 변환은 매끄럽게
+읽히지만, 크기 변화가 섞이는 순간 사용자는 다른 사건으로 해석한다.
+
+`npm run validate` exit 0.
+
+## 2026-09-12 — 키보드에 가려지는 시트 셋, 그리고 안 자라는 선택 UI
+
+**키보드.** Edit phrase 시트가 autofocus라 키보드가 항상 올라와 있는데, 정작 편집할 필드를
+가리고 있었다. 원인은 backdrop과 시트가 **하나의 Pressable**이라 `KeyboardAvoidingView`를
+넣을 자리가 없던 것. 같은 모양의 시트가 셋이었다(phrases / capture / practice). Studio의
+Sheet가 쓰던 구조로 통일.
+
+**칩 격자는 개수를 모르는 목록에 쓰면 안 된다.** 줄바꿈이 예측 불가라 시트 높이가 내용에
+따라 움직이고, 긴 제목이 잘리고, 가로 칩 레일이 세로 시트 안에 들어가 스크롤 방향이 섞이고,
+무엇보다 **검색할 자리가 없다.** Studio가 네 가지를 한꺼번에 겪고 있었다.
+
+**그리고 이미 데이터가 새고 있었다 — 조용한 truncation 넷.**
+- `phraseChoices().then(items => items.slice(0, 20))` → 다시 렌더에서 `slice(0, 10)`.
+  **이중 캡**이라 표현 11번째부터는 도달 불가.
+- `PhrasePicker`의 `.slice(0, 30)` — 검색 필터 **뒤에** 걸려 있어서, 뭘 치든 31번째는 안 나옴.
+- story picker의 `slice(0, 10)` / `slice(3, 10)` — 검색창이 비어 있으면 11번째 story는 없음.
+모두 "나중에 불편해질 것"이 아니라 **지금 있는 버그**였다. 캡 자체를 없앰(시트가 스크롤된다).
+
+**공용 `PickerSheet`.** 행 + 섹션 + 8개 넘을 때만 나오는 검색. `practice.tsx`의 Add-to-a-story가
+이미 그 모양이라 발명이 아니라 일반화였다. Quick capture의 situation 선택은 **topic 칩 → situation
+칩** 2단계를 없애고 한 목록으로 폈다 — situation은 이미 자기 topic을 알고 있으니 하나 고르면
+둘 다 정해진다. `Unsorted · About me`는 이 필드가 원래 보여주던 문자열 그대로라, 행이 값과
+같은 모양으로 읽힌다. Organize note도 같은 목록으로 바꾸고 탭 즉시 저장(고르는 게 결정 전부라
+확인 버튼이 한 번 더 있을 이유가 없다).
+
+**설계 하나 되돌림:** 검색 결과가 있을 때도 `Create "Daily"`를 같이 띄웠더니, `Daily life` 행 셋
+아래에 **다른 topic에 만들겠다는** 버튼이 붙었다. 결과가 0일 때만 뜨게 수정.
+
+`npm run validate` exit 0. 시뮬레이터에서 검색·섹션·생성·단일선택·다중선택 전부 확인.
+
+## 2026-09-17 — MVP 커밋 + 시뮬레이터 폴리시 1차 (Pill 에러, 빈 노트)
+
+**만든 것.** 커밋 안 된 채로 시뮬레이터에서 돌던 MVP(Phrases·Studio·Profile, migration 031)를 `6249f00`으로 먼저 커밋. 그다음 시뮬레이터 워크스루로 찾은 것 중 두 개를 고침 → `6d9d3b3`.
+- **Pill 라벨 에러**: `{rate}× speed`가 배열이라 `<Text>` 밖에서 렌더 → 빈 캡슐 + LogBox 에러. `Pill`이 string/number 혼합을 라벨로 처리. → `postmortems/2026-09-17-pill-number-child-threw-text-error.md`
+- **빈 노트 누적**: "New note"가 입력 전에 row를 만들어서, 그냥 나가면 "Untitled note"가 남고 Phrases 히어로가 그 빈 노트로 초대했다. 템플릿 그대로인 노트는 나갈 때 삭제(Talk로 갈 땐 유지), 히어로는 빈 노트를 건너뜀.
+
+**원칙.** 호출부 하나를 고치지 말고 오분류하는 분기(컴포넌트)를 고친다. "생성 즉시 저장"은 취소 경로에서 쓰레기를 남긴다 — 나가는 길에 되돌린다.
+
+**검증.** tsc 통과, `test:mvp` 4/4 (isBlankNote 케이스 추가), 변경 파일 eslint 0. 시뮬레이터에서 속도 토글, 새 노트 → 뒤로 → pull-to-refresh 후에도 노트 수 7 유지 확인.
+
+**남은 것 (워크스루에서 찾음, 미착수).** Studio 카드 "0 POINTS"(`-`/`•` 줄만 셈) · Phrases 홈 로딩 중 "All 0"/빈 히어로 깜빡임 · Profile 시간 "77 min 31s" 표기 + transcript 없는 59분 세션 · 날짜 포맷 혼재 · 소문자 라벨에 넓은 자간.
+
+## 2026-09-18 — Phrases 홈 Figma 적용 + Talk 탭 편입
+
+**만든 것.** Figma 프레임 + PM 메뉴구조 노트대로 Phrases 홈을 다시 짰다(`7c5987e`). 헤더(타이틀 / +·필터 캡슐 / 48pt 프로필, Studio도 동일), 히어로 캐러셀(스피킹 카드 + "Today's phrases for you" done/total), 기간별 그룹 리스트(Today / Yesterday / Last 7 days / Last 30 days / Earlier), 검색·스테이지 필터는 필터 시트로. Pretendard 4웨이트 + Instrument Serif 번들. Talk는 바 안의 세 번째 탭. 결정 → `decisions/0025-phrases-home-daily-picks-and-three-tab-bar.md`
+
+**원칙.** 제품 규칙(오늘의 픽, 기간 분류)은 화면이 아니라 순수 함수에 둔다 — 그래야 "하루 동안 카운트가 거꾸로 안 간다" 같은 약속을 테스트로 고정할 수 있다. 테스트가 처음 틀렸던 건 코드가 아니라 테스트였다(8월은 31일).
+
+**걸린 것.** `Pill full`은 `flex: 1`이라 세로 컨테이너(필터 시트) 안에서 높이 0으로 접혔다 — "Show results" 버튼이 안 보임. 시트에선 `alignSelf: "stretch"`로.
+
+**검증.** tsc 통과, `test:mvp` 6/6(todaysPicks·periodOf 추가), 변경 파일 eslint 0. 시뮬레이터: 헤더·히어로 두 장·그룹 리스트, 필터 시트(스테이지 선택 → 점 표시 + "35 Collected phrases · Clear", 검색 0건 → 빈 상태), Studio 헤더, Talk 탭 진입 확인.
+
+## 2026-09-18 — 폰트 앱 전체 교체 + 필터를 네이티브 메뉴로
+
+**만든 것.** (`009bac0`) 26개 파일의 `Text`/`TextInput`을 `design/text.tsx` 래퍼로 교체 — style에 fontFamily가 없으면 fontWeight에 맞는 Pretendard 패밀리를 붙인다. SERIF = Instrument Serif(Newsreader 대체). 필터 버튼은 바텀 시트 대신 `@expo/ui` 네이티브 Menu(인라인 Picker, 체크마크). 검색은 `SEARCH_ENABLED=false`로 숨김. ADR 0025에 개정으로 기록.
+
+**원칙.** RN엔 전역 기본 폰트가 없다 — 앱 전체 폰트는 "모든 화면이 우리 Text를 쓰게" 하는 한 지점에서 결정한다. 정적 웨이트 폰트는 웨이트마다 패밀리가 달라서, 래퍼가 fontWeight → 패밀리 이름으로 바꿔준다. 네이티브 모듈을 JS에서 새로 쓰기 전에 설치된 빌드 바이너리에 그 뷰(`MenuView`)가 있는지 먼저 확인.
+
+**걸린 것.** 프로젝트 보안 훅(환경변수 파일 보호용)이 환경변수 참조 문자열이 든 명령을 막음 — 우회하지 않고 플래그를 상수로 만듦.
+
+**검증.** tsc 통과, `test:mvp` 6/6, 변경 29개 파일 eslint 에러 0(경고 1은 기존 `phrases.tsx:1026`). 시뮬레이터: 필터 메뉴가 버튼에서 펼쳐짐 → Collected 선택 → 점 + 요약 줄, Clear. Phrase 상세·Studio·Profile에서 Pretendard/Instrument Serif 확인.
+
+## 2026-09-20 — Figma 듣기 버튼 + Studio 리스트를 같은 패턴으로
+
+**만든 것.** (`5a8f9ec`) 리스트 행의 듣기 버튼을 Sumin이 준 `button.svg` 그대로 그림(react-native-svg): 반투명 #F2F2F7 원 + 회색 스피커, 재생 중엔 같은 원 안에 네이비 일시정지, 로딩은 스피너. Studio는 노트 한 개당 카드이던 구조를 Phrases와 같은 패턴으로 — 기간별 섹션 카드, 행 시작의 마이크 원(누르면 그 노트로 Talk), 제목 + 한 줄 미리보기, 오른쪽 셰브론. `SectionCard` / `Row` / `RowCircle`로 두 화면이 같은 부품을 쓴다.
+
+**없앤 것.** 노트 카드의 "0 POINTS · OPEN NOTE" — 불릿(`-`/`•`) 줄만 세는 계산이라, 글이 가득한 노트에서도 0으로 보였다. 워크스루에서 찾았던 항목(2026-09-17 기록의 "남은 것" 3번) 해소.
+
+**원칙.** 두 번째 화면에 같은 모양이 필요해지는 순간이 부품을 뽑을 때다 — 먼저 Phrases 리스트를 `SectionCard`/`Row`로 바꾸고, Studio는 그걸 사용만 했다.
+
+**검증.** tsc 통과, `test:mvp` 6/6, eslint 에러 0. 시뮬레이터에서 Studio(기간 섹션 2개, 마이크 원, 미리보기 한 줄)와 Phrases 듣기 버튼(유휴/로딩) 확인. 오늘이 9/20이라 9/12 저장분이 LAST 7 DAYS → LAST 30 DAYS로 내려간 것도 기간 분류가 도는 증거.
+
+## 2026-09-20 — 남은 항목 정리: 말한 시간, 시간 표기, 날짜 표기
+
+**고친 것.** (`1abcd44`) 2026-09-17 워크스루의 남은 3건을 닫았다.
+- **거울 타이머가 화면 켜둔 시간을 셌다** → 새 단어가 들어온 뒤 10초 이내일 때만 카운트. `postmortems/2026-09-20-mirror-timer-counted-screen-time.md`
+- **`durationLabel`**: 한 시간이 넘으면 시/분으로 — "77 min 31s" → "1 h 17 min". 초는 한 시간 넘어가면 노이즈.
+- **날짜 표기 통일**: `dateLabel`(Sep 12, 연도가 다를 때만 연도) / `dateTimeLabel`(Sep 12 · 1:05 PM). phrase 상세·Profile·세션 화면에 섞여 있던 `9/12/2026`을 없앴다.
+
+**원칙.** 지표 이름이 곧 계측 정의다 — "of speaking"이라고 쓰면 말한 시간을 세야 한다. 판정 규칙은 화면이 아니라 순수 함수에 두고 테스트로 고정한다(세 건 모두 `mvp-model`).
+
+**검증.** tsc 통과, `test:mvp` 8/8(시간·날짜·타이머 케이스 추가), eslint 에러 0. 시뮬레이터에서 Profile "3 h 4 min spoken in total", 세션 날짜 "Sep 12" 확인. 타이머 수정은 시뮬레이터에 음성 인식이 없어 런타임 확인 불가 — 단위 테스트까지가 근거.
+
+**남은 판단.** 과거 세션 행의 부풀려진 seconds는 그대로다(합계에 포함). 정리 여부는 Sumin 결정.
+
+## 2026-09-20 — 앱 안에서 세션 삭제 (빨간 버튼 + 스와이프)
+
+**만든 것.** (`8e309b9`) 세션 상세에 빨간 "Delete session"(`Pill tone="danger"` 신설 — AA 검증된 `warn` 색 + 12% 배경), Profile 목록은 스와이프 삭제(`SwipeRow`, 기존 빨간 패널 재사용). 둘 다 `confirmDelete`로 길이를 문장에 넣어 확인받는다.
+
+**원칙.** 삭제 순서는 "되돌릴 수 있는 쪽이 먼저 깨지게" — 녹음 파일을 먼저 지우고 행을 지운다. 행이 그 파일을 가리키는 유일한 포인터라, 반대로 하면 아무도 닿을 수 없는 파일이 남는다. 행만 남고 오디오가 없는 상태는 화면에서 복구 가능.
+
+**맥락.** 부풀려진 과거 세션 정리를 SQL 대신 앱에서 하기로 함(`supabase/maintenance/2026-09-20-delete-empty-long-talk-sessions.sql`은 미실행 상태로 남겨둠 — 대량 정리가 필요해지면 쓸 수 있다).
+
+**검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: 스와이프 → 빨간 Delete 패널 → 확인 다이얼로그("59 min 6s of speaking, and its recording, will be removed.") → **Cancel로 종료(실제 삭제는 Sumin 몫이라 하지 않음)**. 상세 화면의 빨간 버튼 렌더 확인.
+
+## 2026-09-22 — "+" 한 페이지로 합치기 (타이핑 · 카메라 · 앨범 OCR)
+
+**만든 것.** (`73449a0`) MVP의 "+" 페이지가 타이핑만 되던 걸, 예전 capture 화면의 OCR을 되살려 한 페이지로 합쳤다. Camera / Photos → `extractPhraseFromImage` → **같은 입력칸을 채운다**(사진은 미리보기 + 읽어낸 텍스트 카드로 보여주고, Save 전까지 아무것도 저장 안 됨). 사진에서 온 표현은 `source: "image_ocr"` + 읽어낸 텍스트를 context로 저장. Delete note도 다른 전체폭 버튼처럼 늘림.
+
+**걸린 것 — 모델이 프롬프트의 예시값을 그대로 돌려줬다.** 글자 없는 사진(시뮬레이터 샘플 꽃 사진)에서 phrase 칸에 `all legible text`, meaning 칸에 `short English meaning`이 채워졌다. 원인은 앱이 아니라 `supabase/functions/phrase-capture`의 프롬프트: 반환 JSON 예시 문자열을 모델이 그대로 복사했다. 앱에서 그 예시값 목록 + 빈 문자열을 "못 읽음"으로 처리 → "No English text found. Type it instead."
+
+**원칙.** 자동 채움은 사용자가 고칠 수 있는 칸에만 넣는다 — 잘못 읽어도 지우면 그만인 상태로. 그리고 못 읽었을 때는 카드 한 곳에서만 말한다(같은 말을 배너로 한 번 더 하면서 아무 일도 안 하는 "Try again"을 붙이지 않는다).
+
+**검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: 앨범 선택 → 썸네일 + "READING THE PHOTO…" → 채움(첫 시도) / 못 읽음 안내(수정 후) 확인. 카메라 경로는 시뮬레이터에 카메라가 없어 미검증 — 실기기 확인 필요.
+
+**남은 것.** 프롬프트 쪽 근본 수정(예시값 대신 스키마 설명, "글자 없으면 빈 문자열")은 Edge Function 배포가 필요해서 손대지 않음. 예전 `capture.tsx`도 같은 함수를 쓰므로 같은 증상이 있을 수 있다.
+
+## 2026-09-22 (2) — "+"를 원래 캡처 화면으로 되돌리고, 카메라·앨범을 그 안에 넣음
+
+**되돌린 것.** (`06cc527`) 앞 항목에서 만든 간소화 페이지(QuickCapture)를 버리고, "+"는 원래 `PhraseCaptureScreen`(route `capture`)을 연다. Context + 번역, Paste, Fill from context, Phrase to keep + 종류 칩, Refresh with AI, Meaning, How it's used, MORE, Save to Phrase Bank — 이미 잘 돌던 화면이 그대로 돌아왔다. 3갈래 메뉴(찍기/앨범/텍스트) 대신 **Camera·Photos 칩을 그 화면 Paste 옆에** 넣어 한 페이지에서 셋 다 된다. 예시값 되돌림 방어도 이 화면으로 옮겼다.
+
+**원칙 — 새로 만들기 전에 이미 있는 화면을 먼저 찾는다.** MVP 화면을 새로 쓰면서 `capture.tsx`의 기능(문맥·AI 초안·종류 분류·OCR)을 모르고 타이핑 전용 페이지를 만들었다. Sumin이 예전 스크린샷을 보여주기 전까지 그 손실이 드러나지 않았다. "MVP용으로 새 화면"이라는 말은 **기존 화면을 대체하라는 뜻이 아니었다.**
+
+**검증.** tsc 통과, `test:mvp` 8/8, eslint 에러 0. 시뮬레이터: "+" → 원래 화면(Camera/Photos 포함) → 앨범 선택 → From photo 모드(미리보기·Take again/Choose another·Detected text) → 글자 없는 사진은 칸을 채우지 않음. 카메라는 시뮬레이터에 없어 미검증.
+
+## 2026-09-24 — YouGlish를 앱 내 브라우저로 + 심사 문서 정정
+
+**만든 것.** (`d1ab6e6`) phrase 2단계 "Open YouGlish"를 `Linking.openURL`(사파리로 이탈) → `expo-web-browser` 페이지 시트(SFSafariViewController)로. Done 누르면 같은 phrase, 같은 스크롤 위치로 복귀. 버튼 아래 "브라우저에서 열림" 안내, Privacy에 "Links to other sites" 섹션(탭한 표현만 URL로 나간다), 제출 키트의 등급 설문 근거 정정.
+
+**판단 근거.** 링크는 유지, 임베드는 안 함 — YouGlish 위젯 약관은 모바일 앱 사용에 서면 허가, "Powered by YouGlish.com" 상시 표기, YouTube 약관·Google 정책 링크를 요구한다. 외부 링크는 이 의무가 붙지 않는다.
+
+**발견한 것.** 제출 키트에 "Unrestricted web access: No — 외부 브라우저는 OAuth뿐"이라고 적혀 있었는데 phrase 화면이 이미 브라우저를 열고 있었다. 답(No)은 유지하되 근거와 재검토 조건(URL 입력칸이 생기거나 임의 사이트를 열 때)을 적었다. **심사 답변 문서도 코드처럼 기능 추가 때마다 낡는다.**
+
+**걸린 것.** 커밋하려는데 `fatal: not a git repository: .../Code HQ/Shadowing Plus/.git/worktrees/Shadowing-Plus-mobile` — 메인 레포가 `Code HQ/` → `code-hq/`로 옮겨져 워크트리의 `.git` 포인터가 옛 경로를 가리키고 있었다. `git worktree repair <path>`로 포인터만 고침(Codex 워크트리 `~/.codex/worktrees/0c67`도 같이 수리됨).
+
+**검증.** tsc 통과, 변경 파일 eslint 에러 0. 시뮬레이터: 시트로 youglish.com 로드 → Done → 원래 화면 복귀, Privacy 새 섹션 렌더 확인. 웹 쪽 개인정보처리방침(`web/src/app/privacy`)은 웹 작업과 분리돼 있어 미수정 — 같은 문장 추가 필요.
+
+## 2026-09-24 (2) — 세션 결과 화면: 줄바꿈, 전사 박스 고정, 버튼 한 줄
+
+**고친 것.** (`cd33d6b`) Sumin이 폰(빌드 30)에서 5분 10초 세션 후 본 화면 세 가지.
+- 제목이 `5 min 10s\nof speaking.`으로 **그대로** 보임 — JSX 텍스트 안의 `\n`은 이스케이프가 아니라 두 글자다. 템플릿 리터럴로.
+- 길게 말하면 전사가 페이지를 몇 화면씩 늘림 → 카드 안 `ScrollView`, 최대 높이 = 창 높이의 36%. 짧으면 제 높이, 길면 카드 안에서 스크롤, 넘칠 때 스크롤바를 한 번 번쩍여 더 있다는 걸 알림.
+- "Back to Phrases"가 상단 뒤로 버튼과 중복 → 제거. Listen back / Speak again을 한 줄 같은 폭으로.
+
+**검증 방법.** 시뮬레이터엔 음성 인식이 없어 결과 화면에 도달할 수 없다. 그래서 상태 초기값 5곳에 임시 값(done / saved / 긴 전사 / 310초 / 가짜 오디오 경로)을 넣어 화면을 띄우고 확인한 뒤 되돌렸고, **되돌린 파일이 사전 백업과 바이트 단위로 같은지 `diff`로 확인**했다. tsc 통과, eslint 에러 0.
+
+**덤으로 확인된 것.** 폰에서 저장된 5분 10초 세션의 전사가 5분 분량으로 꽉 차 있다 — 타이머 수정(말할 때만 셈) 이후 첫 실사용 세션이 말한 양과 시간이 맞게 기록됐다. Profile 합계도 3 h 4 min → 2 h 17 min(부풀려진 세션을 Sumin이 직접 삭제).
+
+## 2026-09-24 (3) — Phrase 상세 정렬 패스 (디자인만)
+
+**만든 것.** (`9572929`) 기능·핸들러는 그대로, 레이아웃만. 스텝 카드 안에 **왼쪽 기준선이 둘**이었다 — 제목은 체크 원 오른쪽에서, 버튼·안내문은 원 아래에서 시작. 버튼 폭도 제각각이라 오른쪽 기준선도 없었다.
+- 체크 원 = 거터. 본문은 제목의 왼쪽 선에 매달림(`STEP_INDENT` = 원 26 + 간격 12). 컨트롤은 그 칼럼 전체 폭 → 좌우 두 선 공유. speed/repeat는 같은 폭 한 쌍.
+- 히어로(단계·표현·번역·출처·날짜) 가운데 정렬 — 화면의 유일한 주제이고, 위의 BackBar 제목도 가운데라 상단이 대칭.
+- 문장형 부제("Listen, repeat, then check")에서 대문자용 넓은 자간 제거, 완료 시 "Done · Sep 24"를 강조색으로. 컨트롤 아래 안내문은 한 단계 낮춤(13pt, ink3).
+
+**원칙.** 정렬 문제는 대개 "왼쪽 정렬이라서"가 아니라 **기준선이 여러 개라서** 생긴다. 한 컨테이너 안에서는 왼쪽·오른쪽 기준선을 하나씩만 두고, 장식 요소(체크 원)는 거터로 빼서 본문 칼럼 밖에 둔다. 자간은 대문자 라벨 전용.
+
+**검증.** tsc 통과, eslint 에러 0. 시뮬레이터로 "As it is" 상세 위·아래 확인. 완료 상태(Done 강조색)·저장된 문장 목록·Ready의 "Use it in the mirror"는 데이터를 바꾸지 않고는 띄울 수 없어 화면 확인 못 함 — 스타일만 바뀐 부분.
+
+## 2026-09-24 (4) — 재생 버튼을 네이티브 글래스 원으로, 문장 칸을 리마인더 리스트로
+
+**리서치.** iOS 26 버튼은 `.buttonStyle(.glass / .glassProminent)` + 원형은 border shape로; HIG 최소 탭 44pt. 리마인더 앱 행 해부: 22pt 속 빈 원(radio), 완료 시 채워진 체크 원, 빈 행을 탭하면 커서 + 원이 생기고 Return으로 확정, 왼쪽 스와이프 삭제. 설치된 `@expo/ui`에 `buttonStyle("glassProminent")`, `buttonBorderShape("circle")`, `controlSize`, `tint`, `frame`이 전부 있고, MenuView 때 확인했듯 ExpoUI가 dev 빌드에 링크돼 있어 재빌드 없이 쓸 수 있었다.
+
+**만든 것.** (`cba15d1`) Play pronunciation 알약 → SwiftUI 네이티브 글래스 원(56pt, 앱 accent tint, play/pause SF 심볼), 로딩은 같은 크기 연한 원 + 스피너라 레이아웃이 안 튄다. 문장 단계는 리마인더 리스트: 저장된 문장 = 채워진 체크 원 행(17pt, 안쪽 hairline), 맨 아래 빈 원 행이 입력칸 — Return이 저장, 초안이 있을 때만 Save 알약 노출. 행 왼쪽 스와이프 → 삭제(기존 확인창 유지). 행마다 있던 "x" 제거. `SwipeRow`에 `flat` 추가(카드 안 행이라 자체 그림자·라운드 없음).
+
+**걸린 것.** SwiftUI 글래스 버튼은 버튼에 `frame`을 줘도 라벨 크기대로 그린다(≈40pt) → `controlSize("extraLarge")` + 라벨 Image에 frame 28로 56pt 확보. `SwipeRow`가 카드용 그림자·라운드를 자기 래퍼에 갖고 있어 리스트 행이 떠 있는 알약처럼 보임 → `flat` 옵션.
+
+**검증.** tsc 통과, eslint 에러 0, `test:mvp` 8/8. 시뮬레이터: 재생 원 탭 → 로딩 원 → 복귀, 빈 행 탭 → 입력 → Return → 체크 행 + 새 빈 행, 스와이프 → Delete → 확인창 → 삭제(테스트 문장은 지워서 데이터 원상 복구). 시뮬레이터 입력 언어가 한국어라 자모로 입력됐지만 흐름 검증엔 무관.
+
+## 2026-09-24 (5) — speed/repeat을 플레이어 글리프로
+
+**만든 것.** (7765eed) "1× speed" / "Once" 알약을 없애고 Music·Podcasts식 트랜스포트 줄로: 가운데 재생 원, 왼쪽 속도 글리프("1×"/"0.75×"), 오른쪽 SF Symbol repeat. 탭할 때마다 상태 전환 + 선택 햅틱, 기본값이 아닌 상태는 accent색, repeat 켜지면 "5" 배지. 줄 아래 문장이 상태를 말로 설명("Normal speed · plays once"). 기능(1↔0.75, 1회↔5회)은 그대로.
+
+**원칙.** 아이콘만 남길 때 잃는 것은 "지금 무슨 상태인가"다 — 색(accent = 켜짐), 배지, 그리고 한 줄 설명으로 되돌려준다. 양옆 슬롯을 고정 폭(64pt)으로 둬서 글리프 폭이 바뀌어도 가운데 원이 움직이지 않게.
+
+**검증.** tsc 통과, eslint 에러 0. 시뮬레이터: 두 토글 탭 → 0.75× accent, repeat accent + 5 배지, 설명 문장 갱신 → 다시 탭해서 기본값 복귀. `expo-symbols`·`expo-haptics`가 설치 빌드에 링크돼 있음을 바이너리에서 먼저 확인.
+
+## 2026-09-26 — 클라우드 PR #11을 실제 코드 위로 옮김 + 로컬 42커밋 첫 push
+
+**무슨 일이 있었나.** 클라우드 세션이 "당겨서 검색"을 만들어 PR #11로 올렸는데, 이 맥의 `feat/studio-note-loop`은 GitHub보다 **42커밋 앞서 있었고 한 번도 push되지 않았다.** 클라우드는 GitHub만 보므로 9/10 상태의 옛 앱 위에서 작업 → 지금 앱이 보여주지 않는 화면(`today.tsx`/`phrases.tsx`/`studio-information.tsx`)에 연결, 7개 파일 충돌, `expo-haptics` 때문에 새 빌드가 필요하다고 오판(로컬엔 이미 있고 설치 빌드에도 링크됨).
+
+**한 것.** ① 42커밋 push(점검: 추가된 dotfile·자격증명 파일 없음). ② #11의 동작을 MVP 화면으로 이식(`eb02481`): `Screen.onPullToSearch`(알약 + 임계점 햅틱), Phrases·Studio의 당겨서 새로고침을 대체(둘 다 포커스 시 재로딩), 검색 대상은 MVP 데이터(표현: text/translation/source, 노트: title/body), 결과 → 표현 상세 / 노트, Back 시 검색어 유지. 채점은 순수 모듈 `lib/search-model.ts` + `tests/search-model`(5케이스). ③ #11은 대체 사유 코멘트 후 close(브랜치는 참고용으로 남김). ④ TestFlight 빌드 → 제출.
+
+**원칙.** 원격(클라우드) 에이전트는 push된 것만 본다 — **로컬에서 오래 쌓인 커밋은 다른 세션에겐 존재하지 않는 코드다.** 병렬 세션을 쓸 땐 작업 단위마다 push하는 게 충돌을 막는 가장 싼 방법. 그리고 다른 브랜치의 기능을 합칠 때 텍스트 머지보다 **동작을 현재 코드 위에 다시 붙이는** 게 빠를 때가 있다(대상 화면 자체가 바뀐 경우).
+
+**검증.** tsc 통과, `test:mvp` 13/13, lint 기준선 통과, `npm run validate` 통과. 시뮬레이터: Phrases에서 당김 → Search(키보드 포커스) → "그대로" 검색 → "As it is"(번역으로 매칭) → 상세 → Back 시 검색어·결과 유지, Studio에서 당김 → 새 Search.
+
+## 2026-09-26 (2) — Mirror 힌트를 표현 카드·자동 체크로, 결과 화면을 Wispr Flow식 통계로
+
+**계기.** build 31 실기기: 결과 화면이 "ls / of speaking."(→ [postmortem](postmortems/2026-09-26-result-title-serif-one-and-silent-second.md)), 힌트는 늘 "Ready phrases will appear here" — 표현 38개가 전부 Collected라 Ready 전용 힌트가 한 번도 안 채워졌다. Sumin 결정: 표현 카드 + 자동 체크, 오늘의 표현 우선, 빈 세션은 저장 안 함 (→ [ADR 0026](decisions/0026-mirror-hint-cards-and-empty-sessions.md)). 결과 화면 정보 배치는 Wispr Flow / SpeakType 레퍼런스.
+
+**만든 것.**
+- 힌트 덱(`screens/talk-hints.tsx`): 카메라 위 가로 페이징 카드. "TRY USING · n OF 5 USED", 표현을 말하면 초록 체크가 튀어나오고 0.9초 뒤 다음 미사용 카드로 이동, 탭하면 뜻 + 내가 쓴 최신 문장. 노트에서 시작하면 개요(Opening/Body/Closing 포인트)가 첫 카드 — 탭해서 지움. 덱을 닫아 두면 "✓ Used · …" 토스트 + 전구 버튼에 개수 배지. 카드가 있으면 기본으로 열림. "Use it in the mirror"로 오면 그 표현이 첫 카드.
+- 매칭(`lib/phrase-use.ts`, 순수): 축약형(I'm ↔ I am), 동사 변화(called ↔ call, brought ↔ bring), my/your/one's, sb/sth·"…"·괄호 자리표시자, 앞의 to/be 생략 허용. 단어 순서와 인접은 엄격. 사용 여부는 저장하지 않고 전사에서 매번 파생 — 결과 화면은 저장된 전사가 보여주는 것만 말한다.
+- 결과 화면: 큰 숫자 "46 words spoken" + 2×2 격자(Speaking time · Words per minute · Phrases used · Different words), 사용한 표현은 칩(✓), 전사 카드는 높이 제한 + Copy, 버튼은 하단 고정. 빈 세션은 "NOTHING SAVED · No words caught." + Listen back / Try again. My records(저장된 세션)도 같은 통계·전사 카드.
+- 숫자 글꼴: `FONT.figure = "ui-serif"`(New York). `Serif`가 브랜드 세리프 안 숫자 구간을 자동 교체 → Profile의 "27 min 56s", 표현 개수도 1/l 구분.
+- 타이머: 첫 단어 전에는 0초(시작 grace 제거), 단어가 있으면 최소 1초.
+
+**원칙.** 글꼴을 들일 때는 글자만이 아니라 **숫자를 크게** 렌더해 본다 — 디스플레이 세리프는 1/l, 0/O가 흔한 함정이다. 그리고 "쓸모없는 기능"은 대개 **데이터가 비어서** 쓸모없다: Ready 전용 힌트는 사용자의 실제 데이터(전부 Collected)에서 한 번도 채워진 적이 없었다 — 후보 집합을 사용자가 가진 것에서 시작하게 바꾸는 게 먼저였다.
+
+**검증.** tsc 통과, lint 기준선 통과(기존 경고 1), `test:mvp` 23/23(매칭 4, 카드 순서·개요·통계·짧은 시간·숫자 분리·첫 단어 전 타이머 추가). 시뮬레이터는 음성 인식이 안 돼("Failed to initialize recognizer") 가짜 전사를 임시 주입(커밋 전 제거, DB 쓰기 없음): 6초에 첫 카드 체크 → 초록 점·"1 OF 5 USED"·배지 1 → 다음 카드 자동 이동, 탭 → 뜻 + "No sentence of yours yet.", 덱 숨김 상태에서 "✓ Used · hardship" 토스트, 결과 화면·빈 상태·저장된 세션 통계 확인. **실기기에서만 확인 가능**: 실제 음성으로의 자동 체크, 녹음 중 햅틱(iOS가 막을 수 있음).

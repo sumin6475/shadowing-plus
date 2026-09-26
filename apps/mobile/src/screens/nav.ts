@@ -4,19 +4,17 @@
 import type { TabId } from "@/design/ui";
 
 export type ViewName =
+  | "profile"
+  | "mvpPhrase"
+  | "mvpNote"
+  | "search"
+  | "mirrorRecord"
   | "phrase"
   | "review"
   | "practiceHub"
   | "rehearsal"
-  | "island"
-  | "newIsland"
-  | "domain"
-  | "story"
-  | "message"
-  | "newMessage"
-  | "recs"
-  | "session"
-  | "feedback"
+  | "attempt"
+  | "coachingFeedback"
   | "library"
   | "libItem"
   | "capture"
@@ -37,7 +35,16 @@ export type ViewName =
   | "situationAttempts"
   | "speakingNote"
   | "topicsList"
-  | "sessionsList";
+  | "attemptsList"
+  | "situationsList";
+
+/** Where a pushed screen should be restored to. `stack` is the detail stack to
+ *  rebuild on `tab`, bottom-first — an empty stack lands on the tab's base
+ *  screen. */
+export interface ReturnTarget {
+  tab: TabId;
+  stack: { name: ViewName; props?: Record<string, unknown> }[];
+}
 
 export interface TalkCtx {
   ctx?: string;
@@ -45,9 +52,15 @@ export interface TalkCtx {
   prompt?: string | null;
   beats?: string[] | null;
   from?: TabId;
-  /** Link the saved talk_session to a Speaking World story/message, if any. */
-  storyId?: string | null;
-  messageId?: string | null;
+  /** Link the saved Attempt to its Situation and Speaking Note, if any. */
+  situationId?: string | null;
+  noteId?: string | null;
+  /** The phrase "Use it in the mirror" came from — its hint card leads. */
+  phraseId?: string | null;
+  /** Where to land when the attempt ends. Without it Talk falls back to
+   *  `nav.go(from)`, which clears the detail stack and drops the learner on a
+   *  tab root instead of the note they were practising. */
+  returnTo?: ReturnTarget;
 }
 
 export interface Nav {
@@ -57,6 +70,10 @@ export interface Nav {
   pop: () => void;
   /** Switch tabs and clear the detail stack. */
   go: (tab: TabId) => void;
+  /** Switch tabs and rebuild a detail stack there, instead of clearing it.
+   *  Used to come back from a full-screen flow (Talk) to the screen that
+   *  started it. */
+  restore: (target: ReturnTarget) => void;
   /** Prime a self-talk context and jump to the Speak tab (mirror flow). */
   startTalk: (ctx: TalkCtx) => void;
   /** Show a brief confirmation that survives a pushed screen being popped. */

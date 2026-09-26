@@ -1,5 +1,8 @@
 # ADR 0018 — Your speaking world is a studio dashboard
 
+> **Document status: Historical.** Metrics remain relevant; product terminology has changed.
+> **Reviewed:** 2026-09-14 · **Current feature map:** [`../../../../../docs/feature-map.md`](../../../../../docs/feature-map.md)
+
 - **날짜**: 2026-08-23
 - **스텝**: Home / Phrases / studio cleanup
 - **상태**: accepted

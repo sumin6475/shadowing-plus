@@ -79,7 +79,7 @@
   }
   function phraseBody() {
     if (!phrases.length) return `<div class="empty"><b>Your Phrase Bank is empty.</b><br>Select a phrase in one subtitle, then choose <em>Save phrase</em>. We will explain what it means in this video context.</div>`;
-    return `<div class="phrase-list"><button class="phrase-open" data-action="open-phrases">Open Phrase Bank ↗</button>${phrases.map((item) => `<article class="phrase-card"><b>${escapeHtml(item.text)}</b><span class="phrase-kind">${escapeHtml((item.kind || "phrase").replace(/_/g, " "))}</span>${item.status === "ready" ? `<p>${escapeHtml(item.meaning_ko || "")}</p><small>${escapeHtml(item.usage_note || "")}</small>` : `<small class="word-muted">${item.status === "failed" ? "Explanation unavailable." : "Explaining phrase…"}</small>`}</article>`).join("")}</div>`;
+    return `<div class="phrase-list"><button class="phrase-open" data-action="open-phrases">Open Phrase Bank ↗</button>${phrases.map((item) => `<article class="phrase-card"><b>${escapeHtml(item.text)}</b><span class="phrase-kind">${escapeHtml((item.kind || "phrase").replace(/_/g, " "))}</span>${item.status === "ready" ? `<p>${escapeHtml(item.meaning || item.meaning_ko || "")}</p><small>${escapeHtml(item.usage_note || "")}</small>` : `<small class="word-muted">${item.status === "failed" ? "Explanation unavailable." : "Explaining phrase…"}</small>`}</article>`).join("")}</div>`;
   }
   function wordButtons(text) { return escapeHtml(text).replace(/([A-Za-z][A-Za-z'-]*)/g, '<mark data-word="$1">$1</mark>'); }
 

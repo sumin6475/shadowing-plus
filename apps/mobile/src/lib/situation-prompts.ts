@@ -1,5 +1,5 @@
-// Built-in story prompts shown as static gray copy on seeded/onboarding
-// titles. Custom titles return null so the learner can write a description.
+// Built-in prompts shown on seeded/onboarding Situations. Custom titles return
+// null so the learner can write a description.
 
 const PROMPTS: Record<string, string> = {
   "something i learned":
@@ -46,8 +46,8 @@ function promptKey(title: string): string {
   return title.trim().toLocaleLowerCase("en").replace(/[’]/g, "'");
 }
 
-/** Built-in prompt for a seeded/onboarding story title, or null for custom stories. */
-export function storyPromptFor(title: string): string | null {
+/** Built-in prompt for a seeded/onboarding Situation title. */
+export function situationPromptFor(title: string): string | null {
   const key = promptKey(title);
   if (key === "write my own") return null;
   return PROMPTS[key] ?? null;

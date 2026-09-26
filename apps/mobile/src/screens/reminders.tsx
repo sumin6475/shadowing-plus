@@ -2,7 +2,8 @@
 // enable, daily/weekly, weekdays, local time. Banner copy preview + test ping
 // are __DEV__-only (ship builds omit this; keep for internal copy refinement).
 import { useCallback, useEffect, useState } from "react";
-import { AppState, Linking, Pressable, Switch, Text, View } from "react-native";
+import { AppState, Linking, Pressable, Switch, View } from "react-native";
+import { Text } from "@/design/text";
 import { usePostHog } from "posthog-react-native";
 
 import { useTheme } from "@/design/theme";
@@ -44,7 +45,11 @@ export function RemindersScreen({ nav }: { nav: Nav }) {
   }, []);
 
   useEffect(() => {
-    void refreshPermission();
+    // Deferred one microtask on purpose: refreshPermission() setStates, and doing
+    // that synchronously in an effect body cascades a second render (and trips
+    // react-hooks/set-state-in-effect). The permission read was already async, so
+    // nothing observable moves — do not "simplify" this back to a bare call.
+    void Promise.resolve().then(refreshPermission);
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") void refreshPermission();
     });
@@ -120,7 +125,7 @@ export function RemindersScreen({ nav }: { nav: Nav }) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1, gap: 6 }}>
             <Text style={labelStyle(t.colors.accD)}>SELF-TALKING</Text>
-            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Speak from your stories</Text>
+            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Practice your speaking notes</Text>
             <Text style={{ fontSize: 13.5, lineHeight: 19, color: t.colors.ink2 }}>
               A local nudge at a time you choose, in this phone’s timezone.
             </Text>

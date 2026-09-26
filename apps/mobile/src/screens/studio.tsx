@@ -1,9 +1,10 @@
-// studio.tsx — "Your speaking world" dashboard. Time, lived-in topics/stories,
-// and phrase insights. The Topics studio collection is one tap away.
+// Studio analytics: speaking time, active Topics/Situations, and Phrase insights.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, Text, View } from "react-native";
+import { ActivityIndicator, RefreshControl, View } from "react-native";
+import { Text } from "@/design/text";
 import Svg, { Circle } from "react-native-svg";
 
+import { BRAND } from "@/design/mobile-tokens";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Card, EnterStagger, Icon, Pill, Screen, Serif, StatTile } from "@/design/ui";
 import { useAuth } from "@/lib/auth";
@@ -13,11 +14,14 @@ import {
   fetchStudioSnapshot,
   formatSpeakingTime,
   type StudioSnapshot,
-} from "@/lib/speaking-world";
+} from "@/lib/studio-model";
 import type { Nav } from "./nav";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
-const TOPIC_TONES = ["#3B6EE1", "#7BA7F6", "#C5D4A0", "#E8C37A", "#E7B8B4", "#A9C7FF"];
+// Donut slices. The first slot anchors the ring in brand navy; BRAND.light
+// rather than acc, because acc is near-black in light mode and would swallow
+// the five pastels it sits beside.
+const TOPIC_TONES = [BRAND.light, "#7BA7F6", "#C5D4A0", "#E8C37A", "#E7B8B4", "#A9C7FF"];
 
 function stageCounts(phrases: PhraseItem[]) {
   return {
@@ -226,7 +230,7 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
                   {formatSpeakingTime(studio?.totalSeconds ?? 0)}
                 </Serif>
                 <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 8 }}>
-                  {studio?.sessionCount ?? 0} session{(studio?.sessionCount ?? 0) === 1 ? "" : "s"} recorded
+                  {studio?.attemptCount ?? 0} attempt{(studio?.attemptCount ?? 0) === 1 ? "" : "s"} recorded
                 </Text>
               </View>
               <View style={{ width: 132, height: 132, alignItems: "center", justifyContent: "center" }}>
@@ -245,7 +249,7 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
               </View>
             ) : (
               <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 14, lineHeight: 19 }}>
-                Talk in a session and your time will land here.
+                Complete an attempt and your speaking time will land here.
               </Text>
             )}
           </Card>
@@ -265,7 +269,7 @@ export function SpeakingStudioScreen({ nav }: { nav: Nav }) {
               chevron={false}
               tone="sage"
               label="Active situations"
-              value={String(studio?.activeStories ?? 0)}
+              value={String(studio?.activeSituations ?? 0)}
               unit="situations"
               foot="With notes or attempts"
             />

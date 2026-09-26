@@ -3,17 +3,20 @@
 //   Logo draw (2.6s) → Reveal (2.2s) → Idle (loops).
 // A single requestAnimationFrame timeline drives `elapsed` (seconds); every
 // element's phase is derived from it with the design's exact easing curves.
-// Palette = COBALT (the design's default + the app accent). The design uses
-// Figtree; we stand in with Inter (already loaded), keeping the cobalt retint.
+// Palette = the Saylo brand navy (BRAND.main #162555). Local literals on purpose:
+// this screen renders outside ThemeProvider, so it cannot read slots. The design uses
+// Figtree; we stand in with Inter (already loaded), keeping the brand retint.
 import { useEffect, useRef, useState } from "react";
-import { Dimensions, Pressable, Text, View } from "react-native";
+import { Dimensions, Pressable, View } from "react-native";
+import { Text } from "@/design/text";
+import { FONT } from "@/design/mobile-tokens";
 import Svg, { Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // palette = [bg, pale ink, subtitle, button text, headline]
-const C = { bg: "#2254D4", pale: "#D9EAFB", sub: "#A9C8F3", btnText: "#1B44BC", head: "#F2F7FE" };
+const C = { bg: "#162555", pale: "#D9EAFB", sub: "#A9C8F3", btnText: "#162555", head: "#F2F7FE" };
 
 // Cursive double-loop mark (viewBox 860×720). Length precomputed ≈ 2493.
 const LOOP =
@@ -115,7 +118,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
     <View style={{ overflow: "hidden" }}>
       <Text
         style={{
-          fontFamily: "Inter-SemiBold",
+          fontFamily: FONT.semibold,
           fontSize: headSize,
           lineHeight: headLH,
           letterSpacing: -2.5 * k,
@@ -139,7 +142,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
           position: "absolute",
           left: 24,
           top: insets.top + 10,
-          fontFamily: "Inter-SemiBold",
+          fontFamily: FONT.semibold,
           fontSize: 68 * k,
           letterSpacing: -1 * k,
           color: C.pale,
@@ -182,7 +185,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
         {headLine("in English.", l2)}
         <Text
           style={{
-            fontFamily: "Inter-Medium",
+            fontFamily: FONT.medium,
             fontSize: subSize,
             fontWeight: "500",
             color: C.sub,
@@ -214,7 +217,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
           transform: [{ translateY: (1 - btnE) * 120 * k }],
         }}
       >
-        <Text style={{ fontFamily: "Inter-SemiBold", fontSize: 52 * k, color: C.btnText }}>Get started</Text>
+        <Text style={{ fontFamily: FONT.semibold, fontSize: 52 * k, color: C.btnText }}>Get started</Text>
         <View
           pointerEvents="none"
           style={{
@@ -253,8 +256,8 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
             opacity: clamp(btnP * 1.8, 0, 1),
           }}
         >
-          <Text style={{ fontFamily: "Inter-Medium", fontSize: 40 * k, color: C.sub }}>
-            Already have an account? <Text style={{ fontFamily: "Inter-SemiBold", color: C.pale, textDecorationLine: "underline" }}>Log in</Text>
+          <Text style={{ fontFamily: FONT.medium, fontSize: 40 * k, color: C.sub }}>
+            Already have an account? <Text style={{ fontFamily: FONT.semibold, color: C.pale, textDecorationLine: "underline" }}>Log in</Text>
           </Text>
         </Pressable>
       ) : null}

@@ -4,12 +4,24 @@
 // never records audio). Falls back to a dark surface on denial and offers a
 // Settings + retry path once iOS refuses to re-prompt.
 import { useEffect } from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/design/text";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
-import { useTheme } from "@/design/theme";
+import { BRAND } from "@/design/mobile-tokens";
 
 const FALLBACK = "#20222a";
+// The fallback surface is permanently dark in both schemes, so the accent drawn
+// on it must not track the color scheme either — same reasoning as CAMERA_ACC /
+// CAMERA_ON_ACC in screens/talk.tsx, and the same values so the two camera
+// surfaces match. Light-mode acc is #162555, which measures 1.08:1 against
+// FALLBACK: the Open Settings pill stops existing as a shape and only its label
+// reads. Pinned instead to the dark-scheme accent contract, built for a dark
+// ground:
+//   #6E8DD5 on #20222a = 4.86:1  (>= 3:1, non-text floor)
+//   CAMERA_ON_ACC (#0D1A3B) on #6E8DD5 = 5.24:1  (white would be 3.26:1)
+const CAMERA_ACC = "#6E8DD5";
+const CAMERA_ON_ACC = BRAND.dark;
 
 export function MirrorPreview({
   focused = true,
@@ -21,7 +33,6 @@ export function MirrorPreview({
   /** Darken the feed slightly so light overlays stay legible. */
   scrim?: boolean;
 }) {
-  const t = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
 
   // Ask once, exactly like the previous inline mirror, but only while focused.
@@ -50,11 +61,11 @@ export function MirrorPreview({
                   borderRadius: 999,
                   paddingHorizontal: 16,
                   paddingVertical: 9,
-                  backgroundColor: t.colors.acc,
+                  backgroundColor: CAMERA_ACC,
                   opacity: pressed ? 0.85 : 1,
                 })}
               >
-                <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#fff" }}>Open Settings</Text>
+                <Text style={{ fontSize: 13.5, fontWeight: "700", color: CAMERA_ON_ACC }}>Open Settings</Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"

@@ -135,7 +135,7 @@ export default function PhrasesPage() {
       withStatus.filter(({ p, display }) => {
         if (filter !== "all" && display !== filter) return false;
         if (!query) return true;
-        return [p.text, p.meaning_ko, p.usage_note, p.source_context?.sentence, p.video?.title, p.island, ...(p.tags ?? [])]
+        return [p.text, p.meaning, p.usage_note, p.source_context?.sentence, p.video?.title, p.island, ...(p.tags ?? [])]
           .filter(Boolean)
           .join(" ")
           .toLowerCase()
@@ -229,7 +229,7 @@ export default function PhrasesPage() {
         const res = await fetch("/api/phrases", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ manual: true, text: value, meaning_ko: meaning.trim(), usage_note: note.trim() }),
+          body: JSON.stringify({ manual: true, text: value, meaning: meaning.trim(), usage_note: note.trim() }),
         });
         const data = (await res.json().catch(() => ({}))) as { item?: PhraseRow; alreadySaved?: boolean; error?: string };
         if (!res.ok || !data.item) {

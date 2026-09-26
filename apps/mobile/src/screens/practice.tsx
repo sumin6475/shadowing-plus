@@ -3,7 +3,8 @@
 // Rehearsal: mirror-style mini session — see the target phrase, record takes,
 // on-device STT checks whether the phrase actually came out.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
@@ -12,13 +13,13 @@ import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-ses
 import { useTheme } from "@/design/theme";
 import { BackBar, Badge, Card, Icon, Pill, Screen, Sect, Serif, Stagger, Wave } from "@/design/ui";
 import {
-  fetchPhraseStories,
-  linkPhraseToStory,
+  fetchPhraseSituations,
+  linkPhraseToSituation,
   recordPhraseEvent,
   type PhraseItem,
-  type PhraseStoryRef,
+  type PhraseSituationRef,
 } from "@/lib/phrases";
-import { fetchAllStories, type StoryChoice } from "@/lib/speaking-world";
+import { fetchSituationChoices, type SituationChoice } from "@/lib/studio-model";
 import { useSpeechSession } from "@/hooks/use-speech-session";
 import type { Nav } from "./nav";
 
@@ -51,23 +52,33 @@ function PhraseSummaryCard({ p }: { p: PhraseItem }) {
 // ── Practice hub ────────────────────────────────────────────────────────────
 export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }) {
   const t = useTheme();
-  const [stories, setStories] = useState<PhraseStoryRef[] | null>(null);
+  const [situations, setSituations] = useState<PhraseSituationRef[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Bumped on every open so the sheet below remounts: its search box, Situation list
+  // and in-flight link all start clean without a prop-to-state reset effect.
+  const [pickerSeq, setPickerSeq] = useState(0);
   const p = item;
 
   const load = useCallback(async () => {
     if (!p || p.id === "sample") {
-      setStories([]);
+      setSituations([]);
       return;
     }
     try {
-      setStories(await fetchPhraseStories(p.id));
+      setSituations(await fetchPhraseSituations(p.id));
     } catch {
-      setStories([]);
+      setSituations([]);
     }
   }, [p]);
   useEffect(() => {
-    void load();
+    // `load`'s no-phrase/sample branch clears the list synchronously, which
+    // react-hooks/set-state-in-effect flags when the effect body invokes it
+    // directly. Yielding one microtask first keeps the same load, the same
+    // trigger and the same deps — only the render-phase setState is gone.
+    void (async () => {
+      await Promise.resolve();
+      await load();
+    })();
   }, [load]);
 
   if (!p) {
@@ -81,11 +92,11 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
     );
   }
 
-  const talkWithStory = (story: PhraseStoryRef) => {
+  const talkWithSituation = (situation: PhraseSituationRef) => {
     nav.startTalk({
-      ctx: story.title,
-      storyId: story.id,
-      prompt: `Try to use “${p.text}” while telling this story.`,
+      ctx: situation.title,
+      situationId: situation.id,
+      prompt: `Try to use “${p.text}” in this situation.`,
       from: "phrases",
     });
   };
@@ -117,36 +128,43 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
             <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.accD }}>Quick Practice</Text>
           </Pressable>
 
-          <Sect title="Related stories" action="+ Add story" onAction={() => setPickerOpen(true)} />
+          <Sect
+            title="Related situations"
+            action="+ Add situation"
+            onAction={() => {
+              setPickerSeq((n) => n + 1);
+              setPickerOpen(true);
+            }}
+          />
 
-          {stories === null ? (
+          {situations === null ? (
             <View style={{ paddingVertical: 28, alignItems: "center" }}>
               <ActivityIndicator color={t.colors.acc} />
             </View>
-          ) : stories.length === 0 ? (
+          ) : situations.length === 0 ? (
             <Card style={{ alignItems: "center", paddingVertical: 24 }}>
-              <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }}>No stories linked yet</Text>
+              <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }}>No situations linked yet</Text>
               <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
-                Link a story and practice this phrase inside it.
+                Link a situation and practice this phrase inside it.
               </Text>
             </Card>
           ) : (
             <>
-              {stories.map((story) => (
-                <Card key={story.id} style={{ paddingVertical: 13, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
+              {situations.map((situation) => (
+                <Card key={situation.id} style={{ paddingVertical: 13, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
                     <Icon name="sparkle" s={17} c={t.colors.accD} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{story.title}</Text>
+                    <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{situation.title}</Text>
                     <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>
-                      {story.versionCount} version{story.versionCount === 1 ? "" : "s"}
+                      {situation.noteCount} note{situation.noteCount === 1 ? "" : "s"}
                     </Text>
                   </View>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Talk “${story.title}” using this phrase`}
-                    onPress={() => talkWithStory(story)}
+                    accessibilityLabel={`Talk in “${situation.title}” using this phrase`}
+                    onPress={() => talkWithSituation(situation)}
                     style={({ pressed }) => ({
                       width: 40,
                       height: 40,
@@ -157,7 +175,7 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
                       opacity: pressed ? 0.8 : 1,
                     })}
                   >
-                    <Icon name="mic" s={17} c="#fff" />
+                    <Icon name="mic" s={17} c={t.colors.onAcc} />
                   </Pressable>
                 </Card>
               ))}
@@ -168,14 +186,15 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
           )}
         </Stagger>
       </Screen>
-      <AddStorySheet
+      <AddSituationSheet
+        key={pickerSeq}
         open={pickerOpen}
         phrase={p}
-        linked={stories ?? []}
+        linked={situations ?? []}
         onClose={() => setPickerOpen(false)}
         onLinked={() => {
           setPickerOpen(false);
-          nav.notify("Story linked");
+          nav.notify("Situation linked");
           void load();
         }}
       />
@@ -183,8 +202,8 @@ export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }
   );
 }
 
-// Bottom sheet: search all stories, tap to link one to this phrase.
-function AddStorySheet({
+// Bottom sheet: search all Situations, then link one to this Phrase.
+function AddSituationSheet({
   open,
   phrase,
   linked,
@@ -193,22 +212,37 @@ function AddStorySheet({
 }: {
   open: boolean;
   phrase: PhraseItem;
-  linked: PhraseStoryRef[];
+  linked: PhraseSituationRef[];
   onClose: () => void;
   onLinked: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const [all, setAll] = useState<StoryChoice[] | null>(null);
+  const [all, setAll] = useState<SituationChoice[] | null>(null);
   const [q, setQ] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // No query reset here: the parent keys this sheet by open count, so each open
+  // is a fresh mount with q already "". That kills the one-frame flash of the
+  // previous query that a post-await setQ("") caused, and leaves this effect with
+  // nothing but the fetch — which commits only after `await`, in its own render.
+  // The trade: `all` is null on reopen, so the spinner shows for the refetch
+  // instead of the previous list. Correct either way (linked stories are filtered
+  // out by linkedIds), and the list can have changed since the last open.
   useEffect(() => {
     if (!open) return;
-    setQ("");
-    fetchAllStories()
-      .then(setAll)
-      .catch(() => setAll([]));
+    let alive = true;
+    void (async () => {
+      try {
+        const next = await fetchSituationChoices();
+        if (alive) setAll(next);
+      } catch {
+        if (alive) setAll([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [open]);
 
   const linkedIds = useMemo(() => new Set(linked.map((s) => s.id)), [linked]);
@@ -216,11 +250,11 @@ function AddStorySheet({
     (s) => !linkedIds.has(s.id) && (!q.trim() || s.title.toLowerCase().includes(q.trim().toLowerCase())),
   );
 
-  const pick = async (story: StoryChoice) => {
+  const pick = async (story: SituationChoice) => {
     if (savingId) return;
     setSavingId(story.id);
     try {
-      await linkPhraseToStory(phrase.id, story.id, "learner");
+      await linkPhraseToSituation(phrase.id, story.id, "learner");
       onLinked();
     } catch (e) {
       Alert.alert("Couldn’t link", e instanceof Error ? e.message : "Try again.");
@@ -231,10 +265,24 @@ function AddStorySheet({
 
   return (
     <Modal visible={open} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={onClose}>
+      {/* Backdrop and sheet are separate views so a KeyboardAvoidingView can
+          sit between them; as one Pressable there was nowhere to put it and
+          the keyboard covered the search field and its results. */}
+      <View style={{ flex: 1 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(20,22,28,0.28)" }]}
+        onPress={onClose}
+      />
+      <KeyboardAvoidingView
+        pointerEvents="box-none"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1, justifyContent: "flex-end" }}
+      >
         <Pressable
           onPress={(event) => event.stopPropagation()}
-          style={{ maxHeight: "78%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 8 }}
+          style={{ maxHeight: "92%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 8 }}
         >
           <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 16 }} />
           <Serif style={{ fontSize: 22, color: t.colors.ink, textAlign: "center" }}>Add to a story</Serif>
@@ -243,7 +291,7 @@ function AddStorySheet({
             <TextInput
               value={q}
               onChangeText={setQ}
-              placeholder="Find in stories"
+              placeholder="Find in situations"
               placeholderTextColor={t.colors.ink3}
               autoCorrect={false}
               autoCapitalize="none"
@@ -257,13 +305,13 @@ function AddStorySheet({
               </View>
             ) : choices.length === 0 ? (
               <Text style={{ fontSize: 13.5, color: t.colors.ink3, textAlign: "center", paddingVertical: 24, lineHeight: 20 }}>
-                {q.trim() ? "No story matches that." : "Every story is already linked."}
+                {q.trim() ? "No situation matches that." : "Every situation is already linked."}
               </Text>
             ) : (
               (() => {
-                // fetchAllStories is newest-first, so the top slice is "Recents".
+                // fetchSituationChoices is newest-first, so the top slice is "Recents".
                 const sectioned = !q.trim() && choices.length > 3;
-                const row = (story: StoryChoice, first: boolean) => (
+                const row = (story: SituationChoice, first: boolean) => (
                   <Pressable
                     key={story.id}
                     onPress={() => void pick(story)}
@@ -281,7 +329,7 @@ function AddStorySheet({
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }} numberOfLines={1}>{story.title}</Text>
-                      {story.domainName ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>{story.domainName}</Text> : null}
+                      {story.topicName ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>{story.topicName}</Text> : null}
                     </View>
                     {savingId === story.id ? <ActivityIndicator color={t.colors.acc} /> : <Icon name="plus" s={16} w={2.2} c={t.colors.accD} />}
                   </Pressable>
@@ -291,12 +339,14 @@ function AddStorySheet({
                     {label}
                   </Text>
                 );
-                if (!sectioned) return choices.slice(0, 10).map((story, i) => row(story, i === 0));
+                // No cap: the sheet scrolls, and a hard 10 meant story 11 was
+                // unreachable whenever the search box was empty.
+                if (!sectioned) return choices.map((story, i) => row(story, i === 0));
                 return [
                   header("RECENTS"),
                   ...choices.slice(0, 3).map((story, i) => row(story, i === 0)),
                   header("ALL STORIES"),
-                  ...choices.slice(3, 10).map((story, i) => row(story, i === 0)),
+                  ...choices.slice(3).map((story, i) => row(story, i === 0)),
                 ];
               })()
             )}
@@ -305,7 +355,8 @@ function AddStorySheet({
             Cancel
           </Pill>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -471,7 +522,7 @@ export function QuickRehearsalScreen({
             <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, textAlign: "center" }}>“{coach}”</Text>
           )}
           {speech.error ? (
-            <Text style={{ fontSize: 12.5, color: "#E5484D", textAlign: "center", marginTop: 6 }}>{speech.error}</Text>
+            <Text style={{ fontSize: 12.5, color: t.colors.warn, textAlign: "center", marginTop: 6 }}>{speech.error}</Text>
           ) : null}
         </View>
       </View>
@@ -495,18 +546,22 @@ export function QuickRehearsalScreen({
             })}
           >
             {!replayStatus.isLoaded ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={t.colors.onAcc} />
             ) : (
-              <Icon name={replayStatus.playing ? "pause" : "play"} s={18} c="#fff" />
+              <Icon name={replayStatus.playing ? "pause" : "play"} s={18} c={t.colors.onAcc} />
             )}
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff" }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.onAcc }}>
               {!replayStatus.isLoaded ? "Preparing your take…" : replayStatus.playing ? "Pause" : "Play your take"}
             </Text>
           </Pressable>
         ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
-          <Pill tone="white" onPress={() => void toggleRecord()} style={{ minWidth: 132, justifyContent: "center" }}>
+          <Pill tone="card" onPress={() => void toggleRecord()} style={{ minWidth: 132, justifyContent: "center" }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {/* Record dot: a 14px non-text fill, so it stays on the literal red
+                  rather than t.colors.warn. Non-text contrast only needs 3:1 and
+                  #E5484D already clears it at 3.91:1 — retinting would shift the
+                  design for no accessibility gain. Error TEXT uses the token. */}
               <View
                 style={{
                   width: 14,

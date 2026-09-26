@@ -1,14 +1,24 @@
 // today.tsx — Today tab. Hero, this-week phrase saves, leftover review queue.
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
+import { Text } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 
 import { useTheme } from "@/design/theme";
 import { Avatar, Card, Hero, Icon, Pill, Screen, Serif, Stagger } from "@/design/ui";
+import { ProductTourProvider, TourTarget } from "@/components/product-tour";
 import { reviewedOnLocalDay, todaysPhrases } from "@/lib/daily-phrases";
 import { fetchPhrases, weeklyCounts, type PhraseItem } from "@/lib/phrases";
 import { useAuth } from "@/lib/auth";
-import { fetchRecentTalkedStory, type RecentTalkedStory } from "@/lib/speaking-world";
+import { fetchRecentAttemptSituation, type RecentAttemptSituation } from "@/lib/studio-model";
 import type { Nav } from "./nav";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -28,14 +38,14 @@ function todayLabel(): string {
 
 // Hero line: rotates daily (deterministic — day number, no flicker across
 // renders) so the invitation stays fresh. The story rotates daily too, across
-// the distinct stories in recent Talk sessions (fetchRecentTalkedStory).
-function heroCopy(storyTitle: string | null): string {
+// the distinct situations in recent Talk attempts (fetchRecentAttemptSituation).
+function heroCopy(situationTitle: string | null): string {
   const day = Math.floor(Date.now() / 86_400_000);
-  if (storyTitle) {
+  if (situationTitle) {
     const variants = [
-      `Your “${storyTitle}” story is waiting`,
-      `Make “${storyTitle}” smoother today`,
-      `One more take of “${storyTitle}”?`,
+      `Your “${situationTitle}” situation is waiting`,
+      `Make “${situationTitle}” smoother today`,
+      `One more take of “${situationTitle}”?`,
     ];
     return variants[day % variants.length];
   }
@@ -60,7 +70,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const { session } = useAuth();
   const [items, setItems] = useState<PhraseItem[] | null>(null);
   const [reviewToday, setReviewToday] = useState<PhraseItem[]>([]);
-  const [recentStory, setRecentStory] = useState<RecentTalkedStory | null>(null);
+  const [recentStory, setRecentStory] = useState<RecentAttemptSituation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [statsAsOf, setStatsAsOf] = useState(0);
@@ -72,6 +82,14 @@ export function TodayScreen({ nav }: { nav: Nav }) {
       setEnterKey((k) => k + 1);
     }, []),
   );
+
+  // Handed to the first-run coach marks so a target below the fold can be
+  // scrolled into view before it is spotlighted.
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollOffsetRef = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -90,9 +108,18 @@ export function TodayScreen({ nav }: { nav: Nav }) {
     return () => clearTimeout(timer);
   }, [load]);
 
+  // Native tabs keep this screen mounted, so the count was whatever it was at
+  // app start. Ticking a phrase during a self-talk marks it reviewed, and
+  // landing back on a stale "5 / 5" reads as the tick having done nothing.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
   useEffect(() => {
     let active = true;
-    fetchRecentTalkedStory()
+    fetchRecentAttemptSituation()
       .then((story) => {
         if (active) setRecentStory(story);
       })
@@ -108,7 +135,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
     setRefreshing(true);
     await Promise.all([
       load(),
-      fetchRecentTalkedStory()
+      fetchRecentAttemptSituation()
         .then(setRecentStory)
         .catch(() => setRecentStory(null)),
     ]);
@@ -132,10 +159,10 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   const startSpeaking = () => {
     if (recentStory) {
       nav.startTalk({
-        ctx: recentStory.storyTitle,
-        storyId: recentStory.storyId,
-        messageId: recentStory.messageId,
-        prompt: recentStory.beats[0] ?? "Tell this story in your own words.",
+        ctx: recentStory.situationTitle,
+        situationId: recentStory.situationId,
+        noteId: recentStory.noteId,
+        prompt: recentStory.beats[0] ?? "Say what you want to communicate in your own words.",
         beats: recentStory.beats,
         from: "today",
       });
@@ -157,12 +184,23 @@ export function TodayScreen({ nav }: { nav: Nav }) {
   };
 
   return (
-    <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}>
+    <ProductTourProvider
+      enabled={Boolean(session) && items !== null && !error}
+      scrollRef={scrollRef}
+      scrollOffsetRef={scrollOffsetRef}
+    >
+    <Screen
+      scrollRef={scrollRef}
+      onScroll={onScroll}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}
+    >
       <Stagger replayKey={enterKey}>
       <View style={{ paddingHorizontal: 2, paddingTop: 4, paddingBottom: 2 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 44 }}>
           <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>{todayLabel()}</Text>
-          <Avatar onPress={() => nav.push("settings")} />
+          <TourTarget id="profile" radius={26}>
+            <Avatar onPress={() => nav.push("settings")} />
+          </TourTarget>
         </View>
         <Serif style={{ fontSize: 36, lineHeight: 40, color: t.colors.ink, marginTop: 10 }}>
           {greeting()}{displayName ? `, ${displayName}` : "."}
@@ -174,11 +212,21 @@ export function TodayScreen({ nav }: { nav: Nav }) {
           Start the day with practice
         </Text>
         <Serif style={{ fontSize: 26, lineHeight: 33, color: "#fff", marginTop: 10 }}>
-          {heroCopy(recentStory?.storyTitle ?? null)}
+          {heroCopy(recentStory?.situationTitle ?? null)}
         </Serif>
-        <Pill tone="white" full icon="mic" onPress={startSpeaking} textStyle={{ color: t.colors.accD }} style={{ shadowOpacity: 0, marginTop: 18 }}>
-          Speaking
-        </Pill>
+        {/* Pill tone="white" now owns a scheme-independent pair (#FFFFFF fill,
+            BRAND.dark label — 17.10:1). The old textStyle accD override is gone:
+            in dark mode accD is #8FACEF, which measures 2.25:1 on that white fill
+            and also left the label a different color from the mic icon (the icon
+            always takes the tone's own fg). shadowOpacity:0 stays — t.shadowCard
+            is a black card shadow meant for a light page; on the hero's navy ramp
+            it is invisible in dark and a smudge in light, and the fill already
+            separates on its own (7.94:1 on #344E91, 17.10:1 on #0D1A3B). */}
+        <TourTarget id="speak" radius={26} style={{ marginTop: 18 }}>
+          <Pill tone="white" full icon="mic" onPress={startSpeaking} style={{ shadowOpacity: 0 }}>
+            Speaking
+          </Pill>
+        </TourTarget>
       </Hero>
       </Stagger>
 
@@ -196,6 +244,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
         </Card>
       ) : (
         <Stagger replayKey={enterKey} startIndex={2}>
+          <TourTarget id="review" radius={t.r}>
           <Card>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
               <View>
@@ -234,6 +283,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
                 : "Nothing new this week."}
             </Text>
           </Card>
+          </TourTarget>
 
           <Card onPress={leftover.length ? startReview : undefined}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -261,5 +311,6 @@ export function TodayScreen({ nav }: { nav: Nav }) {
         </Stagger>
       )}
     </Screen>
+    </ProductTourProvider>
   );
 }

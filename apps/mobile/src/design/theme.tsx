@@ -1,11 +1,11 @@
 // theme.tsx — Theme context built from the canonical mobile tokens.
 //
 // The single source of truth for every rendered token is
-// `design/mobile-tokens.ts` (iOS palette at runtime, cobalt #3B6EE1 accent,
-// Newsreader serif). This file only assembles the Theme object and exposes the
-// context; it defines no token values itself.
+// `design/mobile-tokens.ts` (iOS palette at runtime, brand navy accent
+// — #162555 light / #6E8DD5 dark — Newsreader serif). This file only assembles
+// the Theme object and exposes the context; it defines no token values itself.
 //
-// iOS motif: capsule controls · concentric container radius · single cobalt
+// iOS motif: capsule controls · concentric container radius · single brand
 // accent · ios/warm palettes · edge-pair elevation approximated with a native
 // shadow + hairline ring.
 
@@ -40,6 +40,10 @@ export interface Theme {
     acc: string;
     accD: string;
     accS: string;
+    /** Foreground on `acc` — dark mode's lighter navy needs ink, not white. */
+    onAcc: string;
+    /** Error/destructive text. AA-compliant pair (5.38:1 light / 6.03:1 dark). */
+    warn: string;
     butter: string;
     sky: string;
     sage: string;

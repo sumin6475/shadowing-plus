@@ -7,10 +7,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { usePostHog } from "posthog-react-native";
 
@@ -146,7 +145,7 @@ export default function SignInScreen() {
   const notice = confirmationEmail
     ? {
         title: "Check your email",
-        body: `We sent a confirmation link to ${confirmationEmail}. Your first story is saved on this device—come back and sign in after confirming.`,
+        body: `We sent a confirmation link to ${confirmationEmail}. Your first Speaking Note is saved on this device—come back and sign in after confirming.`,
       }
     : resetEmail
       ? {
@@ -180,8 +179,8 @@ export default function SignInScreen() {
                 <Text style={[styles.wordmark, { color: c.text }]}>Saylo</Text>
                 <Text style={[styles.subtitle, { color: c.text3 }]}>
                   {mode === "sign_up"
-                    ? "Create an account and start building your speaking world."
-                    : "Sign in to keep building your speaking world."}
+                    ? "Keep your phrases, notes, and speaking moments together."
+                    : "Your phrases. Your notes. Your voice."}
                 </Text>
               </View>
 
@@ -274,10 +273,15 @@ export default function SignInScreen() {
                     },
                   ]}
                 >
+                  {/* Foreground follows the fill: `canSubmit` goes false while
+                      busy, so a fixed onAccent would hide the spinner for the
+                      whole auth round trip. */}
                   {busy ? (
-                    <ActivityIndicator color="#ffffff" />
+                    <ActivityIndicator color={canSubmit ? c.onAccent : c.onAccentSoft} />
                   ) : (
-                    <Text style={styles.buttonText}>{mode === "sign_up" ? "Create account" : "Sign in"}</Text>
+                    <Text style={[styles.buttonText, { color: canSubmit ? c.onAccent : c.onAccentSoft }]}>
+                      {mode === "sign_up" ? "Create account" : "Sign in"}
+                    </Text>
                   )}
                 </Pressable>
 
@@ -423,7 +427,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   buttonText: {
-    color: "#ffffff",
     fontSize: TypeScale.headline,
     fontWeight: "600",
   },
