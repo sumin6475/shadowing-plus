@@ -1448,3 +1448,18 @@ Sheet가 쓰던 구조로 통일.
 **원칙.** 원격(클라우드) 에이전트는 push된 것만 본다 — **로컬에서 오래 쌓인 커밋은 다른 세션에겐 존재하지 않는 코드다.** 병렬 세션을 쓸 땐 작업 단위마다 push하는 게 충돌을 막는 가장 싼 방법. 그리고 다른 브랜치의 기능을 합칠 때 텍스트 머지보다 **동작을 현재 코드 위에 다시 붙이는** 게 빠를 때가 있다(대상 화면 자체가 바뀐 경우).
 
 **검증.** tsc 통과, `test:mvp` 13/13, lint 기준선 통과, `npm run validate` 통과. 시뮬레이터: Phrases에서 당김 → Search(키보드 포커스) → "그대로" 검색 → "As it is"(번역으로 매칭) → 상세 → Back 시 검색어·결과 유지, Studio에서 당김 → 새 Search.
+
+## 2026-09-26 (2) — Mirror 힌트를 표현 카드·자동 체크로, 결과 화면을 Wispr Flow식 통계로
+
+**계기.** build 31 실기기: 결과 화면이 "ls / of speaking."(→ [postmortem](postmortems/2026-09-26-result-title-serif-one-and-silent-second.md)), 힌트는 늘 "Ready phrases will appear here" — 표현 38개가 전부 Collected라 Ready 전용 힌트가 한 번도 안 채워졌다. Sumin 결정: 표현 카드 + 자동 체크, 오늘의 표현 우선, 빈 세션은 저장 안 함 (→ [ADR 0026](decisions/0026-mirror-hint-cards-and-empty-sessions.md)). 결과 화면 정보 배치는 Wispr Flow / SpeakType 레퍼런스.
+
+**만든 것.**
+- 힌트 덱(`screens/talk-hints.tsx`): 카메라 위 가로 페이징 카드. "TRY USING · n OF 5 USED", 표현을 말하면 초록 체크가 튀어나오고 0.9초 뒤 다음 미사용 카드로 이동, 탭하면 뜻 + 내가 쓴 최신 문장. 노트에서 시작하면 개요(Opening/Body/Closing 포인트)가 첫 카드 — 탭해서 지움. 덱을 닫아 두면 "✓ Used · …" 토스트 + 전구 버튼에 개수 배지. 카드가 있으면 기본으로 열림. "Use it in the mirror"로 오면 그 표현이 첫 카드.
+- 매칭(`lib/phrase-use.ts`, 순수): 축약형(I'm ↔ I am), 동사 변화(called ↔ call, brought ↔ bring), my/your/one's, sb/sth·"…"·괄호 자리표시자, 앞의 to/be 생략 허용. 단어 순서와 인접은 엄격. 사용 여부는 저장하지 않고 전사에서 매번 파생 — 결과 화면은 저장된 전사가 보여주는 것만 말한다.
+- 결과 화면: 큰 숫자 "46 words spoken" + 2×2 격자(Speaking time · Words per minute · Phrases used · Different words), 사용한 표현은 칩(✓), 전사 카드는 높이 제한 + Copy, 버튼은 하단 고정. 빈 세션은 "NOTHING SAVED · No words caught." + Listen back / Try again. My records(저장된 세션)도 같은 통계·전사 카드.
+- 숫자 글꼴: `FONT.figure = "ui-serif"`(New York). `Serif`가 브랜드 세리프 안 숫자 구간을 자동 교체 → Profile의 "27 min 56s", 표현 개수도 1/l 구분.
+- 타이머: 첫 단어 전에는 0초(시작 grace 제거), 단어가 있으면 최소 1초.
+
+**원칙.** 글꼴을 들일 때는 글자만이 아니라 **숫자를 크게** 렌더해 본다 — 디스플레이 세리프는 1/l, 0/O가 흔한 함정이다. 그리고 "쓸모없는 기능"은 대개 **데이터가 비어서** 쓸모없다: Ready 전용 힌트는 사용자의 실제 데이터(전부 Collected)에서 한 번도 채워진 적이 없었다 — 후보 집합을 사용자가 가진 것에서 시작하게 바꾸는 게 먼저였다.
+
+**검증.** tsc 통과, lint 기준선 통과(기존 경고 1), `test:mvp` 23/23(매칭 4, 카드 순서·개요·통계·짧은 시간·숫자 분리·첫 단어 전 타이머 추가). 시뮬레이터는 음성 인식이 안 돼("Failed to initialize recognizer") 가짜 전사를 임시 주입(커밋 전 제거, DB 쓰기 없음): 6초에 첫 카드 체크 → 초록 점·"1 OF 5 USED"·배지 1 → 다음 카드 자동 이동, 탭 → 뜻 + "No sentence of yours yet.", 덱 숨김 상태에서 "✓ Used · hardship" 토스트, 결과 화면·빈 상태·저장된 세션 통계 확인. **실기기에서만 확인 가능**: 실제 음성으로의 자동 체크, 녹음 중 햅틱(iOS가 막을 수 있음).
