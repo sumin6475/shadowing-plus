@@ -192,3 +192,16 @@
   content: "✓";
   color: oklch(0.52 0.12 150);
 }
+
+/* Link styled as the primary button (reset-password "Open Saylo" / "Continue"). */
+.reset-open-app {
+  display: block;
+  margin-top: 16px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.login-forgot {
+  align-self: flex-end;
+  font-size: 13px;
+}

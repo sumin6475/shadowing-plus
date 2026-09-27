@@ -6,6 +6,7 @@ import {
   Instrument_Serif,
   Newsreader,
 } from "next/font/google";
+import RecoveryLinkRedirect from "@/components/RecoveryLinkRedirect";
 import "./globals.css";
 import "./mobile.css";
 
@@ -134,6 +135,7 @@ export default function RootLayout({
         className="min-h-full flex flex-col font-sans"
         suppressHydrationWarning
       >
+        <RecoveryLinkRedirect />
         {children}
       </body>
     </html>
