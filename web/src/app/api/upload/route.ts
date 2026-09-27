@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createJob } from "@/lib/pipeline/jobs";
 import {
-  AUDIO_LANGUAGE_OPTIONS,
+  AUDIO_LANGUAGE,
   TRANSLATION_LANGUAGE_OPTIONS,
 } from "@/lib/pipeline/languages";
 import { checkClipQuota } from "@/lib/quota";
@@ -14,14 +14,13 @@ interface UploadRequest {
   filename: string;
   contentType: string;
   mediaType: MediaType;
-  // Per-clip language pair (migration 011). Optional — omitted uploads accept
-  // the DB default (eng → Korean). Validated against the option lists below so
-  // a client can't inject an arbitrary language code into the pipeline.
+  // Per-clip translation language (migration 011). Audio is always English.
+  // Optional — omitted uploads accept the DB default (Korean). Validated
+  // against the option list so a client can't inject an arbitrary target.
   sourceLang?: string;
   targetLang?: string;
 }
 
-const AUDIO_CODES = new Set<string>(AUDIO_LANGUAGE_OPTIONS.map((o) => o.code));
 const TARGET_NAMES = new Set<string>(TRANSLATION_LANGUAGE_OPTIONS);
 
 function safeFilename(name: string): string {
@@ -71,12 +70,8 @@ export async function POST(req: NextRequest) {
 
   const filename = safeFilename(body.filename);
 
-  // Accept the language pair only if it's a known option; otherwise leave it
-  // unset so the DB default (eng → Korean) applies.
-  const sourceLang =
-    body.sourceLang && AUDIO_CODES.has(body.sourceLang)
-      ? body.sourceLang
-      : undefined;
+  // Audio is always English. Ignore a stale client sourceLang (older settings
+  // stored spa/fra/etc.). Translation target is user-selectable.
   const targetLang =
     body.targetLang && TARGET_NAMES.has(body.targetLang)
       ? body.targetLang
@@ -88,7 +83,7 @@ export async function POST(req: NextRequest) {
     media_type: body.mediaType,
     source_key: "pending",
     user_id: userId,
-    source_lang: sourceLang,
+    source_lang: AUDIO_LANGUAGE.code,
     target_lang: targetLang,
   });
   const sourceKey = jobKey(tempJob.id, `source-${filename}`);

@@ -1181,8 +1181,20 @@
   opacity: 0;
 }
 .home-app .item:hover .item-menu { opacity: 1; }
+.home-app .nav-item .item-menu {
+  opacity: 0.72;
+  color: var(--text-3);
+}
+.home-app .nav-item:hover .item-menu { color: var(--text-2); }
 .home-app .item-menu:hover { background: var(--surface-2); color: var(--text); }
 .home-app .item-menu.is-open { opacity: 1; background: var(--surface-2); color: var(--text); }
+
+.home-app .nav-folder.is-dragging { opacity: 0.45; }
+.home-app .nav-folder.is-over .nav-item {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.home-app .nav-folder[draggable="true"] { cursor: grab; }
+.home-app .nav-folder[draggable="true"]:active { cursor: grabbing; }
 
 /* Item menu dropdown */
 .home-app .item-menu-dropdown {

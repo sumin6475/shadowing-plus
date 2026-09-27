@@ -154,7 +154,7 @@ function PracticeInner() {
           <div className="m-bar">
             <div className="m-bar-spacer">
               <div className="m-bar-title">
-                Shadowing<span className="plus">+</span>
+                Studio Library
               </div>
             </div>
           </div>

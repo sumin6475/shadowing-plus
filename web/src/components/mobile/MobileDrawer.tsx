@@ -11,6 +11,7 @@ import {
   LibraryIcon,
   PlusIcon,
   SearchIcon,
+  StarIcon,
 } from "./Icons";
 
 interface Props {
@@ -79,7 +80,7 @@ export default function MobileDrawer({
       >
         <div className="m-drawer-head">
           <div className="m-drawer-brand">
-            Shadowing<span className="plus">+</span>
+            Studio Library
           </div>
           <button
             type="button"
@@ -120,6 +121,10 @@ export default function MobileDrawer({
             <span className="m-drawer-icon"><BookmarkIcon /></span>
             Bookmarks
             <span className="m-drawer-count">{bookmarksCount}</span>
+          </a>
+          <a className="m-drawer-item" href="/focus" onClick={onClose}>
+            <span className="m-drawer-icon"><StarIcon /></span>
+            Weak points
           </a>
         </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { LoopMode, Segment, Video } from "@/lib/types";
 import WordText from "@/components/WordText";
@@ -15,10 +15,19 @@ import {
   PlayIcon,
   PrevIcon,
   ShadowIcon,
+  SearchIcon,
   Skip3BackIcon,
   Skip3ForwardIcon,
 } from "./Icons";
 import { ChevronDownIcon } from "@/components/home/Icons";
+import { RecDotIcon, StopRecIcon } from "@/components/clip/Icons";
+import RecordingsPanel from "@/components/clip/RecordingsPanel";
+import TranscriptMenu from "@/components/clip/TranscriptMenu";
+import { useLineTap } from "@/components/clip/text-selection";
+import { formatExportTime } from "@/lib/transcript-export";
+import { isTranscriptLineVisible } from "@/lib/transcript-filter";
+import { visibleTranslation } from "@/lib/pipeline/translate-map";
+import type { PracticeRecording } from "@/lib/usePracticeRecordings";
 
 interface Props {
   video: Video;
@@ -43,6 +52,22 @@ interface Props {
   onSeekBy: (delta: number) => void;
   onSelectSegment: (i: number) => void;
   onToggleSegmentBookmark: (segmentId: string) => void;
+  isRecording: boolean;
+  recordElapsedMs: number;
+  recordBusy: boolean;
+  onToggleRecord: () => void;
+  recordError: string | null;
+  recordings: PracticeRecording[];
+  recordingPlayingId: string | null;
+  recordingsSaving: boolean;
+  recordingsError: string | null;
+  onPlayRecording: (item: PracticeRecording) => void;
+  onDeleteRecording: (id: string) => void;
+  targetLang: string;
+  englishOnly: boolean;
+  onEnglishOnlyChange: (next: boolean) => void;
+  onRetranslate?: () => void;
+  retranslating?: boolean;
 }
 
 function formatTime(s: number): string {
@@ -89,11 +114,29 @@ export default function MobileClip({
   onSeekBy,
   onSelectSegment,
   onToggleSegmentBookmark,
+  isRecording,
+  recordElapsedMs,
+  recordBusy,
+  onToggleRecord,
+  recordError,
+  recordings,
+  recordingPlayingId,
+  recordingsSaving,
+  recordingsError,
+  onPlayRecording,
+  onDeleteRecording,
+  targetLang,
+  englishOnly,
+  onEnglishOnlyChange,
+  onRetranslate,
+  retranslating,
 }: Props) {
   const router = useRouter();
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const lineTap = useLineTap(onSelectSegment);
   const isVideo = video.media_type === "video" && !!video.video_url;
   const segment = segments[currentIndex] ?? null;
+  const focusKo = visibleTranslation(segment?.translation);
 
   // Focus card visibility. Seed lazily from localStorage (SSR-safe: window is
   // undefined on the server, so it defaults to visible and hydrates from the
@@ -106,6 +149,9 @@ export default function MobileClip({
       return true;
     }
   });
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [bookmarksOnly, setBookmarksOnly] = useState(false);
   const toggleFocus = () =>
     setShowFocus((v) => {
       const next = !v;
@@ -139,6 +185,16 @@ export default function MobileClip({
     return () => ro.disconnect();
   }, []);
 
+  const visibleLines = useMemo(
+    () =>
+      segments
+        .map((seg, index) => ({ seg, index }))
+        .filter(({ seg }) =>
+          isTranscriptLineVisible(seg, { query, bookmarksOnly, bookmarkedIds }),
+        ),
+    [segments, query, bookmarksOnly, bookmarkedIds],
+  );
+
   const ANCHOR = 0.34; // current line sits ~1/3 from the top
   const padTop = Math.round(listHeight * ANCHOR);
   const padBottom = Math.round(listHeight * (1 - ANCHOR));
@@ -170,7 +226,7 @@ export default function MobileClip({
           type="button"
           className="m-icon-btn bordered"
           aria-label="Back"
-          onClick={() => router.push("/app")}
+          onClick={() => router.push("/")}
         >
           <BackIcon />
         </button>
@@ -235,32 +291,96 @@ export default function MobileClip({
                 unplayedClassName="m-word-unplayed"
               />
             </p>
-            {showTranslation && segment.translation && (
-              <p className="m-focus-ko">{segment.translation}</p>
+            {showTranslation && focusKo && (
+              <p className="m-focus-ko">{focusKo}</p>
             )}
           </div>
         )}
 
         {/* Transcript */}
         <div className="m-transcript">
+          <div className="m-transcript-head">
+            <div className="m-transcript-title">Transcript</div>
+            <div className="m-transcript-actions">
+              <button
+                type="button"
+                className={"m-icon-btn" + (bookmarksOnly ? " is-on" : "")}
+                title={bookmarksOnly ? "Show all lines" : "Show bookmarked lines"}
+                aria-label={bookmarksOnly ? "Show all lines" : "Filter to bookmarked lines"}
+                aria-pressed={bookmarksOnly}
+                onClick={() => setBookmarksOnly((v) => !v)}
+              >
+                <BookmarkIcon />
+              </button>
+              <button
+                type="button"
+                className={"m-icon-btn" + (searchOpen || query.trim() ? " is-on" : "")}
+                title="Search transcript"
+                aria-label="Search transcript"
+                aria-pressed={searchOpen || !!query.trim()}
+                onClick={() => setSearchOpen((v) => !v)}
+              >
+                <SearchIcon />
+              </button>
+              <TranscriptMenu
+                title={video.title}
+                targetLang={targetLang}
+                segments={segments}
+                englishOnly={englishOnly}
+                onEnglishOnlyChange={onEnglishOnlyChange}
+                variant="mobile"
+                onRetranslate={onRetranslate}
+                retranslating={retranslating}
+              />
+            </div>
+          </div>
+          {searchOpen && (
+            <div className="m-transcript-search">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search text or translation"
+                aria-label="Search transcript"
+              />
+            </div>
+          )}
+          <RecordingsPanel
+            items={recordings}
+            playingId={recordingPlayingId}
+            saving={recordingsSaving}
+            error={recordingsError}
+            onPlay={onPlayRecording}
+            onDelete={onDeleteRecording}
+            variant="mobile"
+          />
           <div
             ref={transcriptRef}
             className="m-transcript-list"
             style={{ paddingTop: padTop, paddingBottom: padBottom }}
           >
-            {segments.map((seg, i) => {
+            {visibleLines.length === 0 ? (
+              <p className="m-transcript-empty">
+                {bookmarksOnly && !query.trim()
+                  ? "No bookmarked lines in this clip."
+                  : "No lines match this filter."}
+              </p>
+            ) : visibleLines.map(({ seg, index: i }) => {
               const isBookmarked = bookmarkedIds.has(seg.id);
+              const ko = visibleTranslation(seg.translation);
               return (
                 <div
                   key={seg.id}
                   className={"m-line" + (i === currentIndex ? " is-current" : "")}
-                  onClick={() => onSelectSegment(i)}
+                  onPointerDown={lineTap.onPointerDown}
+                  onPointerMove={lineTap.onPointerMove}
+                  onClick={(e) => lineTap.onClick(e, i)}
                 >
                   <div className="m-line-time">{formatTime(seg.start_time)}</div>
                   <div style={{ minWidth: 0 }}>
                     <div className="m-line-en" data-seg-id={seg.id}>{seg.text}</div>
-                    {showTranslation && seg.translation && (
-                      <div className="m-line-ko">{seg.translation}</div>
+                    {showTranslation && ko && (
+                      <div className="m-line-ko">{ko}</div>
                     )}
                   </div>
                   <button
@@ -287,6 +407,16 @@ export default function MobileClip({
           <button type="button" className="m-tool-chip" onClick={onReplay}>
             <ShadowIcon /> Shadow line
             <span className="m-tool-chip-key">S</span>
+          </button>
+          <button
+            type="button"
+            className={"m-tool-chip" + (isRecording ? " is-recording" : "")}
+            onClick={onToggleRecord}
+            disabled={recordBusy}
+            aria-pressed={isRecording}
+          >
+            {isRecording ? <StopRecIcon /> : <RecDotIcon className="rec-idle-dot" />}
+            {isRecording ? `Stop ${formatExportTime(recordElapsedMs / 1000)}` : "Record"}
           </button>
           <button
             type="button"
@@ -329,6 +459,7 @@ export default function MobileClip({
             <ChevronDownIcon />
           </button>
         </div>
+        {recordError ? <div className="m-rec-error">{recordError}</div> : null}
         <div className="m-dock-main">
           <button type="button" className="m-dock-btn" onClick={onPrev} aria-label="Previous line">
             <PrevIcon />

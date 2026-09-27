@@ -176,7 +176,7 @@ export default function MobileLibrary({
         </button>
         <div className="m-bar-spacer">
           <div className="m-bar-title">
-            Shadowing<span className="plus">+</span>
+            Studio Library
           </div>
         </div>
         <button type="button" className="m-icon-btn" aria-label="Search">

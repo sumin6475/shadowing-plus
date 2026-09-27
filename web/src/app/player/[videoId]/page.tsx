@@ -19,10 +19,15 @@ import ClipPlayer from "@/components/clip/ClipPlayer";
 import FocusLine from "@/components/clip/FocusLine";
 import ClipControls from "@/components/clip/ClipControls";
 import Transcript from "@/components/clip/Transcript";
+import TranscriptPrint from "@/components/clip/TranscriptPrint";
+import RecordingsPanel from "@/components/clip/RecordingsPanel";
 import PhraseSaver from "@/components/clip/PhraseSaver";
 import MobileClip from "@/components/mobile/MobileClip";
 import { LoopIcon } from "@/components/mobile/Icons";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { useMicRecorder } from "@/lib/useMicRecorder";
+import { usePracticeRecordings } from "@/lib/usePracticeRecordings";
+import { translationNeedsRetry } from "@/lib/pipeline/translate-map";
 
 import "./clip.css";
 
@@ -69,6 +74,15 @@ export default function PlayerPage({
 }) {
   const { videoId } = use(params);
   const searchParams = useSearchParams();
+  const recorder = useMicRecorder();
+  const recordings = usePracticeRecordings(videoId);
+  const {
+    isRecording,
+    start: startRecording,
+    stop: stopRecording,
+  } = recorder;
+  const { upload: uploadRecording, stopPlayback: stopTakePlayback } = recordings;
+  const [exportEnglishOnly, setExportEnglishOnly] = useState(false);
 
   const [video, setVideo] = useState<Video | null>(null);
   // Playable media URLs resolved from the video's stored R2 keys (or external
@@ -93,6 +107,7 @@ export default function PlayerPage({
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED_IDX);
+  const [retranslating, setRetranslating] = useState(false);
 
   const playerRef = useRef<AudioPlayerHandle>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -241,6 +256,75 @@ export default function PlayerPage({
       clearTimeout(timeoutId);
     };
   }, [videoId, loadAttempt]);
+
+  // Fill lines the original translate pass skipped or summarized. One attempt
+  // per clip per visit — a failed repair must not loop.
+  const repairTried = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || segments.length === 0) return;
+    if (repairTried.current === videoId) return;
+    if (!segments.some((s) => translationNeedsRetry(s.text, s.translation))) {
+      repairTried.current = videoId;
+      return;
+    }
+    repairTried.current = videoId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/videos/${videoId}/repair-translations`, {
+          method: "POST",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          updates?: { id: string; translation: string }[];
+        };
+        if (cancelled || !res.ok || !data.updates?.length) return;
+        const byId = new Map(data.updates.map((u) => [u.id, u.translation]));
+        setSegments((prev) =>
+          prev.map((s) =>
+            byId.has(s.id) ? { ...s, translation: byId.get(s.id)! } : s,
+          ),
+        );
+      } catch {
+        // Non-fatal: the English line still plays.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [videoId, loading, segments.length]);
+
+  const applyTranslationUpdates = useCallback(
+    (updates: { id: string; translation: string }[]) => {
+      if (updates.length === 0) return;
+      const byId = new Map(updates.map((u) => [u.id, u.translation]));
+      setSegments((prev) =>
+        prev.map((s) =>
+          byId.has(s.id) ? { ...s, translation: byId.get(s.id)! } : s,
+        ),
+      );
+    },
+    [],
+  );
+
+  const retranslateAll = useCallback(async () => {
+    if (retranslating) return;
+    setRetranslating(true);
+    try {
+      const res = await fetch(`/api/videos/${videoId}/repair-translations`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "all" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        updates?: { id: string; translation: string }[];
+      };
+      if (res.ok && data.updates?.length) applyTranslationUpdates(data.updates);
+    } catch {
+      // Non-fatal: existing lines stay on screen.
+    } finally {
+      setRetranslating(false);
+    }
+  }, [videoId, retranslating, applyTranslationUpdates]);
 
   // Lazy-fetch the `words` array for the currently-focused segment only.
   // Initial fetch above strips words to keep the payload small; word-level
@@ -602,6 +686,16 @@ export default function PlayerPage({
     [bookmarkedIds],
   );
 
+  const handleToggleRecord = useCallback(async () => {
+    if (isRecording) {
+      const take = await stopRecording();
+      if (take) await uploadRecording(take);
+      return;
+    }
+    stopTakePlayback();
+    await startRecording();
+  }, [isRecording, startRecording, stopRecording, stopTakePlayback, uploadRecording]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -615,6 +709,10 @@ export default function PlayerPage({
       // Ignore keys emitted while an IME is composing (e.g. Korean 한글 input),
       // otherwise the physical key leaks through as a composition keystroke.
       if (e.isComposing) return;
+
+      // Let browser chords through (Cmd+R refresh, Cmd+L location, Cmd+T tab…).
+      // Matching only on e.code would steal those for A–B repeat / loop / etc.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       // Match on e.code (physical key position), not e.key (the produced
       // character). With a Korean IME active, the physical "A" key reports
@@ -682,9 +780,9 @@ export default function PlayerPage({
 
     const ms = navigator.mediaSession;
     ms.metadata = new MediaMetadata({
-      title: video.title || "Shadowing+",
-      artist: folderName || "Shadowing+",
-      album: "Shadowing+",
+      title: video.title || "Studio Library",
+      artist: folderName || "Studio Library",
+      album: "Studio Library",
       artwork: [
         { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
         { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
@@ -809,7 +907,7 @@ export default function PlayerPage({
               </button>
             ) : (
               <Link
-                href="/app"
+                href="/"
                 style={{ color: "var(--accent-text)", marginLeft: 6 }}
               >
                 Back to library
@@ -835,7 +933,7 @@ export default function PlayerPage({
                 </button>
               </>
             ) : (
-              <Link href="/app" className="m-clip-reload">
+              <Link href="/" className="m-clip-reload">
                 Back to library
               </Link>
             )}
@@ -851,6 +949,7 @@ export default function PlayerPage({
   const isVideo = (video.media_type === "video" && !!video.video_url) || isYoutube;
   const showVideoFrame = isVideo && !hideVideo;
   const practiceStatus: PracticeStatus = video.practice_status || "none";
+  const targetLang = video.target_lang?.trim() || "Korean";
 
   const setPracticeStatus = async (next: PracticeStatus) => {
     setVideo((prev) => (prev ? { ...prev, practice_status: next } : prev));
@@ -905,20 +1004,35 @@ export default function PlayerPage({
                 onWordClick={seekToTime}
               />
             )}
-            <ClipControls
-              onPrev={goToPrev}
-              onNext={goToNext}
-              onReplay={repeatCurrent}
-              abActive={abRepeat !== null}
-              onToggleAB={toggleAbRepeat}
-              loopMode={loopMode}
-              onToggleLoop={toggleLoop}
-              showTranslation={showTranslation}
-              onToggleTranslation={() => setShowTranslation((v) => !v)}
-              speed={SPEEDS[speedIdx]}
-              speeds={SPEEDS}
-              onSelectSpeed={selectSpeed}
-            />
+            <div className="controls-cluster">
+              <ClipControls
+                onPrev={goToPrev}
+                onNext={goToNext}
+                onReplay={repeatCurrent}
+                abActive={abRepeat !== null}
+                onToggleAB={toggleAbRepeat}
+                loopMode={loopMode}
+                onToggleLoop={toggleLoop}
+                showTranslation={showTranslation}
+                onToggleTranslation={() => setShowTranslation((v) => !v)}
+                speed={SPEEDS[speedIdx]}
+                speeds={SPEEDS}
+                onSelectSpeed={selectSpeed}
+                isRecording={isRecording}
+                recordElapsedMs={recorder.elapsedMs}
+                recordBusy={recorder.busy || recordings.saving}
+                onToggleRecord={handleToggleRecord}
+                recordError={recorder.error}
+              />
+              <RecordingsPanel
+                items={recordings.items}
+                playingId={recordings.playingId}
+                saving={recordings.saving}
+                error={recordings.error}
+                onPlay={recordings.togglePlay}
+                onDelete={recordings.remove}
+              />
+            </div>
           </div>
 
           <Transcript
@@ -928,6 +1042,12 @@ export default function PlayerPage({
             bookmarkedIds={bookmarkedIds}
             onSelect={goToSegment}
             onToggleBookmark={toggleBookmark}
+            title={video.title}
+            targetLang={targetLang}
+            englishOnly={exportEnglishOnly}
+            onEnglishOnlyChange={setExportEnglishOnly}
+            onRetranslate={retranslateAll}
+            retranslating={retranslating}
           />
         </div>
 
@@ -992,6 +1112,29 @@ export default function PlayerPage({
         onSeekBy={seekBy}
         onSelectSegment={goToSegment}
         onToggleSegmentBookmark={toggleBookmark}
+        isRecording={isRecording}
+        recordElapsedMs={recorder.elapsedMs}
+        recordBusy={recorder.busy || recordings.saving}
+        onToggleRecord={handleToggleRecord}
+        recordError={recorder.error}
+        recordings={recordings.items}
+        recordingPlayingId={recordings.playingId}
+        recordingsSaving={recordings.saving}
+        recordingsError={recordings.error}
+        onPlayRecording={recordings.togglePlay}
+        onDeleteRecording={recordings.remove}
+        targetLang={targetLang}
+        englishOnly={exportEnglishOnly}
+        onEnglishOnlyChange={setExportEnglishOnly}
+        onRetranslate={retranslateAll}
+        retranslating={retranslating}
+      />
+
+      <TranscriptPrint
+        title={video.title}
+        targetLang={targetLang}
+        includeTranslation={!exportEnglishOnly}
+        segments={segments}
       />
 
       {/* In-player Phrase Bank capture — one instance covers both shells via

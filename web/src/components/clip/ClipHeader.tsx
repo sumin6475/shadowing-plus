@@ -3,7 +3,8 @@
 import Link from "next/link";
 import type { PracticeStatus } from "@/lib/types";
 import StatusControl from "@/components/home/StatusControl";
-import { BackIcon, BookmarkIcon, EyeOffIcon } from "./Icons";
+import FocusNote from "@/components/clip/FocusNote";
+import { BackIcon, EyeIcon, EyeOffIcon } from "./Icons";
 
 interface Props {
   title: string;
@@ -31,31 +32,28 @@ export default function ClipHeader({
   return (
     <header className="clip-head">
       <div className="clip-head-inner">
-        <Link href="/app" className="back-btn" aria-label="Back to library">
+        <Link href="/" className="back-btn" aria-label="Back to library">
           <BackIcon />
         </Link>
         <div className="clip-meta-col">
           <div className="clip-crumb">
-            <Link href="/app">Library</Link>
+            <Link href="/">Library</Link>
             {folderName ? <> · <span>{folderName}</span></> : null}
           </div>
           <div className="clip-title-row">
             <span className="clip-title">{title}</span>
             <StatusControl status={status} onSet={onSetStatus} variant="static" />
+            <FocusNote />
           </div>
         </div>
         <div className="clip-actions">
-          <Link href="/bookmarks" className="icon-btn">
-            <BookmarkIcon />
-            <span>Bookmarks</span>
-          </Link>
           {canHideVideo && (
             <button
               type="button"
               className="icon-btn"
               onClick={onToggleVideo}
             >
-              <EyeOffIcon />
+              {showVideo ? <EyeOffIcon /> : <EyeIcon />}
               <span>{showVideo ? "Hide video" : "Show video"}</span>
             </button>
           )}
@@ -64,7 +62,7 @@ export default function ClipHeader({
             className="icon-btn"
             onClick={onToggleFocus}
           >
-            <EyeOffIcon />
+            {showFocus ? <EyeOffIcon /> : <EyeIcon />}
             <span>{showFocus ? "Hide subtitle" : "Show subtitle"}</span>
           </button>
         </div>

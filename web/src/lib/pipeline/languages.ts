@@ -1,6 +1,9 @@
 /**
- * Default language pair for the pipeline. Change these to switch the
- * audio recognition language and/or the translation output language.
+ * Default language pair for the pipeline.
+ *
+ * Audio (what the learner shadows) is English-only. Translation (what they
+ * read) is per-user: Korean, Spanish, Chinese, and French are the focus, with
+ * a few more options in TRANSLATION_LANGUAGE_OPTIONS.
  *
  * NOTE: when changing TRANSLATION_LANGUAGE away from Korean, consider
  * swapping the Pretendard font in `web/src/app/layout.tsx` for one
@@ -23,12 +26,13 @@ export const AUDIO_LANGUAGE = {
 export const TRANSLATION_LANGUAGE = "Korean" as const;
 
 // ---------------- Per-clip language pair (migration 011) ----------------
-// Single source of truth for the language options the app offers. The upload
-// form and the Settings → Language tab both render from these, and the pipeline
-// resolves a job's stored pair through languagePairForJob() below. Codes are
-// ISO 639-3 (what ElevenLabs Scribe / Groq whisper accept).
+// Translation options are the single source of truth for Settings → Language
+// and upload/YouTube routes. Audio is always English (`AUDIO_LANGUAGE`); the
+// source-option list below only names codes that may already exist on older
+// jobs. Codes are ISO 639-3.
 
-/** Audio (source) languages a clip can be transcribed from. */
+/** Audio (source) languages a clip can be transcribed from.
+ *  New uploads are always English; this list is for naming older jobs. */
 export const AUDIO_LANGUAGE_OPTIONS = [
   { code: "eng", name: "English" },
   { code: "spa", name: "Spanish" },
@@ -43,12 +47,12 @@ export const AUDIO_LANGUAGE_OPTIONS = [
  *  the translation prompt verbatim, same shape as TRANSLATION_LANGUAGE. */
 export const TRANSLATION_LANGUAGE_OPTIONS = [
   "Korean",
+  "Spanish",
+  "Chinese",
+  "French",
   "English",
   "Japanese",
-  "Spanish",
-  "French",
   "German",
-  "Chinese",
 ] as const;
 
 /** The resolved pair a stage works with. */

@@ -4,6 +4,11 @@ import { getJob, updateJobProgress } from "./jobs";
 import { recordUsage } from "@/lib/usage";
 import type { PipelineSegment } from "@/lib/types";
 import { languagePairForJob, type LanguagePair } from "./languages";
+import {
+  mapBatchTranslations,
+  packTranslateBatches,
+  translationNeedsRetry,
+} from "./translate-map";
 
 const MODEL = "gpt-4o-mini";
 /**
@@ -14,6 +19,9 @@ const MODEL = "gpt-4o-mini";
  * well inside the model's token budget.
  */
 const BATCH_SIZE = 20;
+/** Soft cap on source characters per GPT call. A batch of paragraph-length
+ *  lines otherwise shares one completion and the model starts summarizing. */
+const BATCH_CHAR_BUDGET = 2800;
 /**
  * How many batches translate concurrently. The batch loop is pure network
  * I/O, so the wall-clock was previously (batch count) × (round-trip) — fully
@@ -95,6 +103,14 @@ interface TranslatedTranscript {
   profile?: VideoProfile;
 }
 
+export interface TranslateUsageCtx {
+  jobId: string | null;
+  userId: string | null;
+  label: string | null;
+}
+
+type UsageCtx = TranslateUsageCtx;
+
 /**
  * Stage A — Profile the video in one GPT call.
  *
@@ -104,12 +120,6 @@ interface TranslatedTranscript {
  * batch prompt so segment-level translations keep macro context that
  * batch-only translation easily loses.
  */
-interface UsageCtx {
-  jobId: string;
-  userId: string | null;
-  label: string | null;
-}
-
 async function profileVideo(
   openai: OpenAI,
   segments: PipelineSegment[],
@@ -242,6 +252,7 @@ ${terms}
 6. **Cultural and idiomatic references.** Translate the meaning, not the surface form. Keep culturally specific names (Thor's trainer, The Avengers) but add a connector if needed so the target-language sentence flows.
 7. **Disambiguation via context.** Use the surrounding sentences and the video profile to pick the right sense of polysemous words. Always prefer the domain-appropriate reading over the most common dictionary meaning.
 8. **Audience interjections.** If the transcript embeds an off-speaker interjection (e.g. "(Right.)" from a host), keep it in parentheses in the translation.
+9. **Completeness.** Translate the entire source segment. Do not summarize, skip a clause, or stop after the first sentence-worth of meaning. If the source rambles or has several clauses, the translation must cover all of them. Never return an empty string.
 
 ## Output format (JSON only, no markdown)
 Return one object per input segment, each tagged with its source number "n" (the number shown before the segment). Every input number must appear EXACTLY once — do not reorder, skip, or merge segments. Even if two adjacent segments form one sentence, translate each on its own line by splitting the sentence across them. If a segment is a single filler word, translate that filler word — do not return an empty string.
@@ -280,13 +291,7 @@ interface Batch {
   contextAfter: string;
 }
 
-/**
- * Translate one batch and return the translations positionally aligned to
- * `batch.segs` (length-matched, padded with a sentinel if the model drops
- * entries). Throws via rewrap() on API failure so the orchestrator can mark
- * the job failed at this stage.
- */
-async function translateBatch(
+async function translateBatchOnce(
   openai: OpenAI,
   batch: Batch,
   systemPrompt: string,
@@ -332,29 +337,79 @@ async function translateBatch(
   } catch {
     parsed = {};
   }
-  const items = parsed.segments ?? [];
+  return mapBatchTranslations(parsed.segments ?? [], batch.segs.length);
+}
 
-  // Map by the model-returned source number "n" (1-based) rather than array
-  // position. If the model merges/drops/reorders entries — common with rolling
-  // caption fragments that split a sentence across lines — position-based
-  // mapping shifts EVERY following line (off-by-one cascade). Keying on "n"
-  // keeps the rest aligned; only the genuinely-missing line is flagged.
-  const byNum = new Map<number, string>();
-  for (const it of items) {
-    const n = typeof it?.n === "number" ? it.n : undefined;
-    const t = typeof it?.translation === "string" ? it.translation : "";
-    if (n !== undefined && t.trim() && !byNum.has(n)) byNum.set(n, t);
+/**
+ * Translate one batch and return the translations positionally aligned to
+ * `batch.segs`. One retry pass covers lines the model skipped or summarized.
+ * Throws via rewrap() on API failure so the orchestrator can mark the job
+ * failed at this stage.
+ */
+async function translateBatch(
+  openai: OpenAI,
+  batch: Batch,
+  systemPrompt: string,
+  ctx: UsageCtx,
+): Promise<string[]> {
+  const first = await translateBatchOnce(openai, batch, systemPrompt, ctx);
+  const missing = first
+    .map((t, i) => (translationNeedsRetry(batch.segs[i].text, t) ? i : -1))
+    .filter((i) => i >= 0);
+  if (missing.length === 0) return first;
+
+  const retryBatch: Batch = {
+    start: 0,
+    segs: missing.map((i) => batch.segs[i]),
+    contextBefore: batch.contextBefore,
+    contextAfter: batch.contextAfter,
+  };
+  const retry = await translateBatchOnce(openai, retryBatch, systemPrompt, ctx);
+  const out = first.slice();
+  for (let j = 0; j < missing.length; j++) {
+    if (!translationNeedsRetry(retryBatch.segs[j].text, retry[j])) {
+      out[missing[j]] = retry[j];
+    }
   }
+  return out;
+}
 
-  return batch.segs.map((_, k) => {
-    const keyed = byNum.get(k + 1);
-    if (keyed !== undefined) return keyed;
-    // Fallback for models that omit "n" entirely: positional, as before.
-    const positional = items[k]?.translation;
-    return typeof positional === "string" && positional.trim()
-      ? positional
-      : "[translation failed]";
-  });
+const EMPTY_PROFILE: VideoProfile = {
+  context: "",
+  genre: "",
+  register: "",
+  named_entities: [],
+  domain_terms: [],
+};
+
+/** Fill translations for an arbitrary list of lines (used to repair clips
+ *  that already persisted with gaps). Uses a blank video profile. */
+export async function translateLines(
+  lines: { text: string }[],
+  pair: LanguagePair,
+  ctx: UsageCtx,
+  nearby: { before: string; after: string },
+): Promise<string[]> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+  const openai = new OpenAI({ apiKey });
+  const batch: Batch = {
+    start: 0,
+    segs: lines.map((line, index) => ({
+      text: line.text,
+      start: 0,
+      end: 0,
+      index,
+    })),
+    contextBefore: nearby.before,
+    contextAfter: nearby.after,
+  };
+  return translateBatch(
+    openai,
+    batch,
+    buildSystemPrompt(EMPTY_PROFILE, pair),
+    ctx,
+  );
 }
 
 /**
@@ -370,11 +425,8 @@ async function translateBatch(
  * pre-sized `out` array at its own offset, so concurrent completion order
  * never affects the final segment order.
  *
- * Translation index is matched by batch position (not GPT's returned index)
- * to defend against the model dropping or reordering entries. The pipeline
- * contract is unchanged: input is segments.json, output is
- * segments_translated.json with the same `segments` shape plus an optional
- * `profile` field for auditing.
+ * Translation is matched by the model-returned source number `n` (with a
+ * positional fallback), then any skipped or summarized lines get one retry.
  */
 export async function stage4Translate(jobId: string): Promise<void> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -405,22 +457,25 @@ export async function stage4Translate(jobId: string): Promise<void> {
   const systemPrompt = buildSystemPrompt(profile, pair);
 
   // ── Step B: build batches, then translate them concurrently ──
-  const batches: Batch[] = [];
-  for (let i = 0; i < segments.length; i += BATCH_SIZE) {
-    const segs = segments.slice(i, i + BATCH_SIZE);
-    batches.push({
-      start: i,
+  const batches: Batch[] = packTranslateBatches(
+    segments.map((s) => s.text.length),
+    BATCH_SIZE,
+    BATCH_CHAR_BUDGET,
+  ).map(({ start, count }) => {
+    const segs = segments.slice(start, start + count);
+    return {
+      start,
       segs,
       contextBefore: segments
-        .slice(Math.max(0, i - CONTEXT_WINDOW), i)
+        .slice(Math.max(0, start - CONTEXT_WINDOW), start)
         .map((s) => s.text)
         .join(" "),
       contextAfter: segments
-        .slice(i + segs.length, i + segs.length + CONTEXT_WINDOW)
+        .slice(start + segs.length, start + segs.length + CONTEXT_WINDOW)
         .map((s) => s.text)
         .join(" "),
-    });
-  }
+    };
+  });
 
   const out: PipelineSegment[] = new Array(segments.length);
   let done = 0; // segments translated so far (monotonic; JS is single-threaded)

@@ -21,3 +21,9 @@ Keep entries factual and short; include real errors and test outcomes. Do not
 invent decisions or journal routine, unverified edits. Add a one-line pointer
 to every artifact from `JOURNAL.md`.
 <!-- END:build-journal -->
+
+# Deployment
+
+- The Next.js app in `web/` deploys to the existing Vercel project `shadowing-plus`.
+- Run Vercel commands from `web/`; use a Preview deployment first and verify it before production.
+- Database migrations target the Supabase project linked from the repository root. Inspect local and remote migration history before applying changes.

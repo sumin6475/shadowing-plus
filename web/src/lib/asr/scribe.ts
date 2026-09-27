@@ -20,7 +20,7 @@ interface ElevenLabsResponse {
 /**
  * ElevenLabs Scribe v2. The original stage-2 implementation, moved behind the
  * AsrProvider interface unchanged (same request shape and error handling) so
- * routing zh/ja here keeps today's proven quality.
+ * routing eng/zh/ja here keeps today's proven quality.
  */
 export const scribeProvider: AsrProvider = {
   name: "scribe",

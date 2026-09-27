@@ -354,7 +354,7 @@ export function PhraseBankEmpty({ onAdd }: { onAdd: () => void }) {
         <button type="button" className="btn primary" onClick={onAdd}>
           <PlusIcon /> Add a phrase
         </button>
-        <Link href="/app" className="btn">Explore your clips</Link>
+        <Link href="/" className="btn">Explore your clips</Link>
       </div>
     </div>
   );

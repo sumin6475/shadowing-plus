@@ -31,7 +31,7 @@ function sendResetEmail(email: string) {
 function LoginForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const next = searchParams.get("next") ?? "/app";
+  const next = searchParams.get("next") ?? "/";
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -47,7 +47,7 @@ function LoginForm() {
   const [resetSent, setResetSent] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
 
-  const safeNext = next.startsWith("/") ? next : "/app";
+  const safeNext = next.startsWith("/") ? next : "/";
 
   const emailValid = EMAIL_RE.test(email.trim());
   const pw = passwordChecks(password);
@@ -142,8 +142,8 @@ function LoginForm() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <Link href="/" className="login-title" aria-label="Shadowing+ home">
-          Shadowing<span className="login-plus">+</span>
+        <Link href="/" className="login-title" aria-label="Studio Library home">
+          Studio Library
         </Link>
 
         {confirmSent ? (

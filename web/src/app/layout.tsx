@@ -13,6 +13,9 @@ import "./mobile.css";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
+  // Landing hero uses Black (900); in-app still reads Pretendard via
+  // --font-pretendard. Explicit weights so 800/900 are not dropped.
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
 const sourceSerif = Source_Serif_4({
@@ -42,9 +45,42 @@ const newsreader = Newsreader({
   variable: "--font-newsreader",
 });
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000");
+
 export const metadata: Metadata = {
-  title: "Shadowing Plus",
-  description: "English shadowing practice with AI subtitles",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Saylo · Turn saved English into spoken English",
+    template: "%s · Saylo",
+  },
+  description:
+    "A personal speaking studio for B1–C1 learners. Save useful English, connect it to your Topics, practise through one-minute self-talk, and fix one thing before retrying.",
+  keywords: [
+    "English speaking practice",
+    "active English vocabulary",
+    "English self-talk",
+    "B1 C1 speaking practice",
+    "mirror practice",
+  ],
+  openGraph: {
+    type: "website",
+    title: "Turn the English you save into English you actually speak.",
+    description: "Save a phrase, connect it to your life, speak for one minute, fix one thing, then retry.",
+    siteName: "Saylo",
+    images: [{ url: "/og.png", width: 1536, height: 804, alt: "Saylo speaking practice app preview" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Turn the English you save into English you actually speak.",
+    description: "Save a phrase, connect it to your life, speak for one minute, fix one thing, then retry.",
+    images: ["/og.png"],
+  },
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -55,16 +91,15 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Shadowing+",
+    title: "Saylo",
   },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#fbf9f4",
+  themeColor: "#111a3d",
 };
 
 export default function RootLayout({
@@ -74,7 +109,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="ko"
+      lang="en"
       className={`${inter.variable} ${sourceSerif.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} ${newsreader.variable} h-full antialiased`}
       style={{
         // Pretendard variable comes from a CDN; home.css falls back to this

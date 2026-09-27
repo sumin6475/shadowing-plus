@@ -26,6 +26,10 @@ export interface Video {
   // Migration 005. Older DB copies may return null/undefined; callers should
   // coalesce to "none".
   practice_status: PracticeStatus;
+  // Migration 011. source_lang is ISO 639-3; target_lang is a plain label
+  // (e.g. "Korean"). Older copies may omit these.
+  source_lang?: string | null;
+  target_lang?: string | null;
   created_at: string;
 }
 
