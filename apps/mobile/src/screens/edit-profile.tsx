@@ -172,6 +172,99 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
   );
 }
 
+function passwordChecks(password: string) {
+  return {
+    length: password.length >= 8,
+    case: /[a-z]/.test(password) && /[A-Z]/.test(password),
+    number: /\d/.test(password),
+  };
+}
+
+/** Set a new sign-in password for the signed-in learner (also adds email
+ *  sign-in to an Apple/Google account). */
+export function ChangePasswordScreen({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const { updatePassword } = useAuth();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const checks = passwordChecks(password);
+  const valid = checks.length && checks.case && checks.number;
+  const match = password.length > 0 && password === confirm;
+  const canSave = valid && match && !saving;
+
+  const input = { fontSize: 16, color: t.colors.ink, marginTop: 8, padding: 0 };
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updatePassword(password);
+      Alert.alert("Password updated", "Use your new password next time you sign in.");
+      nav.pop();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t update your password.");
+      setSaving(false);
+    }
+  };
+
+  const requirement = (met: boolean, label: string) => (
+    <Text key={label} style={{ fontSize: 13, lineHeight: 20, color: met ? t.colors.accD : t.colors.ink3 }}>
+      {met ? "✓" : "○"} {label}
+    </Text>
+  );
+
+  return (
+    <Screen bottomPad={40}>
+      <BackBar title="Change password" onBack={nav.pop} />
+
+      <Card>
+        <Text style={fieldLabel(t.colors.accD)}>NEW PASSWORD</Text>
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          placeholder="New password"
+          placeholderTextColor={t.colors.ink3}
+          autoCapitalize="none"
+          secureTextEntry
+          textContentType="newPassword"
+          editable={!saving}
+          style={input}
+        />
+        <Text style={[fieldLabel(t.colors.accD), { marginTop: 18 }]}>REPEAT</Text>
+        <TextInput
+          value={confirm}
+          onChangeText={setConfirm}
+          placeholder="Repeat new password"
+          placeholderTextColor={t.colors.ink3}
+          autoCapitalize="none"
+          secureTextEntry
+          textContentType="newPassword"
+          editable={!saving}
+          onSubmitEditing={() => void save()}
+          returnKeyType="done"
+          style={input}
+        />
+      </Card>
+
+      <View style={{ paddingHorizontal: 8 }} accessibilityLabel="Password requirements">
+        {requirement(checks.length, "At least 8 characters")}
+        {requirement(checks.case, "Upper & lowercase letters")}
+        {requirement(checks.number, "At least one number")}
+        {requirement(match, "Both passwords match")}
+      </View>
+
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center" }}>{error}</Text> : null}
+      <Pill full icon="check" onPress={canSave ? () => void save() : undefined} style={{ opacity: canSave ? 1 : 0.6 }}>
+        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : "Save new password"}
+      </Pill>
+    </Screen>
+  );
+}
+
 export function FirstLanguageScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
   const [l1, setL1] = useState<L1>(firstLanguage());

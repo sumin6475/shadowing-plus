@@ -51,6 +51,7 @@ import {
   TopicsListScreen,
 } from "@/screens/studio-information";
 import {
+  ChangePasswordScreen,
   EditProfileScreen,
   EnglishLevelScreen,
   FeedbackFocusScreen,
@@ -503,6 +504,8 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <SettingsScreen nav={nav} />;
     case "editProfile":
       return <EditProfileScreen nav={nav} />;
+    case "changePassword":
+      return <ChangePasswordScreen nav={nav} />;
     case "firstLanguage":
       return <FirstLanguageScreen nav={nav} />;
     case "englishLevel":

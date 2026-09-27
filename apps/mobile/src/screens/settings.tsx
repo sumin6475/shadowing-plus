@@ -194,6 +194,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Account">
+        <SettingsRow t={t} icon="pen" label="Change password" onPress={() => nav.push("changePassword")} />
         <SettingsRow t={t} icon="export" label="Export my phrases" detail={exporting ? "Preparing…" : undefined} onPress={() => void exportPhrases()} />
         <SettingsRow t={t} icon="help" label="Help & feedback" onPress={openFeedbackMail} />
         <SettingsRow t={t} icon="shield" label="Privacy" onPress={() => nav.push("privacy")} />

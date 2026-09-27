@@ -20,6 +20,7 @@ export type ViewName =
   | "capture"
   | "settings"
   | "editProfile"
+  | "changePassword"
   | "firstLanguage"
   | "englishLevel"
   | "themePref"

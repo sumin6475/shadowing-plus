@@ -65,5 +65,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // A recovery link must end on the set-a-new-password form, whatever `next`
+  // said — otherwise the learner is just signed in with the old password.
+  if (type === "recovery") {
+    return NextResponse.redirect(`${origin}/auth/reset-password`);
+  }
+
   return NextResponse.redirect(`${origin}${next}`);
 }

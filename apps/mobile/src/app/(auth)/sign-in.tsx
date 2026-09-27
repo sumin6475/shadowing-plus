@@ -150,7 +150,7 @@ export default function SignInScreen() {
     : resetEmail
       ? {
           title: "Check your email",
-          body: `We sent a password reset link to ${resetEmail}. Open it on this phone to set a new password.`,
+          body: `We sent a password reset link to ${resetEmail}. Open it to set a new password, then come back and sign in.`,
         }
       : null;
 
