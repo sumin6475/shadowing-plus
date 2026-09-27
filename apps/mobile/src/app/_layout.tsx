@@ -1,13 +1,41 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
-import { useColorScheme } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Platform, Pressable, useColorScheme, View } from "react-native";
+import { Text } from "@/design/text";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
+import { SERIF } from "@/design/mobile-tokens";
+import { usePostHog } from "posthog-react-native";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { AiProcessingConsentPrompt } from "@/lib/ai-consent";
+import { PostHogAuthBridge, PostHogGate, PostHogScreenTracker } from "@/lib/posthog";
+import { ThemeProvider, useTheme } from "@/design/theme";
+import { CaptureProvider } from "@/design-capture/provider";
+import { loadFirstLanguage } from "@/lib/first-language";
+import { loadEnglishLevel } from "@/lib/english-level";
+import { loadReminders } from "@/lib/reminders";
+import { loadPhrasesPerDay } from "@/lib/daily-phrases";
+import { loadTalkFocus } from "@/lib/talk-focus";
+import { loadTalkHintSource } from "@/lib/talk-hint-source";
+import { loadThemePref } from "@/lib/theme-pref";
+import {
+  importOnboardingDraft,
+  loadOnboardingDraft,
+  saveOnboardingDraft,
+  subscribeToOnboardingDraft,
+  type OnboardingDraft,
+} from "@/lib/onboarding";
+import { Onboarding } from "@/screens/onboarding";
+import ResetPasswordScreen from "@/screens/reset-password";
+import { SplashIntro } from "@/screens/splash";
 
-SplashScreen.preventAutoHideAsync();
+if (!(Platform.OS === "web" && typeof window === "undefined")) {
+  SplashScreen.preventAutoHideAsync();
+}
 
 /**
  * Route guard. `(auth)` shows only when signed out, `(app)` only when signed
@@ -16,17 +44,180 @@ SplashScreen.preventAutoHideAsync();
  * app never flashes the wrong group.
  */
 function RootNavigator() {
-  const { session, loading } = useAuth();
+  const posthog = usePostHog();
+  const { session, loading, passwordRecovery } = useAuth();
+  const [splashDone, setSplashDone] = useState(false);
+  const [draft, setDraft] = useState<OnboardingDraft | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [importState, setImportState] = useState<"idle" | "importing" | "error">("idle");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importAttempt, setImportAttempt] = useState(0);
+
+  // Saylo design-system fonts, loaded at runtime (expo-font is already in the
+  // dev client, so no native rebuild). Pretendard, one family per static
+  // weight, is the UI face (design/text.tsx applies it); Instrument Serif is
+  // the display serif.
+  const [fontsLoaded] = useFonts({
+    Pretendard: require("../../assets/fonts/Pretendard-Regular.otf"),
+    "Pretendard-Medium": require("../../assets/fonts/Pretendard-Medium.otf"),
+    "Pretendard-SemiBold": require("../../assets/fonts/Pretendard-SemiBold.otf"),
+    "Pretendard-Bold": require("../../assets/fonts/Pretendard-Bold.otf"),
+    InstrumentSerif: require("../../assets/fonts/InstrumentSerif-Regular.ttf"),
+  });
+
+  // Load saved first language + talk-focus before first render so greetings
+  // and Speak diagnosis use them.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  useEffect(() => {
+    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadTalkHintSource(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref()]).finally(() => setPrefsLoaded(true));
+  }, []);
 
   useEffect(() => {
-    if (!loading) {
+    let active = true;
+    const applyDraft = (stored: OnboardingDraft) => {
+      if (!active) return;
+      setDraft(stored);
+      setShowSignIn(stored.status === "awaiting_sign_in");
+    };
+    const unsubscribe = subscribeToOnboardingDraft(applyDraft);
+    loadOnboardingDraft().then(applyDraft);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session || draft?.status !== "not_started" || draft.step !== "welcome") return;
+    const completed = { ...draft, status: "completed" as const };
+    Promise.resolve().then(() => {
+      setDraft(completed);
+      return saveOnboardingDraft(completed);
+    });
+  }, [draft, session]);
+
+  const ready = !loading && fontsLoaded && prefsLoaded && draft !== null;
+
+  const effectiveShowSignIn = Boolean(
+    showSignIn && !(session && draft?.status === "awaiting_sign_in"),
+  );
+  const returningSignedInUser = Boolean(
+    session && draft?.status === "not_started" && draft.step === "welcome",
+  );
+  const onboardingComplete = draft?.status === "completed" || returningSignedInUser;
+
+  const shouldImport = Boolean(
+    session && draft && draft.status !== "completed" && draft.step === "keep" && !effectiveShowSignIn,
+  );
+
+  // The first story is created while signed out and imported only after auth.
+  // Each remote id is checkpointed by importOnboardingDraft, so retrying after
+  // a lost connection continues instead of duplicating the learner's work.
+  useEffect(() => {
+    if (!shouldImport || !session || !draft) return;
+    let active = true;
+    Promise.resolve()
+      .then(() => {
+        if (!active) return null;
+        setImportState("importing");
+        setImportError(null);
+        return importOnboardingDraft(draft, session.user.id, (checkpoint) => {
+          if (active) setDraft(checkpoint);
+        });
+      })
+      .then((completed) => {
+        if (!active || !completed) return;
+        setDraft(completed);
+        posthog?.capture("onboarding_completed", {
+          has_transcript: Boolean(completed.transcript.trim()),
+          duration_seconds: completed.durationSeconds,
+          beat_count: completed.beats.length,
+        });
+        setImportState("idle");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setImportState("error");
+        setImportError(error instanceof Error ? error.message : "We couldn’t save your first Speaking Note.");
+      });
+    return () => {
+      active = false;
+    };
+    // draft changes at every checkpoint; importing the captured draft should
+    // stay in one effect run. importAttempt is the explicit retry trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldImport, session?.user.id, importAttempt, posthog]);
+
+  useEffect(() => {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [loading]);
+  }, [ready]);
 
-  if (loading) return null;
+  if (!ready) return null;
 
-  const signedIn = !!session;
+  // A password-reset email link signed the learner in; let them set the new
+  // password before anything else (skippable — the session is already valid).
+  if (passwordRecovery && session) {
+    return <ResetPasswordScreen />;
+  }
+
+  // SKELETON PREVIEW: while the app is a design skeleton running on mock data,
+  // show the (app) group without a Supabase session so it opens straight into
+  // the designed UI. Flip to `false` to restore the real auth gate.
+  const SKELETON_PREVIEW = false;
+  const signedIn = SKELETON_PREVIEW || !!session;
+
+  // Returning signed-in users skip the Get started splash and land in the app.
+  // The native splash stays up until session is known, so this does not flash.
+  if (!splashDone && !signedIn) {
+    return (
+      <SplashIntro
+        onDone={() => setSplashDone(true)}
+        onLogIn={() => {
+          setSplashDone(true);
+          setShowSignIn(true);
+        }}
+      />
+    );
+  }
+
+  if (shouldImport || importState === "error") {
+    return (
+      <ThemeProvider>
+        <ImportingStory
+          error={importState === "error" ? importError : null}
+          onRetry={() => {
+            setImportState("idle");
+            setImportAttempt((value) => value + 1);
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
+
+  if (!onboardingComplete && !effectiveShowSignIn) {
+    return (
+      <ThemeProvider>
+        <Onboarding
+          initialDraft={draft}
+          signedIn={signedIn}
+          onDraftChange={setDraft}
+          onSignIn={(next) => {
+            setDraft(next);
+            setShowSignIn(true);
+          }}
+          onDirectSignIn={() => {
+            setShowSignIn(true);
+          }}
+          onComplete={(next) => {
+            setDraft(next);
+            setShowSignIn(false);
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -40,14 +231,45 @@ function RootNavigator() {
   );
 }
 
+function ImportingStory({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  const t = useTheme();
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: t.colors.bg }}>
+      {error ? null : <ActivityIndicator size="large" color={t.colors.acc} />}
+      <Text style={{ marginTop: 22, fontFamily: SERIF, fontSize: 32, textAlign: "center", color: t.colors.ink }}>
+        {error ? "Your Speaking Note is still here." : "Adding your first Speaking Note…"}
+      </Text>
+      <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, textAlign: "center", color: t.colors.ink2 }}>
+        {error ?? "We’re saving the beats, phrase, and your first Talk."}
+      </Text>
+      {error ? (
+        <Pressable onPress={onRetry} style={{ marginTop: 22, minHeight: 50, minWidth: 160, paddingHorizontal: 24, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: t.colors.acc }}>
+          <Text style={{ color: t.colors.onAcc, fontSize: 16, fontWeight: "700" }}>Try again</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <RootNavigator />
-        <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-      </AuthProvider>
-    </SafeAreaProvider>
+    // GestureHandlerRootView must sit at the very top for gesture-driven UI
+    // (swipe-to-delete rows) to receive touches. flex:1 so it fills the screen.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <CaptureProvider>
+        <SafeAreaProvider>
+          <PostHogGate>
+            <AuthProvider>
+              <AiProcessingConsentPrompt />
+              <PostHogAuthBridge />
+              <PostHogScreenTracker />
+              <RootNavigator />
+              <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            </AuthProvider>
+          </PostHogGate>
+        </SafeAreaProvider>
+      </CaptureProvider>
+    </GestureHandlerRootView>
   );
 }

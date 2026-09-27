@@ -1,5 +1,8 @@
 # Shadowing Plus Mobile
 
+> **Status: Outdated.** Setup history below predates the current TestFlight product.
+> **Reviewed:** 2026-09-14 · **Replacement:** [`../../docs/DOCUMENTATION.md`](../../docs/DOCUMENTATION.md)
+
 > **Status:** Expo SDK 57 iOS app under active development and TestFlight
 > distribution work. `Shadowing+` is the current technical app identity; the public
 > brand name is pending clearance.
@@ -50,10 +53,12 @@ npm install
 
 The mobile bundle may contain only public client configuration:
 
-```text
-EXPO_PUBLIC_SUPABASE_URL
-EXPO_PUBLIC_SUPABASE_ANON_KEY
-EXPO_PUBLIC_API_BASE_URL
+```
+EXPO_PUBLIC_SUPABASE_URL=…        # = web NEXT_PUBLIC_SUPABASE_URL
+EXPO_PUBLIC_SUPABASE_ANON_KEY=…   # = web NEXT_PUBLIC_SUPABASE_ANON_KEY
+EXPO_PUBLIC_API_BASE_URL=https://shadowing-plus.vercel.app
+EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN=phc_… # PostHog public project token
+EXPO_PUBLIC_POSTHOG_HOST=https://your-posthog-host
 ```
 
 Never place a Supabase service key, model-provider key, R2 secret, or other server

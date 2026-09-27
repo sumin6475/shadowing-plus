@@ -1,201 +1,248 @@
-# Mobile Product Model: Speaking World
+# Mobile Product Concept: Speaking World
 
-> Status: Canonical content and object model
->
+> **Status: Outdated.** This is the superseded Domain → Story → Version concept.
+> **Replacement:** [Saylo MVP](mvp.md) — implemented September 16–17, 2026 from the user-approved simplification plan.
+
 > Recorded: 2026-08-02
->
-> Updated: 2026-08-16
 
-Read this with
-[`personal-speaking-studio-strategy.md`](personal-speaking-studio-strategy.md), which
-defines the market, audience, brand, and go-to-market direction. This document
-defines how a learner's language is organized inside the product.
+이 구조는 모바일 제품의 초기 컨셉과 정보 구조로 채택한다. 먼저 이 방향으로
+제품을 만들고, 실제 사용자 피드백을 통해 Domain과 Story 구성을 발전시킨다.
+초기 구조가 완벽한 분류 체계여야 하는 것은 아니지만, **Speaking World를
+넓히는 도구**라는 정체성은 유지한다.
 
-## Definition
+## One-line definition
 
-This is not a curriculum that decides what every learner should study. It helps a
-learner build the English needed to express their own life, interests, ideas,
-projects, study, and work.
+**이 제품은 영어 학습 앱이 아니라, 내 삶을 영어로 표현할 수 있게 만드는 도구다.**
 
-The learner does not merely practice language supplied by the app. They bring useful
-English found in content or life, connect it to something they personally want to
-say, and test whether it returns in speech.
+사용자는 주어진 영어를 연습하는 것이 아니라, 자신이 실제로 말하고 싶은
+삶의 영역과 이야기를 영어로 구축한다. 앱이 관리해야 할 핵심 대상은 단어,
+문장, 토픽의 목록이 아니라 사용자의 **Speaking World**다.
 
-The persistent whole is the learner's **Speaking World**.
-
-## Core model
+## Core mental model
 
 ```text
 My life
   ↓
 Speaking World
   ↓
-Domain — broad internal grouping
+Domain — 삶의 영역
   ↓
-Topic — something I genuinely want to talk about
+Story — 내가 말하고 싶은 나의 이야기
   ↓
-Version — how I shape it for a person, purpose, or length
+Version — 그 이야기를 누구에게, 어떤 목적과 길이로 전할지
+(데이터 모델/테이블명은 기존대로 `messages`)
   ↓
-Attempt — one real self-talk recording
+Session — 실제로 말한 기록
 ```
 
-The product loop is not `Lesson → Exercise`. It is:
+기존 학습 앱의 구조가 `Lesson → Exercise`라면, 이 제품의 구조는
+`My life → Story → Talk`다.
 
-```text
-My life → Topic → useful language → self-talk → one repair → speak again
-```
+## Information hierarchy
 
-## Initial Speaking World
+### 1. Speaking World
 
-The initial map is a starting aid, not a fixed curriculum.
+사용자가 영어로 표현할 수 있게 된 자기 삶의 전체 지도다. 앱의 진행감은
+정해진 커리큘럼을 완료하는 데서 오는 것이 아니라 이 세계가 넓어지고,
+깊어지고, 다시 사용 가능해지는 데서 온다.
+
+### 2. Domain
+
+삶의 큰 영역을 구분하는 내부 정보 구조다.
+
+예시:
+
+- Work
+- About me
+- Experiences
+- Ideas
+- Daily life
+
+`Domain`은 데이터 모델과 AI 추천 로직에서 사용하는 내부 용어로 유지한다.
+사용자에게는 “Domain”이라는 추상적 레이블을 가르치지 않고 `Work`,
+`About me` 같은 자연스러운 이름만 보여준다.
+
+#### Initial Speaking World
+
+다음 트리는 제품을 시작할 때 사용하는 초기 Domain과 Story 구성이다.
+각 하위 항목은 사용자가 자신의 삶을 영어로 표현하기 위해 만들어갈 Story다.
 
 ```text
 Speaking World
 
 ├── About me
-│   ├── My background
-│   ├── Someone who influenced me
-│   └── What I want next
+│   ├── Background
+│   ├── Strengths
+│   └── Future goals
 │
 ├── Work / Study
-│   ├── My current project
 │   ├── My startup
-│   ├── My research
-│   └── Something I have been learning
+│   ├── Current project
+│   ├── Interview
+│   └── My research
 │
 ├── Experiences
 │   ├── Moving abroad
-│   ├── A challenge I went through
-│   └── A trip I remember
+│   ├── Biggest challenge
+│   └── Trip to Japan
 │
 ├── Daily life
-│   ├── My morning
-│   ├── How I spend my weekend
-│   └── A habit I am changing
+│   ├── Morning routine
+│   ├── Gym
+│   └── Weekend
 │
-└── Ideas / Culture
-    ├── A film I keep thinking about
-    ├── An idea I want to explain
-    └── Something I changed my mind about
+└── Ideas
+    ├── AI
+    ├── Education
+    └── Design
 ```
 
-The learner may skip, rename, delete, and add Topics. The map helps AI notice
-possibilities; it does not assign homework.
+이 트리는 모든 사용자에게 동일한 콘텐츠를 순서대로 제공하는 커리큘럼이
+아니다. 사용자가 자신의 Speaking World를 만들기 시작할 수 있도록 보여주는
+출발점이자, AI가 아직 비어 있는 영역과 이어질 만한 Story를 발견할 때 사용할
+수 있는 기본 지도다. 사용자는 필요 없는 Story를 건너뛰고, 이름을 바꾸고,
+자기만의 Story를 추가할 수 있어야 한다.
 
-`Domain` is an internal organization and recommendation concept. The interface
-should show concrete group names such as `Work / Study` or `Ideas / Culture`, not
-force the learner to understand a data-model term.
+### 3. Story
 
-## Topic, Version, and Attempt
+사용자가 실제로 말하고 싶은 자기 이야기다. `Topic`보다 인간적이며,
+셀프토킹이라는 제품 행동과 맞닿아 있다.
 
-- **Topic:** `My current project` or `A film I keep thinking about` — something the
-  learner wants to express repeatedly.
-- **Version:** a 30-second introduction, a relaxed explanation to a friend, or a
-  more focused explanation for a meetup.
-- **Attempt:** one actual recording made through self-talk or Mirror mode.
+예시:
 
-A Topic is what the learner wants to talk about. A Version is how that meaning is
-shaped for a particular moment. An Attempt is evidence of what the learner could
-actually say.
+- My startup
+- My current project
+- My previous company
+- How I moved to the US
+- My biggest challenge
+- My biggest mistake
+
+사용자는 토픽을 공부하는 것이 아니라 자신의 Story를 만들고 다듬는다.
+
+### 4. Version (DB: Message)
+
+같은 Story를 특정 청자, 상황, 목적, 길이에 맞게 전달하는 버전이다.
+화면에서는 **Version**이라고 부른다. 테이블/코드는 기존 `messages`를 유지한다.
+
+`My startup`이라는 Story에는 다음 Version이 생길 수 있다.
+
+- 30초 버전
+- 2분 버전
+- VC에게 피칭하기
+- 친구에게 설명하기
+
+Story가 **무엇을 말할지**라면, Version은 **어떻게 전할지**다.
+
+### 5. Session
+
+사용자가 실제로 말한 한 번의 기록이다. Session은 추상적인 학습 진도가
+아니라 Story와 Version을 현실에서 표현해 본 흔적이다.
+
+## Language belongs to the Story
+
+Phrase Bank는 `take the plunge` 같은 고립된 표현의 창고가 아니다. 표현은
+사용자가 말하던 맥락에서 포착되며, 우선적으로 Story에 속한다.
 
 ```text
-Topic: My current project
-├── Version: 30-second introduction
-├── Version: explain it to a new friend
-└── Attempts: Aug 12, Aug 16
-```
-
-## Language belongs to the Topic
-
-The phrase library is not an isolated vocabulary warehouse. Language is captured
-with source and context, then connected to a Topic where the learner may want to use
-it.
-
-```text
-Topic: My current project
+Story: My startup
 
 Useful language
 - What I'm trying to do is...
 - One thing I realized is...
-- The trade-off is...
+- The hardest part was...
 ```
 
-The central flow is:
+새로운 Talk를 시작할 때 앱은 현재 Story를 이해하고, 그 Story에서 사용자가
+저장했거나 자주 사용한 표현만 필요할 때 가볍게 다시 보여줄 수 있다.
+
+핵심은 표현을 미리 가르치는 것이 아니라 다음 흐름을 만드는 것이다.
 
 ```text
-find language
-→ save it with provenance
-→ connect it to a Topic
-→ try to retrieve it from meaning
-→ use it in speech
+말한다 → 필요한 표현을 포착한다 → 내 Story에 저장한다 → 다시 말할 때 사용한다
 ```
-
-Display and suggestion are not proof of ability. Evidence progresses only when the
-learner earns it:
-
-```text
-Saved → Recognized → Retrieved → Used
-```
-
-## Self-talk and Mirror mode
-
-Self-talk is the practice method. Mirror mode is its signature experience.
-
-- The learner sees themselves while speaking.
-- The product saves audio and Attempt history, not video.
-- AI analysis appears after the Attempt instead of interrupting speech.
-- The learner receives one high-value repair and speaks again.
-- Progress is heard through Attempts and observed through retrieval evidence, not a
-  universal fluency score.
-
-Any privacy statement about camera or video behavior must match the verified native
-implementation.
 
 ## AI's role
 
-AI should:
+AI는 커리큘럼을 만들거나 숙제를 할당하지 않는다. 사용자의 Speaking World를
+관찰하고 다음을 돕는다.
 
-- understand what the learner was trying to mean;
-- identify one meaning, structure, or retrieval gap;
-- recognize when learner-owned language returned in an Attempt;
-- retrieve 1–3 relevant expressions with provenance;
-- suggest a small next repair;
-- surface a past Topic or phrase when it becomes relevant again;
-- suggest possible Topics or Versions without assigning a curriculum.
+- 아직 비어 있는 삶의 영역을 발견한다.
+- 이미 말한 내용과 자연스럽게 이어지는 새 Story를 제안한다.
+- 현재 Story에 필요한 과거 표현을 다시 보여준다.
+- 같은 Story를 다른 청자, 목적, 길이로 말할 Message를 제안한다.
 
-AI should not:
+예시:
 
-- invent the learner's facts, beliefs, or life story;
-- replace the learner's voice with a polished full script;
-- flood the learner with grammar corrections;
-- equate an AI suggestion with `Retrieved` or `Used`;
-- turn every Topic into a workplace scenario;
-- optimize for native-likeness or accent elimination.
+```text
+Your speaking world is growing.
+
+You've built a lot around work.
+Want to add a story about “Moving abroad”?
+```
+
+또는:
+
+```text
+You've talked about
+✓ My startup
+✓ Interview
+✓ Moving abroad
+
+Maybe you'd like to add
+“My biggest mistake”
+```
+
+AI 추천의 목적은 다음 학습 과제를 정하는 것이 아니라, 사용자가 자기
+Speaking World의 빈 공간을 발견하고 원하는 방향으로 확장하도록 돕는 것이다.
 
 ## Product principles
 
-1. **You build your own Speaking World.** The learner decides what matters.
-2. **English starts from your life, not a curriculum.** Topics come from real
-   interests, ideas, experiences, projects, study, and work.
-3. **Phrases are captured, not merely assigned.** Useful language may come from any
-   lawful source the learner encounters.
-4. **Retrieval matters more than collection.** A saved phrase becomes valuable when
-   it returns from the learner's own intention.
-5. **The tool supports thinking, not testing.** Progress is clearer meaning and more
-   usable language, not a manufactured score.
-6. **AI expands possibility without taking authorship.** It structures, retrieves,
-   and suggests; the learner supplies the meaning.
-7. **Private by default.** Personal Topics and audio remain private unless the
-   learner explicitly requests an Audience Check.
+### 1. You build your own Speaking World.
 
-## Decision filter
+누가 주어준 것이 아니라, 내가 말하면서 내가 필요한 표현을 저장하고,
+저장한 것 안에서 계속 사용할 수 있어야 한다. 무엇이 중요한지는 앱이 아니라
+사용자가 정한다.
 
-Before adding a feature or screen, ask:
+### 2. English starts from your life, not a curriculum.
 
-1. Does it help a learner capture useful English with low friction?
-2. Does it connect language to something the learner genuinely wants to say?
-3. Does it make productive retrieval or a second Attempt more likely?
-4. Does it deepen or expand the learner's Speaking World?
-5. Does AI preserve the learner's authorship and voice?
-6. Does it avoid rebuilding a generic curriculum, chatbot, workplace coach, score
-   dashboard, or public social feed?
+모든 Story는 사용자가 실제로 말하고 싶은 것에서 시작한다.
+
+### 3. Phrases are captured, not taught.
+
+표현은 말하기 전에 암기할 대상으로 주어지는 것이 아니라, 말하는 과정에서
+필요에 의해 포착된다.
+
+### 4. The tool supports thinking, not testing.
+
+이 제품은 사용자의 표현과 생각을 돕는다. 점수, 스트릭, 임의의 레슨보다
+자신을 더 잘 표현하게 된 변화를 진행으로 본다.
+
+### 5. AI expands your world instead of assigning homework.
+
+AI는 빈 공간을 발견하고, 새 Story를 제안하고, 필요한 순간에 유용한 표현을
+되살린다.
+
+## Product decision filter
+
+새 기능이나 화면을 설계할 때 다음 질문으로 방향을 확인한다.
+
+1. 이것은 사용자가 자기 삶에서 말하고 싶은 Story를 만드는 데 도움이 되는가?
+2. 사용자가 말하는 과정에서 필요한 표현을 포착하고 다시 쓰게 하는가?
+3. Speaking World가 넓어지거나 깊어졌다는 감각을 주는가?
+4. AI가 사용자의 선택을 대신하지 않고 빈 공간과 가능성을 보여주는가?
+5. 학습 앱의 레슨·시험·과제 문법을 무심코 다시 만들고 있지는 않은가?
+
+## Naming guidance
+
+| Concept | Internal model | User-facing language |
+| --- | --- | --- |
+| 전체 세계 | `SpeakingWorld` | Speaking World / my world |
+| 삶의 영역 | `Domain` | Work, About me, Experiences 등 실제 이름 |
+| 말하고 싶은 이야기 | `Story` | Story 또는 이야기 제목 |
+| 전달 버전 | `Message` | 30 sec, For a friend, VC pitch 등 실제 목적 |
+| 말한 기록 | `Session` | Talk / session의 자연스러운 표현 |
+| 포착한 표현 | `Phrase` | Useful language / saved expressions |
+
+내부 모델 이름은 구현의 일관성을 위한 것이며, 사용자에게 계층 구조 자체를
+학습시키기 위한 것이 아니다. 사용자는 복잡한 모델을 의식하지 않고 자연스럽게
+“내 Speaking World를 넓혀간다”는 경험을 해야 한다.

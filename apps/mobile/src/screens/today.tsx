@@ -1,0 +1,316 @@
+// today.tsx — Today tab. Hero, this-week phrase saves, leftover review queue.
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
+import { Text } from "@/design/text";
+import { useFocusEffect } from "expo-router";
+
+import { useTheme } from "@/design/theme";
+import { Avatar, Card, Hero, Icon, Pill, Screen, Serif, Stagger } from "@/design/ui";
+import { ProductTourProvider, TourTarget } from "@/components/product-tour";
+import { reviewedOnLocalDay, todaysPhrases } from "@/lib/daily-phrases";
+import { fetchPhrases, weeklyCounts, type PhraseItem } from "@/lib/phrases";
+import { useAuth } from "@/lib/auth";
+import { fetchRecentAttemptSituation, type RecentAttemptSituation } from "@/lib/studio-model";
+import type { Nav } from "./nav";
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function todayLabel(): string {
+  const d = new Date();
+  return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+// Hero line: rotates daily (deterministic — day number, no flicker across
+// renders) so the invitation stays fresh. The story rotates daily too, across
+// the distinct situations in recent Talk attempts (fetchRecentAttemptSituation).
+function heroCopy(situationTitle: string | null): string {
+  const day = Math.floor(Date.now() / 86_400_000);
+  if (situationTitle) {
+    const variants = [
+      `Your “${situationTitle}” situation is waiting`,
+      `Make “${situationTitle}” smoother today`,
+      `One more take of “${situationTitle}”?`,
+    ];
+    return variants[day % variants.length];
+  }
+  const variants = [
+    "What’s on your mind today?",
+    "Speak for a few minutes",
+    "Say anything out loud",
+  ];
+  return variants[day % variants.length];
+}
+
+function unfinishedToday(phrases: PhraseItem[]): PhraseItem[] {
+  return phrases.filter((phrase) => !reviewedOnLocalDay(phrase.lastReviewedAt));
+}
+
+function reviewQueue(all: PhraseItem[]): PhraseItem[] {
+  return unfinishedToday(all);
+}
+
+export function TodayScreen({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const { session } = useAuth();
+  const [items, setItems] = useState<PhraseItem[] | null>(null);
+  const [reviewToday, setReviewToday] = useState<PhraseItem[]>([]);
+  const [recentStory, setRecentStory] = useState<RecentAttemptSituation | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [statsAsOf, setStatsAsOf] = useState(0);
+  // Replay the entrance cascade whenever the tab regains focus (native tabs
+  // keep this screen mounted).
+  const [enterKey, setEnterKey] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setEnterKey((k) => k + 1);
+    }, []),
+  );
+
+  // Handed to the first-run coach marks so a target below the fold can be
+  // scrolled into view before it is spotlighted.
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollOffsetRef = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  const load = useCallback(async () => {
+    try {
+      const [all, today] = await Promise.all([fetchPhrases(), todaysPhrases()]);
+      setError(null);
+      setItems(all);
+      setReviewToday(today);
+      setStatsAsOf(Date.now());
+    } catch {
+      setError("Your saved phrases are still safe. Check your connection and try again.");
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
+  }, [load]);
+
+  // Native tabs keep this screen mounted, so the count was whatever it was at
+  // app start. Ticking a phrase during a self-talk marks it reviewed, and
+  // landing back on a stale "5 / 5" reads as the tick having done nothing.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  useEffect(() => {
+    let active = true;
+    fetchRecentAttemptSituation()
+      .then((story) => {
+        if (active) setRecentStory(story);
+      })
+      .catch(() => {
+        if (active) setRecentStory(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session?.user.id]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      load(),
+      fetchRecentAttemptSituation()
+        .then(setRecentStory)
+        .catch(() => setRecentStory(null)),
+    ]);
+    setRefreshing(false);
+  }, [load]);
+
+  const all = items ?? [];
+  const thisWeek = all.filter((p) => statsAsOf - new Date(p.createdAt).getTime() < 7 * 86_400_000).length;
+  const lastWeek = all.filter((p) => {
+    const age = statsAsOf - new Date(p.createdAt).getTime();
+    return age >= 7 * 86_400_000 && age < 14 * 86_400_000;
+  }).length;
+  const weekDelta = lastWeek > 0 && thisWeek !== lastWeek ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : null;
+  const bars = weeklyCounts(all.map((p) => p.createdAt));
+  const barMax = Math.max(1, ...bars.map((b) => b.count));
+  const leftover = unfinishedToday(reviewToday);
+  const finishedToday = reviewToday.length > 0 && leftover.length === 0;
+  const metadata = session?.user.user_metadata as { full_name?: string; name?: string; display_name?: string } | undefined;
+  const displayName = metadata?.display_name?.split(" ")[0] || metadata?.full_name?.split(" ")[0] || metadata?.name?.split(" ")[0] || null;
+
+  const startSpeaking = () => {
+    if (recentStory) {
+      nav.startTalk({
+        ctx: recentStory.situationTitle,
+        situationId: recentStory.situationId,
+        noteId: recentStory.noteId,
+        prompt: recentStory.beats[0] ?? "Say what you want to communicate in your own words.",
+        beats: recentStory.beats,
+        from: "today",
+      });
+      return;
+    }
+    nav.go("speak");
+  };
+
+  const startReview = () => {
+    const queue = reviewQueue(reviewToday);
+    if (!queue.length) return;
+    nav.push("review", { item: queue[0], queue });
+  };
+
+  const reviewCopy = () => {
+    if (reviewToday.length === 0) return "Keep a phrase to start today’s list.";
+    if (finishedToday) return "You’ve finished for today!";
+    return `${leftover.length} / ${reviewToday.length} left for practice today!`;
+  };
+
+  return (
+    <ProductTourProvider
+      enabled={Boolean(session) && items !== null && !error}
+      scrollRef={scrollRef}
+      scrollOffsetRef={scrollOffsetRef}
+    >
+    <Screen
+      scrollRef={scrollRef}
+      onScroll={onScroll}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.acc} />}
+    >
+      <Stagger replayKey={enterKey}>
+      <View style={{ paddingHorizontal: 2, paddingTop: 4, paddingBottom: 2 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 44 }}>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>{todayLabel()}</Text>
+          <TourTarget id="profile" radius={26}>
+            <Avatar onPress={() => nav.push("settings")} />
+          </TourTarget>
+        </View>
+        <Serif style={{ fontSize: 36, lineHeight: 40, color: t.colors.ink, marginTop: 10 }}>
+          {greeting()}{displayName ? `, ${displayName}` : "."}
+        </Serif>
+      </View>
+
+      <Hero style={{ marginTop: 8 }}>
+        <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: "rgba(255,255,255,0.78)" }}>
+          Start the day with practice
+        </Text>
+        <Serif style={{ fontSize: 26, lineHeight: 33, color: "#fff", marginTop: 10 }}>
+          {heroCopy(recentStory?.situationTitle ?? null)}
+        </Serif>
+        {/* Pill tone="white" now owns a scheme-independent pair (#FFFFFF fill,
+            BRAND.dark label — 17.10:1). The old textStyle accD override is gone:
+            in dark mode accD is #8FACEF, which measures 2.25:1 on that white fill
+            and also left the label a different color from the mic icon (the icon
+            always takes the tone's own fg). shadowOpacity:0 stays — t.shadowCard
+            is a black card shadow meant for a light page; on the hero's navy ramp
+            it is invisible in dark and a smudge in light, and the fill already
+            separates on its own (7.94:1 on #344E91, 17.10:1 on #0D1A3B). */}
+        <TourTarget id="speak" radius={26} style={{ marginTop: 18 }}>
+          <Pill tone="white" full icon="mic" onPress={startSpeaking} style={{ shadowOpacity: 0 }}>
+            Speaking
+          </Pill>
+        </TourTarget>
+      </Hero>
+      </Stagger>
+
+      {items === null && !error ? (
+        <View style={{ paddingVertical: 40, alignItems: "center" }}>
+          <ActivityIndicator color={t.colors.acc} />
+        </View>
+      ) : error ? (
+        <Card style={{ alignItems: "center", paddingVertical: 24 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>We couldn’t refresh your progress</Text>
+          <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>{error}</Text>
+          <Pill tone="tint" small onPress={load} style={{ marginTop: 14, alignSelf: "center" }}>
+            Retry
+          </Pill>
+        </Card>
+      ) : (
+        <Stagger replayKey={enterKey} startIndex={2}>
+          <TourTarget id="review" radius={t.r}>
+          <Card>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <View>
+                <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>This week</Text>
+                {weekDelta !== null ? (
+                  <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.ink3, marginTop: 3 }}>
+                    {weekDelta >= 200
+                      ? `${Math.round(thisWeek / lastWeek)}× last week`
+                      : `${Math.abs(weekDelta)}% ${weekDelta > 0 ? "more" : "less"} than last week`}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable onPress={() => nav.go("phrases")} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 2, paddingTop: 2 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.accD }}>See more</Text>
+                <Icon name="chev" s={13} w={2.2} c={t.colors.accD} />
+              </Pressable>
+            </View>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 20, alignItems: "flex-end", height: 130 }}>
+              {bars.map((b, i) => (
+                <View key={i} style={{ flex: 1, alignItems: "center", gap: 4, justifyContent: "flex-end", height: "100%" }}>
+                  <View
+                    style={{
+                      width: "100%",
+                      height: b.count === 0 ? 8 : Math.max(20, Math.round((b.count / barMax) * 112)),
+                      borderRadius: 9999,
+                      backgroundColor: b.count > 0 ? t.colors.acc : t.colors.soft,
+                    }}
+                  />
+                  <Text style={{ fontSize: 11, color: t.colors.ink3, fontWeight: "600" }}>{b.label}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 12, lineHeight: 20 }}>
+              {thisWeek > 0
+                ? `${thisWeek} phrase${thisWeek === 1 ? "" : "s"} saved this week.`
+                : "Nothing new this week."}
+            </Text>
+          </Card>
+          </TourTarget>
+
+          <Card onPress={leftover.length ? startReview : undefined}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>Today</Text>
+              {leftover.length ? <Icon name="chev" s={15} w={2.2} c={t.colors.ink3} /> : null}
+            </View>
+            {reviewToday.length > 0 && !finishedToday ? (
+              <View style={{ alignItems: "center", paddingVertical: 18 }}>
+                <Text style={{ fontSize: 46, fontWeight: "800", letterSpacing: -1.5, color: t.colors.ink, fontVariant: ["tabular-nums"] }}>
+                  {leftover.length} / {reviewToday.length}
+                </Text>
+                <Text style={{ fontSize: 13.5, fontWeight: "600", color: t.colors.ink2, marginTop: 6 }}>
+                  left for practice today!
+                </Text>
+              </View>
+            ) : (
+              <View style={{ alignItems: "center", paddingVertical: 20, gap: 10 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                  <Icon name={finishedToday ? "check" : "bank"} s={19} c={t.colors.accD} />
+                </View>
+                <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink, textAlign: "center" }}>{reviewCopy()}</Text>
+              </View>
+            )}
+          </Card>
+        </Stagger>
+      )}
+    </Screen>
+    </ProductTourProvider>
+  );
+}

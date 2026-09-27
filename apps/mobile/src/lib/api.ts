@@ -57,7 +57,16 @@ export async function apiFetch(
     ...(init.headers as Record<string, string> | undefined),
     ...(await authHeader()),
   };
-  return fetch(joinUrl(API_BASE_URL!, path), { ...init, headers });
+  const url = joinUrl(API_BASE_URL!, path);
+  try {
+    return await fetch(url, { ...init, headers });
+  } catch (e) {
+    // A network-level failure (server down, unreachable host, TLS/protocol
+    // error) rejects fetch before any response. Surface the URL we tried so the
+    // error names the target instead of a bare "Could not connect".
+    const detail = e instanceof Error ? e.message : "network error";
+    throw new ApiError(0, `Couldn’t reach the API at ${API_BASE_URL} — ${detail}`, undefined);
+  }
 }
 
 /**

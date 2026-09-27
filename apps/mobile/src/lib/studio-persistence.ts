@@ -1,0 +1,617 @@
+// Persistence adapter for the canonical Studio model. The deployed migration
+// still names these rows domains/stories/messages/talk_sessions. Keep those
+// identifiers here so screens and product-facing modules use current terms.
+import { situationPromptFor } from "./situation-prompts";
+import { supabase } from "./supabase";
+
+export interface Domain {
+  id: string;
+  name: string;
+  color: string | null;
+  position: number;
+  storyCount: number;
+}
+export interface Story {
+  id: string;
+  domainId: string | null;
+  title: string;
+  summary: string | null;
+  status: string;
+  position: number;
+  messageCount: number;
+  sessionCount: number;
+}
+
+export interface StudioDomain {
+  domain: Domain;
+  stories: Story[];
+}
+
+/** A story is “live” once it has a version or a talk — otherwise it’s an empty drawer. */
+export function isLiveStory(story: Pick<Story, "messageCount" | "sessionCount">): boolean {
+  return story.messageCount > 0 || story.sessionCount > 0;
+}
+export interface StoryChoice {
+  id: string;
+  title: string;
+  domainName: string | null;
+}
+export interface StoryMessage {
+  id: string;
+  storyId: string;
+  label: string;
+  audience: string | null;
+  targetSeconds: number | null;
+  position: number;
+}
+export interface Beat {
+  id: string;
+  messageId: string;
+  position: number;
+  text: string;
+  source: string;
+}
+export interface TalkSession {
+  id: string;
+  storyId: string | null;
+  storyTitle: string | null;
+  transcript: string | null;
+  durationSeconds: number | null;
+  createdAt: string;
+  /** Relative key of the on-device recording (speak/{id}.wav), or null. */
+  audioKey: string | null;
+}
+
+// Design tones (map to Cobalt tokens) cycled across seeded domains.
+const SEED = [
+  { name: "About me", color: "sage", stories: ["Background", "Strengths", "Future goals"] },
+  { name: "Work / Study", color: "sky", stories: ["My startup", "Current project", "Interview", "My research"] },
+  { name: "Experiences", color: "blush", stories: ["Moving abroad", "Biggest challenge", "Trip to Japan"] },
+  { name: "Daily life", color: "butter", stories: ["Morning routine", "Gym", "Weekend"] },
+  { name: "Ideas", color: "sky", stories: ["Something I learned", "AI", "Education", "Design"] },
+];
+
+/** Onboarding picks that aren't already in SEED still need a home topic. */
+const ONBOARDING_TOPIC: Record<string, string> = {
+  "what i do": "Work / Study",
+  "a recent challenge": "Experiences",
+  "my future plans": "About me",
+};
+
+const DEFAULT_TOPIC = "Ideas";
+
+function topicNameForStoryTitle(title: string): string {
+  const key = title.trim().toLocaleLowerCase("en");
+  for (const domain of SEED) {
+    if (domain.stories.some((story) => story.toLocaleLowerCase("en") === key)) return domain.name;
+  }
+  return ONBOARDING_TOPIC[key] ?? DEFAULT_TOPIC;
+}
+
+function one<T>(v: T | T[] | null | undefined): T | null {
+  return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+}
+
+/** Domains (with story counts), ordered. Seeds the initial world if empty. */
+export async function fetchDomains(): Promise<Domain[]> {
+  const load = async () => {
+    const { data, error } = await supabase
+      .from("domains")
+      .select("id, name, color, position, stories(count)")
+      .eq("archived", false)
+      .order("position", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  };
+
+  let rows = await load();
+  if (rows.length === 0) {
+    await seedInitialWorld();
+    rows = await load();
+  }
+  return rows.map((d) => ({
+    id: d.id as string,
+    name: d.name as string,
+    color: (d.color as string | null) ?? null,
+    position: (d.position as number) ?? 0,
+    storyCount: (one(d.stories as { count: number }[]) as { count: number } | null)?.count ?? 0,
+  }));
+}
+
+/**
+ * All Speak sessions, newest first, with the linked story title (null = a
+ * free-talk session not tied to a story). RLS scopes to the owner. Pass
+ * `storyId` to list only the sessions recorded for one story.
+ */
+export async function fetchTalkSessions(limit = 100, storyId?: string): Promise<TalkSession[]> {
+  let q = supabase
+    .from("talk_sessions")
+    .select("id, story_id, transcript, duration_seconds, created_at, audio_key, stories(title)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (storyId) q = q.eq("story_id", storyId);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((s) => ({
+    id: s.id as string,
+    storyId: (s.story_id as string | null) ?? null,
+    storyTitle: (one(s.stories as { title: string }[]) as { title: string } | null)?.title ?? null,
+    transcript: (s.transcript as string | null) ?? null,
+    durationSeconds: (s.duration_seconds as number | null) ?? null,
+    createdAt: s.created_at as string,
+    audioKey: (s.audio_key as string | null) ?? null,
+  }));
+}
+
+/** Create the 5 starter domains + their suggested stories (drafts). */
+export async function seedInitialWorld(): Promise<void> {
+  for (let i = 0; i < SEED.length; i++) {
+    const d = SEED[i];
+    const { data: dom, error } = await supabase.from("domains").insert({ name: d.name, color: d.color, position: i }).select("id").single();
+    if (error || !dom) continue;
+    const rows = d.stories.map((title, j) => ({
+      domain_id: dom.id as string,
+      title,
+      status: "draft",
+      position: j,
+      summary: situationPromptFor(title),
+    }));
+    if (rows.length) await supabase.from("stories").insert(rows);
+  }
+}
+
+function mapStoryRow(s: Record<string, unknown>): Story {
+  return {
+    id: s.id as string,
+    domainId: (s.domain_id as string | null) ?? null,
+    title: (s.title as string) || "Untitled story",
+    summary: (s.summary as string | null) ?? null,
+    status: (s.status as string) ?? "draft",
+    position: (s.position as number) ?? 0,
+    messageCount: (one(s.messages as { count: number }[]) as { count: number } | null)?.count ?? 0,
+    sessionCount: (one(s.talk_sessions as { count: number }[]) as { count: number } | null)?.count ?? 0,
+  };
+}
+
+const STORY_SELECT = "id, domain_id, title, summary, status, position, messages(count), talk_sessions!story_id(count)";
+const STORY_SELECT_FALLBACK = "id, domain_id, title, summary, status, position, messages(count)";
+
+async function fetchStoryRows(domainId?: string): Promise<Story[]> {
+  const run = async (select: string) => {
+    let q = supabase.from("stories").select(select).neq("status", "archived").order("position", { ascending: true });
+    if (domainId) q = q.eq("domain_id", domainId);
+    return q;
+  };
+  const first = await run(STORY_SELECT);
+  const result = first.error ? await run(STORY_SELECT_FALLBACK) : first;
+  if (result.error) throw new Error(result.error.message);
+  return (result.data ?? []).map((s) => mapStoryRow(s as unknown as Record<string, unknown>));
+}
+
+/** Stories in a domain (with version + session counts), ordered. */
+export async function fetchStories(domainId: string): Promise<Story[]> {
+  return fetchStoryRows(domainId);
+}
+
+/** Topics studio: every life-area with its stories, for the bento collection. */
+export async function fetchStudioCollection(): Promise<StudioDomain[]> {
+  const domains = await fetchDomains();
+  const stories = await fetchStoryRows();
+  return domains.map((domain) => ({
+    domain,
+    stories: stories.filter((story) => story.domainId === domain.id),
+  }));
+}
+
+/** Compact owner-scoped Story list for capture/recommendation pickers. */
+export async function fetchAllStories(): Promise<StoryChoice[]> {
+  const { data, error } = await supabase
+    .from("stories")
+    .select("id, title, domains(name)")
+    .neq("status", "archived")
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((story) => ({
+    id: story.id as string,
+    title: (story.title as string) || "Untitled story",
+    domainName: (one(story.domains as { name: string }[]) as { name: string } | null)?.name ?? null,
+  }));
+}
+
+/** One story by id (RLS-scoped). Used by the story detail screen. */
+export async function fetchStory(
+  id: string,
+): Promise<Pick<Story, "id" | "title" | "summary" | "domainId"> & { domainName: string | null } | null> {
+  const { data, error } = await supabase
+    .from("stories")
+    .select("id, title, summary, domain_id, domains(name)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    title: (data.title as string) || "Untitled story",
+    summary: (data.summary as string | null) ?? null,
+    domainId: (data.domain_id as string | null) ?? null,
+    domainName: (one(data.domains as { name: string }[]) as { name: string } | null)?.name ?? null,
+  };
+}
+
+/** Persist the learner-edited description on a story card. Empty string clears it. */
+export async function updateStorySummary(id: string, summary: string | null): Promise<void> {
+  const { error } = await supabase
+    .from("stories")
+    .update({ summary, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Move a story to another topic. */
+export async function updateStoryDomain(id: string, domainId: string): Promise<void> {
+  const { error } = await supabase
+    .from("stories")
+    .update({ domain_id: domainId, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Messages for a story, ordered. */
+export async function fetchMessages(storyId: string): Promise<StoryMessage[]> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, story_id, label, audience, target_seconds, position")
+    .eq("story_id", storyId)
+    .order("position", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((m) => ({
+    id: m.id as string,
+    storyId: m.story_id as string,
+    label: (m.label as string) || "Untitled",
+    audience: (m.audience as string | null) ?? null,
+    targetSeconds: (m.target_seconds as number | null) ?? null,
+    position: (m.position as number) ?? 0,
+  }));
+}
+
+/** Beats for a message, ordered. */
+export async function fetchBeats(messageId: string): Promise<Beat[]> {
+  const { data, error } = await supabase
+    .from("message_beats")
+    .select("id, message_id, position, text, source")
+    .eq("message_id", messageId)
+    .order("position", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((b) => ({
+    id: b.id as string,
+    messageId: b.message_id as string,
+    position: (b.position as number) ?? 0,
+    text: (b.text as string) ?? "",
+    source: (b.source as string) ?? "learner",
+  }));
+}
+
+/**
+ * Create a Topic at the end of the list. Leaving `position` at its DEFAULT 0
+ * would tie with the first seeded topic and `order("position")` breaks ties
+ * arbitrarily, so a new topic would jump around between loads. Archived topics
+ * keep their slot, so the max is taken across every row.
+ */
+export async function createDomain(name: string): Promise<string | null> {
+  const last = await supabase
+    .from("domains")
+    .select("position")
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (last.error) throw new Error(last.error.message);
+  const position = ((last.data?.position as number | null) ?? -1) + 1;
+  const { data, error } = await supabase
+    .from("domains")
+    .insert({ name: name.trim(), position })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return (data?.id as string) ?? null;
+}
+
+/** Rename a Topic. `domains.updated_at` has no trigger, so writers set it. */
+export async function renameDomain(id: string, name: string): Promise<void> {
+  const { error } = await supabase
+    .from("domains")
+    .update({ name: name.trim(), updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Archive a Topic. Soft, like archiveStory: a hard delete would SET NULL every
+ * situation's domain_id, and messages.domain_id is NOT NULL ON DELETE RESTRICT
+ * (028), so Postgres would refuse the delete anyway.
+ *
+ * Archiving the last open topic is refused on purpose — fetchDomains re-seeds
+ * the five starter topics whenever it reads back an empty list, so emptying the
+ * world would silently repopulate it with topics the learner never chose. The
+ * message is written to be shown verbatim.
+ */
+export async function archiveDomain(id: string): Promise<void> {
+  const { data, error } = await supabase.from("domains").select("id").eq("archived", false);
+  if (error) throw new Error(error.message);
+  const open = (data ?? []).map((row) => row.id as string);
+  if (!open.includes(id)) return;
+  if (open.length <= 1) {
+    throw new Error("This is your last topic. Keep at least one — an empty Studio restarts from the starter topics.");
+  }
+  const result = await supabase
+    .from("domains")
+    .update({ archived: true, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (result.error) throw new Error(result.error.message);
+}
+
+export async function createStory(domainId: string | null, title: string): Promise<string | null> {
+  const prompt = situationPromptFor(title);
+  const { data, error } = await supabase
+    .from("stories")
+    .insert({ domain_id: domainId, title: title.trim(), status: "draft", ...(prompt ? { summary: prompt } : {}) })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return (data?.id as string) ?? null;
+}
+
+/** Create a story under its default topic when onboarding didn't pass a domain. */
+export async function createStoryInDefaultTopic(title: string): Promise<string | null> {
+  const topic = topicNameForStoryTitle(title);
+  const domains = await fetchDomains();
+  const domainId = domains.find((domain) => domain.name === topic)?.id ?? null;
+  return createStory(domainId, title);
+}
+
+/** Attach an orphan story (no domain_id) to the topic its title belongs in. */
+export async function ensureStoryDomain(
+  storyId: string,
+  title: string,
+  currentDomainId: string | null,
+): Promise<{ domainId: string; domainName: string } | null> {
+  if (currentDomainId) return null;
+  const domainName = topicNameForStoryTitle(title);
+  const domains = await fetchDomains();
+  const domain = domains.find((item) => item.name === domainName);
+  if (!domain) return null;
+  const { error } = await supabase.from("stories").update({ domain_id: domain.id }).eq("id", storyId);
+  if (error) throw new Error(error.message);
+  return { domainId: domain.id, domainName: domain.name };
+}
+
+export async function createMessage(
+  storyId: string,
+  label: string,
+  targetSeconds?: number | null,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      story_id: storyId,
+      label: label.trim(),
+      ...(targetSeconds ? { target_seconds: targetSeconds } : {}),
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return (data?.id as string) ?? null;
+}
+
+/** Append a beat to a message. `source` defaults to learner-authored. */
+export async function createBeat(messageId: string, text: string, position: number): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("message_beats")
+    .insert({ message_id: messageId, text: text.trim(), position, source: "learner" })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return (data?.id as string) ?? null;
+}
+
+export async function updateBeat(id: string, text: string): Promise<void> {
+  const { error } = await supabase.from("message_beats").update({ text: text.trim() }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteBeat(id: string): Promise<void> {
+  const { error } = await supabase.from("message_beats").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Persist new positions for a set of beats (used by reorder). */
+export async function setBeatPositions(updates: { id: string; position: number }[]): Promise<void> {
+  for (const u of updates) {
+    const { error } = await supabase.from("message_beats").update({ position: u.position }).eq("id", u.id);
+    if (error) throw new Error(error.message);
+  }
+}
+
+/** Permanently delete a Speak session (RLS-scoped to the owner). */
+export async function deleteTalkSession(id: string): Promise<void> {
+  const { error } = await supabase.from("talk_sessions").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Archive a story so it drops out of its domain's list. We soft-archive rather
+ * than hard-delete because a real delete would cascade to the story's messages,
+ * beats, and any talk_sessions linked to it (all FK ON DELETE CASCADE). The
+ * story list already filters out status='archived', matching the domain
+ * `archived` flag pattern. Reversible by flipping the status back.
+ *
+ * `updated_at` is set by hand: nothing in the schema maintains it for stories.
+ */
+export async function archiveStory(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("stories")
+    .update({ status: "archived", updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Persist one Speak session. Transcript comes from on-device recognition, so no
+ * server/R2 round-trip; audio is not uploaded (audio_key stays null for now).
+ * user_id is filled by the DB default (auth.uid()) under RLS.
+ */
+export async function createTalkSession(input: {
+  storyId?: string | null;
+  messageId?: string | null;
+  transcript: string;
+  durationSeconds: number;
+}): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("talk_sessions")
+    .insert({
+      story_id: input.storyId ?? null,
+      message_id: input.messageId ?? null,
+      transcript: input.transcript.trim() || null,
+      duration_seconds: Math.max(0, Math.round(input.durationSeconds)),
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return (data?.id as string) ?? null;
+}
+
+export interface RecentTalkedStory {
+  storyId: string;
+  messageId: string | null;
+  storyTitle: string;
+  beats: string[];
+}
+
+export interface StudioTopicTime {
+  name: string;
+  seconds: number;
+}
+
+export interface StudioDaySeconds {
+  date: string;
+  seconds: number;
+}
+
+export interface StudioSnapshot {
+  totalSeconds: number;
+  sessionCount: number;
+  activeTopics: number;
+  activeStories: number;
+  topicTime: StudioTopicTime[];
+  lastSevenDays: StudioDaySeconds[];
+}
+
+function localDayKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function formatSpeakingTime(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h <= 0 && m <= 0) return s > 0 ? `${s}s` : "0m";
+  if (h <= 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** A recently talked story for the Home CTA, with beats. Rotates daily across
+ * the distinct stories in the latest sessions (deterministic — day number, not
+ * random — so the pick is stable within a day but fresh across days). */
+export async function fetchRecentTalkedStory(): Promise<RecentTalkedStory | null> {
+  const sessions = await fetchTalkSessions(40);
+  const recentIds: string[] = [];
+  for (const session of sessions) {
+    if (session.storyId && !recentIds.includes(session.storyId)) recentIds.push(session.storyId);
+  }
+  if (recentIds.length === 0) return null;
+  const day = Math.floor(Date.now() / 86_400_000);
+  const story = await fetchStory(recentIds[day % recentIds.length]);
+  if (!story) return null;
+  const messages = await fetchMessages(story.id);
+  const message = messages.find((item) => item.label === "30-second version") ?? messages[0] ?? null;
+  const beats = message ? await fetchBeats(message.id) : [];
+  return {
+    storyId: story.id,
+    messageId: message?.id ?? null,
+    storyTitle: story.title,
+    beats: beats.map((beat) => beat.text).filter(Boolean),
+  };
+}
+
+/** Studio dashboard: speaking time, lived-in topics/stories, last-week days. */
+export async function fetchStudioSnapshot(): Promise<StudioSnapshot> {
+  const [{ data: sessionRows, error: sessionError }, { data: storyRows, error: storyError }] = await Promise.all([
+    supabase.from("talk_sessions").select("story_id, duration_seconds, created_at").limit(5000),
+    supabase
+      .from("stories")
+      .select("id, domain_id, status, messages(count), domains(name)")
+      .neq("status", "archived")
+      .limit(2000),
+  ]);
+  if (sessionError) throw new Error(sessionError.message);
+  if (storyError) throw new Error(storyError.message);
+
+  const sessions = sessionRows ?? [];
+  const stories = storyRows ?? [];
+  const totalSeconds = sessions.reduce((sum, row) => sum + Math.max(0, Number(row.duration_seconds) || 0), 0);
+  const talkedStoryIds = new Set(
+    sessions.map((row) => row.story_id as string | null).filter((id): id is string => Boolean(id)),
+  );
+
+  const activeStories = stories.filter((row) => {
+    const messageCount = (one(row.messages as { count: number }[]) as { count: number } | null)?.count ?? 0;
+    return messageCount > 0 || talkedStoryIds.has(row.id as string);
+  });
+  const activeTopicIds = new Set(
+    activeStories.map((row) => row.domain_id as string | null).filter((id): id is string => Boolean(id)),
+  );
+
+  const titleByStory = new Map<string, string>();
+  for (const row of stories) {
+    const domain = one(row.domains as { name: string }[]) as { name: string } | null;
+    titleByStory.set(row.id as string, domain?.name || "Other");
+  }
+
+  const secondsByTopic = new Map<string, number>();
+  for (const row of sessions) {
+    const seconds = Math.max(0, Number(row.duration_seconds) || 0);
+    const storyId = row.story_id as string | null;
+    const name = storyId ? (titleByStory.get(storyId) ?? "Other") : "Free talk";
+    secondsByTopic.set(name, (secondsByTopic.get(name) ?? 0) + seconds);
+  }
+  const topicTime = [...secondsByTopic.entries()]
+    .map(([name, seconds]) => ({ name, seconds }))
+    .filter((item) => item.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds);
+
+  const lastSevenDays: StudioDaySeconds[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 6; i >= 0; i--) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - i);
+    lastSevenDays.push({ date: localDayKey(day), seconds: 0 });
+  }
+  const byDate = new Map(lastSevenDays.map((item) => [item.date, item]));
+  for (const row of sessions) {
+    const created = new Date(row.created_at as string);
+    const bucket = byDate.get(localDayKey(created));
+    if (bucket) bucket.seconds += Math.max(0, Number(row.duration_seconds) || 0);
+  }
+
+  return {
+    totalSeconds,
+    sessionCount: sessions.length,
+    activeTopics: activeTopicIds.size,
+    activeStories: activeStories.length,
+    topicTime,
+    lastSevenDays,
+  };
+}

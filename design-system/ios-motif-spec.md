@@ -10,8 +10,11 @@ Every number here was parsed out of a source file, not recalled. Sources:
   noted inline; its tints are iOS 14-era and are *not* used here).
 
 **This is a reference, not a token set.** `tokens.json` (Cobalt Editorial) stays the source of truth
-for color and type. Take the geometry, the material ladder, and the glass recipe from here — keep
-our accent.
+for color and type in the WEB app. The mobile app keeps a separate canonical runtime token module,
+`apps/mobile/src/design/mobile-tokens.ts`, because it renders the iOS system palette by default
+(light `#F2F2F7` / dark `#000` base, cobalt `#3B6EE1` accent, Newsreader serif) — its geometry, type
+scale, and shadows are defined there once and consumed by the mobile theme. Take the geometry, the
+material ladder, and the glass recipe from here — keep our accent.
 
 Device basis: **402 × 874 pt** (iPhone 16 Pro), frame radius **44**.
 

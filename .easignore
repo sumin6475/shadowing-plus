@@ -1,0 +1,78 @@
+# Keep EAS uploads focused on the mobile app. This file starts with the
+# repository and mobile ignore rules because EAS prioritizes .easignore over
+# .gitignore.
+
+# OS and editor files
+.DS_Store
+.obsidian/
+
+# Dependencies and generated output
+**/node_modules/
+/model/
+web/.next/
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/web-build/
+apps/mobile/tmp/
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.kotlin/
+apps/mobile/*.orig.*
+apps/mobile/*.tsbuildinfo
+apps/mobile/expo-env.d.ts
+apps/mobile/.metro-health-check*
+apps/mobile/npm-debug.*
+apps/mobile/yarn-debug.*
+apps/mobile/yarn-error.*
+apps/mobile/example/
+
+# Credentials and local environment
+.env*
+!apps/mobile/.env.example
+**/*.jks
+**/*.p8
+**/*.p12
+**/*.key
+**/*.mobileprovision
+**/*.pem
+
+# Local and generated diagnostics
+**/__pycache__/
+**/*.pyc
+**/e2e-screenshots/
+debug_*.json
+.vercel/
+/test.ts
+
+# Repository areas that are not mobile build inputs
+/.git/
+/.agents/
+/.claude/
+/.codex/
+/agent-workforce/
+/design-system/
+/docs/
+/extension/
+/media/
+/services/
+/supabase/
+/web/
+
+# Mobile-only documentation and design exploration
+/apps/mobile/docs/
+/apps/mobile/assets/icon-concepts/
+
+# Legacy starter assets that are not referenced by app.json or source. The
+# production export contains only the four retained font files below.
+/apps/mobile/assets/expo.icon/
+/apps/mobile/assets/fonts/Newsreader24pt-Regular.ttf
+/apps/mobile/assets/fonts/Inter24pt-SemiBold.ttf
+/apps/mobile/assets/fonts/Inter28pt-SemiBold.ttf
+/apps/mobile/assets/images/icon.png
+/apps/mobile/assets/images/logo-glow.png
+/apps/mobile/assets/images/expo-logo.png
+/apps/mobile/assets/images/expo-badge.png
+/apps/mobile/assets/images/expo-badge-white.png
+/apps/mobile/assets/images/react-logo*.png
+/apps/mobile/assets/images/tutorial-web.png
+/apps/mobile/assets/images/tabIcons/

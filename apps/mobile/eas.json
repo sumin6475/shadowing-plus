@@ -6,16 +6,41 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_USE_RN_FETCH": "1",
+        "EXPO_PUBLIC_PREVIEW_FEATURES": "1"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_USE_RN_FETCH": "1",
+        "EXPO_PUBLIC_PREVIEW_FEATURES": "1"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_USE_RN_FETCH": "1"
+      }
+    },
+    "testflight": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_USE_RN_FETCH": "1",
+        "EXPO_PUBLIC_PREVIEW_FEATURES": "1"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6799375053"
+      }
+    },
+    "testflight": {
+      "extends": "production"
+    }
   }
 }

@@ -1,0 +1,583 @@
+// practice.tsx — the phrase Practice hub and Quick Rehearsal.
+// Hub: quick solo rehearsal, or jump into a Talk with a linked story.
+// Rehearsal: mirror-style mini session — see the target phrase, record takes,
+// on-device STT checks whether the phrase actually came out.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+
+import { MirrorPreview } from "@/components/mirror-preview";
+import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
+import { useTheme } from "@/design/theme";
+import { BackBar, Badge, Card, Icon, Pill, Screen, Sect, Serif, Stagger, Wave } from "@/design/ui";
+import {
+  fetchPhraseSituations,
+  linkPhraseToSituation,
+  recordPhraseEvent,
+  type PhraseItem,
+  type PhraseSituationRef,
+} from "@/lib/phrases";
+import { fetchSituationChoices, type SituationChoice } from "@/lib/studio-model";
+import { useSpeechSession } from "@/hooks/use-speech-session";
+import type { Nav } from "./nav";
+
+const KIND_LABEL: Record<string, string> = {
+  phrase: "Expression",
+  phrasal_verb: "Phrasal verb",
+  pattern: "Pattern",
+  idiom: "Idiom",
+  word: "Word",
+};
+
+function PhraseSummaryCard({ p }: { p: PhraseItem }) {
+  const t = useTheme();
+  return (
+    <Card lg style={{ paddingHorizontal: 20, paddingVertical: 20 }}>
+      <Serif style={{ fontSize: 26, lineHeight: 33, color: t.colors.ink }}>{p.text}</Serif>
+      {p.translation ? (
+        <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 8 }}>{p.translation}</Text>
+      ) : null}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 14 }}>
+        <View style={{ minHeight: 28, borderRadius: 999, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", backgroundColor: t.colors.accS }}>
+          <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>{KIND_LABEL[p.kind] ?? "Expression"}</Text>
+        </View>
+        <Badge s={p.status} />
+      </View>
+    </Card>
+  );
+}
+
+// ── Practice hub ────────────────────────────────────────────────────────────
+export function PracticeHubScreen({ nav, item }: { nav: Nav; item?: PhraseItem }) {
+  const t = useTheme();
+  const [situations, setSituations] = useState<PhraseSituationRef[] | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Bumped on every open so the sheet below remounts: its search box, Situation list
+  // and in-flight link all start clean without a prop-to-state reset effect.
+  const [pickerSeq, setPickerSeq] = useState(0);
+  const p = item;
+
+  const load = useCallback(async () => {
+    if (!p || p.id === "sample") {
+      setSituations([]);
+      return;
+    }
+    try {
+      setSituations(await fetchPhraseSituations(p.id));
+    } catch {
+      setSituations([]);
+    }
+  }, [p]);
+  useEffect(() => {
+    // `load`'s no-phrase/sample branch clears the list synchronously, which
+    // react-hooks/set-state-in-effect flags when the effect body invokes it
+    // directly. Yielding one microtask first keeps the same load, the same
+    // trigger and the same deps — only the render-phase setState is gone.
+    void (async () => {
+      await Promise.resolve();
+      await load();
+    })();
+  }, [load]);
+
+  if (!p) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <Card style={{ alignItems: "center", paddingVertical: 26 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>This phrase couldn’t be opened.</Text>
+        </Card>
+      </Screen>
+    );
+  }
+
+  const talkWithSituation = (situation: PhraseSituationRef) => {
+    nav.startTalk({
+      ctx: situation.title,
+      situationId: situation.id,
+      prompt: `Try to use “${p.text}” in this situation.`,
+      from: "phrases",
+    });
+  };
+
+  return (
+    <>
+      <Screen bottomPad={54}>
+        <BackBar title="Practice" onBack={nav.pop} />
+        <Stagger>
+          <PhraseSummaryCard p={p} />
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => nav.push("rehearsal", { item: p })}
+            style={({ pressed }) => [
+              {
+                minHeight: 58,
+                borderRadius: 20,
+                backgroundColor: t.colors.accS,
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "row",
+                gap: 9,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Icon name="mic" s={18} w={2.1} c={t.colors.accD} />
+            <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.accD }}>Quick Practice</Text>
+          </Pressable>
+
+          <Sect
+            title="Related situations"
+            action="+ Add situation"
+            onAction={() => {
+              setPickerSeq((n) => n + 1);
+              setPickerOpen(true);
+            }}
+          />
+
+          {situations === null ? (
+            <View style={{ paddingVertical: 28, alignItems: "center" }}>
+              <ActivityIndicator color={t.colors.acc} />
+            </View>
+          ) : situations.length === 0 ? (
+            <Card style={{ alignItems: "center", paddingVertical: 24 }}>
+              <Text style={{ fontSize: 14.5, fontWeight: "700", color: t.colors.ink }}>No situations linked yet</Text>
+              <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 6, textAlign: "center", lineHeight: 19 }}>
+                Link a situation and practice this phrase inside it.
+              </Text>
+            </Card>
+          ) : (
+            <>
+              {situations.map((situation) => (
+                <Card key={situation.id} style={{ paddingVertical: 13, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                    <Icon name="sparkle" s={17} c={t.colors.accD} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }} numberOfLines={1}>{situation.title}</Text>
+                    <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>
+                      {situation.noteCount} note{situation.noteCount === 1 ? "" : "s"}
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Talk in “${situation.title}” using this phrase`}
+                    onPress={() => talkWithSituation(situation)}
+                    style={({ pressed }) => ({
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: t.colors.acc,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: pressed ? 0.8 : 1,
+                    })}
+                  >
+                    <Icon name="mic" s={17} c={t.colors.onAcc} />
+                  </Pressable>
+                </Card>
+              ))}
+              <Text style={{ textAlign: "center", fontSize: 12.5, color: t.colors.ink3 }}>
+                Start talking practice using the phrase
+              </Text>
+            </>
+          )}
+        </Stagger>
+      </Screen>
+      <AddSituationSheet
+        key={pickerSeq}
+        open={pickerOpen}
+        phrase={p}
+        linked={situations ?? []}
+        onClose={() => setPickerOpen(false)}
+        onLinked={() => {
+          setPickerOpen(false);
+          nav.notify("Situation linked");
+          void load();
+        }}
+      />
+    </>
+  );
+}
+
+// Bottom sheet: search all Situations, then link one to this Phrase.
+function AddSituationSheet({
+  open,
+  phrase,
+  linked,
+  onClose,
+  onLinked,
+}: {
+  open: boolean;
+  phrase: PhraseItem;
+  linked: PhraseSituationRef[];
+  onClose: () => void;
+  onLinked: () => void;
+}) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const [all, setAll] = useState<SituationChoice[] | null>(null);
+  const [q, setQ] = useState("");
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  // No query reset here: the parent keys this sheet by open count, so each open
+  // is a fresh mount with q already "". That kills the one-frame flash of the
+  // previous query that a post-await setQ("") caused, and leaves this effect with
+  // nothing but the fetch — which commits only after `await`, in its own render.
+  // The trade: `all` is null on reopen, so the spinner shows for the refetch
+  // instead of the previous list. Correct either way (linked stories are filtered
+  // out by linkedIds), and the list can have changed since the last open.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const next = await fetchSituationChoices();
+        if (alive) setAll(next);
+      } catch {
+        if (alive) setAll([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [open]);
+
+  const linkedIds = useMemo(() => new Set(linked.map((s) => s.id)), [linked]);
+  const choices = (all ?? []).filter(
+    (s) => !linkedIds.has(s.id) && (!q.trim() || s.title.toLowerCase().includes(q.trim().toLowerCase())),
+  );
+
+  const pick = async (story: SituationChoice) => {
+    if (savingId) return;
+    setSavingId(story.id);
+    try {
+      await linkPhraseToSituation(phrase.id, story.id, "learner");
+      onLinked();
+    } catch (e) {
+      Alert.alert("Couldn’t link", e instanceof Error ? e.message : "Try again.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <Modal visible={open} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      {/* Backdrop and sheet are separate views so a KeyboardAvoidingView can
+          sit between them; as one Pressable there was nowhere to put it and
+          the keyboard covered the search field and its results. */}
+      <View style={{ flex: 1 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(20,22,28,0.28)" }]}
+        onPress={onClose}
+      />
+      <KeyboardAvoidingView
+        pointerEvents="box-none"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1, justifyContent: "flex-end" }}
+      >
+        <Pressable
+          onPress={(event) => event.stopPropagation()}
+          style={{ maxHeight: "92%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 8 }}
+        >
+          <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 16 }} />
+          <Serif style={{ fontSize: 22, color: t.colors.ink, textAlign: "center" }}>Add to a story</Serif>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: t.colors.card, borderRadius: 999, height: 42, paddingHorizontal: 15, marginTop: 14, borderWidth: 0.5, borderColor: t.ring }}>
+            <Icon name="search" s={16} c={t.colors.ink3} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Find in situations"
+              placeholderTextColor={t.colors.ink3}
+              autoCorrect={false}
+              autoCapitalize="none"
+              style={{ flex: 1, minWidth: 0, paddingVertical: 0, fontSize: 15, color: t.colors.ink }}
+            />
+          </View>
+          <View style={{ marginTop: 8 }}>
+            {all === null ? (
+              <View style={{ paddingVertical: 28, alignItems: "center" }}>
+                <ActivityIndicator color={t.colors.acc} />
+              </View>
+            ) : choices.length === 0 ? (
+              <Text style={{ fontSize: 13.5, color: t.colors.ink3, textAlign: "center", paddingVertical: 24, lineHeight: 20 }}>
+                {q.trim() ? "No situation matches that." : "Every situation is already linked."}
+              </Text>
+            ) : (
+              (() => {
+                // fetchSituationChoices is newest-first, so the top slice is "Recents".
+                const sectioned = !q.trim() && choices.length > 3;
+                const row = (story: SituationChoice, first: boolean) => (
+                  <Pressable
+                    key={story.id}
+                    onPress={() => void pick(story)}
+                    style={({ pressed }) => ({
+                      minHeight: 52,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      paddingHorizontal: 4,
+                      borderTopWidth: first ? 0 : 1,
+                      borderTopColor: t.colors.sep,
+                      backgroundColor: pressed ? t.colors.soft : "transparent",
+                      opacity: savingId && savingId !== story.id ? 0.5 : 1,
+                    })}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }} numberOfLines={1}>{story.title}</Text>
+                      {story.topicName ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, marginTop: 2 }}>{story.topicName}</Text> : null}
+                    </View>
+                    {savingId === story.id ? <ActivityIndicator color={t.colors.acc} /> : <Icon name="plus" s={16} w={2.2} c={t.colors.accD} />}
+                  </Pressable>
+                );
+                const header = (label: string) => (
+                  <Text key={label} style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: t.colors.ink3, marginTop: 12, marginBottom: 4 }}>
+                    {label}
+                  </Text>
+                );
+                // No cap: the sheet scrolls, and a hard 10 meant story 11 was
+                // unreachable whenever the search box was empty.
+                if (!sectioned) return choices.map((story, i) => row(story, i === 0));
+                return [
+                  header("RECENTS"),
+                  ...choices.slice(0, 3).map((story, i) => row(story, i === 0)),
+                  header("ALL STORIES"),
+                  ...choices.slice(3).map((story, i) => row(story, i === 0)),
+                ];
+              })()
+            )}
+          </View>
+          <Pill tone="ghost" onPress={onClose} style={{ alignSelf: "center", marginTop: 14 }}>
+            Cancel
+          </Pill>
+        </Pressable>
+      </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Quick Rehearsal ─────────────────────────────────────────────────────────
+const COACH_LINES = [
+  "Picture yourself using this, then say it out loud twice.",
+  "Mumble it until it comes out without looking.",
+  "Say it slow once, then at full speed.",
+];
+
+/** Loose containment: did the phrase come out in the take? */
+function usedPhrase(transcript: string, phrase: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
+  const tr = norm(transcript);
+  const ph = norm(phrase);
+  return ph.length > 0 && tr.includes(ph);
+}
+
+export function QuickRehearsalScreen({
+  nav,
+  item,
+  onDone,
+}: {
+  nav: Nav;
+  item?: PhraseItem;
+  /** Embedded use (e.g. inside the review sheet): called instead of nav.pop. */
+  onDone?: () => void;
+}) {
+  const t = useTheme();
+  const speech = useSpeechSession();
+  const [takes, setTakes] = useState(0);
+  const [lastTake, setLastTake] = useState<string | null>(null);
+  const [hit, setHit] = useState(false);
+  const p = item;
+
+  // Local replay of the most recent take. `speech.audioUri` is cleared by the
+  // speech hook whenever a new take starts, so the player follows take-by-take.
+  const replay = useAudioPlayer(speech.audioUri, { keepAudioSessionActive: true });
+  const replayStatus = useAudioPlayerStatus(replay);
+  useEffect(() => {
+    return registerPlaybackStopper(() => {
+      try {
+        replay.pause();
+      } catch {
+        // Native player already released — nothing to pause.
+      }
+    });
+  }, [replay]);
+
+  const toggleRecord = async () => {
+    if (!p) return;
+    if (speech.recognizing) {
+      const text = speech.stop();
+      setTakes((n) => n + 1);
+      setLastTake(text || "");
+      if (usedPhrase(text, p.text)) setHit(true);
+      return;
+    }
+    // Starting another take pauses + rewinds the previous one before the speech
+    // hook clears its URI.
+    try {
+      replay.pause();
+    } catch {
+      // Native player already released — nothing to pause.
+    }
+    replay.seekTo(0).catch(() => {});
+    setLastTake(null);
+    await speech.start();
+  };
+
+  const toggleReplay = async () => {
+    if (!replayStatus.isLoaded) return;
+    if (replayStatus.playing) {
+      replay.pause();
+      return;
+    }
+    if (replayStatus.duration > 0 && replayStatus.currentTime >= replayStatus.duration) replay.seekTo(0);
+    await prepareSpeakerPlayback();
+    replay.play();
+  };
+
+  const done = () => {
+    speech.stop();
+    if (p && p.id !== "sample" && takes > 0) {
+      void recordPhraseEvent({
+        phraseItemId: p.id,
+        event: hit ? "used" : "retrieved",
+        evidence: { source: "quick_rehearsal", takes },
+      }).catch(() => {});
+    }
+    if (onDone) onDone();
+    else nav.pop();
+    if (takes > 0) nav.notify(hit ? "It came out!" : "Rehearsal done");
+  };
+
+  if (!p) {
+    return (
+      <Screen>
+        <BackBar onBack={nav.pop} />
+        <Card style={{ alignItems: "center", paddingVertical: 26 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>This phrase couldn’t be opened.</Text>
+        </Card>
+      </Screen>
+    );
+  }
+
+  const coach = COACH_LINES[takes % COACH_LINES.length];
+
+  return (
+    <Screen bottomPad={54} scrollEnabled={false} style={{ flexGrow: 1 }}>
+      <BackBar title="Quick Rehearsal" onBack={done} />
+
+      <Card style={{ paddingVertical: 15, paddingHorizontal: 18 }}>
+        <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.7, color: t.colors.accD }}>TARGET PHRASE</Text>
+        <Serif style={{ fontSize: 22, lineHeight: 28, color: t.colors.ink, marginTop: 6 }}>{p.text}</Serif>
+        {p.translation ? <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 4 }}>{p.translation}</Text> : null}
+      </Card>
+
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 22 }}>
+        <View
+          style={[
+            {
+              width: 250,
+              height: 250,
+              borderRadius: 125,
+              overflow: "hidden",
+              backgroundColor: "#000",
+              alignItems: "center",
+              justifyContent: "center",
+            },
+            speech.recognizing ? t.shadowLg : null,
+          ]}
+        >
+          <MirrorPreview scrim />
+          {speech.recognizing ? (
+            <Wave n={18} active h={40} color="rgba(255,255,255,0.9)" />
+          ) : (
+            <>
+              <Icon name="mic" s={30} w={1.8} c="rgba(255,255,255,0.85)" />
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>Mirror</Text>
+            </>
+          )}
+        </View>
+        <View style={{ minHeight: 64, paddingHorizontal: 26, justifyContent: "center" }}>
+          {speech.recognizing ? (
+            <Text numberOfLines={2} style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, textAlign: "center" }}>
+              {speech.transcript || "Listening…"}
+            </Text>
+          ) : lastTake !== null ? (
+            <View style={{ alignItems: "center", gap: 6 }}>
+              {hit ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Icon name="check" s={14} w={2.6} c={t.colors.accD} />
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: t.colors.accD }}>The phrase came out!</Text>
+                </View>
+              ) : null}
+              <Text numberOfLines={2} style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink3, textAlign: "center", fontStyle: lastTake ? "normal" : "italic" }}>
+                {lastTake || "No words were captured. Try once more."}
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, textAlign: "center" }}>“{coach}”</Text>
+          )}
+          {speech.error ? (
+            <Text style={{ fontSize: 12.5, color: t.colors.warn, textAlign: "center", marginTop: 6 }}>{speech.error}</Text>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={{ gap: 10, paddingBottom: 6 }}>
+        {takes > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={replayStatus.playing ? "Pause your take" : "Play your take"}
+            disabled={!replayStatus.isLoaded}
+            onPress={() => void toggleReplay()}
+            style={({ pressed }) => ({
+              height: 52,
+              borderRadius: 18,
+              backgroundColor: t.colors.acc,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: 9,
+              opacity: !replayStatus.isLoaded ? 0.55 : pressed ? 0.85 : 1,
+            })}
+          >
+            {!replayStatus.isLoaded ? (
+              <ActivityIndicator color={t.colors.onAcc} />
+            ) : (
+              <Icon name={replayStatus.playing ? "pause" : "play"} s={18} c={t.colors.onAcc} />
+            )}
+            <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.onAcc }}>
+              {!replayStatus.isLoaded ? "Preparing your take…" : replayStatus.playing ? "Pause" : "Play your take"}
+            </Text>
+          </Pressable>
+        ) : null}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <Pill tone="card" onPress={() => void toggleRecord()} style={{ minWidth: 132, justifyContent: "center" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {/* Record dot: a 14px non-text fill, so it stays on the literal red
+                  rather than t.colors.warn. Non-text contrast only needs 3:1 and
+                  #E5484D already clears it at 3.91:1 — retinting would shift the
+                  design for no accessibility gain. Error TEXT uses the token. */}
+              <View
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: speech.recognizing ? 3 : 7,
+                  backgroundColor: "#E5484D",
+                }}
+              />
+              <Text style={{ fontSize: 16, fontWeight: "700", color: t.colors.ink }}>{speech.recognizing ? "Stop" : "Record"}</Text>
+            </View>
+          </Pill>
+          <Pill onPress={done} style={{ minWidth: 132, justifyContent: "center" }}>
+            Done
+          </Pill>
+        </View>
+      </View>
+    </Screen>
+  );
+}

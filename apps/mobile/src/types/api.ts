@@ -113,3 +113,65 @@ export interface Job {
   created_at: string;
   updated_at: string;
 }
+
+// Response shape of the Supabase talk-diagnose Edge Function. One improvable
+// coaching "moment" the AI surfaced from a Speak session transcript.
+export interface TalkMoment {
+  /** ≤4 words naming what this moment is about. */
+  label: string;
+  /** A verbatim span copied from the transcript. */
+  said: string;
+  /** One of the ten bracketed professional-speaking pain-point tags. */
+  diagnosisTag?: string;
+  /** A concrete recommendation beginning with "I would suggest". */
+  action?: string;
+  /** Two or three concise evidence sentences supporting the recommendation. */
+  explanation?: string;
+  /** The single polished improved sentence, in the learner's voice. */
+  want: string;
+  /** Combined fallback grounds for app builds predating structured coaching. */
+  why?: string;
+  /** Deprecated compatibility fields; new diagnoses always leave these empty. */
+  example?: string;
+  exampleWhy?: string;
+  /** Deprecated compatibility field; separated coaching always returns null. */
+  phraseItemId: string | null;
+  /** Deprecated compatibility field; separated coaching always returns generated. */
+  source: "saved" | "generated";
+  sourceLabel: string | null;
+}
+
+// Independent response from talk-phrase-suggest. Every language field comes
+// from the owned phrase_items row; the model supplies only the validated id,
+// verbatim transcript evidence, and retrieval rationale.
+export interface TalkPhraseSuggestion {
+  phraseItemId: string;
+  text: string;
+  meaning: string;
+  usageNote: string;
+  sourceLabel: string;
+  linkedToStory: boolean;
+  said: string;
+  why: string;
+}
+
+/** Owned Phrase Bank rows the learner already produced in this transcript. */
+export interface TalkPhraseUsedMatch {
+  phraseItemId: string;
+  text: string;
+  said: string;
+  score: number;
+}
+
+// Help for a moment the learner tapped "Stuck" during a Speak session and jotted
+// a quick note (often in their native language) about what they wanted to say
+// but couldn't. talk-stuck turns each note into the natural English expression.
+// A SEPARATE analysis from TalkMoment; nothing is persisted.
+export interface StuckHelp {
+  /** Timestamp in the session, "m:ss" — echoes the note's timestamp. */
+  at: string;
+  /** The natural English way to say what they noted (≤14 words). */
+  phrase: string;
+  /** One example sentence that uses `phrase`. */
+  example: string;
+}
