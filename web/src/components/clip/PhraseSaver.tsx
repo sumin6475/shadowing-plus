@@ -22,7 +22,7 @@ type SavedItem = {
   id: string;
   text: string;
   kind: string;
-  meaning_ko: string | null;
+  meaning: string | null;
   usage_note: string | null;
   status: "pending" | "ready" | "failed";
 };
@@ -171,7 +171,7 @@ export default function PhraseSaver() {
           {phase.alreadySaved && <p className="phrase-pop-flag">Already in your Phrase Bank.</p>}
           {phase.item.status === "ready" ? (
             <>
-              {phase.item.meaning_ko && <p className="phrase-pop-meaning">{phase.item.meaning_ko}</p>}
+              {phase.item.meaning && <p className="phrase-pop-meaning">{phase.item.meaning}</p>}
               {phase.item.usage_note && <p className="phrase-pop-note">{phase.item.usage_note}</p>}
             </>
           ) : (

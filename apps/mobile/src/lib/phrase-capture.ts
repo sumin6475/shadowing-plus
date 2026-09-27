@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { firstLanguage } from "./first-language";
 import { requireAiProcessingConsent } from "./ai-consent";
 import type { PhraseKind } from "./phrases";
 
@@ -47,7 +48,12 @@ async function invokePhraseCapture(
   unavailableCopy: string,
 ): Promise<PhraseCaptureDraft> {
   await requireAiProcessingConsent();
-  const { data, error } = await supabase.functions.invoke<CaptureResponse>("phrase-capture", { body });
+  // The gloss and the context translation come back in the learner's own
+  // language, so the function has to be told which one that is — the server has
+  // no way to know (L1 lives on the device / in user metadata, not in a column).
+  const { data, error } = await supabase.functions.invoke<CaptureResponse>("phrase-capture", {
+    body: { ...body, first_language: firstLanguage() },
+  });
   if (error) throw new Error(await readFunctionError(error, unavailableCopy));
   return {
     contextText: data?.context_text?.trim() ?? "",

@@ -1,22 +1,26 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, Text, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, useColorScheme, View } from "react-native";
+import { Text } from "@/design/text";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
+import { SERIF } from "@/design/mobile-tokens";
 import { usePostHog } from "posthog-react-native";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { AiProcessingConsentPrompt } from "@/lib/ai-consent";
 import { PostHogAuthBridge, PostHogGate, PostHogScreenTracker } from "@/lib/posthog";
 import { ThemeProvider, useTheme } from "@/design/theme";
+import { CaptureProvider } from "@/design-capture/provider";
 import { loadFirstLanguage } from "@/lib/first-language";
 import { loadEnglishLevel } from "@/lib/english-level";
 import { loadReminders } from "@/lib/reminders";
 import { loadPhrasesPerDay } from "@/lib/daily-phrases";
 import { loadTalkFocus } from "@/lib/talk-focus";
+import { loadTalkHintSource } from "@/lib/talk-hint-source";
 import { loadThemePref } from "@/lib/theme-pref";
 import {
   importOnboardingDraft,
@@ -50,20 +54,22 @@ function RootNavigator() {
   const [importAttempt, setImportAttempt] = useState(0);
 
   // Saylo design-system fonts, loaded at runtime (expo-font is already in the
-  // dev client, so no native rebuild). Newsreader = editorial serif hero; Inter
-  // (per weight — RN needs an explicit family per static weight) for UI text.
+  // dev client, so no native rebuild). Pretendard, one family per static
+  // weight, is the UI face (design/text.tsx applies it); Instrument Serif is
+  // the display serif.
   const [fontsLoaded] = useFonts({
-    Newsreader: require("../../assets/fonts/Newsreader36pt-Regular.ttf"),
-    Inter: require("../../assets/fonts/Inter18pt-Regular.ttf"),
-    "Inter-Medium": require("../../assets/fonts/Inter18pt-Medium.ttf"),
-    "Inter-SemiBold": require("../../assets/fonts/Inter18pt-SemiBold.ttf"),
+    Pretendard: require("../../assets/fonts/Pretendard-Regular.otf"),
+    "Pretendard-Medium": require("../../assets/fonts/Pretendard-Medium.otf"),
+    "Pretendard-SemiBold": require("../../assets/fonts/Pretendard-SemiBold.otf"),
+    "Pretendard-Bold": require("../../assets/fonts/Pretendard-Bold.otf"),
+    InstrumentSerif: require("../../assets/fonts/InstrumentSerif-Regular.ttf"),
   });
 
   // Load saved first language + talk-focus before first render so greetings
   // and Speak diagnosis use them.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
-    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref()]).finally(() => setPrefsLoaded(true));
+    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadTalkHintSource(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref()]).finally(() => setPrefsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -132,7 +138,7 @@ function RootNavigator() {
       .catch((error) => {
         if (!active) return;
         setImportState("error");
-        setImportError(error instanceof Error ? error.message : "We couldn’t save your first story.");
+        setImportError(error instanceof Error ? error.message : "We couldn’t save your first Speaking Note.");
       });
     return () => {
       active = false;
@@ -230,15 +236,15 @@ function ImportingStory({ error, onRetry }: { error: string | null; onRetry: () 
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: t.colors.bg }}>
       {error ? null : <ActivityIndicator size="large" color={t.colors.acc} />}
-      <Text style={{ marginTop: 22, fontFamily: "Newsreader", fontSize: 32, textAlign: "center", color: t.colors.ink }}>
-        {error ? "Your story is still here." : "Adding your first story…"}
+      <Text style={{ marginTop: 22, fontFamily: SERIF, fontSize: 32, textAlign: "center", color: t.colors.ink }}>
+        {error ? "Your Speaking Note is still here." : "Adding your first Speaking Note…"}
       </Text>
       <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, textAlign: "center", color: t.colors.ink2 }}>
         {error ?? "We’re saving the beats, phrase, and your first Talk."}
       </Text>
       {error ? (
         <Pressable onPress={onRetry} style={{ marginTop: 22, minHeight: 50, minWidth: 160, paddingHorizontal: 24, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: t.colors.acc }}>
-          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Try again</Text>
+          <Text style={{ color: t.colors.onAcc, fontSize: 16, fontWeight: "700" }}>Try again</Text>
         </Pressable>
       ) : null}
     </View>
@@ -251,17 +257,19 @@ export default function RootLayout() {
     // GestureHandlerRootView must sit at the very top for gesture-driven UI
     // (swipe-to-delete rows) to receive touches. flex:1 so it fills the screen.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <PostHogGate>
-          <AuthProvider>
-            <AiProcessingConsentPrompt />
-            <PostHogAuthBridge />
-            <PostHogScreenTracker />
-            <RootNavigator />
-            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-          </AuthProvider>
-        </PostHogGate>
-      </SafeAreaProvider>
+      <CaptureProvider>
+        <SafeAreaProvider>
+          <PostHogGate>
+            <AuthProvider>
+              <AiProcessingConsentPrompt />
+              <PostHogAuthBridge />
+              <PostHogScreenTracker />
+              <RootNavigator />
+              <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            </AuthProvider>
+          </PostHogGate>
+        </SafeAreaProvider>
+      </CaptureProvider>
     </GestureHandlerRootView>
   );
 }

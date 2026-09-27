@@ -3,20 +3,29 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { passwordChecks } from "@/lib/password-policy";
 import "./login.css";
 
 type Mode = "signin" | "signup";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Password policy for new accounts, shown as a live checklist on signup. */
-function passwordChecks(pw: string) {
-  return {
-    length: pw.length >= 8,
-    case: /[a-z]/.test(pw) && /[A-Z]/.test(pw),
-    number: /\d/.test(pw),
-  };
+/**
+ * Sends the reset email via the implicit flow so the link carries its own
+ * tokens (#access_token=…). The PKCE default would only work if the email is
+ * opened in this same browser — no good when it's read on a phone.
+ */
+function sendResetEmail(email: string) {
+  const implicit = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false } },
+  );
+  return implicit.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/auth/reset-password`,
+  });
 }
 
 function LoginForm() {
@@ -35,6 +44,7 @@ function LoginForm() {
     () => searchParams.get("error"),
   );
   const [confirmSent, setConfirmSent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
 
   const safeNext = next.startsWith("/") ? next : "/app";
@@ -94,6 +104,23 @@ function LoginForm() {
     router.refresh();
   }
 
+  async function handleForgotPassword() {
+    if (!emailValid) {
+      setEmailTouched(true);
+      setError("Enter your email above, then click Forgot password.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error } = await sendResetEmail(email.trim());
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setResetSent(true);
+  }
+
   async function handleGoogle() {
     setBusy(true);
     setError(null);
@@ -124,6 +151,22 @@ function LoginForm() {
             Almost there — check <b>{email}</b> to confirm your account, then
             come back and sign in.
           </p>
+        ) : resetSent ? (
+          <>
+            <p className="login-sent">
+              We sent a password reset link to <b>{email}</b>. Open it to set a
+              new password.
+            </p>
+            <p className="login-switch">
+              <button
+                type="button"
+                className="login-link"
+                onClick={() => setResetSent(false)}
+              >
+                Back to sign in
+              </button>
+            </p>
+          </>
         ) : (
           <>
             <button
@@ -167,6 +210,16 @@ function LoginForm() {
                 className="login-input"
                 required
               />
+              {mode === "signin" && (
+                <button
+                  type="button"
+                  className="login-link login-forgot"
+                  onClick={handleForgotPassword}
+                  disabled={busy}
+                >
+                  Forgot password?
+                </button>
+              )}
               {mode === "signup" && (
                 <ul className="login-reqs" aria-label="Password requirements">
                   <li className={pw.length ? "met" : ""}>

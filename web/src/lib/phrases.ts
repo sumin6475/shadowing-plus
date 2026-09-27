@@ -11,9 +11,20 @@ import { recordUsage } from "@/lib/usage";
 
 const MODEL = "gpt-4o-mini";
 
-/** Columns returned to any Phrase Bank client. Keep in sync with the UI types. */
+/**
+ * Columns returned to any Phrase Bank client. Keep in sync with the UI types.
+ *
+ * `meaning` is the real column now (migration 030 renamed the learner-language
+ * gloss away from the Korean-only `meaning_ko`). `meaning_ko` stays in the
+ * SELECT for exactly one release so already-shipped readers of this response
+ * keep working: a web bundle still in flight during the auto-deploy, and the
+ * founder Chrome extension, which reads this same constant through
+ * api/extension/phrases and is not deployed from this repo. Drop the alias here
+ * BEFORE running 031_phrase_meaning_contract.sql — once that drops the column,
+ * selecting it is a PostgREST 42703 and the phrase list goes empty.
+ */
 export const PHRASE_SELECT_COLUMNS =
-  "id, text, kind, meaning_ko, usage_note, start_time, end_time, status, created_at";
+  "id, text, kind, meaning, meaning_ko, usage_note, start_time, end_time, status, created_at";
 
 export const PHRASE_KINDS = ["word", "phrasal_verb", "pattern", "idiom", "phrase"] as const;
 export type PhraseKind = (typeof PHRASE_KINDS)[number];
@@ -86,7 +97,10 @@ async function explainPhrase(input: {
   const kind = asPhraseText(parsed.kind, 32);
   return {
     kind: (PHRASE_KINDS as readonly string[]).includes(kind) ? kind : "phrase",
-    // `meaning` is the current JSON key; `meaning_ko` tolerates an older reply.
+    // Keys of the MODEL's JSON reply, not DB columns: the prompt above asks for
+    // `meaning`, and `meaning_ko` only tolerates a reply shaped by an older
+    // prompt. Unrelated to the phrase_items column rename in migration 030 —
+    // this fallback stays until no cached/older prompt reply is possible.
     meaning: asPhraseText(parsed.meaning ?? parsed.meaning_ko, 500),
     note: asPhraseText(parsed.usage_note, 500),
   };
@@ -179,7 +193,7 @@ export async function savePhrase(
     });
     const { data: ready, error: updateError } = await db
       .from("phrase_items")
-      .update({ kind: explanation.kind, meaning_ko: explanation.meaning, usage_note: explanation.note, status: "ready", updated_at: new Date().toISOString() })
+      .update({ kind: explanation.kind, meaning: explanation.meaning, usage_note: explanation.note, status: "ready", updated_at: new Date().toISOString() })
       .eq("id", created.id)
       .select(PHRASE_SELECT_COLUMNS)
       .single();
@@ -233,7 +247,7 @@ export async function saveManualPhrase(
       user_id: userId,
       text,
       normalized_text: normalized,
-      meaning_ko: meaning || null,
+      meaning: meaning || null,
       usage_note: note || null,
       source_context: { source: "manual" },
       status: "ready",

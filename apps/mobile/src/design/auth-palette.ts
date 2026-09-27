@@ -1,8 +1,11 @@
 // auth-palette.ts — palette slots for the auth surfaces (sign-in, password
 // reset), derived from the canonical Theme (design/mobile-tokens.ts) so they
-// match the iOS-gray design. No token values are defined here: colors come
-// from buildTheme() and `danger` is a component-level functional red kept
-// inline by design (not part of the brand token ladder).
+// match the iOS-gray design. No token values are defined here: every slot maps
+// to a buildTheme() token. The submit button swaps its FILL between `accent`
+// and `accentSoft`, so it has two legal foregrounds: `onAccent` on `accent`
+// (dark-mode accent is the light navy, where white fails AA) and
+// `onAccentSoft` on `accentSoft` — the same pairing ui.tsx's `soft` Pill tone
+// uses. `danger` is the AA-safe `warn` token because it renders as error text.
 import { useColorScheme } from "react-native";
 
 import { buildTheme } from "./theme";
@@ -19,6 +22,8 @@ export function useAuthPalette() {
     text4: t.colors.ink3,
     accent: t.colors.acc,
     accentSoft: t.colors.accS,
-    danger: "#E5484D",
+    onAccent: t.colors.onAcc,
+    onAccentSoft: t.colors.accD,
+    danger: t.colors.warn,
   };
 }

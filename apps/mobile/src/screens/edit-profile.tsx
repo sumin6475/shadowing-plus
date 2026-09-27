@@ -2,10 +2,12 @@
 // user_metadata). First language and Feedback focus are their own screens and
 // persist locally, like Reminders.
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { hairline, useTheme } from "@/design/theme";
+import { BRAND, Gradients } from "@/design/mobile-tokens";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { PHRASES_PER_DAY_OPTIONS, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
@@ -28,7 +30,7 @@ import {
   TALK_FOCUS_OPTIONS,
   type TalkFocus,
 } from "@/lib/talk-focus";
-import { Avatar, BackBar, Card, Chip, Icon, Pill, Screen } from "@/design/ui";
+import { Avatar, BackBar, Card, Chip, Icon, Pill, Screen, gradientStops } from "@/design/ui";
 import { avatarUrlFromMetadata, clearUploadedAvatar, pickAndUploadAvatar } from "@/lib/profile-photo";
 import type { Nav } from "./nav";
 
@@ -136,7 +138,7 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
               borderColor: t.colors.bg,
             }}
           >
-            {photoBusy ? <ActivityIndicator color="#fff" /> : <Icon name="camera" s={14} c="#fff" />}
+            {photoBusy ? <ActivityIndicator color={t.colors.onAcc} /> : <Icon name="camera" s={14} c={t.colors.onAcc} />}
           </View>
         </Pressable>
         <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.accD, marginTop: 10 }}>Change photo</Text>
@@ -162,9 +164,102 @@ export function EditProfileScreen({ nav }: { nav: Nav }) {
         />
       </Card>
 
-      {error ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center" }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center" }}>{error}</Text> : null}
       <Pill full icon="check" onPress={saving ? undefined : save} style={{ opacity: saving ? 0.6 : 1 }}>
-        {saving ? <ActivityIndicator color="#fff" /> : "Save"}
+        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : "Save"}
+      </Pill>
+    </Screen>
+  );
+}
+
+function passwordChecks(password: string) {
+  return {
+    length: password.length >= 8,
+    case: /[a-z]/.test(password) && /[A-Z]/.test(password),
+    number: /\d/.test(password),
+  };
+}
+
+/** Set a new sign-in password for the signed-in learner (also adds email
+ *  sign-in to an Apple/Google account). */
+export function ChangePasswordScreen({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const { updatePassword } = useAuth();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const checks = passwordChecks(password);
+  const valid = checks.length && checks.case && checks.number;
+  const match = password.length > 0 && password === confirm;
+  const canSave = valid && match && !saving;
+
+  const input = { fontSize: 16, color: t.colors.ink, marginTop: 8, padding: 0 };
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updatePassword(password);
+      Alert.alert("Password updated", "Use your new password next time you sign in.");
+      nav.pop();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t update your password.");
+      setSaving(false);
+    }
+  };
+
+  const requirement = (met: boolean, label: string) => (
+    <Text key={label} style={{ fontSize: 13, lineHeight: 20, color: met ? t.colors.accD : t.colors.ink3 }}>
+      {met ? "✓" : "○"} {label}
+    </Text>
+  );
+
+  return (
+    <Screen bottomPad={40}>
+      <BackBar title="Change password" onBack={nav.pop} />
+
+      <Card>
+        <Text style={fieldLabel(t.colors.accD)}>NEW PASSWORD</Text>
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          placeholder="New password"
+          placeholderTextColor={t.colors.ink3}
+          autoCapitalize="none"
+          secureTextEntry
+          textContentType="newPassword"
+          editable={!saving}
+          style={input}
+        />
+        <Text style={[fieldLabel(t.colors.accD), { marginTop: 18 }]}>REPEAT</Text>
+        <TextInput
+          value={confirm}
+          onChangeText={setConfirm}
+          placeholder="Repeat new password"
+          placeholderTextColor={t.colors.ink3}
+          autoCapitalize="none"
+          secureTextEntry
+          textContentType="newPassword"
+          editable={!saving}
+          onSubmitEditing={() => void save()}
+          returnKeyType="done"
+          style={input}
+        />
+      </Card>
+
+      <View style={{ paddingHorizontal: 8 }} accessibilityLabel="Password requirements">
+        {requirement(checks.length, "At least 8 characters")}
+        {requirement(checks.case, "Upper & lowercase letters")}
+        {requirement(checks.number, "At least one number")}
+        {requirement(match, "Both passwords match")}
+      </View>
+
+      {error ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center" }}>{error}</Text> : null}
+      <Pill full icon="check" onPress={canSave ? () => void save() : undefined} style={{ opacity: canSave ? 1 : 0.6 }}>
+        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : "Save new password"}
       </Pill>
     </Screen>
   );
@@ -241,7 +336,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -288,14 +383,14 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
         </View>
         <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, marginTop: 14 }}>You may have meant</Text>
         <LinearGradient
-          colors={["#A9C7FF", "#D5E3FF", "#7BA7F6"]}
+          colors={gradientStops(Gradients.brandEdge)}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
             marginTop: 8,
             borderRadius: t.r,
             padding: 1.5,
-            shadowColor: "#3D6FE0",
+            shadowColor: BRAND.main,
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.2,
             shadowRadius: 18,
@@ -303,7 +398,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
           }}
         >
           <LinearGradient
-            colors={["#3D6FE0", "#6C9BF2"]}
+            colors={gradientStops(Gradients.brandLift)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{ borderRadius: t.r - 1.5, padding: t.padc, overflow: "hidden" }}
@@ -316,7 +411,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
                 borderRadius: 60,
                 top: -72,
                 right: -32,
-                backgroundColor: "rgba(255,255,255,0.14)",
+                backgroundColor: "rgba(255,255,255,0.10)",
               }}
             />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
@@ -378,7 +473,7 @@ export function EnglishLevelScreen({ nav }: { nav: Nav }) {
               </View>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -431,7 +526,7 @@ export function ThemeScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -502,7 +597,7 @@ export function DailySpeakingGoalScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
@@ -510,7 +605,7 @@ export function DailySpeakingGoalScreen({ nav }: { nav: Nav }) {
             </Pressable>
           );
         })}
-        {error ? <Text style={{ fontSize: 13, color: "#E5484D", paddingVertical: 10 }}>{error}</Text> : null}
+        {error ? <Text style={{ fontSize: 13, color: t.colors.warn, paddingVertical: 10 }}>{error}</Text> : null}
       </Card>
     </Screen>
   );
@@ -556,7 +651,7 @@ export function PhrasesPerDayScreen({ nav }: { nav: Nav }) {
               </Text>
               {selected ? (
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c="#fff" />
+                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
                 </View>
               ) : (
                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />

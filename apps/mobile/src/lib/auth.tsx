@@ -23,6 +23,9 @@ if (!(Platform.OS === "web" && typeof window === "undefined")) {
 
 type SocialProvider = "apple" | "google";
 
+/** Must be in Supabase Auth → URL Configuration → Redirect URLs. */
+const PASSWORD_RESET_URL = "https://shadowing-plus.vercel.app/auth/reset-password?from=app";
+
 interface AuthState {
   /** The current Supabase session, or null when signed out. */
   session: Session | null;
@@ -184,8 +187,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return "signed_in";
       },
       async resetPassword(email) {
-        const redirectTo = Linking.createURL("auth/callback");
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+        // Lands on the web reset form, not a `shadowingplus://` deep link:
+        // mail apps' in-app browsers (Gmail etc.) can't open a custom scheme
+        // and showed a blank page. The learner sets the password there, then
+        // signs in here. The deep-link recovery path above stays for links
+        // sent by older builds.
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: PASSWORD_RESET_URL,
+        });
         if (error) throw error;
       },
       async updatePassword(password) {

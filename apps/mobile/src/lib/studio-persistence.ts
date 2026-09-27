@@ -1,7 +1,7 @@
-// speaking-world.ts — the Speaking World tree (migration 020), RLS-scoped via
-// the anon+session client. Domain → Story → Message → beats. The initial world
-// is seeded client-side on first use (a migration can't seed per-user).
-import { storyPromptFor } from "./story-prompts";
+// Persistence adapter for the canonical Studio model. The deployed migration
+// still names these rows domains/stories/messages/talk_sessions. Keep those
+// identifiers here so screens and product-facing modules use current terms.
+import { situationPromptFor } from "./situation-prompts";
 import { supabase } from "./supabase";
 
 export interface Domain {
@@ -154,7 +154,7 @@ export async function seedInitialWorld(): Promise<void> {
       title,
       status: "draft",
       position: j,
-      summary: storyPromptFor(title),
+      summary: situationPromptFor(title),
     }));
     if (rows.length) await supabase.from("stories").insert(rows);
   }
@@ -240,13 +240,19 @@ export async function fetchStory(
 
 /** Persist the learner-edited description on a story card. Empty string clears it. */
 export async function updateStorySummary(id: string, summary: string | null): Promise<void> {
-  const { error } = await supabase.from("stories").update({ summary }).eq("id", id);
+  const { error } = await supabase
+    .from("stories")
+    .update({ summary, updated_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) throw new Error(error.message);
 }
 
 /** Move a story to another topic. */
 export async function updateStoryDomain(id: string, domainId: string): Promise<void> {
-  const { error } = await supabase.from("stories").update({ domain_id: domainId }).eq("id", id);
+  const { error } = await supabase
+    .from("stories")
+    .update({ domain_id: domainId, updated_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) throw new Error(error.message);
 }
 
@@ -285,14 +291,66 @@ export async function fetchBeats(messageId: string): Promise<Beat[]> {
   }));
 }
 
+/**
+ * Create a Topic at the end of the list. Leaving `position` at its DEFAULT 0
+ * would tie with the first seeded topic and `order("position")` breaks ties
+ * arbitrarily, so a new topic would jump around between loads. Archived topics
+ * keep their slot, so the max is taken across every row.
+ */
 export async function createDomain(name: string): Promise<string | null> {
-  const { data, error } = await supabase.from("domains").insert({ name: name.trim() }).select("id").single();
+  const last = await supabase
+    .from("domains")
+    .select("position")
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (last.error) throw new Error(last.error.message);
+  const position = ((last.data?.position as number | null) ?? -1) + 1;
+  const { data, error } = await supabase
+    .from("domains")
+    .insert({ name: name.trim(), position })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
   return (data?.id as string) ?? null;
 }
 
+/** Rename a Topic. `domains.updated_at` has no trigger, so writers set it. */
+export async function renameDomain(id: string, name: string): Promise<void> {
+  const { error } = await supabase
+    .from("domains")
+    .update({ name: name.trim(), updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Archive a Topic. Soft, like archiveStory: a hard delete would SET NULL every
+ * situation's domain_id, and messages.domain_id is NOT NULL ON DELETE RESTRICT
+ * (028), so Postgres would refuse the delete anyway.
+ *
+ * Archiving the last open topic is refused on purpose — fetchDomains re-seeds
+ * the five starter topics whenever it reads back an empty list, so emptying the
+ * world would silently repopulate it with topics the learner never chose. The
+ * message is written to be shown verbatim.
+ */
+export async function archiveDomain(id: string): Promise<void> {
+  const { data, error } = await supabase.from("domains").select("id").eq("archived", false);
+  if (error) throw new Error(error.message);
+  const open = (data ?? []).map((row) => row.id as string);
+  if (!open.includes(id)) return;
+  if (open.length <= 1) {
+    throw new Error("This is your last topic. Keep at least one — an empty Studio restarts from the starter topics.");
+  }
+  const result = await supabase
+    .from("domains")
+    .update({ archived: true, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (result.error) throw new Error(result.error.message);
+}
+
 export async function createStory(domainId: string | null, title: string): Promise<string | null> {
-  const prompt = storyPromptFor(title);
+  const prompt = situationPromptFor(title);
   const { data, error } = await supabase
     .from("stories")
     .insert({ domain_id: domainId, title: title.trim(), status: "draft", ...(prompt ? { summary: prompt } : {}) })
@@ -385,9 +443,14 @@ export async function deleteTalkSession(id: string): Promise<void> {
  * beats, and any talk_sessions linked to it (all FK ON DELETE CASCADE). The
  * story list already filters out status='archived', matching the domain
  * `archived` flag pattern. Reversible by flipping the status back.
+ *
+ * `updated_at` is set by hand: nothing in the schema maintains it for stories.
  */
 export async function archiveStory(id: string): Promise<void> {
-  const { error } = await supabase.from("stories").update({ status: "archived" }).eq("id", id);
+  const { error } = await supabase
+    .from("stories")
+    .update({ status: "archived", updated_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) throw new Error(error.message);
 }
 

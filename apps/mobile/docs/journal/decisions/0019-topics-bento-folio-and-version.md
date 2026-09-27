@@ -1,5 +1,8 @@
 # ADR 0019 — Topics를 노드 그래프 대신 Bento folio로, Message를 Version으로
 
+> **Document status: Outdated.** The Version IA was replaced by Speaking Notes.
+> **Reviewed:** 2026-09-14 · **Replacement:** [`../../../../../docs/information-architecture.md`](../../../../../docs/information-architecture.md)
+
 - **날짜**: 2026-08-23
 - **스텝**: Topics 아이덴티티 리디자인
 - **상태**: accepted

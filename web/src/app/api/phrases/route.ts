@@ -20,6 +20,14 @@ type PhraseInput = {
   text?: unknown;
   // Cold-start manual entry (no source media). Presence of `manual` routes here.
   manual?: unknown;
+  /** Learner-language gloss. The column is `meaning` as of migration 030. */
+  meaning?: unknown;
+  /**
+   * @deprecated Pre-030 key. Accepted for one release only, so a page bundle
+   * already loaded when this deploy lands does not 400 on submit. Remove this
+   * field and the `?? body.meaning_ko` fallback below in the release after the
+   * one that ships `meaning` — well before 031_phrase_meaning_contract.sql.
+   */
   meaning_ko?: unknown;
   usage_note?: unknown;
 };
@@ -45,7 +53,7 @@ export async function POST(req: NextRequest) {
   if (!body) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
   const result = body.manual
-    ? await saveManualPhrase(supabaseAdmin(), userId, body.text, body.meaning_ko, body.usage_note)
+    ? await saveManualPhrase(supabaseAdmin(), userId, body.text, body.meaning ?? body.meaning_ko, body.usage_note)
     : await savePhrase(supabaseAdmin(), userId, body.segmentId, body.text);
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });

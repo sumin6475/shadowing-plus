@@ -1,5 +1,8 @@
 # ADR 0002 — Speaking World 데이터 모델 (새 트리, islands 재사용 아님)
 
+> **Document status: Historical.** This decision explains the physical schema retained behind the current Studio persistence adapter.
+> **Reviewed:** 2026-09-14 · **Current model:** [`../../../../../CONTEXT.md`](../../../../../CONTEXT.md)
+
 - **날짜**: 2026-08-05
 - **스텝**: Speak/Topics 실데이터화 — 설계
 - **상태**: accepted

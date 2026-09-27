@@ -147,7 +147,11 @@ type PhraseRow = {
   id: string;
   text: string;
   kind: PhraseKind | null;
-  meaning_ko: string | null;
+  // 030 (EXPAND) renames meaning_ko → meaning. Both keys are optional because
+  // only one of them is on the row: `meaning` normally, `meaning_ko` on the
+  // pre-030 fallback rung. Read the gloss through mapPhraseRow, not directly.
+  meaning?: string | null;
+  meaning_ko?: string | null;
   usage_note: string | null;
   learner_note?: string | null;
   source_context: unknown;
@@ -287,22 +291,52 @@ function isMissingScheduleColumn(
   );
 }
 
-const PHRASE_SELECT_CORE =
-  "id, text, kind, meaning_ko, usage_note, source_context, start_time, end_time, video_id, segment_id, created_at, learning_status, due_at, interval_days, ease_factor, lapses, last_reviewed_at, last_practiced_at, tags";
-const PHRASE_SELECT_CORE_NO_SCHEDULE =
-  "id, text, kind, meaning_ko, usage_note, source_context, start_time, end_time, video_id, segment_id, created_at, learning_status, due_at, interval_days, ease_factor, lapses, last_reviewed_at";
+/**
+ * Migration 030 is the EXPAND half of renaming `phrase_items.meaning_ko` to
+ * `meaning`: it adds the new column, backfills it, and a trigger mirrors the
+ * two until 031 (CONTRACT) drops the old name. Every read and write below now
+ * names `meaning`.
+ *
+ * Migrations are applied by hand, so a shipped build can still reach a
+ * database that has not run 030 yet. PostgREST then answers 42703 on reads and
+ * PGRST204 on writes, which would empty the Phrase Bank and fail every
+ * capture — so each entry point retries once under the pre-030 name. Delete
+ * this axis, and every `meaning_ko` rung below, together with 031.
+ */
+type MeaningColumn = "meaning" | "meaning_ko";
 
-/** All reusable phrases, newest first. Bookmarks are intentionally excluded. */
-export async function fetchPhrases(): Promise<PhraseItem[]> {
+/** Does this error say the database has not run 030 yet?
+ *
+ *  Message-specific on purpose. The sibling helpers above treat any 42703 as
+ *  *their* missing column, so a code-only test here would hijack the
+ *  is_favorite / learner_note / schedule ladders and retry them on a rung that
+ *  cannot help. The `\b` keeps `meaning_ko` out, so an error about the dropped
+ *  column after 031 never sends us back to it. */
+function isMissingMeaningColumn(
+  error: { code?: string; message?: string } | null,
+): boolean {
+  return Boolean(error && /\bmeaning\b/.test(error.message ?? ""));
+}
+
+const phraseSelectNoSchedule = (meaning: MeaningColumn) =>
+  `id, text, kind, ${meaning}, usage_note, source_context, start_time, end_time, video_id, segment_id, created_at, learning_status, due_at, interval_days, ease_factor, lapses, last_reviewed_at`;
+const phraseSelectCore = (meaning: MeaningColumn) =>
+  `${phraseSelectNoSchedule(meaning)}, last_practiced_at, tags`;
+
+/** One pass down the column ladder, for a given gloss column name. */
+async function loadPhraseRows(meaning: MeaningColumn): Promise<{
+  data: unknown[] | null;
+  error: { code?: string; message: string } | null;
+}> {
   // 022 adds favorites, 024 adds learner_note. History should still load if
   // a shared database has not applied one of those migrations yet.
   const selects = [
-    `${PHRASE_SELECT_CORE}, learner_note, is_favorite, video:videos(id, title)`,
-    `${PHRASE_SELECT_CORE}, is_favorite, video:videos(id, title)`,
-    `${PHRASE_SELECT_CORE}, learner_note, video:videos(id, title)`,
-    `${PHRASE_SELECT_CORE}, video:videos(id, title)`,
-    `${PHRASE_SELECT_CORE_NO_SCHEDULE}, learner_note, is_favorite, video:videos(id, title)`,
-    `${PHRASE_SELECT_CORE_NO_SCHEDULE}, video:videos(id, title)`,
+    `${phraseSelectCore(meaning)}, learner_note, is_favorite, video:videos(id, title)`,
+    `${phraseSelectCore(meaning)}, is_favorite, video:videos(id, title)`,
+    `${phraseSelectCore(meaning)}, learner_note, video:videos(id, title)`,
+    `${phraseSelectCore(meaning)}, video:videos(id, title)`,
+    `${phraseSelectNoSchedule(meaning)}, learner_note, is_favorite, video:videos(id, title)`,
+    `${phraseSelectNoSchedule(meaning)}, video:videos(id, title)`,
   ];
   let data: unknown[] | null = null;
   let error: { code?: string; message: string } | null = null;
@@ -318,12 +352,27 @@ export async function fetchPhrases(): Promise<PhraseItem[]> {
       break;
     }
     error = result.error;
+    // The gloss column is the caller's axis: every rung here names it, so
+    // descending them cannot bring a missing `meaning` back.
+    if (isMissingMeaningColumn(error)) break;
     const missingColumn =
       isMissingFavoriteColumn(error) ||
       isMissingLearnerNoteColumn(error) ||
       isMissingScheduleColumn(error);
     if (!missingColumn) break;
   }
+  return { data, error };
+}
+
+/** All reusable phrases, newest first. Bookmarks are intentionally excluded. */
+export async function fetchPhrases(): Promise<PhraseItem[]> {
+  let loaded = await loadPhraseRows("meaning");
+  // Pre-030 database: run the whole ladder again under the old gloss name
+  // rather than handing the Phrase Bank an empty list.
+  if (loaded.error && isMissingMeaningColumn(loaded.error)) {
+    loaded = await loadPhraseRows("meaning_ko");
+  }
+  const { data, error } = loaded;
 
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as PhraseRow[];
@@ -336,13 +385,19 @@ export async function fetchPhrases(): Promise<PhraseItem[]> {
  *  PhraseDetail from a bare id instead of an already-fetched object). */
 export async function fetchPhraseById(id: string): Promise<PhraseItem | null> {
   if (!id || id === "sample") return null;
-  const { data, error } = await supabase
-    .from("phrase_items")
-    .select(`${PHRASE_SELECT_CORE}, learner_note, is_favorite, video:videos(id, title)`)
-    .eq("id", id)
-    .limit(1);
+  const load = (meaning: MeaningColumn) =>
+    supabase
+      .from("phrase_items")
+      .select(`${phraseSelectCore(meaning)}, learner_note, is_favorite, video:videos(id, title)`)
+      .eq("id", id)
+      .limit(1);
+  let result = await load("meaning");
+  if (result.error && isMissingMeaningColumn(result.error)) result = await load("meaning_ko");
+  const { data, error } = result;
   if (error) throw new Error(error.message);
-  const row = (data ?? [])[0] as PhraseRow | undefined;
+  // The interpolated gloss column (030) defeats supabase-js's type-level select
+  // parser, so the row shape is asserted through `unknown`.
+  const row = ((data ?? []) as unknown as PhraseRow[])[0];
   return row ? mapPhraseRow(row) : null;
 }
 
@@ -356,7 +411,7 @@ function mapPhraseRow(row: PhraseRow): PhraseItem {
   return {
     id: row.id,
     text: row.text,
-    translation: row.meaning_ko ?? null,
+    translation: row.meaning ?? row.meaning_ko ?? null,
     kind: row.kind ?? "phrase",
     status: displayStatus(learningStatus, dueAt),
     source: sourceLabel(context, video?.title ?? null),
@@ -430,7 +485,9 @@ type CaptureContextRow = {
   id: string;
   text: string;
   kind: PhraseKind | null;
-  meaning_ko: string | null;
+  // Only one of these is on the row — see the 030 note above PhraseRow.
+  meaning?: string | null;
+  meaning_ko?: string | null;
   usage_note: string | null;
   source_context: unknown;
   created_at: string;
@@ -448,20 +505,32 @@ export async function fetchPhrasesForCaptureContext(
   const fingerprint = captureContextFingerprint(storedText);
   if (!storedText || !fingerprint) return [];
 
-  const fields =
-    "id, text, kind, meaning_ko, usage_note, source_context, created_at";
-  const [fingerprinted, exactLegacy] = await Promise.all([
-    supabase
-      .from("phrase_items")
-      .select(fields)
-      .eq("status", "ready")
-      .contains("source_context", { context_fingerprint: fingerprint }),
-    supabase
-      .from("phrase_items")
-      .select(fields)
-      .eq("status", "ready")
-      .contains("source_context", { context_text: storedText }),
-  ]);
+  let meaning: MeaningColumn = "meaning";
+  const fields = (column: MeaningColumn) =>
+    `id, text, kind, ${column}, usage_note, source_context, created_at`;
+  const loadPair = (column: MeaningColumn) =>
+    Promise.all([
+      supabase
+        .from("phrase_items")
+        .select(fields(column))
+        .eq("status", "ready")
+        .contains("source_context", { context_fingerprint: fingerprint }),
+      supabase
+        .from("phrase_items")
+        .select(fields(column))
+        .eq("status", "ready")
+        .contains("source_context", { context_text: storedText }),
+    ]);
+  let [fingerprinted, exactLegacy] = await loadPair(meaning);
+  // Pre-030 database: re-ask for the pair under the old gloss name, and keep
+  // that name for the bounded legacy sweep below.
+  if (
+    isMissingMeaningColumn(fingerprinted.error) ||
+    isMissingMeaningColumn(exactLegacy.error)
+  ) {
+    meaning = "meaning_ko";
+    [fingerprinted, exactLegacy] = await loadPair(meaning);
+  }
   if (fingerprinted.error) throw new Error(fingerprinted.error.message);
   if (exactLegacy.error) throw new Error(exactLegacy.error.message);
 
@@ -469,7 +538,7 @@ export async function fetchPhrasesForCaptureContext(
   for (const row of [
     ...(fingerprinted.data ?? []),
     ...(exactLegacy.data ?? []),
-  ] as CaptureContextRow[])
+  ] as unknown as CaptureContextRow[])
     byId.set(row.id, row);
 
   // A model may change punctuation or line breaks when the same old screenshot
@@ -477,12 +546,12 @@ export async function fetchPhrasesForCaptureContext(
   if (byId.size === 0) {
     const legacy = await supabase
       .from("phrase_items")
-      .select(fields)
+      .select(fields(meaning))
       .eq("status", "ready")
       .order("created_at", { ascending: false })
       .limit(500);
     if (legacy.error) throw new Error(legacy.error.message);
-    for (const row of (legacy.data ?? []) as CaptureContextRow[]) {
+    for (const row of (legacy.data ?? []) as unknown as CaptureContextRow[]) {
       const context = sourceContext(row.source_context);
       if (captureContextFingerprint(context.context_text ?? "") === fingerprint)
         byId.set(row.id, row);
@@ -501,7 +570,7 @@ export async function fetchPhrasesForCaptureContext(
       id: row.id,
       text: row.text,
       kind: row.kind ?? "phrase",
-      meaning: row.meaning_ko?.trim() ?? "",
+      meaning: (row.meaning ?? row.meaning_ko)?.trim() ?? "",
       usageNote: row.usage_note?.trim() ?? "",
     }));
 }
@@ -597,7 +666,7 @@ export async function createPhrase(
       if (fingerprintError) throw new Error(fingerprintError.message);
     }
     if (input.storyId)
-      await linkPhraseToStory(existingId, input.storyId, "capture");
+      await linkPhraseToSituation(existingId, input.storyId, "capture");
     return { result: "already", id: existingId };
   }
 
@@ -615,12 +684,13 @@ export async function createPhrase(
     said: input.said?.replace(/\s+/g, " ").trim().slice(0, 500) || undefined,
   };
 
+  const gloss = input.meaning?.trim().slice(0, 500) || null;
   const row = {
     user_id: userId,
     text,
     normalized_text: normalized,
     kind: input.kind ?? "phrase",
-    meaning_ko: input.meaning?.trim().slice(0, 500) || null,
+    meaning: gloss,
     usage_note: input.usageNote?.trim().slice(0, 500) || null,
     learner_note: input.learnerNote?.trim().slice(0, 500) || null,
     source_context: context,
@@ -633,16 +703,29 @@ export async function createPhrase(
     due_at: new Date().toISOString(),
     interval_days: 0,
   };
+  let payload: Record<string, unknown> = row;
   let insert = await supabase
     .from("phrase_items")
-    .insert(row)
+    .insert(payload)
     .select("id")
     .single();
   if (isMissingLearnerNoteColumn(insert.error)) {
-    const { learner_note: _note, ...withoutNote } = row;
+    const { learner_note: _note, ...withoutNote } = payload;
+    payload = withoutNote;
     insert = await supabase
       .from("phrase_items")
-      .insert(withoutNote)
+      .insert(payload)
+      .select("id")
+      .single();
+  }
+  // Pre-030 database: `meaning` does not exist there, so re-send the gloss
+  // under the old name instead of failing the capture outright.
+  if (isMissingMeaningColumn(insert.error)) {
+    const { meaning: _meaning, ...rest } = payload;
+    payload = { ...rest, meaning_ko: gloss };
+    insert = await supabase
+      .from("phrase_items")
+      .insert(payload)
       .select("id")
       .single();
   }
@@ -651,7 +734,7 @@ export async function createPhrase(
     throw new Error(error?.message ?? "Couldn’t save this phrase.");
 
   const id = data.id as string;
-  if (input.storyId) await linkPhraseToStory(id, input.storyId, "capture");
+  if (input.storyId) await linkPhraseToSituation(id, input.storyId, "capture");
   // Saving stays instant. The cloud pronunciation is generated in the
   // background and first-tap generation remains the fallback if this fails.
   void prewarmPhraseSpeech(id).catch(() => {});
@@ -720,16 +803,26 @@ export async function updatePhraseDetails(
 ): Promise<void> {
   const text = input.text.replace(/\s+/g, " ").trim().slice(0, 240);
   if (!text) throw new Error("Enter a phrase to save.");
-  const { error } = await supabase
+  const gloss = input.meaning?.trim().slice(0, 500) || null;
+  const patch = {
+    text,
+    normalized_text: normalizePhrase(text),
+    kind: input.kind,
+    meaning: gloss,
+    usage_note: input.usageNote?.trim().slice(0, 500) || null,
+  };
+  let { error } = await supabase
     .from("phrase_items")
-    .update({
-      text,
-      normalized_text: normalizePhrase(text),
-      kind: input.kind,
-      meaning_ko: input.meaning?.trim().slice(0, 500) || null,
-      usage_note: input.usageNote?.trim().slice(0, 500) || null,
-    })
+    .update(patch)
     .eq("id", id);
+  // Pre-030 database: re-send the gloss under the old column name.
+  if (isMissingMeaningColumn(error)) {
+    const { meaning: _meaning, ...rest } = patch;
+    ({ error } = await supabase
+      .from("phrase_items")
+      .update({ ...rest, meaning_ko: gloss })
+      .eq("id", id));
+  }
   if (error?.code === "23505")
     throw new Error("That phrase is already in your Phrase Bank.");
   if (error) throw new Error(error.message);
@@ -737,14 +830,14 @@ export async function updatePhraseDetails(
   void prewarmPhraseEmbedding(id);
 }
 
-/** Stories a phrase is linked to — the Practice hub's "Related stories". */
-export interface PhraseStoryRef {
+/** Situations a Phrase is linked to in the Practice hub. */
+export interface PhraseSituationRef {
   id: string;
   title: string;
-  versionCount: number;
+  noteCount: number;
 }
 
-export async function fetchPhraseStories(phraseItemId: string): Promise<PhraseStoryRef[]> {
+export async function fetchPhraseSituations(phraseItemId: string): Promise<PhraseSituationRef[]> {
   const { data, error } = await supabase
     .from("phrase_story_links")
     .select("stories(id, title, status, messages(count))")
@@ -757,26 +850,38 @@ export async function fetchPhraseStories(phraseItemId: string): Promise<PhraseSt
     .map((story) => ({
       id: story.id,
       title: story.title || "Untitled story",
-      versionCount: (one(story.messages as { count: number }[] | { count: number } | null) as { count: number } | null)?.count ?? 0,
+      noteCount: (one(story.messages as { count: number }[] | { count: number } | null) as { count: number } | null)?.count ?? 0,
     }));
 }
 
 /** Phrases captured into a story — the “useful language” strip on the folio. */
-export async function fetchStoryPhrases(
+export async function fetchPhrasesForSituation(
   storyId: string,
 ): Promise<Pick<PhraseItem, "id" | "text" | "translation">[]> {
-  const { data, error } = await supabase
-    .from("phrase_story_links")
-    .select("phrase_items(id, text, meaning_ko, status)")
-    .eq("story_id", storyId);
-  if (error) throw new Error(error.message);
-  return (data ?? [])
-    .map((row) => one(row.phrase_items as { id: string; text: string; meaning_ko: string | null; status: string }[] | { id: string; text: string; meaning_ko: string | null; status: string } | null))
-    .filter((item): item is { id: string; text: string; meaning_ko: string | null; status: string } => Boolean(item) && item?.status === "ready")
-    .map((item) => ({ id: item.id, text: item.text, translation: item.meaning_ko }));
+  type StoryPhraseRow = {
+    id: string;
+    text: string;
+    // Only one of these is on the row — see the 030 note above PhraseRow.
+    meaning?: string | null;
+    meaning_ko?: string | null;
+    status: string;
+  };
+  const load = (meaning: MeaningColumn) =>
+    supabase
+      .from("phrase_story_links")
+      .select(`phrase_items(id, text, ${meaning}, status)`)
+      .eq("story_id", storyId);
+  let result = await load("meaning");
+  if (result.error && isMissingMeaningColumn(result.error)) result = await load("meaning_ko");
+  if (result.error) throw new Error(result.error.message);
+  const rows = (result.data as unknown as Record<string, unknown>[] | null) ?? [];
+  return rows
+    .map((row) => one(row.phrase_items as StoryPhraseRow[] | StoryPhraseRow | null))
+    .filter((item): item is StoryPhraseRow => Boolean(item) && item?.status === "ready")
+    .map((item) => ({ id: item.id, text: item.text, translation: item.meaning ?? item.meaning_ko ?? null }));
 }
 
-export async function linkPhraseToStory(
+export async function linkPhraseToSituation(
   phraseItemId: string,
   storyId: string,
   source: "learner" | "capture" | "suggested" | "used" = "learner",

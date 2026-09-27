@@ -1,6 +1,4 @@
-// Today tab — hosted by the shell's TabHost (base screen + pushed details).
-import { TabHost } from "@/shell";
-
-export default function TodayRoute() {
-  return <TabHost tab="today" />;
+import { Redirect } from "expo-router";
+export default function IndexRoute() {
+  return <Redirect href="/(app)/phrases" />;
 }

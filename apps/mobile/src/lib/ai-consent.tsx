@@ -85,8 +85,18 @@ export function AiProcessingConsentPrompt() {
       [
         { text: "Not now", style: "cancel", onPress: () => save(false) },
         {
+          // Reading the policy is not a decision. Saving "denied" here opted
+          // people out permanently — consent then matched the current version,
+          // so this prompt never returned and every AI feature failed with a
+          // generic "try again" they could not act on. Leave consent unset so
+          // the prompt returns on the next launch; until then AI stays off, and
+          // the Speak result screen now names consent as the reason and links
+          // straight to Profile -> Privacy.
           text: "Privacy Policy",
-          onPress: () => save(false, () => void openLegalUrl(PRIVACY_POLICY_URL)),
+          onPress: () => {
+            promptedUserRef.current = null;
+            void openLegalUrl(PRIVACY_POLICY_URL);
+          },
         },
         { text: "Allow", onPress: () => save(true) },
       ],

@@ -1,7 +1,9 @@
 // phrases.tsx — Phrase Bank tab: list + chart, detail, review flow. Backed by
 // the canonical `phrase_items` collection; transcript bookmarks are separate.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/design/text";
+import { SERIF } from "@/design/mobile-tokens";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -11,6 +13,7 @@ import { usePostHog } from "posthog-react-native";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Badge, Card, Chip, Header, Icon, Pill, Screen, Serif, Stagger, StatTile, SwipeRow, confirmDelete, type IconName } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
+import { PREVIEW_FEATURES } from "@/lib/release-flags";
 import { cumulativeSeries, deletePhrase, fetchPhraseById, fetchPhrases, matchesStageFilter, nextReviewInterval, PHRASE_STAGE_FILTERS, phraseIsDue, setPhraseFavorite, setPhraseStage, submitVerdict, updatePhraseDetails, updatePhraseNote, type LearningStatus, type PhraseItem, type PhraseKind, type PhraseStageFilterId, type SrsVerdict } from "@/lib/phrases";
 import { promptPhraseStage, shouldPromptStage } from "@/lib/daily-phrases";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
@@ -549,6 +552,10 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
         : p.source === "Pasted text"
           ? "From pasted text"
           : "Added manually";
+  // Library is a dev/preview-only surface, so in a release build there is no
+  // clip screen to open: the id we are allowed to link to is null, and the
+  // source falls back to the static line inside the In-context card.
+  const clipLinkId = PREVIEW_FEATURES ? p.videoId : null;
   const prepareSpeech = speech.prepare;
 
   useEffect(() => {
@@ -607,7 +614,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
     setMenuOpen(false);
     confirmDelete({
       title: "Delete this phrase?",
-      message: "It will be removed from your Phrase Bank and linked stories.",
+      message: "It will be removed from your Phrase Bank and linked Situations.",
       deleteLabel: "Delete phrase",
       onConfirm: () => {
         void (async () => {
@@ -684,7 +691,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                 opacity: pressed ? 0.82 : 1,
               })}
             >
-              {speech.loadingId === p.id ? <ActivityIndicator color="#fff" /> : <Icon name={speech.speakingId === p.id ? "pause" : "speaker"} s={23} c="#fff" />}
+              {speech.loadingId === p.id ? <ActivityIndicator color={t.colors.onAcc} /> : <Icon name={speech.speakingId === p.id ? "pause" : "speaker"} s={23} c={t.colors.onAcc} />}
             </Pressable>
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 18 }}>
@@ -699,7 +706,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
           </View>
         </Card>
 
-        {p.context || p.videoId ? (
+        {p.context || clipLinkId ? (
           <>
             <Serif style={{ fontSize: 27, lineHeight: 32, color: t.colors.ink, marginTop: 6, paddingHorizontal: 4 }}>In context</Serif>
             {p.context ? (
@@ -719,7 +726,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                     <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>{p.contextTranslation}</Text>
                   </>
                 ) : null}
-                {!p.videoId ? (
+                {!clipLinkId ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 17 }}>
                     <Icon name={sourceIcon} s={17} c={t.colors.ink3} />
                     <Text style={{ flex: 1, fontSize: 13.5, color: t.colors.ink3 }}>{sourceCopy}</Text>
@@ -727,17 +734,20 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                 ) : null}
               </View>
             ) : null}
-            {p.videoId ? (
-              // Library beta: the clip row IS the source — tap to open the clip
-              // and listen there. Removing the Library feature removes this row
-              // (LibraryClipRow lives in library.tsx) in one cut.
+            {clipLinkId ? (
+              // Library beta (dev/preview only): the clip row IS the source —
+              // tap to open the clip and listen there. It is hidden rather than
+              // disabled in release builds, because a row that still looks
+              // tappable and goes nowhere reads worse than no row at all.
+              // Removing the Library feature removes this row in one cut
+              // (LibraryClipRow lives in library.tsx).
               <LibraryClipRow
                 title={p.source}
                 meta={`${formatDuration(p.startSec)} · clip`}
                 onPress={() => {
                   speech.stop();
                   player.stop();
-                  nav.push("libItem", { id: p.videoId, title: p.source });
+                  nav.push("libItem", { id: clipLinkId, title: p.source });
                 }}
               />
             ) : null}
@@ -773,7 +783,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                 placeholderTextColor={t.colors.ink3}
                 style={{ fontSize: 15, lineHeight: 22, marginTop: 10, color: t.colors.ink, minHeight: 70, padding: 13, borderRadius: 15, backgroundColor: t.colors.card, borderWidth: 1, borderColor: t.ring }}
               />
-              {memoErr ? <Text style={{ fontSize: 12, color: "#E5484D", marginTop: 6 }}>Couldn’t save. Try again.</Text> : null}
+              {memoErr ? <Text style={{ fontSize: 12, color: t.colors.warn, marginTop: 6 }}>Couldn’t save. Try again.</Text> : null}
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 9 }}>
                 <Pill tone="soft" small onPress={memoDirty && !savingMemo ? () => void saveMemo() : undefined} style={{ opacity: memoDirty && !savingMemo ? 1 : 0.5 }}>
                   {savingMemo ? <ActivityIndicator color={t.colors.accD} /> : "Save note"}
@@ -839,7 +849,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                       justifyContent: "center",
                     }}
                   >
-                    <Text style={{ fontSize: 18, fontWeight: "700", color: selected ? "#fff" : t.colors.ink }}>{index + 1}</Text>
+                    <Text style={{ fontSize: 18, fontWeight: "700", color: selected ? t.colors.onAcc : t.colors.ink }}>{index + 1}</Text>
                   </View>
                   {completed ? (
                     <View
@@ -936,10 +946,26 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
       </Modal>
 
       <Modal visible={editOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => { if (!savingEdit) setEditOpen(false); }}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(20,22,28,0.28)", justifyContent: "flex-end" }} onPress={() => { if (!savingEdit) setEditOpen(false); }}>
+        {/* The backdrop and the sheet are separate now. They used to be one
+            Pressable doing both jobs, which left nowhere to put a
+            KeyboardAvoidingView — so the keyboard (this sheet autofocuses, so
+            it is always up) covered the phrase field the sheet exists to
+            edit. */}
+        <View style={{ flex: 1 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(20,22,28,0.28)" }]}
+            onPress={() => { if (!savingEdit) setEditOpen(false); }}
+          />
+          <KeyboardAvoidingView
+            pointerEvents="box-none"
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1, justifyContent: "flex-end" }}
+          >
           <Pressable
             onPress={(event) => event.stopPropagation()}
-            style={{ maxHeight: "84%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 12 }}
+            style={{ maxHeight: "92%", backgroundColor: t.colors.bg, borderTopLeftRadius: 38, borderTopRightRadius: 38, paddingHorizontal: 22, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 12 }}
           >
             <View style={{ width: 40, height: 5, borderRadius: 999, backgroundColor: t.colors.soft, alignSelf: "center", marginBottom: 18 }} />
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -950,7 +976,7 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
                 autoFocus
                 placeholder="Phrase"
                 placeholderTextColor={t.colors.ink3}
-                style={{ fontSize: 29, lineHeight: 36, fontFamily: "Newsreader", color: t.colors.ink, marginTop: 10, padding: 0 }}
+                style={{ fontSize: 29, lineHeight: 36, fontFamily: SERIF, color: t.colors.ink, marginTop: 10, padding: 0 }}
               />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 15 }}>
                 {PHRASE_KINDS.map((entry) => <Chip key={entry.value} active={editKind === entry.value} onPress={() => setEditKind(entry.value)}>{entry.label}</Chip>)}
@@ -960,14 +986,15 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
               <TextInput value={editMeaning} onChangeText={setEditMeaning} placeholder="Meaning" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
               <Text style={{ fontSize: 12, fontWeight: "700", letterSpacing: 0.6, color: t.colors.accD, marginTop: 19 }}>HOW IT’S USED</Text>
               <TextInput value={editNote} onChangeText={setEditNote} multiline placeholder="How this phrase is used" placeholderTextColor={t.colors.ink3} style={{ minHeight: 62, fontSize: 15, lineHeight: 22, color: t.colors.ink, marginTop: 8, padding: 0 }} />
-              {editError ? <Text style={{ fontSize: 13, color: "#E5484D", textAlign: "center", marginTop: 12 }}>{editError}</Text> : null}
+              {editError ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center", marginTop: 12 }}>{editError}</Text> : null}
               <Pill onPress={savingEdit ? undefined : () => void saveEdit()} style={{ width: "100%", alignSelf: "stretch", marginTop: 22, opacity: savingEdit ? 0.6 : 1 }}>
-                {savingEdit ? <ActivityIndicator color="#fff" /> : "Save changes"}
+                {savingEdit ? <ActivityIndicator color={t.colors.onAcc} /> : "Save changes"}
               </Pill>
               <Pill tone="ghost" onPress={savingEdit ? undefined : () => setEditOpen(false)} style={{ alignSelf: "center", marginTop: 4 }}>Cancel</Pill>
             </ScrollView>
           </Pressable>
-        </Pressable>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
     </>
   );
@@ -1139,15 +1166,15 @@ export function ReviewFlow({ item, queue, nav }: { item?: PhraseItem; queue?: Ph
                     opacity: pressed ? 0.8 : 1,
                   })}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#fff" }}>Hint</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: t.colors.onAcc }}>Hint</Text>
                 </Pressable>
               ) : null}
 
               {phase === "answer" ? (
                 <View style={{ alignItems: "center", gap: 14 }}>
-                  <Serif style={{ fontSize: 27, lineHeight: 34, color: "#fff", textAlign: "center" }}>{p.text}</Serif>
+                  <Serif style={{ fontSize: 27, lineHeight: 34, color: t.colors.onAcc, textAlign: "center" }}>{p.text}</Serif>
                   {p.translation ? (
-                    <Text style={{ fontSize: 15, lineHeight: 22, color: "rgba(255,255,255,0.88)", textAlign: "center" }}>{p.translation}</Text>
+                    <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.onAcc, opacity: 0.88, textAlign: "center" }}>{p.translation}</Text>
                   ) : null}
                   <Pressable
                     accessibilityRole="button"
@@ -1157,7 +1184,7 @@ export function ReviewFlow({ item, queue, nav }: { item?: PhraseItem; queue?: Ph
                       width: 56,
                       height: 56,
                       borderRadius: 28,
-                      backgroundColor: "#fff",
+                      backgroundColor: t.colors.onAcc,
                       alignItems: "center",
                       justifyContent: "center",
                       marginTop: 8,
@@ -1195,7 +1222,7 @@ export function ReviewFlow({ item, queue, nav }: { item?: PhraseItem; queue?: Ph
             {phase === "answer" ? (
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <Pill
-                  tone="white"
+                  tone="card"
                   full
                   onPress={() => {
                     speech.stop();

@@ -9,10 +9,9 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
+import { Text, TextInput } from "@/design/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Motif, TypeScale } from "@/constants/cobalt";
@@ -109,7 +108,12 @@ export default function ResetPasswordScreen() {
                 { backgroundColor: canSubmit ? c.accent : c.accentSoft, opacity: pressed ? 0.9 : 1 },
               ]}
             >
-              {busy ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>Save new password</Text>}
+              {/* Foreground follows the fill — see sign-in.tsx. */}
+              {busy ? (
+                <ActivityIndicator color={canSubmit ? c.onAccent : c.onAccentSoft} />
+              ) : (
+                <Text style={[styles.buttonText, { color: canSubmit ? c.onAccent : c.onAccentSoft }]}>Save new password</Text>
+              )}
             </Pressable>
 
             <Pressable onPress={cancelPasswordRecovery} disabled={busy} style={styles.skip} hitSlop={8}>
@@ -156,7 +160,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 4,
   },
-  buttonText: { color: "#ffffff", fontSize: TypeScale.headline, fontWeight: "600" },
+  buttonText: { fontSize: TypeScale.headline, fontWeight: "600" },
   skip: { alignSelf: "center", padding: 10 },
   skipLabel: { fontSize: TypeScale.footnote, fontWeight: "600" },
 });

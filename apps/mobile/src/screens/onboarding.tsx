@@ -6,7 +6,8 @@
 // kept only for status (in_progress / awaiting_sign_in / completed) so the
 // root gate keeps working.
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/design/text";
 import { useCameraPermissions } from "expo-camera";
 import * as Notifications from "expo-notifications";
 import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
@@ -55,9 +56,9 @@ const SLIDES: Slide[] = [
     key: "collect",
     eyebrow: "COLLECT",
     title: "Catch phrases anywhere.",
-    lines: ["A subtitle. A caption. A sign.", "Snap it. Saylo keeps the phrase."],
-    cta: "Allow camera",
-    permission: "camera",
+    lines: ["A subtitle. A caption. A sign.", "Save it now. Make it yours later."],
+    cta: "Continue",
+    permission: null,
   },
   {
     key: "speak",
@@ -69,17 +70,17 @@ const SLIDES: Slide[] = [
   },
   {
     key: "review",
-    eyebrow: "REVIEW",
+    eyebrow: "MAKE IT YOURS",
     title: "Keep them ready.",
-    lines: ["A tiny review at the right time.", "Your phrases stay active."],
-    cta: "Allow notifications",
-    permission: "notifications",
+    lines: ["Pronunciation. Real examples. Your sentence.", "Three small steps to ready."],
+    cta: "Continue",
+    permission: null,
   },
   {
     key: "save",
     eyebrow: "SAVE",
     title: "Make it yours.",
-    lines: ["Your phrases and stories, saved.", "Continue on any device."],
+    lines: ["Your phrases and Speaking Notes, saved.", "Continue on any device."],
     cta: "",
     permission: null,
   },
@@ -151,8 +152,13 @@ export function Onboarding({
 
   // Social sign-in resolves outside this component (auth session arrives);
   // once it does, finish onboarding without another tap.
+  // Deferred one microtask on purpose: completeAll() setStates, and doing that
+  // synchronously in an effect body cascades a second render (and trips
+  // react-hooks/set-state-in-effect). A microtask — NOT a setTimeout with a
+  // clearTimeout cleanup, which could cancel the completion and strand the
+  // learner on the last slide.
   useEffect(() => {
-    if (signedIn && idx === LAST) completeAll();
+    if (signedIn && idx === LAST) void Promise.resolve().then(completeAll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn, idx]);
 
@@ -266,7 +272,7 @@ export function Onboarding({
             <Pressable accessibilityRole="button" onPress={useEmail} disabled={Boolean(authBusy)} style={styles.skipButton}>
               <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink }}>Use email instead</Text>
             </Pressable>
-            {authError ? <Text style={{ fontSize: 12.5, lineHeight: 17, textAlign: "center", color: "#c74444" }}>{authError}</Text> : null}
+            {authError ? <Text style={{ fontSize: 12.5, lineHeight: 17, textAlign: "center", color: t.colors.warn }}>{authError}</Text> : null}
             <Text style={{ fontSize: 11.5, lineHeight: 17, textAlign: "center", color: t.colors.ink3, paddingHorizontal: 12 }}>
               By continuing, you agree to the{" "}
               <Text style={{ color: t.colors.accD, fontWeight: "700" }} onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)}>
@@ -343,7 +349,7 @@ function ArtOrb({ icon, size = 66, style }: { icon: IconName; size?: number; sty
         style,
       ]}
     >
-      <Icon name={icon} s={size * 0.44} w={2} c="#fff" />
+      <Icon name={icon} s={size * 0.44} w={2} c={t.colors.onAcc} />
     </View>
   );
 }
@@ -422,7 +428,7 @@ export function SlideArt({ slide }: { slide: SlideKey }) {
     return (
       <View style={frame}>
         <View style={[styles.artDisc, { backgroundColor: t.colors.accS, left: 35, top: 12 }]}>
-          <View style={[styles.artOrbitWide, { borderColor: "rgba(64,112,226,0.18)" }]} />
+          <View style={[styles.artOrbitWide, { borderColor: t.colors.acc, opacity: 0.18 }]} />
           <Wave n={20} h={40} active color={t.colors.acc} />
         </View>
         <ArtOrb icon="mic" size={54} style={{ right: 44, top: 120 }} />

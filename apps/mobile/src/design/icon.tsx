@@ -20,6 +20,8 @@ export type IconName =
   | "dots"
   | "bell"
   | "gear"
+  | "sliders"
+  | "filter"
   | "ear"
   | "pen"
   | "arrow"
@@ -30,6 +32,7 @@ export type IconName =
   | "text"
   | "clip"
   | "star"
+  | "starOutline"
   | "life"
   | "wave2"
   | "globe"
@@ -45,7 +48,12 @@ export type IconName =
   | "shield"
   | "flask"
   | "link"
-  | "grip";
+  | "grip"
+  | "repeat";
+
+// One 5-point star sized to this set's own scale, so the filled and hollow
+// favorite states are the same shape and never jump when they swap.
+const STAR_D = "M12 3.4l2.29 5.45 5.89.49-4.47 3.87 1.35 5.75L12 15.9l-5.06 3.06 1.35-5.75L3.82 9.34l5.89-.49z";
 
 interface IconProps {
   name: IconName;
@@ -171,11 +179,27 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
         </G>
       );
       break;
+    // NOTE: "gear" is a circle with eight rays — the same drawing as "sun",
+    // one radius apart. It reads as brightness, not settings, so nothing uses
+    // it. Reach for "sliders" below instead.
     case "gear":
       body = (
         <G {...common}>
           <Circle cx="12" cy="12" r="3.2" />
           <Path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
+        </G>
+      );
+      break;
+    case "filter":
+      body = <Path {...common} d="M3.5 6.5h17M7 12h10M10 17.5h4" />;
+      break;
+    case "sliders":
+      body = (
+        <G {...common}>
+          <Path d="M4 7h8M18 7h2M4 12h2M12 12h8M4 17h10M20 17h0" />
+          <Circle cx="15" cy="7" r="2.4" />
+          <Circle cx="9" cy="12" r="2.4" />
+          <Circle cx="17" cy="17" r="2.4" />
         </G>
       );
       break;
@@ -233,8 +257,9 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
       );
       break;
     case "star":
-      // Filled star — the favorite indicator. Fills with the passed colour.
-      body = <Path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill={c} stroke="none" />;
+    case "starOutline":
+      // Favorite indicator. Both states stroke at the set weight; only the fill differs.
+      body = <Path {...common} d={STAR_D} fill={name === "star" ? c : "none"} />;
       break;
     case "life":
       // Lifebuoy — the "Stuck / I need help" control.
@@ -243,6 +268,17 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
           <Circle cx="12" cy="12" r="9" />
           <Circle cx="12" cy="12" r="3.4" />
           <Path d="M5.6 5.6l3.6 3.6M18.4 5.6l-3.6 3.6M18.4 18.4l-3.6-3.6M5.6 18.4l3.6-3.6" />
+        </G>
+      );
+      break;
+    case "repeat":
+      // Loop the current sentence / A–B range.
+      body = (
+        <G {...common}>
+          <Path d="M17 2l4 4-4 4" />
+          <Path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+          <Path d="M7 22l-4-4 4-4" />
+          <Path d="M21 13v1a4 4 0 0 1-4 4H3" />
         </G>
       );
       break;

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
 import { SignOutIcon } from "@/components/home/Icons";
 
@@ -18,6 +19,17 @@ export default function ProfilePanel({ email }: { email: string | null }) {
           <div className="set-profile-email">{email ?? "Signed in"}</div>
           <div className="set-profile-sub">Signed in with Google / email</div>
         </div>
+      </div>
+
+      <div className="set-field">
+        <div className="set-field-label">Password</div>
+        <p className="set-field-help">
+          Set a new password for signing in with your email. Works for Google
+          accounts too — it adds email sign-in.
+        </p>
+        <Link href="/auth/reset-password" className="set-primary-btn">
+          Change password
+        </Link>
       </div>
 
       <div className="set-field">

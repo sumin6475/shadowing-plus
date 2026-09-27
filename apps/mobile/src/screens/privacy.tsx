@@ -5,7 +5,8 @@
 // App Store Connect also needs a hosted privacy policy URL; this screen is the
 // in-app companion, not a replacement.
 import { useState } from "react";
-import { Alert, Linking, Switch, Text, View } from "react-native";
+import { Alert, Linking, Switch, View } from "react-native";
+import { Text } from "@/design/text";
 
 import { useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Screen, Stagger } from "@/design/ui";
@@ -94,7 +95,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           title="What we store"
           lines={[
             "Your account email and profile (name, goal, and optional photo).",
-            "Your saved phrases, stories, session transcripts, and practice history.",
+            "Your saved phrases, speaking notes, attempt transcripts, and practice history.",
             "Learning content is protected by your account. Profile photos are stored with Supabase for display in the app.",
           ]}
         />
@@ -105,7 +106,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           lines={[
             "Practice recordings stay on this device. They are never uploaded.",
             "Speech is turned into text on your device by iOS speech recognition.",
-            "You can delete any recording from its session screen.",
+            "You can delete any recording from its attempt screen.",
           ]}
         />
 
@@ -136,6 +137,16 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
         </Card>
 
         <Section
+          icon="link"
+          title="Links to other sites"
+          lines={[
+            "“Open YouGlish” on a phrase shows youglish.com in a browser inside the app, so you can hear the phrase in real videos.",
+            "Only the phrase you tapped is sent, as part of that web address. That site and the YouTube videos it plays have their own privacy policies.",
+            "Nothing is sent unless you tap the link.",
+          ]}
+        />
+
+        <Section
           icon="gauge"
           title="Usage analytics"
           lines={[
@@ -149,8 +160,8 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           icon="x"
           title="Deleting your data"
           lines={[
-            "Recordings: delete in the app, from any session.",
-            "Phrases and stories: delete in the app, anytime.",
+            "Recordings: delete in the app, from any attempt.",
+            "Phrases and speaking notes: remove them in the app anytime.",
             "Your whole account: Profile → Delete account. Everything is removed right away.",
           ]}
         />

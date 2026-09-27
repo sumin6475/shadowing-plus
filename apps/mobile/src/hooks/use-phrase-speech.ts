@@ -3,15 +3,25 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Speech from "expo-speech";
 
-import { prepareSpeakerPlayback, registerPlaybackStopper } from "@/lib/audio-session";
+import {
+  prepareSpeakerPlayback,
+  registerPlaybackStopper,
+} from "@/lib/audio-session";
 import { fetchPhraseSpeech } from "@/lib/phrase-speech";
 
 const ENGLISH_LOCALE = "en-US";
 type PendingAudio = { id: string; text: string; url: string; request: number };
 
-export function usePhraseSpeech() {
+export function usePhraseSpeech({
+  rate = 1,
+  repeat = 1,
+}: { rate?: number; repeat?: number } = {}) {
+  const remaining = useRef(1);
   const [audioUrl, setAudioUrl] = useState<string | undefined>(undefined);
-  const player = useAudioPlayer(audioUrl, { downloadFirst: true, keepAudioSessionActive: true });
+  const player = useAudioPlayer(audioUrl, {
+    downloadFirst: true,
+    keepAudioSessionActive: true,
+  });
   const status = useAudioPlayerStatus(player);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -33,6 +43,15 @@ export function usePhraseSpeech() {
   // hook's cloud player + device TTS before the recognizer takes the session.
   useEffect(() => {
     return registerPlaybackStopper(() => {
+      // Native tabs keep Phrase Bank mounted. Cancel in-flight TTS as well as
+      // current audio, so a late response cannot restart playback over the mic.
+      requestRef.current += 1;
+      pendingRef.current = null;
+      modeRef.current = null;
+      remaining.current = 0;
+      setSpeakingId(null);
+      setLoadingId(null);
+      setFallbackId(null);
       try {
         playerRef.current.pause();
       } catch {
@@ -47,11 +66,19 @@ export function usePhraseSpeech() {
     Speech.getAvailableVoicesAsync()
       .then((voices) => {
         if (!active) return;
-        const english = voices.filter((voice) => voice.language.toLowerCase().startsWith("en"));
+        const english = voices.filter((voice) =>
+          voice.language.toLowerCase().startsWith("en"),
+        );
         const preferred =
-          english.find((voice) => voice.language.toLowerCase() === "en-us" && voice.quality === Speech.VoiceQuality.Enhanced) ??
+          english.find(
+            (voice) =>
+              voice.language.toLowerCase() === "en-us" &&
+              voice.quality === Speech.VoiceQuality.Enhanced,
+          ) ??
           english.find((voice) => voice.language.toLowerCase() === "en-us") ??
-          english.find((voice) => voice.quality === Speech.VoiceQuality.Enhanced) ??
+          english.find(
+            (voice) => voice.quality === Speech.VoiceQuality.Enhanced,
+          ) ??
           english[0];
         voiceRef.current = preferred?.identifier;
       })
@@ -88,44 +115,60 @@ export function usePhraseSpeech() {
       setSpeakingId(id);
       try {
         await prepareSpeakerPlayback();
+        if (requestRef.current !== request) return;
+        player.setPlaybackRate(rate);
         player.play();
       } catch {
         // Player released between load and play — treat as a miss; the caller's
         // fallback/timeout paths still cover it.
       }
     },
-    [player],
+    [player, rate],
   );
 
-  const startDeviceFallback = useCallback(async (id: string, text: string, request: number) => {
-    if (requestRef.current !== request) return;
-    modeRef.current = "device";
-    setFallbackId(id);
-    setLoadingId(null);
-    setSpeakingId(id);
-    const finish = () => {
-      if (requestRef.current === request) {
-        modeRef.current = null;
-        setSpeakingId(null);
-      }
-    };
-    await prepareSpeakerPlayback();
-    if (requestRef.current !== request) return;
-    Speech.speak(text, {
-      language: ENGLISH_LOCALE,
-      voice: voiceRef.current,
-      rate: 0.9,
-      pitch: 1,
-      useApplicationAudioSession: true,
-      onDone: finish,
-      onStopped: finish,
-      onError: finish,
-    });
-  }, []);
+  const startDeviceFallback = useCallback(
+    async (id: string, text: string, request: number) => {
+      if (requestRef.current !== request) return;
+      modeRef.current = "device";
+      setFallbackId(id);
+      setLoadingId(null);
+      setSpeakingId(id);
+      const finish = () => {
+        if (requestRef.current === request) {
+          modeRef.current = null;
+          setSpeakingId(null);
+        }
+      };
+      await prepareSpeakerPlayback();
+      if (requestRef.current !== request) return;
+      const speak = () =>
+        Speech.speak(text, {
+          language: ENGLISH_LOCALE,
+          voice: voiceRef.current,
+          rate,
+          pitch: 1,
+          useApplicationAudioSession: true,
+          onDone: () => {
+            if (requestRef.current !== request) return;
+            if (--remaining.current > 0) speak();
+            else finish();
+          },
+          onStopped: finish,
+          onError: finish,
+        });
+      speak();
+    },
+    [rate],
+  );
 
   useEffect(() => {
     const pending = pendingRef.current;
-    if (!pending || pending.url !== audioUrl || requestRef.current !== pending.request) return;
+    if (
+      !pending ||
+      pending.url !== audioUrl ||
+      requestRef.current !== pending.request
+    )
+      return;
     if (status.error) {
       pendingRef.current = null;
       startDeviceFallback(pending.id, pending.text, pending.request);
@@ -135,7 +178,13 @@ export function usePhraseSpeech() {
       pendingRef.current = null;
       startCloud(pending.id, pending.request);
     }
-  }, [audioUrl, status.error, status.isLoaded, startCloud, startDeviceFallback]);
+  }, [
+    audioUrl,
+    status.error,
+    status.isLoaded,
+    startCloud,
+    startDeviceFallback,
+  ]);
 
   useEffect(() => {
     const pending = pendingRef.current;
@@ -150,10 +199,16 @@ export function usePhraseSpeech() {
 
   useEffect(() => {
     if (status.didJustFinish && modeRef.current === "cloud") {
+      if (--remaining.current > 0) {
+        void player.seekTo(0).then(() => {
+          if (modeRef.current === "cloud") player.play();
+        });
+        return;
+      }
       modeRef.current = null;
       setSpeakingId(null);
     }
-  }, [status.didJustFinish]);
+  }, [status.didJustFinish, player]);
 
   const stop = useCallback(async () => {
     requestRef.current += 1;
@@ -179,7 +234,11 @@ export function usePhraseSpeech() {
       urlCache.current.set(id, url);
       // Loading the source now lets expo-audio download it before the user
       // taps, without starting playback or surfacing a fallback voice.
-      if (requestRef.current === request && modeRef.current === null && pendingRef.current === null) {
+      if (
+        requestRef.current === request &&
+        modeRef.current === null &&
+        pendingRef.current === null
+      ) {
         setAudioUrl(url);
       }
     } catch {
@@ -199,6 +258,7 @@ export function usePhraseSpeech() {
 
       await stop();
       const request = requestRef.current;
+      remaining.current = repeat;
       setLoadingId(id);
 
       try {
@@ -216,7 +276,16 @@ export function usePhraseSpeech() {
         startDeviceFallback(id, phrase, request);
       }
     },
-    [audioUrl, loadingId, speakingId, startCloud, startDeviceFallback, status.isLoaded, stop],
+    [
+      audioUrl,
+      loadingId,
+      speakingId,
+      startCloud,
+      startDeviceFallback,
+      status.isLoaded,
+      stop,
+      repeat,
+    ],
   );
 
   return { speakingId, loadingId, fallbackId, prepare, toggle, stop };

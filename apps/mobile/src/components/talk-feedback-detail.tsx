@@ -2,11 +2,13 @@
 // feedback. The immediate post-talk result and the historical Session detail
 // route both render this, so a future styling change updates both surfaces.
 import type { ReactNode } from "react";
-import { StyleProp, Text, View, ViewStyle } from "react-native";
+import { StyleProp, View, ViewStyle } from "react-native";
+import { Text } from "@/design/text";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { Icon } from "@/design/ui";
+import { Icon, gradientStops } from "@/design/ui";
 import { useTheme } from "@/design/theme";
+import { BRAND, Gradients } from "@/design/mobile-tokens";
 
 export interface TalkFeedbackDetailData {
   badge?: string | null;
@@ -56,13 +58,13 @@ export function TalkFeedbackDetail({
       </View>
       <Text style={{ fontSize: 15, fontWeight: "700", color: t.colors.ink, paddingHorizontal: 2, paddingTop: 4 }}>You may have meant</Text>
       <LinearGradient
-        colors={["#A9C7FF", "#D5E3FF", "#7BA7F6"]}
+        colors={gradientStops(Gradients.brandEdge)}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
           borderRadius: t.r,
           padding: 1.5,
-          shadowColor: "#3D6FE0",
+          shadowColor: BRAND.main,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.2,
           shadowRadius: 18,
@@ -70,7 +72,7 @@ export function TalkFeedbackDetail({
         }}
       >
         <LinearGradient
-          colors={["#3D6FE0", "#6C9BF2"]}
+          colors={gradientStops(Gradients.brandLift)}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ borderRadius: t.r - 1.5, padding: t.padc, overflow: "hidden" }}
@@ -83,7 +85,7 @@ export function TalkFeedbackDetail({
               borderRadius: 70,
               top: -82,
               right: -36,
-              backgroundColor: "rgba(255,255,255,0.14)",
+              backgroundColor: "rgba(255,255,255,0.10)",
             }}
           />
           <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>

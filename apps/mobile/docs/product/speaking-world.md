@@ -1,6 +1,8 @@
 # Mobile Product Concept: Speaking World
 
-> Status: Current product direction  
+> **Status: Outdated.** This is the superseded Domain → Story → Version concept.
+> **Replacement:** [Saylo MVP](mvp.md) — implemented September 16–17, 2026 from the user-approved simplification plan.
+
 > Recorded: 2026-08-02
 
 이 구조는 모바일 제품의 초기 컨셉과 정보 구조로 채택한다. 먼저 이 방향으로
