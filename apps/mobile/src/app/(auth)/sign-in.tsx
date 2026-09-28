@@ -18,21 +18,12 @@ import { useAuthPalette } from "@/design/auth-palette";
 import { SERIF } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
 import { authErrorMessage } from "@/lib/auth-errors";
+import { emailProblem, passwordChecks, submitProblem } from "@/lib/auth-form";
 import { openLegalUrl, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import { resetOnboardingDraft } from "@/lib/onboarding";
 import { GoogleMark } from "@/screens/onboarding";
 
 type AuthMode = "sign_in" | "sign_up";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function passwordChecks(password: string) {
-  return {
-    length: password.length >= 8,
-    case: /[a-z]/.test(password) && /[A-Z]/.test(password),
-    number: /\d/.test(password),
-  };
-}
 
 export default function SignInScreen() {
   const c = useAuthPalette();
@@ -44,18 +35,32 @@ export default function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [socialBusy, setSocialBusy] = useState<"apple" | "google" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set once the learner leaves the email field or tries to submit, so the
+  // inline hint doesn't nag while they are still typing the address.
+  const [emailTouched, setEmailTouched] = useState(false);
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [resetEmail, setResetEmail] = useState<string | null>(null);
 
-  const emailValid = EMAIL_RE.test(email.trim());
+  const emailIssue = emailProblem(email);
+  const emailValid = emailIssue === null;
   const passwordState = passwordChecks(password);
-  const passwordValid = passwordState.length && passwordState.case && passwordState.number;
   const anyBusy = busy || socialBusy !== null;
-  const canSubmit = emailValid && password.length > 0 && !anyBusy && (mode === "sign_in" || passwordValid);
+  const formProblem = submitProblem(mode, email, password);
+  const canSubmit = formProblem === null && !anyBusy;
+  // Only a non-empty, touched address earns the inline hint; an empty field
+  // says nothing until the learner actually taps Sign in.
+  const showEmailIssue = emailTouched && email.trim().length > 0 && emailIssue !== null;
   const hasSocial = Boolean(socialProviders?.apple || socialProviders?.google);
 
   async function onSubmit() {
-    if (!canSubmit) return;
+    if (anyBusy) return;
+    if (formProblem) {
+      // The button used to just sit disabled here, with no word about why
+      // ("sumin002 @gmail.com" and nothing happens). Say it, in red.
+      setEmailTouched(true);
+      setError(formProblem);
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -97,7 +102,8 @@ export default function SignInScreen() {
   async function onForgotPassword() {
     if (anyBusy) return;
     if (!emailValid) {
-      setError("Enter your email above, then tap Forgot password.");
+      setEmailTouched(true);
+      setError(email.trim() ? emailIssue : "Enter your email above, then tap Forgot password.");
       return;
     }
     setError(null);
@@ -117,6 +123,7 @@ export default function SignInScreen() {
     setEmail("");
     setPassword("");
     setError(null);
+    setEmailTouched(false);
     setConfirmationEmail(null);
     setResetEmail(null);
   }
@@ -215,7 +222,12 @@ export default function SignInScreen() {
                 <TextInput
                   style={[
                     styles.input,
-                    { backgroundColor: c.surface, borderColor: c.hairline, color: c.text },
+                    {
+                      backgroundColor: c.surface,
+                      borderColor: showEmailIssue ? c.danger : c.hairline,
+                      borderWidth: showEmailIssue ? 1 : StyleSheet.hairlineWidth,
+                      color: c.text,
+                    },
                   ]}
                   placeholder="Email"
                   placeholderTextColor={c.text4}
@@ -224,9 +236,19 @@ export default function SignInScreen() {
                   keyboardType="email-address"
                   textContentType="emailAddress"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(next) => {
+                    setEmail(next);
+                    // A stale submit error shouldn't outlive the correction.
+                    if (error) setError(null);
+                  }}
+                  onBlur={() => setEmailTouched(true)}
                   editable={!anyBusy}
                 />
+                {showEmailIssue ? (
+                  <Text style={[styles.fieldHint, { color: c.danger }]} accessibilityLiveRegion="polite">
+                    {emailIssue}
+                  </Text>
+                ) : null}
                 <TextInput
                   style={[
                     styles.input,
@@ -238,7 +260,10 @@ export default function SignInScreen() {
                   secureTextEntry
                   textContentType={mode === "sign_up" ? "newPassword" : "password"}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(next) => {
+                    setPassword(next);
+                    if (error) setError(null);
+                  }}
                   editable={!anyBusy}
                   onSubmitEditing={onSubmit}
                   returnKeyType="go"
@@ -259,13 +284,22 @@ export default function SignInScreen() {
                 ) : null}
 
                 {error ? (
-                  <Text style={[styles.error, { color: c.danger }]}>{error}</Text>
+                  <View
+                    style={[styles.errorBox, { backgroundColor: `${c.danger}14`, borderColor: `${c.danger}40` }]}
+                    accessibilityRole="alert"
+                    accessibilityLiveRegion="assertive"
+                  >
+                    <Text style={[styles.error, { color: c.danger }]}>{error}</Text>
+                  </View>
                 ) : null}
 
                 <Pressable
                   accessibilityRole="button"
                   onPress={onSubmit}
-                  disabled={!canSubmit}
+                  // Stays tappable while the form is incomplete so a tap can
+                  // explain what is missing; only a request in flight locks it.
+                  disabled={anyBusy}
+                  accessibilityState={{ disabled: anyBusy, busy }}
                   style={({ pressed }) => [
                     styles.button,
                     {
@@ -417,7 +451,14 @@ const styles = StyleSheet.create({
   },
   forgot: { alignSelf: "flex-end", paddingHorizontal: 4, paddingVertical: 2 },
   forgotLabel: { fontSize: TypeScale.footnote, fontWeight: "700" },
-  error: { fontSize: TypeScale.footnote, paddingHorizontal: 4 },
+  fieldHint: { fontSize: TypeScale.footnote, lineHeight: 18, paddingHorizontal: 20, marginTop: -4 },
+  errorBox: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  error: { fontSize: TypeScale.footnote, lineHeight: 18, fontWeight: "600" },
   requirements: { gap: 5, paddingHorizontal: 8, paddingVertical: 2 },
   requirement: { fontSize: TypeScale.footnote },
   button: {

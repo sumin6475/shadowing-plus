@@ -53,6 +53,7 @@ import {
   SwipeRow,
 } from "@/design/ui";
 import { useTheme } from "@/design/theme";
+import { EmptyState } from "@/design/empty-state";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
 import { deletePhrase } from "@/lib/phrases";
 import {
@@ -629,21 +630,20 @@ export function PhraseBank({ nav }: { nav: Nav }) {
         <ActivityIndicator style={{ marginTop: 24 }} />
       ) : null}
       {state.data && !state.error && filtered.length === 0 ? (
-        <Card>
-          <Serif style={{ fontSize: 26 }}>
-            {phrases.length ? "Nothing here yet." : "Good words find you."}
-          </Serif>
-          <Copy>
-            {phrases.length
-              ? "Try another filter or search."
-              : "Save an expression from a conversation, a video, or your day. Learn it when you have a moment."}
-          </Copy>
-          {!phrases.length ? (
-            <Pill onPress={() => nav.push("capture")}>
-              Save your first phrase
-            </Pill>
-          ) : null}
-        </Card>
+        phrases.length ? (
+          <EmptyState compact title="Nothing here yet." body="Try another filter or search." />
+        ) : (
+          <EmptyState
+            art="phrases"
+            title="Good words find you."
+            body="Save an expression from a conversation, a video, or your day. Learn it when you have a moment."
+            action={{
+              label: "Save your first phrase",
+              icon: "plus",
+              onPress: () => nav.push("capture"),
+            }}
+          />
+        )
       ) : null}
       {[...groups].map(([label, items]) => (
         <SectionCard key={label} label={label}>
@@ -1341,16 +1341,16 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         }}
       />
       {!state.loading && !notes.length && !state.error ? (
-        <Card>
-          <Serif style={{ fontSize: 28 }}>
-            {query ? "No matching notes." : "Start with a real moment."}
-          </Serif>
-          <Copy>
-            {query
-              ? "Try a different word."
-              : "Tomorrow’s meeting. A catch-up with a friend. Something you want to explain. Give your thoughts a place to begin."}
-          </Copy>
-        </Card>
+        query ? (
+          <EmptyState compact title="No matching notes." body="Try a different word." />
+        ) : (
+          <EmptyState
+            art="notes"
+            title="Start with a real moment."
+            body="Tomorrow’s meeting. A catch-up with a friend. Something you want to explain. Give your thoughts a place to begin."
+            action={{ label: "Write your first note", icon: "pen", onPress: () => void create() }}
+          />
+        )
       ) : null}
       {[...groups].map(([label, items]) => (
         <SectionCard key={label} label={label}>
@@ -1794,15 +1794,16 @@ export function MvpProfile({ nav }: { nav: Nav }) {
           </Card>
           <Label>RECENT SESSIONS</Label>
           {!sessions.length ? (
-            <Card>
-              <Copy>Your first conversation with yourself starts here.</Copy>
-              <Pill
-                icon="mic"
-                onPress={() => nav.startTalk({ from: "phrases" })}
-              >
-                Open mirror
-              </Pill>
-            </Card>
+            <EmptyState
+              art="sessions"
+              title="Your first conversation with yourself starts here."
+              body="Talk through a thought for a minute. Each session lands here with its speaking time and recording."
+              action={{
+                label: "Open mirror",
+                icon: "mic",
+                onPress: () => nav.startTalk({ from: "phrases" }),
+              }}
+            />
           ) : (
             sessions.slice(0, 20).map((s) => (
               <SwipeRow
