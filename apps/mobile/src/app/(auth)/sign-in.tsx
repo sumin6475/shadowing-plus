@@ -17,6 +17,7 @@ import { Motif, TypeScale } from "@/constants/cobalt";
 import { useAuthPalette } from "@/design/auth-palette";
 import { SERIF } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
+import { authErrorMessage } from "@/lib/auth-errors";
 import { openLegalUrl, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import { resetOnboardingDraft } from "@/lib/onboarding";
 import { GoogleMark } from "@/screens/onboarding";
@@ -72,7 +73,7 @@ export default function SignInScreen() {
       // When a session exists, the auth listener flips the root guard. An
       // awaiting onboarding draft is then imported into the new account.
     } catch (e) {
-      setError(e instanceof Error ? e.message : `${mode === "sign_up" ? "Sign up" : "Sign in"} failed. Try again.`);
+      setError(authErrorMessage(e, `${mode === "sign_up" ? "Sign up" : "Sign in"} failed. Try again.`));
     } finally {
       setBusy(false);
     }
@@ -87,7 +88,7 @@ export default function SignInScreen() {
       if (result === "signed_in") posthog?.capture("user_signed_in", { provider });
       // "cancelled" simply stays on this screen.
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign in failed. Try again.");
+      setError(authErrorMessage(e, "Sign in failed. Try again."));
     } finally {
       setSocialBusy(null);
     }
@@ -105,7 +106,7 @@ export default function SignInScreen() {
       await resetPassword(email);
       setResetEmail(email.trim());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t send the reset email. Try again.");
+      setError(authErrorMessage(e, "Couldn’t send the reset email. Try again."));
     } finally {
       setBusy(false);
     }

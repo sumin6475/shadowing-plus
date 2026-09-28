@@ -18,6 +18,7 @@ import { Motif, TypeScale } from "@/constants/cobalt";
 import { useAuthPalette } from "@/design/auth-palette";
 import { SERIF } from "@/design/theme";
 import { useAuth } from "@/lib/auth";
+import { authErrorMessage } from "@/lib/auth-errors";
 
 function passwordChecks(password: string) {
   return {
@@ -48,7 +49,7 @@ export default function ResetPasswordScreen() {
       await updatePassword(password);
       // passwordRecovery flips off; the root guard shows the app.
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t update your password. Try again.");
+      setError(authErrorMessage(e, "Couldn’t update your password. Try again."));
       setBusy(false);
     }
   }

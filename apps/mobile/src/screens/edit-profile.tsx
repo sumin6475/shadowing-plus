@@ -9,6 +9,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { hairline, useTheme } from "@/design/theme";
 import { BRAND, Gradients } from "@/design/mobile-tokens";
 import { useAuth } from "@/lib/auth";
+import { authErrorMessage } from "@/lib/auth-errors";
 import { supabase } from "@/lib/supabase";
 import { PHRASES_PER_DAY_OPTIONS, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
 import { DAILY_SPEAKING_GOAL_OPTIONS, dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
@@ -206,7 +207,7 @@ export function ChangePasswordScreen({ nav }: { nav: Nav }) {
       Alert.alert("Password updated", "Use your new password next time you sign in.");
       nav.pop();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t update your password.");
+      setError(authErrorMessage(e, "Couldn’t update your password."));
       setSaving(false);
     }
   };
