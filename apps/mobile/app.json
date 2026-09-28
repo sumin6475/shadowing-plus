@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Saylo",
+    "name": "Myne",
     "slug": "shadowing-plus-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -21,8 +21,8 @@
           "ru"
         ],
         "ITSAppUsesNonExemptEncryption": false,
-        "NSSpeechRecognitionUsageDescription": "Saylo turns your spoken practice into text, on your device, so you can review what you said.",
-        "NSMicrophoneUsageDescription": "Saylo records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
+        "NSSpeechRecognitionUsageDescription": "Myne turns your spoken practice into text, on your device, so you can review what you said.",
+        "NSMicrophoneUsageDescription": "Myne records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -135,29 +135,29 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Saylo records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
+          "microphonePermission": "Myne records your speaking practice so you can play it back and review what you said. Recordings stay on your device."
         }
       ],
       "expo-video",
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Saylo records your speaking practice so you can play it back and review what you said. Recordings stay on your device.",
-          "speechRecognitionPermission": "Saylo turns your spoken practice into text, on your device, so you can review what you said."
+          "microphonePermission": "Myne records your speaking practice so you can play it back and review what you said. Recordings stay on your device.",
+          "speechRecognitionPermission": "Myne turns your spoken practice into text, on your device, so you can review what you said."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Saylo uses your camera as a speaking mirror, to capture English text you choose, or to take a profile photo. The mirror and text capture are never recorded; a profile photo is saved to your account.",
+          "cameraPermission": "Myne uses your camera as a speaking mirror, to capture English text you choose, or to take a profile photo. The mirror and text capture are never recorded; a profile photo is saved to your account.",
           "microphonePermission": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Saylo lets you pick a learning photo to pull a useful expression from, or a profile photo, which is saved to your account.",
-          "cameraPermission": "Saylo uses your camera as a speaking mirror, to capture English text you choose, or to take a profile photo. The mirror and text capture are never recorded; a profile photo is saved to your account."
+          "photosPermission": "Myne lets you pick a learning photo to pull a useful expression from, or a profile photo, which is saved to your account.",
+          "cameraPermission": "Myne uses your camera as a speaking mirror, to capture English text you choose, or to take a profile photo. The mirror and text capture are never recorded; a profile photo is saved to your account."
         }
       ],
       "expo-asset",

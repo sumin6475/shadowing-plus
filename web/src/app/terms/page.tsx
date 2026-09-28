@@ -3,7 +3,7 @@ import "../legal.css";
 
 export const metadata = {
   title: "Terms of Service",
-  description: "The terms for the Saylo waitlist and private beta.",
+  description: "The terms for the Myne waitlist and private beta.",
 };
 
 const CONTACT = "sumin002@gmail.com";
@@ -13,12 +13,12 @@ export default function TermsPage() {
   return (
     <main className="legal">
       <div className="legal-wrap">
-        <Link href="/" className="legal-back">← Back to Saylo</Link>
+        <Link href="/" className="legal-back">← Back to Myne</Link>
         <h1>Terms of Service</h1>
         <p className="legal-updated">Last updated: {UPDATED}</p>
 
         <p>
-          By creating an account or using Saylo (&ldquo;the app&rdquo;), you agree
+          By creating an account or using Myne (&ldquo;the app&rdquo;), you agree
           to these terms. If you do not agree, please do not use the service.
         </p>
 
@@ -75,7 +75,7 @@ export default function TermsPage() {
 
         <h2>Limitation of liability</h2>
         <p>
-          To the fullest extent allowed by law, Saylo and its operator are not
+          To the fullest extent allowed by law, Myne and its operator are not
           liable for indirect or consequential loss arising from your use of the app,
           including lost data, opportunities, or practice progress. Nothing in these
           terms excludes rights or liability that cannot legally be excluded.

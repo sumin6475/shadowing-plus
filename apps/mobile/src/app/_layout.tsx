@@ -53,7 +53,7 @@ function RootNavigator() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importAttempt, setImportAttempt] = useState(0);
 
-  // Saylo design-system fonts, loaded at runtime (expo-font is already in the
+  // Myne design-system fonts, loaded at runtime (expo-font is already in the
   // dev client, so no native rebuild). Pretendard, one family per static
   // weight, is the UI face (design/text.tsx applies it); Instrument Serif is
   // the display serif.

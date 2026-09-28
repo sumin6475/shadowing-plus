@@ -193,7 +193,7 @@
   color: oklch(0.52 0.12 150);
 }
 
-/* Link styled as the primary button (reset-password "Open Saylo" / "Continue"). */
+/* Link styled as the primary button (reset-password "Open Myne" / "Continue"). */
 .reset-open-app {
   display: block;
   margin-top: 16px;

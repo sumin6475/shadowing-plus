@@ -64,7 +64,7 @@ const SLIDES: Slide[] = [
     key: "speak",
     eyebrow: "SPEAK",
     title: "Say them out loud.",
-    lines: ["Talk to your mirror a minute a day.", "Saylo shows what came out."],
+    lines: ["Talk to your mirror a minute a day.", "Myne shows what came out."],
     cta: "Allow microphone",
     permission: "microphone",
   },

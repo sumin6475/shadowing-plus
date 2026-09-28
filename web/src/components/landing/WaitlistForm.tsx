@@ -78,7 +78,7 @@ export function WaitlistForm() {
       <label className="check-row consent-check">
         <input type="checkbox" name="privacyAccepted" required />
         <span className="check-box" aria-hidden="true" />
-        <span>I agree that Saylo may use my email to manage the waitlist and send launch or beta access updates. See the <Link href="/privacy">Privacy Policy</Link>.</span>
+        <span>I agree that Myne may use my email to manage the waitlist and send launch or beta access updates. See the <Link href="/privacy">Privacy Policy</Link>.</span>
       </label>
 
       <button className="button form-submit" type="submit" disabled={status === "submitting"}>

@@ -176,7 +176,7 @@ export default function SignInScreen() {
           ) : (
             <>
               <View style={styles.header}>
-                <Text style={[styles.wordmark, { color: c.text }]}>Saylo</Text>
+                <Text style={[styles.wordmark, { color: c.text }]}>Myne</Text>
                 <Text style={[styles.subtitle, { color: c.text3 }]}>
                   {mode === "sign_up"
                     ? "Keep your phrases, notes, and speaking moments together."
