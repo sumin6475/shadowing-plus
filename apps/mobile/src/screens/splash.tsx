@@ -1,9 +1,9 @@
-// splash.tsx — Saylo brand splash (ported from Claude Design "Saylo Splash").
+// splash.tsx — Myne brand splash (ported from Claude Design "Saylo Splash").
 // Three scenes on one persistent screen so boundaries frame-match:
 //   Logo draw (2.6s) → Reveal (2.2s) → Idle (loops).
 // A single requestAnimationFrame timeline drives `elapsed` (seconds); every
 // element's phase is derived from it with the design's exact easing curves.
-// Palette = the Saylo brand navy (BRAND.main #162555). Local literals on purpose:
+// Palette = the Myne brand navy (BRAND.main #162555). Local literals on purpose:
 // this screen renders outside ThemeProvider, so it cannot read slots. The design uses
 // Figtree; we stand in with Inter (already loaded), keeping the brand retint.
 import { useEffect, useRef, useState } from "react";
@@ -136,7 +136,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
       <StatusBar style="light" />
       <Pressable style={{ position: "absolute", inset: 0 }} onPress={skip} />
 
-      {/* Saylo wordmark */}
+      {/* Myne wordmark */}
       <Text
         style={{
           position: "absolute",
@@ -150,7 +150,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
           transform: [{ translateY: (1 - wordP) * 26 }],
         }}
       >
-        Saylo
+        Myne
       </Text>
 
       {/* Cursive loop mark — draws on via strokeDashoffset */}

@@ -3,7 +3,7 @@ import "../legal.css";
 
 export const metadata = {
   title: "Privacy Policy",
-  description: "How Saylo handles waitlist details, voice recordings, and account data.",
+  description: "How Myne handles waitlist details, voice recordings, and account data.",
 };
 
 const CONTACT = "sumin002@gmail.com";
@@ -13,12 +13,12 @@ export default function PrivacyPage() {
   return (
     <main className="legal">
       <div className="legal-wrap">
-        <Link href="/" className="legal-back">← Back to Saylo</Link>
+        <Link href="/" className="legal-back">← Back to Myne</Link>
         <h1>Privacy Policy</h1>
         <p className="legal-updated">Last updated: {UPDATED}</p>
 
         <p>
-          Saylo (&ldquo;the app&rdquo;) is an independently run speaking-practice
+          Myne (&ldquo;the app&rdquo;) is an independently run speaking-practice
           tool preparing for a private beta. This policy explains what we collect,
           why, and who processes it. We try not to collect more than the product needs.
         </p>
@@ -42,7 +42,7 @@ export default function PrivacyPage() {
         <h2>Mirror mode and voice recordings</h2>
         <p>
           Mirror mode is designed to show your live reflection on your own device
-          while recording audio only. Saylo does not save a video of your mirror
+          while recording audio only. Myne does not save a video of your mirror
           practice. Voice recordings and their transcripts are private to your account by default.
         </p>
 

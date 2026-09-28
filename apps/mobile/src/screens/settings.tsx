@@ -139,8 +139,8 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         return parts.join("\n");
       });
       await Share.share({
-        title: "My Saylo phrases",
-        message: `My Saylo phrases (${phrases.length})\n\n${lines.join("\n\n")}`,
+        title: "My phrases from Myne",
+        message: `My phrases from Myne (${phrases.length})\n\n${lines.join("\n\n")}`,
       });
     } catch (e) {
       Alert.alert("Export failed", e instanceof Error ? e.message : "Couldn’t load your phrases.");
@@ -150,7 +150,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
   };
 
   const openFeedbackMail = () => {
-    const subject = encodeURIComponent("Saylo feedback");
+    const subject = encodeURIComponent("Myne feedback");
     Linking.openURL(`mailto:sumin002@gmail.com?subject=${subject}`).catch(() => {
       Alert.alert("No mail app", "Send your thoughts to sumin002@gmail.com.");
     });

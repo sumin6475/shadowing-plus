@@ -81,7 +81,7 @@ export function AiProcessingConsentPrompt() {
 
     Alert.alert(
       "AI feedback privacy",
-      "To create feedback, Phrase Bank suggestions, photo text help, and AI pronunciation, Saylo sends the text or photo you choose to OpenAI. Speaking recordings stay on this device. Allow this processing?",
+      "To create feedback, Phrase Bank suggestions, photo text help, and AI pronunciation, Myne sends the text or photo you choose to OpenAI. Speaking recordings stay on this device. Allow this processing?",
       [
         { text: "Not now", style: "cancel", onPress: () => save(false) },
         {

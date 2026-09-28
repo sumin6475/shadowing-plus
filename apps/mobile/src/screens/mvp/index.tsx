@@ -1154,7 +1154,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                     Open YouGlish
                   </Pill>
                   <Hint>
-                    Real videos from youglish.com, opened in a browser inside Saylo.
+                    Real videos from youglish.com, opened in a browser inside Myne.
                   </Hint>
                 </>
               ) : (

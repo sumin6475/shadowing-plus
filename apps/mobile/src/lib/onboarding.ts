@@ -229,7 +229,7 @@ export async function importOnboardingDraft(
       usageNote: current.phraseExample,
       context: current.notes,
       source: "speak",
-      sourceLabel: "My first Saylo story",
+      sourceLabel: "My first Myne story",
       said: current.transcript,
     });
     phraseId = phrase.id;

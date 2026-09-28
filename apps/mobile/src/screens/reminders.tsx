@@ -145,14 +145,14 @@ export function RemindersScreen({ nav }: { nav: Nav }) {
         <Card>
           <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>This build can’t send reminders yet</Text>
           <Text style={{ fontSize: 13.5, lineHeight: 20, color: t.colors.ink2, marginTop: 6 }}>
-            This simulator app is older than the reminders module. Reload is enough for the rest of Saylo. To test the actual ping here, the simulator app needs a native rebuild, or install TestFlight 13 on your iPhone.
+            This simulator app is older than the reminders module. Reload is enough for the rest of Myne. To test the actual ping here, the simulator app needs a native rebuild, or install TestFlight 13 on your iPhone.
           </Text>
         </Card>
       ) : null}
 
       {permission === "denied" ? (
         <Card>
-          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>Notifications are off for Saylo</Text>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>Notifications are off for Myne</Text>
           <Text style={{ fontSize: 13.5, lineHeight: 20, color: t.colors.ink2, marginTop: 6 }}>
             iPhone won’t show a self-talk reminder until you allow notifications in Settings.
           </Text>

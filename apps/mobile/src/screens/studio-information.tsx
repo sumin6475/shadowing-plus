@@ -1,5 +1,5 @@
 // studio-information.tsx — Topic → Situation → Speaking Note → Practice
-// Attempt. Uses the existing Saylo visual system and native tab shell; it does
+// Attempt. Uses the existing Myne visual system and native tab shell; it does
 // not render or style the bottom navigation bar.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { StyleProp, ViewStyle } from "react-native";

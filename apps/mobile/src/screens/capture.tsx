@@ -738,7 +738,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
               Choose another
             </Pill>
           </View>
-          <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18, paddingHorizontal: 4 }}>This photo is processed for this capture and isn’t stored by Saylo.</Text>
+          <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18, paddingHorizontal: 4 }}>This photo is processed for this capture and isn’t stored by Myne.</Text>
         </>
       ) : null}
 

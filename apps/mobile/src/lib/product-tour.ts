@@ -41,7 +41,7 @@ const COPY: Record<L1, TourCopy> = {
     steps: {
       speak: {
         title: "Start here",
-        body: "Tap Speaking and talk for a minute. Saylo listens on this device and turns what you said into text you can review.",
+        body: "Tap Speaking and talk for a minute. Myne listens on this device and turns what you said into text you can review.",
       },
       review: {
         title: "Your week, and today’s list",
@@ -137,7 +137,7 @@ const COPY: Record<L1, TourCopy> = {
     steps: {
       speak: {
         title: "Empieza aquí",
-        body: "Toca Speaking y habla un minuto. Saylo te escucha en este dispositivo y convierte lo que dijiste en texto que puedes repasar.",
+        body: "Toca Speaking y habla un minuto. Myne te escucha en este dispositivo y convierte lo que dijiste en texto que puedes repasar.",
       },
       review: {
         title: "Tu semana y la lista de hoy",

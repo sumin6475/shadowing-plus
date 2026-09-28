@@ -63,7 +63,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
   const aiConsent = aiProcessingConsentFromMetadata(session?.user.user_metadata);
 
   const contact = () => {
-    const subject = encodeURIComponent("Saylo privacy question");
+    const subject = encodeURIComponent("Myne privacy question");
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}`).catch(() => {
       Alert.alert("No mail app", `Write to ${SUPPORT_EMAIL}.`);
     });
@@ -86,7 +86,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
       <BackBar title="Privacy" onBack={nav.pop} />
       <Stagger>
         <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink2, paddingHorizontal: 4 }}>
-          Saylo exists to help you speak. Your data is used for that and nothing else. No ads. No selling data. No
+          Myne exists to help you speak. Your data is used for that and nothing else. No ads. No selling data. No
           cross-app tracking.
         </Text>
 

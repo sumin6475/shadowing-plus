@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { passwordChecks } from "@/lib/password-policy";
 import "../../login/login.css";
 
-// Where every password-reset email lands — web AND the Saylo app. The app
+// Where every password-reset email lands — web AND the Myne app. The app
 // sends its reset link here (`?from=app`) instead of a custom-scheme deep
 // link, because in-app mail browsers (Gmail etc.) can't open
 // `shadowingplus://` and showed a blank page.
@@ -116,7 +116,7 @@ function ResetPasswordForm() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <p className="login-title">{fromApp ? "Saylo" : <>Shadowing<span className="login-plus">+</span></>}</p>
+        <p className="login-title">{fromApp ? "Myne" : <>Shadowing<span className="login-plus">+</span></>}</p>
 
         {phase === "verifying" && <p className="login-sent">Checking your reset link…</p>}
 
@@ -139,11 +139,11 @@ function ResetPasswordForm() {
           (fromApp ? (
             <>
               <p className="login-sent">
-                Your password is updated. Go back to the Saylo app and sign in
+                Your password is updated. Go back to the Myne app and sign in
                 with your new password.
               </p>
               <a href="shadowingplus://" className="login-btn reset-open-app">
-                Open Saylo
+                Open Myne
               </a>
             </>
           ) : (
