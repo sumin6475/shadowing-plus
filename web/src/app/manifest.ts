@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Saylo",
-    short_name: "Saylo",
+    name: "Myne",
+    short_name: "Myne",
     description: "Build and practise the English you need for real life.",
     // Installed PWA opens straight into the app. Logged-out users are bounced
     // to /login by the proxy; scope stays "/" so all app routes are controlled.

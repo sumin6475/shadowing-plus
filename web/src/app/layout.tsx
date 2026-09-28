@@ -56,8 +56,8 @@ const siteUrl =
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Saylo · Turn saved English into spoken English",
-    template: "%s · Saylo",
+    default: "Myne · Turn saved English into spoken English",
+    template: "%s · Myne",
   },
   description:
     "A personal speaking studio for B1–C1 learners. Save useful English, connect it to your Topics, practise through one-minute self-talk, and fix one thing before retrying.",
@@ -72,8 +72,8 @@ export const metadata: Metadata = {
     type: "website",
     title: "Turn the English you save into English you actually speak.",
     description: "Save a phrase, connect it to your life, speak for one minute, fix one thing, then retry.",
-    siteName: "Saylo",
-    images: [{ url: "/og.png", width: 1536, height: 804, alt: "Saylo speaking practice app preview" }],
+    siteName: "Myne",
+    images: [{ url: "/og.png", width: 1536, height: 804, alt: "Myne speaking practice app preview" }],
   },
   twitter: {
     card: "summary_large_image",
@@ -91,7 +91,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Saylo",
+    title: "Myne",
   },
 };
 

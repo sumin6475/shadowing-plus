@@ -43,9 +43,9 @@ export default function LandingPage() {
     <main className="landing" id="top">
       <nav className="landing-nav" aria-label="Main navigation">
         <div className="nav-shell">
-          <a className="wordmark" href="#top" aria-label="Saylo home">
+          <a className="wordmark" href="#top" aria-label="Myne home">
             <Image className="wordmark-mark" src="/brand/saylo-mark.png" width={36} height={36} alt="" preload />
-            <span>Saylo</span>
+            <span>Myne</span>
           </a>
           <div className="nav-links">
             <a href="#how">The practice loop</a>
@@ -75,7 +75,7 @@ export default function LandingPage() {
           </div>
           <ProductDemo />
         </div>
-        <div className="moment-row" aria-label="The Saylo practice loop">
+        <div className="moment-row" aria-label="The Myne practice loop">
           <span>Save useful English</span>
           <span>Connect it to your life</span>
           <span>Speak from meaning</span>
@@ -120,7 +120,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="world-flow" aria-label="How Saylo works">
+          <div className="world-flow" aria-label="How Myne works">
             <article className="flow-card flow-card-capture">
               <div className="flow-index">01</div>
               <div className="source-snippet" aria-hidden="true">
@@ -235,7 +235,7 @@ export default function LandingPage() {
             <p className="world-label">Retrieval evidence</p>
             <h2>See what became available, not just what you saved.</h2>
             <p>
-              A flashcard review proves recognition. Saylo tracks the harder change:
+              A flashcard review proves recognition. Myne tracks the harder change:
               whether the phrase returned without being shown and worked inside your own message.
             </p>
             <div className="phrase-note">
@@ -292,11 +292,11 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="wide footer-row">
           <div>
-            <a className="wordmark" href="#top"><Image className="wordmark-mark" src="/brand/saylo-mark.png" width={36} height={36} alt="" /><span>Saylo</span></a>
+            <a className="wordmark" href="#top"><Image className="wordmark-mark" src="/brand/saylo-mark.png" width={36} height={36} alt="" /><span>Myne</span></a>
             <p>Turn the English you collect into English you can use.</p>
           </div>
           <div className="footer-links"><a href="#how">The practice loop</a><a href="#mirror">Mirror mode</a><Link href="/login?next=%2F">Sign in to web app</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="mailto:sumin002@gmail.com">Contact</a></div>
-          <p className="copyright">© 2026 Saylo. Independent private beta.</p>
+          <p className="copyright">© 2026 Myne. Independent private beta.</p>
         </div>
       </footer>
     </main>
