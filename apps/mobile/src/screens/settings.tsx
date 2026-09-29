@@ -94,6 +94,13 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const confirmLogOut = () => {
+    Alert.alert("Log out?", "Your phrases and notes stay saved to your account. Sign in again to pick up where you left off.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log out", style: "destructive", onPress: () => void signOut() },
+    ]);
+  };
+
   const confirmDeleteAccount = () => {
     if (deleting) return;
     Alert.alert(
@@ -199,7 +206,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         <SettingsRow t={t} icon="help" label="Help & feedback" onPress={openFeedbackMail} />
         <SettingsRow t={t} icon="shield" label="Privacy" onPress={() => nav.push("privacy")} />
         <SettingsRow t={t} icon="text" label="Terms of Service" onPress={() => void openLegalUrl(TERMS_OF_SERVICE_URL)} />
-        <SettingsRow t={t} label="Log out" danger onPress={() => signOut()} />
+        <SettingsRow t={t} label="Log out" danger onPress={confirmLogOut} />
         <SettingsRow
           t={t}
           label="Delete account"
