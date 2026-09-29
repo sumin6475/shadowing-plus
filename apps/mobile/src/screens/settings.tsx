@@ -3,8 +3,8 @@
 // stays wired to the real Supabase sign-out.
 //
 // Nothing unshipped renders here: the "Coming soon" rows and their prop were
-// deleted, and Library is behind PREVIEW_FEATURES (its other entry point, the
-// clip link in phrases.tsx, is gated by the same flag). A placeholder reaching
+// deleted, and Library is not part of Myne (the clip link in phrases.tsx that
+// led to it is gone too). A placeholder reaching
 // the App Store binary is a Guideline 2.1 rejection — keep it that way.
 import { useState, type ReactNode } from "react";
 import { Alert, Linking, Pressable, Share, StyleSheet, View } from "react-native";
