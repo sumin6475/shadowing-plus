@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useState } from "react";
 import { Alert } from "react-native";
 
+import { AiConsentScreen } from "@/screens/ai-consent";
+
 import { useAuth } from "./auth";
-import { openLegalUrl, PRIVACY_POLICY_URL } from "./legal";
 import { supabase } from "./supabase";
 
 export const AI_CONSENT_VERSION = "2026-09-01";
@@ -52,57 +53,29 @@ export async function setAiProcessingConsent(allowed: boolean): Promise<void> {
 }
 
 /**
- * Prompts once for each signed-in account whose current consent version is
- * unset. The choice is stored in Supabase user metadata so it follows the
- * account across devices and can be changed later from Profile → Privacy.
+ * Shows the consent screen once for each signed-in account whose current
+ * consent version is unset. The choice is stored in Supabase user metadata so
+ * it follows the account across devices and can be changed later from
+ * Profile → Privacy. The screen can't be dismissed without a choice; if saving
+ * fails it stays up and says so.
  */
 export function AiProcessingConsentPrompt() {
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
   const consent = aiProcessingConsentFromMetadata(session?.user.user_metadata);
-  const promptedUserRef = useRef<string | null>(null);
+  // Hide as soon as a choice is saved, before the refreshed session arrives.
+  const [decidedFor, setDecidedFor] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!userId) {
-      promptedUserRef.current = null;
-      return;
+  const visible = Boolean(userId) && consent === "unset" && decidedFor !== userId;
+
+  const decide = async (allowed: boolean) => {
+    try {
+      await setAiProcessingConsent(allowed);
+      setDecidedFor(userId);
+    } catch {
+      Alert.alert("Couldn’t save your choice", "Check your connection and try again.");
     }
-    if (consent !== "unset" || promptedUserRef.current === userId) return;
-    promptedUserRef.current = userId;
+  };
 
-    const save = (allowed: boolean, after?: () => void) => {
-      setAiProcessingConsent(allowed)
-        .then(after)
-        .catch(() => {
-          promptedUserRef.current = null;
-          Alert.alert("Couldn’t save your choice", "Check your connection and try again.");
-        });
-    };
-
-    Alert.alert(
-      "AI feedback privacy",
-      "To create feedback, Phrase Bank suggestions, photo text help, and AI pronunciation, Myne sends the text or photo you choose to OpenAI. Speaking recordings stay on this device. Allow this processing?",
-      [
-        { text: "Not now", style: "cancel", onPress: () => save(false) },
-        {
-          // Reading the policy is not a decision. Saving "denied" here opted
-          // people out permanently — consent then matched the current version,
-          // so this prompt never returned and every AI feature failed with a
-          // generic "try again" they could not act on. Leave consent unset so
-          // the prompt returns on the next launch; until then AI stays off, and
-          // the Speak result screen now names consent as the reason and links
-          // straight to Profile -> Privacy.
-          text: "Privacy Policy",
-          onPress: () => {
-            promptedUserRef.current = null;
-            void openLegalUrl(PRIVACY_POLICY_URL);
-          },
-        },
-        { text: "Allow", onPress: () => save(true) },
-      ],
-      { cancelable: false },
-    );
-  }, [consent, userId]);
-
-  return null;
+  return <AiConsentScreen visible={visible} onDecide={decide} />;
 }
