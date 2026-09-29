@@ -111,8 +111,8 @@ function ConsentBody({ onDecide }: { onDecide: (allowed: boolean) => Promise<voi
       <View style={{ paddingHorizontal: 24, paddingTop: 14, paddingBottom: 10, borderTopWidth: hairline, borderTopColor: t.colors.sep }}>
         <Text style={{ fontSize: 14, lineHeight: 20, color: t.colors.ink3, marginBottom: 14 }}>
           {allowed
-            ? "You can turn this off anytime in Profile → Privacy."
-            : "AI feedback stays off until you allow this. You can change it anytime in Profile → Privacy."}
+            ? "You can turn this off anytime in Settings → Privacy."
+            : "AI feedback stays off until you allow this. You can change it anytime in Settings → Privacy."}
         </Text>
         {/* Not `full`: that sets flex 1, which collapses to 0 height in this auto-height footer. */}
         <Pill tone={allowed ? "acc" : "tint"} onPress={() => void decide()} style={{ alignSelf: "stretch", opacity: saving ? 0.7 : 1 }}>
