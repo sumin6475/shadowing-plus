@@ -74,7 +74,8 @@ export function EmptyState({
         </Text>
       ) : null}
       {action ? (
-        <Pill icon={action.icon} onPress={action.onPress} style={{ marginTop: 24 }}>
+        // Pill defaults to alignSelf "flex-start"; the card centers everything else.
+        <Pill icon={action.icon} onPress={action.onPress} style={{ marginTop: 24, alignSelf: "center" }}>
           {action.label}
         </Pill>
       ) : null}
