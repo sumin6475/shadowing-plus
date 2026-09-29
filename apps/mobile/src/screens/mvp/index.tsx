@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  Keyboard,
   ScrollView,
   StyleSheet,
   View,
@@ -944,6 +945,19 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const p = state.data?.phrase;
+  // The page scrolls under the keyboard (Screen adjusts its insets) but never
+  // brings the sentence field into view by itself, so a focused or growing
+  // field slid behind the keyboard. The field and its Save button are the last
+  // things on the page: while it's focused, keep the page scrolled to the end.
+  const scrollRef = useRef<ScrollView>(null);
+  const sentenceFocused = useRef(false);
+  const revealSentence = useCallback(() => {
+    if (sentenceFocused.current) requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  }, []);
+  useEffect(() => {
+    const sub = Keyboard.addListener("keyboardDidShow", revealSentence);
+    return () => sub.remove();
+  }, [revealSentence]);
   const mutate = async (fn: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);
@@ -973,7 +987,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
       },
     ]);
   return (
-    <Screen>
+    <Screen scrollRef={scrollRef}>
       <BackBar
         title="Phrases"
         onBack={nav.pop}
@@ -1238,7 +1252,19 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                         placeholder={`Use “${p.text}” in a sentence`}
                         placeholderTextColor={t.colors.ink3}
                         value={draft}
-                        onChangeText={setDraft}
+                        onChangeText={(value) => {
+                          // The Save button appears below the field on the first character.
+                          if (!draft.trim() && value.trim()) revealSentence();
+                          setDraft(value);
+                        }}
+                        onFocus={() => {
+                          sentenceFocused.current = true;
+                          revealSentence();
+                        }}
+                        onBlur={() => {
+                          sentenceFocused.current = false;
+                        }}
+                        onContentSizeChange={revealSentence}
                         onSubmitEditing={() => {
                           if (!draft.trim() || busy) return;
                           void mutate(async () => {
