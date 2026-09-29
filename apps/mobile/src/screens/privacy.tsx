@@ -1,4 +1,4 @@
-// privacy.tsx — in-app privacy overview (Profile → Privacy).
+// privacy.tsx — in-app privacy overview (Settings → Privacy).
 //
 // This mirrors the app's actual data practices. Keep it in sync when a flow
 // changes what leaves the device (e.g., recording cloud sync in Phase 2).
@@ -96,7 +96,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           lines={[
             "Your account email and profile (name, goal, and optional photo).",
             "Your saved phrases, speaking notes, attempt transcripts, and practice history.",
-            "Learning content is protected by your account. Profile photos are stored with Supabase for display in the app.",
+            "Learning content is protected by your account and is never public. Profile photos are stored with Supabase at a hard-to-guess link, so only someone with that exact link can view them.",
           ]}
         />
 
@@ -162,7 +162,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           lines={[
             "Recordings: delete in the app, from any attempt.",
             "Phrases and speaking notes: remove them in the app anytime.",
-            "Your whole account: Profile → Delete account. Everything is removed right away.",
+            "Your whole account: Settings → Delete account. Everything is removed right away.",
           ]}
         />
 

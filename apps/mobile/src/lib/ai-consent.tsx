@@ -32,7 +32,7 @@ export async function aiProcessingAllowed(): Promise<boolean> {
 
 export class AiProcessingConsentRequiredError extends Error {
   constructor() {
-    super("AI processing is off. Turn it on in Profile → Privacy to use this feature.");
+    super("AI processing is off. Turn it on in Settings → Privacy to use this feature.");
     this.name = "AiProcessingConsentRequiredError";
   }
 }
@@ -56,7 +56,7 @@ export async function setAiProcessingConsent(allowed: boolean): Promise<void> {
  * Shows the consent screen once for each signed-in account whose current
  * consent version is unset. The choice is stored in Supabase user metadata so
  * it follows the account across devices and can be changed later from
- * Profile → Privacy. The screen can't be dismissed without a choice; if saving
+ * Settings → Privacy. The screen can't be dismissed without a choice; if saving
  * fails it stays up and says so.
  */
 export function AiProcessingConsentPrompt() {
