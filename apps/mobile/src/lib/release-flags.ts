@@ -1,16 +1,10 @@
-// release-flags.ts — what the App Store build is allowed to show.
+// release-flags.ts — switches for surfaces that are built but not shown.
 //
 // App Review reads a half-built surface as an incomplete app (Guideline 2.1,
-// App Completeness), so anything that isn't finished must be absent from the
-// production binary — not greyed out, not labelled "Coming soon". These
-// surfaces still exist for personal/TestFlight use, gated behind one flag.
-//
-// `EXPO_PUBLIC_PREVIEW_FEATURES=1` is set in eas.json for the `development`
-// and `preview` profiles ONLY. The `production` profile leaves it unset, so a
-// release build always evaluates to false.
-
-/** True in dev/preview builds; always false in the App Store build. */
-export const PREVIEW_FEATURES = process.env.EXPO_PUBLIC_PREVIEW_FEATURES === "1";
+// App Completeness), so anything unfinished must be absent from the binary,
+// not greyed out or labelled "Coming soon". Every build profile ships the same
+// app since 2026-09-29: Library, the only preview-gated surface, is not part
+// of Myne, so the EXPO_PUBLIC_PREVIEW_FEATURES split was removed.
 
 /** Phrase/note search in the header filter menu. Hidden until its design is
  *  settled (2026-09-18) — flip to true to bring it back. */

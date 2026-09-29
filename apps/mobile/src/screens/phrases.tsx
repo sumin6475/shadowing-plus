@@ -13,7 +13,6 @@ import { usePostHog } from "posthog-react-native";
 import { useTheme } from "@/design/theme";
 import { Avatar, BackBar, Badge, Card, Chip, Header, Icon, Pill, Screen, Serif, Stagger, StatTile, SwipeRow, confirmDelete, type IconName } from "@/design/ui";
 import { formatDuration } from "@/lib/library";
-import { PREVIEW_FEATURES } from "@/lib/release-flags";
 import { cumulativeSeries, deletePhrase, fetchPhraseById, fetchPhrases, matchesStageFilter, nextReviewInterval, PHRASE_STAGE_FILTERS, phraseIsDue, setPhraseFavorite, setPhraseStage, submitVerdict, updatePhraseDetails, updatePhraseNote, type LearningStatus, type PhraseItem, type PhraseKind, type PhraseStageFilterId, type SrsVerdict } from "@/lib/phrases";
 import { promptPhraseStage, shouldPromptStage } from "@/lib/daily-phrases";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
@@ -552,10 +551,10 @@ export function PhraseDetail({ item, nav }: { item?: PhraseItem; nav: Nav }) {
         : p.source === "Pasted text"
           ? "From pasted text"
           : "Added manually";
-  // Library is a dev/preview-only surface, so in a release build there is no
-  // clip screen to open: the id we are allowed to link to is null, and the
-  // source falls back to the static line inside the In-context card.
-  const clipLinkId = PREVIEW_FEATURES ? p.videoId : null;
+  // Library (the video-clip screen) is not part of Myne, so there is no clip
+  // to open: the source always shows as the static line inside the
+  // In-context card.
+  const clipLinkId: string | null = null;
   const prepareSpeech = speech.prepare;
 
   useEffect(() => {
