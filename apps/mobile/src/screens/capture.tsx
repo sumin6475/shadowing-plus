@@ -13,7 +13,7 @@ import { useTheme } from "@/design/theme";
 import { AnimatedPressable, BackBar, Card, Chip, Icon, Pill, Screen, usePressFx } from "@/design/ui";
 import { BlurView } from "expo-blur";
 import { extractPhraseFromImage, extractPhraseFromText, fillPhraseDetails, type PhraseCaptureDraft } from "@/lib/phrase-capture";
-import { createPhrase, fetchPhrasesForCaptureContext, updatePhraseDetails, type PhraseKind } from "@/lib/phrases";
+import { createPhrase, fetchPhrasesForCaptureContext, loadEditablePhrase, updatePhrase, updatePhraseDetails, type EditablePhrase, type PhraseKind } from "@/lib/phrases";
 import { fetchSituationChoices, type SituationChoice } from "@/lib/studio-model";
 import type { Nav } from "./nav";
 
@@ -237,7 +237,19 @@ const TEMPLATE_ECHO = [
   "natural english translation",
   "the supplied text",
 ];
-export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; imageAsset?: CaptureImageAsset; clipSeed?: ClipCaptureSeed }) {
+export function PhraseCaptureScreen({
+  nav,
+  imageAsset,
+  clipSeed,
+  editPhraseId,
+}: {
+  nav: Nav;
+  imageAsset?: CaptureImageAsset;
+  clipSeed?: ClipCaptureSeed;
+  /** Edit an existing phrase: every field starts filled, Save updates it. */
+  editPhraseId?: string;
+}) {
+  const editing = Boolean(editPhraseId);
   const t = useTheme();
   const posthog = usePostHog();
   const insets = useSafeAreaInsets();
@@ -281,6 +293,52 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
   const [savedEditNote, setSavedEditNote] = useState("");
   const [savedEditError, setSavedEditError] = useState<string | null>(null);
   const [savingSavedEdit, setSavingSavedEdit] = useState(false);
+
+  // Edit mode: the phrase as loaded, so "unsaved changes" means a real change.
+  const [original, setOriginal] = useState<EditablePhrase | null>(null);
+  const [editLoading, setEditLoading] = useState(editing);
+
+  useEffect(() => {
+    if (!editPhraseId) return;
+    let alive = true;
+    loadEditablePhrase(editPhraseId)
+      .then((phrase) => {
+        if (!alive) return;
+        setOriginal(phrase);
+        setText(phrase.text);
+        setKind(phrase.kind);
+        setMeaning(phrase.meaning);
+        setUsageNote(phrase.usageNote);
+        setLearnerNote(phrase.learnerNote);
+        setContext(phrase.context);
+        setContextTranslation(phrase.contextTranslation);
+        setContextTranslatedFrom(phrase.context);
+        setSourceLabel(phrase.sourceLabel);
+        setSituationId(phrase.storyId);
+        if (phrase.sourceLabel || phrase.storyId || phrase.learnerNote) setMoreOpen(true);
+      })
+      .catch((caught) => {
+        if (alive) setError(caught instanceof Error ? caught.message : "Couldn’t load this phrase.");
+      })
+      .finally(() => {
+        if (alive) setEditLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [editPhraseId]);
+
+  const editedPhrase = (): EditablePhrase => ({
+    text,
+    kind,
+    meaning,
+    usageNote,
+    learnerNote,
+    context,
+    contextTranslation,
+    sourceLabel,
+    storyId: situationId,
+  });
 
   // Bumped by Retry to re-run the story load below.
   const [storiesNonce, setStoriesNonce] = useState(0);
@@ -441,7 +499,9 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     void fillFromClipSeed(clipSeed);
   }, [clipSeed, fillFromClipSeed]);
 
-  const hasDraft = () => savedPhrases.length > 0
+  const hasDraft = () => editing
+    ? Boolean(original) && JSON.stringify(editedPhrase()) !== JSON.stringify(original)
+    : savedPhrases.length > 0
     ? Boolean(text.trim() || meaning.trim() || usageNote.trim() || learnerNote.trim())
     : Boolean(imageUri || text.trim() || meaning.trim() || usageNote.trim() || learnerNote.trim() || detectedText.trim() || (!clipSeed && context.trim()));
 
@@ -452,7 +512,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     }
     Alert.alert(
       "Leave without saving?",
-      "This phrase draft won’t be saved.",
+      editing ? "Your changes to this phrase won’t be saved." : "This phrase draft won’t be saved.",
       [
         { text: "Keep editing", style: "cancel" },
         { text: "Discard", style: "destructive", onPress: nav.pop },
@@ -670,6 +730,17 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
     }
     setSaving(true);
     setError(null);
+    if (editPhraseId) {
+      try {
+        await updatePhrase(editPhraseId, editedPhrase(), original?.storyId ?? null);
+        nav.invalidateSpeakingData();
+        nav.pop();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Couldn’t save your changes. Try again.");
+        setSaving(false);
+      }
+      return;
+    }
     try {
       const saved = await createPhrase({
         text,
@@ -725,7 +796,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
   return (
     <>
       <Screen bottomPad={54}>
-      <BackBar title={clipSeed?.source === "speak" ? "From this talk" : clipSeed ? "From this clip" : imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
+      <BackBar title={editing ? "Edit phrase" : clipSeed?.source === "speak" ? "From this talk" : clipSeed ? "From this clip" : imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
 
       {imageUri ? (
         <>
@@ -742,11 +813,11 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
         </>
       ) : null}
 
-      {reading || (Boolean(clipSeed) && filling && !text.trim()) ? (
+      {reading || editLoading || (Boolean(clipSeed) && filling && !text.trim()) ? (
         <Card style={{ alignItems: "center", paddingVertical: 24 }}>
           <ActivityIndicator color={t.colors.acc} />
           <Text style={{ fontSize: 13.5, color: t.colors.ink2, marginTop: 10 }}>
-            {reading ? "Reading the visible text…" : "Finding a phrase…"}
+            {reading ? "Reading the visible text…" : editLoading ? "Loading this phrase…" : "Finding a phrase…"}
           </Text>
         </Card>
       ) : null}
@@ -804,7 +875,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
           }}
           onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
           editable={!reading}
-          autoFocus={!imageAsset && !clipSeed}
+          autoFocus={!imageAsset && !clipSeed && !editing}
           multiline
           placeholder="e.g. Don’t let his mood rub off on you."
           placeholderTextColor={t.colors.ink3}
@@ -819,6 +890,8 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
           </View>
         ) : null}
 
+        {/* Capture tools (paste, AI fill, camera) belong to adding, not editing. */}
+        {editing ? null : (
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 11 }}>
           {!imageUri && !clipSeed && showNativePasteButton ? (
             <Clipboard.ClipboardPasteButton
@@ -857,6 +930,7 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
             <Pill tone="tint" small onPress={useSelectedText}>Use selected words</Pill>
           ) : null}
         </View>
+        )}
 
         {!imageUri ? <Text style={{ fontSize: 11.5, color: t.colors.ink3, marginTop: 9 }}>AI suggests one phrase and drafts the details. You can edit everything.</Text> : null}
       </Card>
@@ -969,8 +1043,8 @@ export function PhraseCaptureScreen({ nav, imageAsset, clipSeed }: { nav: Nav; i
 
       {confidence != null && confidence < 0.7 ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18 }}>Check the suggested phrase before saving.</Text> : null}
       {error ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center" }}>{error}</Text> : null}
-      <Pill full icon="bank" onPress={reading || filling || saving ? undefined : save} style={{ opacity: reading || filling || saving ? 0.6 : 1 }}>
-        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : savedPhrases.length > 0 ? "Save this phrase" : "Save to Phrase Bank"}
+      <Pill full icon={editing ? "check" : "bank"} onPress={reading || filling || saving || editLoading ? undefined : save} style={{ opacity: reading || filling || saving || editLoading ? 0.6 : 1 }}>
+        {saving ? <ActivityIndicator color={t.colors.onAcc} /> : editing ? "Save changes" : savedPhrases.length > 0 ? "Save this phrase" : "Save to Phrase Bank"}
       </Pill>
       </Screen>
 

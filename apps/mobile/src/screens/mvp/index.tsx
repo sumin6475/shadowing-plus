@@ -29,17 +29,9 @@ import {
   Picker,
   Text as SwiftText,
 } from "@expo/ui/swift-ui";
-import {
-  buttonBorderShape,
-  buttonStyle,
-  controlSize,
-  frame,
-  pickerStyle,
-  tag,
-  tint,
-} from "@expo/ui/swift-ui/modifiers";
+import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { SEARCH_ENABLED } from "@/lib/release-flags";
-import { FONT } from "@/design/mobile-tokens";
+import { FONT, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
 import {
   Avatar,
@@ -701,15 +693,10 @@ export function PhraseBank({ nav }: { nav: Nav }) {
   );
 }
 
-/** Step card geometry: the check circle sits in a gutter, and the step's
- *  body hangs from the title's left edge (circle + gap). */
-const STEP_CHECK = 26,
-  STEP_GUTTER = 12,
-  STEP_INDENT = STEP_CHECK + STEP_GUTTER;
-/** The play control as iOS draws it: a Liquid Glass circle (iOS 26
- *  `.glassProminent` + circle border shape) tinted with the app accent, 56pt —
- *  comfortably over the 44pt minimum target. A native SwiftUI button, so it
- *  gets the system press highlight and Reduce Transparency for free. */
+/** The play control: one accent circle that never moves or resizes — only the
+ *  glyph inside it changes (play → spinner while the voice loads → pause).
+ *  56pt, comfortably over the 44pt minimum target. Pressed feedback is a dim,
+ *  not a scale, so the circle stays put. */
 const PLAY_SIZE = 56;
 function PlayCircle({
   state,
@@ -721,48 +708,117 @@ function PlayCircle({
   label: string;
 }) {
   const t = useTheme();
-  if (state === "loading")
-    return (
-      <View
-        accessibilityLabel="Loading voice"
-        style={{
-          width: PLAY_SIZE,
-          height: PLAY_SIZE,
-          borderRadius: PLAY_SIZE / 2,
-          backgroundColor: t.colors.accS,
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={state === "loading" ? "Loading voice" : label}
+      accessibilityState={{ busy: state === "loading" }}
+      onPress={state === "loading" ? undefined : onPress}
+      style={({ pressed }) => ({
+        width: PLAY_SIZE,
+        height: PLAY_SIZE,
+        borderRadius: PLAY_SIZE / 2,
+        backgroundColor: t.colors.acc,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      {state === "loading" ? (
+        <ActivityIndicator color={t.colors.onAcc} />
+      ) : (
+        <SymbolView
+          name={state === "playing" ? "pause.fill" : "play.fill"}
+          size={22}
+          tintColor={t.colors.onAcc}
+          // The play triangle's visual centre sits left of its box.
+          style={state === "playing" ? undefined : { marginLeft: 3 }}
+        />
+      )}
+    </Pressable>
+  );
+}
+/** Marks a step done. Same proportions as the Add-a-phrase kind chips
+ *  (medium height, capsule, 15pt semibold); white until pressed, then the
+ *  play circle's accent with a check. */
+function ClearChip({
+  done,
+  disabled,
+  onPress,
+}: {
+  done: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const t = useTheme();
+  const fg = done ? t.colors.onAcc : t.colors.ink2;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={done ? "Cleared. Tap to undo" : "Mark this step clear"}
+      accessibilityState={{ selected: done, disabled: Boolean(disabled) }}
+      disabled={disabled}
+      hitSlop={4}
+      onPress={() => {
+        void Haptics.selectionAsync();
+        onPress();
+      }}
+      style={({ pressed }) => [
+        {
+          height: Motif.buttonHeight.medium,
+          borderRadius: Motif.radius.pill,
+          paddingHorizontal: 15,
+          flexDirection: "row",
           alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ActivityIndicator color={t.colors.accD} />
-      </View>
-    );
+          gap: 6,
+          backgroundColor: done ? t.colors.acc : t.colors.card,
+          borderWidth: done ? 0 : StyleSheet.hairlineWidth,
+          borderColor: t.ring,
+          opacity: pressed ? 0.8 : 1,
+        },
+        done ? null : t.shadowCard,
+      ]}
+    >
+      <Text style={{ fontSize: 15, fontWeight: "600", color: fg }}>Clear</Text>
+      {done ? <Icon name="check" s={14} w={2.4} c={fg} /> : null}
+    </Pressable>
+  );
+}
+/** The detail screen's "…" — a native iOS menu, drawn in the same round
+ *  card button as the back arrow opposite it. */
+function PhraseMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const t = useTheme();
   return (
     <View
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{ width: PLAY_SIZE, height: PLAY_SIZE }}
+      accessibilityLabel="More"
+      style={[
+        {
+          width: Motif.tapTarget,
+          height: Motif.tapTarget,
+          borderRadius: Motif.tapTarget / 2,
+          backgroundColor: t.colors.card,
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: t.ring,
+        },
+        t.shadowCard,
+      ]}
     >
       <Host matchContents>
-        <Button
-          onPress={onPress}
-          modifiers={[
-            buttonStyle("glassProminent"),
-            buttonBorderShape("circle"),
-            controlSize("extraLarge"),
-            tint(t.colors.acc),
-          ]}
+        <Menu
+          label={
+            <Image
+              systemName="ellipsis"
+              size={18}
+              color={t.colors.ink}
+              modifiers={[frame({ width: Motif.tapTarget, height: Motif.tapTarget })]}
+            />
+          }
         >
-          {/* SwiftUI sizes a glass button from its label, not from a frame on
-              the button, so the label carries the size. */}
-          <Image
-            systemName={state === "playing" ? "pause.fill" : "play.fill"}
-            size={22}
-            color={t.colors.onAcc}
-            modifiers={[frame({ width: 28, height: 28 })]}
-          />
-        </Button>
+          <Button label="Edit" systemImage="pencil" onPress={onEdit} />
+          <Button label="Delete" systemImage="trash" role="destructive" onPress={onDelete} />
+        </Menu>
       </Host>
     </View>
   );
@@ -902,9 +958,34 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
       setBusy(false);
     }
   };
+  // Deleting is a second, explicit step: the menu item only asks.
+  const confirmDeletePhrase = () =>
+    Alert.alert("Delete this phrase?", "Its saved sentences will also be removed.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () =>
+          void mutate(async () => {
+            await deletePhrase(id);
+            nav.pop();
+          }),
+      },
+    ]);
   return (
     <Screen>
-      <BackBar title="Phrases" onBack={nav.pop} />
+      <BackBar
+        title="Phrases"
+        onBack={nav.pop}
+        right={
+          p ? (
+            <PhraseMenu
+              onEdit={() => nav.push("capture", { editPhraseId: id })}
+              onDelete={confirmDeletePhrase}
+            />
+          ) : undefined
+        }
+      />
       <ErrorCard error={state.error} retry={() => void state.refresh()} />
       {!p ? (
         state.loading ? (
@@ -929,9 +1010,6 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
             >
               {p.translation || "An expression to make your own."}
             </Text>
-            <Text style={{ fontSize: 13, color: t.colors.ink3, textAlign: "center" }}>
-              {p.source} · {dateLabel(p.createdAt)}
-            </Text>
           </View>
           <View style={{ flexDirection: "row", gap: 5, marginVertical: 8 }}>
             {STEPS.map((step) => (
@@ -948,49 +1026,14 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
           </View>
           {STEPS.map((step, index) => (
             <Card key={step} style={{ gap: 14 }}>
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{
-                  checked: !!p[step],
-                  disabled:
-                    busy || (index === 2 && !state.data?.sentences.length),
-                }}
-                onPress={() => {
-                  if (
-                    index === 2 &&
-                    !p[step] &&
-                    !state.data?.sentences.length
-                  ) {
-                    setError(
-                      "Save at least one sentence before completing this step.",
-                    );
-                    return;
-                  }
-                  void mutate(() => setStep(id, step, !p[step]));
-                }}
+              <View
                 style={{
                   flexDirection: "row",
-                  gap: STEP_GUTTER,
                   alignItems: "center",
+                  gap: 12,
                   minHeight: 44,
                 }}
               >
-                <View
-                  style={{
-                    height: STEP_CHECK,
-                    width: STEP_CHECK,
-                    borderRadius: STEP_CHECK / 2,
-                    borderWidth: 1.5,
-                    borderColor: p[step] ? t.colors.acc : t.colors.ink3,
-                    backgroundColor: p[step] ? t.colors.acc : "transparent",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {p[step] ? (
-                    <Icon name="check" s={16} c={t.colors.onAcc} />
-                  ) : null}
-                </View>
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text
                     style={{
@@ -1024,10 +1067,25 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                         ][index]}
                   </Text>
                 </View>
-              </Pressable>
-              {/* Everything under the title hangs from the title's left edge;
-                  the check circle is a gutter, not part of the column. */}
-              <View style={{ marginLeft: STEP_INDENT, gap: 10 }}>
+                <ClearChip
+                  done={!!p[step]}
+                  disabled={busy}
+                  onPress={() => {
+                    if (
+                      index === 2 &&
+                      !p[step] &&
+                      !state.data?.sentences.length
+                    ) {
+                      setError(
+                        "Save at least one sentence before clearing this step.",
+                      );
+                      return;
+                    }
+                    void mutate(() => setStep(id, step, !p[step]));
+                  }}
+                />
+              </View>
+              <View style={{ gap: 10 }}>
               {index === 0 ? (
                 <>
                   {/* A transport row, as in Music: the play circle centred, its
@@ -1119,20 +1177,6 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                       </View>
                     </TransportToggle>
                   </View>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      lineHeight: 19,
-                      color: t.colors.ink3,
-                      textAlign: "center",
-                    }}
-                  >
-                    {voice.fallbackId === id
-                      ? "Playing device voice. Tap again to repeat."
-                      : `${rate === 1 ? "Normal speed" : "Slower, 0.75×"} · ${
-                          repeat === 1 ? "plays once" : "repeats 5 times"
-                        }`}
-                  </Text>
                 </>
               ) : index === 1 ? (
                 <>
@@ -1241,30 +1285,6 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
               Use it in the mirror
             </Pill>
           ) : null}
-          <Pill
-            tone="ghost"
-            style={{ alignSelf: "stretch" }}
-            onPress={() =>
-              Alert.alert(
-                "Delete this phrase?",
-                "Its saved sentences will also be removed.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () =>
-                      void mutate(async () => {
-                        await deletePhrase(id);
-                        nav.pop();
-                      }),
-                  },
-                ],
-              )
-            }
-          >
-            Delete phrase
-          </Pill>
         </>
       )}
     </Screen>

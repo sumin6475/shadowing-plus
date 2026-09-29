@@ -498,6 +498,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
           nav={nav}
           imageAsset={p.imageAsset as CaptureImageAsset | undefined}
           clipSeed={p.clipSeed as ClipCaptureSeed | undefined}
+          editPhraseId={p.editPhraseId as string | undefined}
         />
       );
     case "settings":
