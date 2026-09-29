@@ -830,6 +830,105 @@ export async function updatePhraseDetails(
   void prewarmPhraseEmbedding(id);
 }
 
+/** Every field the Add-a-phrase screen shows, as stored — for editing. */
+export interface EditablePhrase {
+  text: string;
+  kind: PhraseKind;
+  meaning: string;
+  usageNote: string;
+  learnerNote: string;
+  context: string;
+  contextTranslation: string;
+  sourceLabel: string;
+  storyId: string | null;
+}
+
+export async function loadEditablePhrase(id: string): Promise<EditablePhrase> {
+  // `*`, not a column list: `meaning` vs `meaning_ko` and `learner_note`
+  // depend on which migrations the database has, and a named missing column
+  // is a hard 42703.
+  const { data, error } = await supabase.from("phrase_items").select("*").eq("id", id).single();
+  if (error || !data) throw new Error(error?.message ?? "This phrase is no longer available.");
+  const row = data as Record<string, unknown>;
+  const ctx = sourceContext(row.source_context);
+  const linked = await fetchPhraseSituations(id).catch(() => [] as PhraseSituationRef[]);
+  const str = (value: unknown) => (typeof value === "string" ? value : "");
+  return {
+    text: str(row.text),
+    kind: (str(row.kind) || "phrase") as PhraseKind,
+    meaning: str(row.meaning) || str(row.meaning_ko),
+    usageNote: str(row.usage_note),
+    learnerNote: str(row.learner_note),
+    context: ctx.context_text ?? "",
+    contextTranslation: ctx.context_translation ?? "",
+    sourceLabel: ctx.source_label ?? "",
+    storyId: linked[0]?.id ?? ctx.story_id ?? null,
+  };
+}
+
+/**
+ * Save an edit made on the Add-a-phrase screen. `previousStoryId` is the
+ * Situation the phrase was shown as linked to when editing began: changing it
+ * moves that one direct link (a Note-based link to the old Situation stays).
+ */
+export async function updatePhrase(
+  id: string,
+  input: EditablePhrase,
+  previousStoryId: string | null,
+): Promise<void> {
+  const text = input.text.replace(/\s+/g, " ").trim().slice(0, 240);
+  if (!text) throw new Error("Enter a phrase to save.");
+  const current = await supabase.from("phrase_items").select("text, source_context").eq("id", id).single();
+  if (current.error) throw new Error(current.error.message);
+  const storedContext = cleanCaptureContext(input.context);
+  const context: SourceContext = {
+    ...sourceContext(current.data?.source_context),
+    source_label: input.sourceLabel.trim() || undefined,
+    context_text: storedContext || undefined,
+    context_translation: input.contextTranslation.replace(/\s+/g, " ").trim().slice(0, 1200) || undefined,
+    context_fingerprint: captureContextFingerprint(storedContext) || undefined,
+    story_id: input.storyId || undefined,
+  };
+  const gloss = input.meaning.trim().slice(0, 500) || null;
+  let patch: Record<string, unknown> = {
+    text,
+    normalized_text: normalizePhrase(text),
+    kind: input.kind,
+    meaning: gloss,
+    usage_note: input.usageNote.trim().slice(0, 500) || null,
+    learner_note: input.learnerNote.trim().slice(0, 500) || null,
+    source_context: context,
+  };
+  let { error } = await supabase.from("phrase_items").update(patch).eq("id", id);
+  if (isMissingLearnerNoteColumn(error)) {
+    const { learner_note: _note, ...rest } = patch;
+    patch = rest;
+    ({ error } = await supabase.from("phrase_items").update(patch).eq("id", id));
+  }
+  if (isMissingMeaningColumn(error)) {
+    const { meaning: _meaning, ...rest } = patch;
+    ({ error } = await supabase.from("phrase_items").update({ ...rest, meaning_ko: gloss }).eq("id", id));
+  }
+  if (error) throw new Error(error.message);
+
+  if (input.storyId !== previousStoryId) {
+    if (previousStoryId) {
+      const { error: unlinkError } = await supabase
+        .from("phrase_story_links")
+        .delete()
+        .eq("phrase_item_id", id)
+        .eq("story_id", previousStoryId);
+      if (unlinkError) throw new Error(unlinkError.message);
+    }
+    if (input.storyId) await linkPhraseToSituation(id, input.storyId, "learner");
+  }
+  // New wording needs a new pronunciation and search vector.
+  if (current.data?.text !== text) {
+    void prewarmPhraseSpeech(id).catch(() => {});
+    void prewarmPhraseEmbedding(id);
+  }
+}
+
 /** Situations a Phrase is linked to in the Practice hub. */
 export interface PhraseSituationRef {
   id: string;
