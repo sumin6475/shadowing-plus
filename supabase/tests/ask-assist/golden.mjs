@@ -71,7 +71,8 @@ for (const c of cases.filter((c) => !only || c.id === only)) {
     if (last.error || !last.reply) break;
     if (!isLast) messages.push({ role: "assistant", content: assistantContent(last.reply) });
   }
-  const pass = !last.error && last.finish === "stop" && last.reply?.type === c.expect;
+  const expected = [c.expect].flat();
+  const pass = !last.error && last.finish === "stop" && expected.includes(last.reply?.type);
   results.push({ c, last, pass });
   console.log(`${pass ? "PASS" : "FAIL"} ${c.id} — ${last.error ?? `${last.reply?.type ?? "unparsed"} (${last.finish}), ${last.output} out, ${last.ms}ms`}`);
 }
@@ -102,7 +103,7 @@ const lines = [
 for (const { c, last, pass } of results) {
   lines.push(`## ${pass ? "PASS" : "FAIL"} · ${c.id} (${c.mode}, ${c.l1})`, "");
   lines.push(`- Turns: ${c.turns.map((t) => `“${t}”`).join(" → ")}`);
-  lines.push(`- Expect: \`${c.expect}\` — check: ${c.check}`);
+  lines.push(`- Expect: \`${[c.expect].flat().join(" | ")}\` — check: ${c.check}`);
   lines.push(`- Got: ${last.error ?? `\`${last.reply?.type ?? "unparsed"}\`, finish ${last.finish}, ${last.input} in (${last.cached} cached) / ${last.output} out, ${last.ms}ms`}`);
   lines.push("", "```json", JSON.stringify(last.reply ?? null, null, 2), "```", "");
 }
