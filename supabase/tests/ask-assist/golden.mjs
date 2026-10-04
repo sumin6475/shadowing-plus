@@ -2,7 +2,7 @@
 // core.ts (no deploy or auth needed), checks reply type + schema, and writes a
 // markdown report for eyeballing naturalness.
 //
-//   OPENAI_API_KEY=… node supabase/tests/ask-assist/golden.mjs [--only <id>] [--out <file>]
+//   OPENAI_API_KEY=… node supabase/tests/ask-assist/golden.mjs [--model <id>] [--only <id>] [--out <file>]
 //
 // Cost: ~25 gpt-4o-mini calls, well under $0.05 per full run.
 import { readFile, writeFile } from "node:fs/promises";
@@ -15,6 +15,7 @@ import {
   costUsd,
   learnerLanguage,
   MAX_OUTPUT_TOKENS,
+  MODEL,
   normalizeReply,
 } from "../../functions/ask-assist/core.ts";
 
@@ -33,7 +34,8 @@ if (!apiKey) {
 }
 
 const today = new Date().toISOString().slice(0, 10);
-const out = flag("--out") ?? path.join(repoRoot, "docs/journal/quality", `${today}-ask-golden.md`);
+const model = flag("--model") ?? MODEL;
+const out = flag("--out") ?? path.join(repoRoot, "docs/journal/quality", `${today}-ask-golden-${model}.md`);
 const only = flag("--only");
 const { cases } = JSON.parse(await readFile(path.join(here, "golden.json"), "utf8"));
 
@@ -42,7 +44,7 @@ async function turn(mode, messages, l1) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(buildOpenAIRequest({ mode, messages, l1 })),
+    body: JSON.stringify(buildOpenAIRequest({ mode, messages, l1 }, model)),
   });
   const ms = Math.round(performance.now() - started);
   if (!res.ok) return { ms, error: `OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}` };
@@ -81,10 +83,10 @@ const ok = results.filter((r) => r.pass).length;
 const byMode = (mode) => results.filter((r) => r.c.mode === mode && !r.last.error);
 const mean = (xs) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0);
-const totalCost = results.reduce((sum, r) => sum + costUsd(r.last.input ?? 0, r.last.output ?? 0), 0);
+const totalCost = results.reduce((sum, r) => sum + costUsd(r.last.input ?? 0, r.last.output ?? 0, model), 0);
 
 const lines = [
-  `# Ask golden run — ${today}`,
+  `# Ask golden run — ${today} · ${model}`,
   "",
   `Result: **${ok}/${results.length}** reply type + schema pass (bar: 20/20 schema, ≥18/20 type).`,
   "",

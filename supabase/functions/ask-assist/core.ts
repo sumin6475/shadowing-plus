@@ -18,8 +18,12 @@ export const MODES: readonly AskMode[] = ["how_to_say", "note"];
  *  expected size (≈350 / ≈700) instead of on it. */
 export const MAX_OUTPUT_TOKENS: Record<AskMode, number> = { how_to_say: 700, note: 1100 };
 
-/** gpt-4o-mini list prices (mirror of web/src/lib/usage.ts). */
-const PRICE_PER_MILLION = { input: 0.15, output: 0.6 };
+/** List prices per 1M tokens (gpt-4o-mini mirrors web/src/lib/usage.ts). A
+ *  model missing here is metered at $0 rather than at a wrong price. */
+const PRICE_PER_MILLION: Record<string, { input: number; output: number }> = {
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "gpt-4.1-mini": { input: 0.4, output: 1.6 },
+};
 
 export interface AskMessage {
   role: "user" | "assistant";
@@ -113,7 +117,7 @@ The learner either (a) writes something in their own language and wants to know 
 
 For a "card":
 - "query": the learner's search term, cleaned up, in the language they typed it.
-- "expressions": 1 to 3 items. One item when the meaning is clear; one per reading when it branches. "meaning" is a short natural gloss in the learner's language; "when" names the reading/situation and register ("" only if there is a single item and nothing to add).
+- "expressions": 1 to 3 items. One item when the meaning is clear; one per reading when it branches. When the learner gives an English chunk or word (case b), the first item's "en" is that chunk itself in its reusable pattern form (e.g. "I can't seem to + verb", "rub off on someone") — full sentences belong in "examples", not here. "meaning" is a short natural gloss in the learner's language; "when" names the reading/situation and register ("" only if there is a single item and nothing to add).
 - "nuance": what the main expression feels like and how it differs from the obvious alternative. 1–3 sentences, specific (name the feeling), not generic ("used in daily life").
 - "examples": exactly 3 everyday sentences using the main expression(s), each with a natural translation "l1".
 - "tip": one line telling the learner which option to pick for the most likely situation.
@@ -131,8 +135,8 @@ A note is a short script the learner will say out loud: Opening, Body, Closing. 
 For a "card":
 - "situation": one line in the learner's language — who they are talking to and the setting.
 - "draft": "opening", "body", "closing" in natural SPOKEN English at a register that fits the listener. Opening 1–2 sentences, body 2–3 sentences with real substance (reason, detail, what happens next), closing 1–2 sentences. Sound like a person talking: no email greetings ("Hi [name],"), no letter sign-offs. Placeholders, if any, are short English in square brackets, e.g. [your name].
-- "key_phrases": 3 to 5 reusable chunks taken from the draft that the learner can reuse in other situations (e.g. "I was wondering if…", "take next Friday off") — not whole content-specific sentences, not trivial words.
-- "terms": 3 to 6 words or short terms people commonly say in this setting, whenever the setting has its own vocabulary — any workplace function (engineering, sales, design, HR…), medical, legal, finance, travel/airport, housing, school, customer service. Use an empty array only for purely social small talk.
+- "key_phrases": 3 to 5 reusable chunks taken from the draft that the learner can reuse in other situations (e.g. "I was wondering if…", "take next Friday off"). Cut each down to the reusable part — never a whole content-specific sentence, never a trivial word.
+- "terms": 3 to 6 field-specific words people in this setting actually say and a learner may not know (standup: "repro", "hotfix", "roll back"; clinic: "symptoms", "prescription", "swollen") — whenever the setting has its own vocabulary: any workplace function (engineering, sales, design, HR…), medical, legal, finance, travel/airport, housing, school, customer service. Never list everyday words ("team", "project", "delay"). Use an empty array for social talk, self-introductions and anything without real jargon.
 
 For an "answer" (a small follow-up like "make the closing shorter", "what does X mean"):
 - "text": 1–3 sentences explaining what changed or answering the question.
@@ -198,9 +202,9 @@ export const SCHEMAS: Record<AskMode, unknown> = {
 };
 
 /** Chat Completions body for one Ask turn. */
-export function buildOpenAIRequest(request: AskRequest) {
+export function buildOpenAIRequest(request: AskRequest, model: string = MODEL) {
   return {
-    model: MODEL,
+    model,
     temperature: 0.3,
     max_tokens: MAX_OUTPUT_TOKENS[request.mode],
     response_format: {
@@ -325,7 +329,9 @@ export function assistantContent(reply: AskReply): string {
   return JSON.stringify({ reply });
 }
 
-export function costUsd(inputTokens: number, outputTokens: number): number {
-  const cost = (inputTokens * PRICE_PER_MILLION.input + outputTokens * PRICE_PER_MILLION.output) / 1_000_000;
+export function costUsd(inputTokens: number, outputTokens: number, model: string = MODEL): number {
+  const price = PRICE_PER_MILLION[model];
+  if (!price) return 0;
+  const cost = (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
   return Math.round(cost * 1_000_000) / 1_000_000;
 }

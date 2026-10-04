@@ -8,6 +8,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { buildOpenAIRequest, costUsd, DAILY_LIMIT, MODEL, normalizeReply, parseAskBody } from "./core.ts";
 
+/** Optional secret to switch models without a code change (e.g. after a golden
+ *  A/B). Unset → the default in core.ts. */
+const ASK_MODEL = Deno.env.get("ASK_MODEL") || MODEL;
+
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
@@ -54,7 +58,7 @@ Deno.serve(async (req: Request) => {
   const openai = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(buildOpenAIRequest(request)),
+    body: JSON.stringify(buildOpenAIRequest(request, ASK_MODEL)),
   });
   if (!openai.ok) {
     console.error("ask-assist: OpenAI", openai.status, await openai.text().catch(() => ""));
@@ -70,13 +74,13 @@ Deno.serve(async (req: Request) => {
   const { error: usageError } = await supabase.from("usage_events").insert({
     user_id: user.id,
     provider: "openai",
-    model: MODEL,
+    model: ASK_MODEL,
     kind: "ask",
     label: request.mode,
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: inputTokens + outputTokens,
-    cost_usd: costUsd(inputTokens, outputTokens),
+    cost_usd: costUsd(inputTokens, outputTokens, ASK_MODEL),
   });
   if (usageError) console.error("ask-assist: usage insert failed", usageError.message);
 
