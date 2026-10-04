@@ -17,6 +17,7 @@ import { deleteAccount } from "@/lib/account";
 import { useAuth } from "@/lib/auth";
 import { firstLanguage, L1_LABEL } from "@/lib/first-language";
 import { englishLevel, ENGLISH_LEVEL_LABEL } from "@/lib/english-level";
+import { phrasesPerDay } from "@/lib/daily-phrases";
 import { fetchPhrases } from "@/lib/phrases";
 import { openLegalUrl, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import { reminderSummary } from "@/lib/reminders";
@@ -193,7 +194,8 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       <SettingsGroup t={t} title="Preferences">
         <SettingsRow t={t} icon="translate" label="English level" detail={ENGLISH_LEVEL_LABEL[englishLevel()]} onPress={() => nav.push("englishLevel")} />
         <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("firstLanguage")} />
-        <SettingsRow t={t} icon="contrast" label="Theme" detail={THEME_PREF_LABEL[themePref()]} onPress={() => nav.push("themePref")} last />
+        <SettingsRow t={t} icon="contrast" label="Theme" detail={THEME_PREF_LABEL[themePref()]} onPress={() => nav.push("themePref")} />
+        <SettingsRow t={t} icon="repeat" label="Phrases per day" detail={String(phrasesPerDay())} onPress={() => nav.push("phrasesPerDay")} last />
       </SettingsGroup>
 
       <SettingsGroup t={t} title="Notifications">
