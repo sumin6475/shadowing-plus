@@ -121,8 +121,11 @@ test("normalizeReply shapes answers per mode and passes off_topic through", () =
   assert.equal("draft_patch" in howAnswer, false);
 });
 
-test("costUsd uses gpt-4o-mini list prices", () => {
-  assert.equal(costUsd(1_000_000, 0), 0.15);
-  assert.equal(costUsd(0, 1_000_000), 0.6);
-  assert.equal(costUsd(1500, 400), 0.000465);
+test("costUsd prices per model and meters unknown models at zero", () => {
+  assert.equal(costUsd(1_000_000, 0, "gpt-4o-mini"), 0.15);
+  assert.equal(costUsd(0, 1_000_000, "gpt-4o-mini"), 0.6);
+  assert.equal(costUsd(1500, 400, "gpt-4o-mini"), 0.000465);
+  assert.equal(costUsd(1_000_000, 1_000_000, "gpt-4.1-mini"), 2);
+  assert.equal(costUsd(1500, 400), costUsd(1500, 400, "gpt-4.1-mini"));
+  assert.equal(costUsd(1500, 400, "some-future-model"), 0);
 });

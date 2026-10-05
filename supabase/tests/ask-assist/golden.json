@@ -1,12 +1,12 @@
 {
   "_doc": "Golden prompts for ask-assist. Each case is one conversation: every turn but the last is run first (in `history_mode`, default `mode`) to build history; `expect` is the reply type (or list of acceptable types) for the LAST turn. `l1` is the first_language code. Add a case for every real failure.",
   "cases": [
-    { "id": "hts-ambiguous-sick", "mode": "how_to_say", "l1": "ko", "turns": ["몸이 안 좋으면 속상해"], "expect": "card", "check": "branches 내가/상대가 아플 때 without asking back (run 1 failed: both readings were 내가)" },
+    { "id": "hts-ambiguous-sick", "mode": "how_to_say", "l1": "ko", "turns": ["몸이 안 좋으면 속상해"], "expect": "card", "check": "branches 내가/상대가 아플 때 without asking back (KNOWN GAP: 4 runs, both models read it as 내가 only — accepted 2026-10-05, keep watching)" },
     { "id": "hts-chunk-cant-seem", "mode": "how_to_say", "l1": "ko", "turns": ["I can't seem to 가 뭐야?"], "expect": "card", "check": "meaning 아무리 해도 ~가 안 된다, not ~할 수 없는 것 같아; natural l1 (run 1: literal gloss)" },
     { "id": "hts-ambiguous-thanks", "mode": "how_to_say", "l1": "ko", "turns": ["수고하셨습니다 영어로 뭐라고 해?"], "expect": "card", "check": "branches by setting (colleague leaving / after a presentation); no 'You worked hard'" },
     { "id": "hts-chunk-rub-off", "mode": "how_to_say", "l1": "ko", "turns": ["rub off on 뜻?"], "expect": "card", "check": "influence sense, natural examples" },
     { "id": "hts-casual-reply", "mode": "how_to_say", "l1": "ko", "turns": ["친구가 고맙다고 할 때 별거 아니라고 어떻게 말해?"], "expect": "card", "check": "No worries / Don't mention it / Anytime with register" },
-    { "id": "hts-followup-casual", "mode": "how_to_say", "l1": "ko", "turns": ["회의 일정 좀 미뤄도 될까요?", "더 캐주얼하게는?"], "expect": "answer", "check": "short answer, push it back / move it" },
+    { "id": "hts-followup-casual", "mode": "how_to_say", "l1": "ko", "turns": ["회의 일정 좀 미뤄도 될까요?", "더 캐주얼하게는?"], "expect": ["answer", "card"], "check": "push it back / move it; a new card is fine when the follow-up yields new expressions (A/B 2026-10-05)" },
     { "id": "hts-followup-diff", "mode": "how_to_say", "l1": "ko", "turns": ["몸이 안 좋으면 속상해", "feel down이랑 upset 차이가 뭐야?"], "expect": "answer", "check": "explains difference briefly" },
     { "id": "hts-es", "mode": "how_to_say", "l1": "es", "turns": ["¿Cómo digo 'me da pereza' en inglés?"], "expect": "card", "check": "explanations in Spanish; I can't be bothered / I don't feel like it" },
     { "id": "hts-ja", "mode": "how_to_say", "l1": "ja", "turns": ["「よろしくお願いします」って英語で何て言う？"], "expect": "card", "check": "explanations in Japanese; branches by situation" },

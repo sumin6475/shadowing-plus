@@ -4,7 +4,10 @@
 // Node's type stripping. Keep it erasable-syntax TypeScript (no enums,
 // namespaces or parameter properties) and import it with the `.ts` extension.
 
-export const MODEL = "gpt-4o-mini";
+/** Chosen by golden A/B (2026-10-05): gpt-4o-mini kept failing How-to-say
+ *  naturalness (literal glosses, wrong sense for よろしくお願いします); 4.1-mini
+ *  fixed those and was faster, at ~2.9x the cost (~$0.001 per turn). */
+export const MODEL = "gpt-4.1-mini";
 export const MAX_TURNS = 6;
 export const DAILY_LIMIT = 50;
 export const MAX_USER_CHARS = 800;
@@ -19,7 +22,8 @@ export const MODES: readonly AskMode[] = ["how_to_say", "note"];
 export const MAX_OUTPUT_TOKENS: Record<AskMode, number> = { how_to_say: 700, note: 1100 };
 
 /** List prices per 1M tokens (gpt-4o-mini mirrors web/src/lib/usage.ts). A
- *  model missing here is metered at $0 rather than at a wrong price. */
+ *  model missing here is metered at $0 rather than at a wrong price. Cached
+ *  input is billed lower than this, so cost_usd slightly overestimates. */
 const PRICE_PER_MILLION: Record<string, { input: number; output: number }> = {
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
   "gpt-4.1-mini": { input: 0.4, output: 1.6 },
