@@ -14,7 +14,6 @@ import { AnimatedPressable, BackBar, Card, Chip, Icon, Pill, Screen, usePressFx 
 import { BlurView } from "expo-blur";
 import { extractPhraseFromImage, extractPhraseFromText, fillPhraseDetails, type PhraseCaptureDraft } from "@/lib/phrase-capture";
 import { createPhrase, fetchPhrasesForCaptureContext, loadEditablePhrase, updatePhrase, updatePhraseDetails, type EditablePhrase, type PhraseKind } from "@/lib/phrases";
-import { fetchSituationChoices, type SituationChoice } from "@/lib/studio-model";
 import type { Nav } from "./nav";
 
 export interface CaptureImageAsset {
@@ -279,10 +278,9 @@ export function PhraseCaptureScreen({
   const [detectedSelection, setDetectedSelection] = useState({ start: 0, end: 0 });
   const [confidence, setConfidence] = useState<number | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [situations, setSituations] = useState<SituationChoice[]>([]);
+  // Situations are not part of this app version, so there is no picker; an
+  // existing link (older phrases, Speak seeds) is carried through on save.
   const [situationId, setSituationId] = useState<string | null>(clipSeed?.situationId ?? null);
-  const [situationsLoading, setSituationsLoading] = useState(true);
-  const [situationsError, setSituationsError] = useState(false);
   const [savedPhrases, setSavedPhrases] = useState<SavedCapturePhrase[]>([]);
   const [savePrompt, setSavePrompt] = useState<SavedCapturePhrase | null>(null);
   const [selectedSaved, setSelectedSaved] = useState<SavedCapturePhrase | null>(null);
@@ -341,39 +339,6 @@ export function PhraseCaptureScreen({
   });
 
   // Bumped by Retry to re-run the story load below.
-  const [storiesNonce, setStoriesNonce] = useState(0);
-
-  // Load the story list. The fetch lives in the effect, so every commit happens
-  // after `await` — the effect body itself sets no state, which is what the
-  // cascading-render warning is actually about. There is no pre-set to defer:
-  // The initial Situation request starts in a loading state.
-  // `alive` drops a response that lost its race with unmount or another Retry.
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const next = await fetchSituationChoices();
-        if (!alive) return;
-        setSituations(next);
-        setSituationsError(false);
-      } catch {
-        if (alive) setSituationsError(true);
-      } finally {
-        if (alive) setSituationsLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [storiesNonce]);
-
-  // Retry is a press handler, not an effect: showing the spinner immediately is
-  // wanted here, and a commit in an event handler cascades nothing.
-  const retrySituations = useCallback(() => {
-    setSituationsLoading(true);
-    setSituationsError(false);
-    setStoriesNonce((n) => n + 1);
-  }, []);
 
   const applyPhraseDraft = useCallback((draft: PhraseCaptureDraft) => {
     setText(draft.suggestedPhrase);
@@ -1015,25 +980,6 @@ export function PhraseCaptureScreen({
         <Card>
           <CaptureLabel label="WHERE IT BELONGS" tag="Optional" />
           <TextInput value={sourceLabel} onChangeText={setSourceLabel} placeholder="Source name" placeholderTextColor={t.colors.ink3} style={{ fontSize: 15, color: t.colors.ink, marginTop: 9, padding: 0 }} />
-          {situationsLoading ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 14 }}>
-              <ActivityIndicator size="small" color={t.colors.acc} />
-              <Text style={{ fontSize: 12.5, color: t.colors.ink3 }}>Loading your situations…</Text>
-            </View>
-          ) : situationsError ? (
-            <View style={{ paddingTop: 14, alignItems: "flex-start" }}>
-              <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3 }}>Couldn’t load your situations. You can still save this phrase without linking it.</Text>
-              <Pill tone="tint" small onPress={retrySituations} style={{ marginTop: 9 }}>Retry situations</Pill>
-            </View>
-          ) : (
-            <>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingTop: 14 }}>
-                <Chip active={!situationId} onPress={() => setSituationId(null)}>Not linked yet</Chip>
-                {situations.map((situation) => <Chip key={situation.id} active={situationId === situation.id} onPress={() => setSituationId(situation.id)}>{situation.topicName ? `${situation.topicName} · ${situation.title}` : situation.title}</Chip>)}
-              </ScrollView>
-              {situations.length === 0 ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 9 }}>No situations yet. You can link this phrase later.</Text> : null}
-            </>
-          )}
           <View style={{ height: 1, backgroundColor: t.colors.sep, marginVertical: 16 }} />
           <CaptureLabel label="YOUR NOTE" tag="Optional" />
           <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 5 }}>A private reminder for you. AI does not fill this.</Text>
