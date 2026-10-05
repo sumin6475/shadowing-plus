@@ -16,7 +16,9 @@ import {
 
 export { nextReviewInterval };
 export const REVIEW_LADDER_DAYS = [1, 3, 7, 30] as const;
-export const PHRASES_PER_DAY_OPTIONS = [3, 5, 7, 10] as const;
+/** The learner picks any whole number in this range (Settings stepper). */
+export const MIN_PHRASES_PER_DAY = 1;
+export const MAX_PHRASES_PER_DAY = 20;
 export const DEFAULT_PHRASES_PER_DAY = 5;
 
 const COUNT_KEY = "phrases_per_day";
@@ -63,7 +65,7 @@ export function tomorrowDateKey(from = new Date()): string {
 }
 
 export function isPhrasesPerDay(value: unknown): value is number {
-  return typeof value === "number" && (PHRASES_PER_DAY_OPTIONS as readonly number[]).includes(value);
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_PHRASES_PER_DAY && value <= MAX_PHRASES_PER_DAY;
 }
 
 export function phrasesPerDay(): number {
