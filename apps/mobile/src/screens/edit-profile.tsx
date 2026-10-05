@@ -11,7 +11,7 @@ import { BRAND, Gradients } from "@/design/mobile-tokens";
 import { useAuth } from "@/lib/auth";
 import { authErrorMessage } from "@/lib/auth-errors";
 import { supabase } from "@/lib/supabase";
-import { PHRASES_PER_DAY_OPTIONS, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
+import { MAX_PHRASES_PER_DAY, MIN_PHRASES_PER_DAY, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
 import { DAILY_SPEAKING_GOAL_OPTIONS, dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
 import {
   ENGLISH_LEVEL_DETAIL,
@@ -616,9 +616,11 @@ export function PhrasesPerDayScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
   const [count, setCount] = useState(phrasesPerDay());
 
-  const choose = (value: number) => {
-    setCount(value);
-    void persistPhrasesPerDay(value);
+  const step = (delta: number) => {
+    const next = Math.min(MAX_PHRASES_PER_DAY, Math.max(MIN_PHRASES_PER_DAY, count + delta));
+    if (next === count) return;
+    setCount(next);
+    void persistPhrasesPerDay(next);
   };
 
   return (
@@ -629,38 +631,44 @@ export function PhrasesPerDayScreen({ nav }: { nav: Nav }) {
         <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, paddingBottom: 8 }}>
           How many saved phrases to bring back each day. Today’s list stays put until tomorrow, unless you change this number.
         </Text>
-        {PHRASES_PER_DAY_OPTIONS.map((value, index) => {
-          const selected = count === value;
-          const last = index === PHRASES_PER_DAY_OPTIONS.length - 1;
-          return (
-            <Pressable
-              key={value}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              onPress={() => choose(value)}
-              style={{
-                minHeight: 52,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-                borderBottomWidth: last ? 0 : hairline,
-                borderBottomColor: t.colors.sep,
-              }}
-            >
-              <Text style={{ flex: 1, fontSize: 16.5, fontWeight: selected ? "700" : "500", color: t.colors.ink }}>
-                {value} phrases
-              </Text>
-              {selected ? (
-                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
-                </View>
-              ) : (
-                <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
-              )}
-            </Pressable>
-          );
-        })}
+        <View
+          accessibilityRole="adjustable"
+          accessibilityLabel="Phrases per day"
+          accessibilityValue={{ min: MIN_PHRASES_PER_DAY, max: MAX_PHRASES_PER_DAY, now: count }}
+          accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+          onAccessibilityAction={(event) => step(event.nativeEvent.actionName === "increment" ? 1 : -1)}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingTop: 8, paddingBottom: 14 }}
+        >
+          <CountStepButton label="−" disabled={count <= MIN_PHRASES_PER_DAY} onPress={() => step(-1)} />
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text style={{ fontSize: 34, fontWeight: "700", color: t.colors.ink, fontVariant: ["tabular-nums"] }}>{count}</Text>
+            <Text style={{ fontSize: 13, color: t.colors.ink3, marginTop: 2 }}>{count === 1 ? "phrase" : "phrases"}</Text>
+          </View>
+          <CountStepButton label="+" disabled={count >= MAX_PHRASES_PER_DAY} onPress={() => step(1)} />
+        </View>
       </Card>
     </Screen>
+  );
+}
+
+function CountStepButton({ label, disabled, onPress }: { label: string; disabled: boolean; onPress: () => void }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        width: 64,
+        height: 44,
+        borderRadius: 999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: t.colors.soft,
+        opacity: disabled ? 0.35 : pressed ? 0.75 : 1,
+      })}
+    >
+      <Text style={{ fontSize: 20, fontWeight: "600", color: t.colors.ink }}>{label}</Text>
+    </Pressable>
   );
 }
