@@ -140,8 +140,10 @@ App Store Connect → 제품 페이지 정보 → "헤더 및 검색 결과". Bo
 
 | Slot | File | Size | Notes |
 |---|---|---|---|
-| 헤더 (product page header) | `apps/mobile/docs/app-store-screenshots/creative/header.jpg` | 3840 × 1646 (21:9) | Navy brand surface, one line: "Say the English you save." |
-| 검색 결과 (search result) | `apps/mobile/docs/app-store-screenshots/creative/search.jpg` | 3840 × 2560 (3:2) | Headline + the mirror screen in a phone |
+| 헤더 (product page header) | `apps/mobile/docs/app-store-screenshots/creative/header.png` | 3840 × 1646 (21:9) | Navy brand surface, one line: "Say the English you save." |
+| 검색 결과 (search result) | `apps/mobile/docs/app-store-screenshots/creative/search.png` | 3840 × 2560 (3:2) | Headline + the mirror screen in a phone |
+
+**Upload the PNGs.** App Store Connect rejected `header.jpg` with "파일 확장자가 유효하지 않습니다" (2026-10-06) even though the spec lists .jpg. The PNGs have no alpha channel. They are 5–8 MB, so they are git-ignored; `design/render-creative.sh` recreates them (the small JPG copies are committed for reference).
 
 Apple publishes no safe-area numbers. From Apple's example image, the iPhone product page shows roughly the middle two thirds of the header's width, with the status bar and the back/share buttons over the top ~30%; the headline is placed inside that box. Check both in App Store Connect's 미리보기 before saving. Source: `design/creative/`, render with `design/render-creative.sh`.
 

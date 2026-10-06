@@ -2,3 +2,6 @@
 raw/
 design/refs/
 1179x2556/
+
+# Upload-size PNGs of the creative assets (5–8 MB); recreate with design/render-creative.sh
+creative/*.png
