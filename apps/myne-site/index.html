@@ -8,91 +8,128 @@
 <meta property="og:title" content="Myne: Pocket Speaking Studio">
 <meta property="og:description" content="Save the English you want to say, practice it out loud, then use it in front of the mirror.">
 <meta property="og:type" content="website">
+<meta name="theme-color" content="#f5f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1230" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/assets/icon-180.png">
 <link rel="apple-touch-icon" href="/assets/icon-180.png">
+<link rel="preload" href="/assets/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/pretendard-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/styles.css">
+<script src="/reveal.js"></script>
 </head>
 <body>
-<div class="wrap">
 
-  <header class="top">
-    <a class="brand" href="/"><img src="/assets/icon-180.png" alt="" width="34" height="34">Myne</a>
-    <nav>
-      <a href="/support">Support</a>
+<header class="nav wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/"><img src="/assets/icon-180.png" alt="" width="30" height="30">Myne</a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#how">How it works</a>
       <a href="/privacy">Privacy</a>
+      <a href="/support">Support</a>
+      <a class="pill" href="#get">Get the app</a>
     </nav>
-  </header>
+  </div>
+</header>
+
+<main class="wrap">
 
   <div class="hero">
-    <div class="hero-copy">
-      <p class="kicker">Pocket Speaking Studio · iPhone</p>
-      <h1>Say the English you save.</h1>
-      <p class="lede">Collect the phrases you actually want to use, practice them out loud, then say them for real: to yourself, in the mirror.</p>
-      <span class="store" aria-label="Coming soon to the App Store">Coming soon<small>to the App Store</small></span>
-      <p class="hero-note">Free. Your speaking recordings stay on your phone.</p>
+    <p class="eyebrow enter" style="--i:0">Pocket Speaking Studio · iPhone</p>
+    <h1 class="display enter" style="--i:1">Say the English <em>you save.</em></h1>
+    <p class="lede enter" style="--i:2">Collect the phrases you actually want to use, practice them out loud, then say them for real: to yourself, in the mirror.</p>
+    <div class="cta enter" style="--i:3" id="get">
+      <span class="btn" aria-label="Coming soon to the App Store">Coming soon <small>to the App Store</small></span>
+      <a class="btn ghost" href="#how">See how it works</a>
     </div>
-    <div class="hero-shot">
-      <div class="phone"><img src="/assets/phrase.jpg" alt="A phrase in Myne with three practice steps: say it, hear it, make your own sentence." width="600" height="1298"></div>
+    <p class="reassure enter" style="--i:4">Free · Your speaking recordings stay on your phone</p>
+
+    <div class="stage rise" aria-hidden="true">
+      <div class="device back"><img src="/assets/note.jpg" alt="" width="600" height="1298"></div>
+      <div class="device front"><img src="/assets/phrase.jpg" alt="" width="600" height="1298"></div>
     </div>
   </div>
 
-  <section>
-    <div class="section-head">
-      <h2>From saved to spoken, in three moves.</h2>
+  <section id="how">
+    <div class="head reveal">
+      <p class="eyebrow">How it works</p>
+      <h2 class="display">From saved to spoken, in three moves.</h2>
       <p>Most saved phrases never get said. Myne is built around the step in between.</p>
     </div>
-    <div class="steps">
-      <div class="card">
-        <span class="num">1 · Save</span>
-        <h3>Keep phrases that are yours</h3>
-        <p>Type or paste a phrase, or take a photo of a page and pick the line you want.</p>
-        <ul>
-          <li>Optional AI fill adds the meaning and a usage note in your language</li>
-          <li>English, Korean, Japanese, Traditional Chinese, Spanish, Russian</li>
-        </ul>
+
+    <div class="bento">
+      <div class="cell reveal wide has-shot">
+        <span class="step">1 · Save</span>
+        <h3>Keep phrases that are yours.</h3>
+        <p>Type or paste a phrase, or take a photo of a page and pick the line you want. Optional AI fill adds the meaning and a usage note in your own language.</p>
+        <div class="push chips">
+          <span class="chip">English</span><span class="chip">Korean</span><span class="chip">Japanese</span><span class="chip">Traditional Chinese</span><span class="chip">Spanish</span><span class="chip">Russian</span>
+        </div>
+        <div class="shot" aria-hidden="true"><div class="device"><img src="/assets/phrase.jpg" alt="" width="600" height="1298" loading="lazy"></div></div>
       </div>
-      <div class="card">
-        <span class="num">2 · Practice</span>
-        <h3>Three small steps per phrase</h3>
+
+      <div class="cell reveal tint">
+        <span class="step">2 · Practice</span>
+        <h3>Three small steps per phrase.</h3>
         <p>Say it along with the audio, hear it in real videos, then write a sentence you would really say.</p>
-        <ul>
-          <li>Collected → Learning → Ready</li>
-          <li>A short daily list, at the size you choose</li>
-        </ul>
+        <div class="push stages"><span>Collected</span><i></i><span>Learning</span><i></i><span>Ready</span></div>
       </div>
-      <div class="card">
-        <span class="num">3 · Speak</span>
-        <h3>Talk to the mirror</h3>
+
+      <div class="cell reveal navy half">
+        <span class="step">3 · Speak</span>
+        <h3>Talk to the mirror.</h3>
         <p>See yourself while you speak. Your words appear as you talk, and hint cards check off the phrases you use.</p>
-        <ul>
-          <li>Speaking time, pace and word count afterwards</li>
-          <li>Listen back or go again</li>
+        <div class="push">
+          <div class="hint">
+            <div class="hint-top"><span>TRY USING</span><b>1 OF 5 USED</b></div>
+            <div class="hint-row"><span>stay true to yourself</span><span class="tick">✓</span></div>
+            <small>You used it. Nice.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="cell reveal half">
+        <span class="step">Afterwards</span>
+        <h3>See your speaking add up.</h3>
+        <p>Every session ends with what you actually said: time, pace, words, and the phrases you worked in. Listen back or go again.</p>
+        <div class="push stats">
+          <div class="stat"><b>2:44</b><span>speaking time</span></div>
+          <div class="stat"><b>118</b><span>words a minute</span></div>
+          <div class="stat"><b>3 of 5</b><span>phrases used</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <div class="bento" style="margin-top:0">
+      <div class="cell reveal half tint">
+        <span class="step">Studio</span>
+        <h3>Write what you want to say first.</h3>
+        <p>A simple notebook for speaking. Outline an opening, a body and a closing for a meeting, an interview or a story, then speak it out loud with your outline on screen.</p>
+        <div class="push chips"><span class="chip">Opening</span><span class="chip">Body</span><span class="chip">Closing</span></div>
+      </div>
+      <div class="cell reveal half navy">
+        <span class="step">Private by design</span>
+        <h3>Your voice stays with you.</h3>
+        <ul class="promise push">
+          <li><span><b>Recordings stay on your phone.</b> Speaking audio is never uploaded.</span></li>
+          <li><span><b>Speech recognition runs on your device.</b> No video of the mirror is recorded.</span></li>
+          <li><span><b>AI is optional.</b> It stays off until you turn it on, and the app works without it.</span></li>
+          <li><span><b>Your data is yours.</b> Export your phrases or delete your account any time.</span></li>
         </ul>
       </div>
     </div>
   </section>
 
-  <section>
-    <div class="split">
-      <div class="phone"><img src="/assets/note.jpg" alt="A speaking note in Myne with an outline and a Speak with this note button." width="600" height="1298"></div>
-      <div>
-        <div class="section-head">
-          <h2>Write what you want to say first.</h2>
-          <p>Studio is a simple notebook for speaking. Outline an opening, a body and a closing for a meeting, an interview or a story, then speak it out loud with your outline on screen.</p>
-        </div>
-        <ul class="facts">
-          <li><strong>Recordings stay on your phone.</strong> Speaking audio is never uploaded.</li>
-          <li><strong>Speech recognition runs on your device.</strong> No video of the mirror is recorded.</li>
-          <li><strong>AI is optional.</strong> It stays off until you turn it on, and the app works without it.</li>
-          <li><strong>Your data is yours.</strong> Export your phrases or delete your account any time in Settings.</li>
-        </ul>
-      </div>
-    </div>
-  </section>
+  <div class="band reveal">
+    <h2 class="display">A few minutes a day, out loud.</h2>
+    <p>Save a phrase today. Say it tomorrow. Myne is an independent app, made by one person.</p>
+    <span class="btn" aria-label="Coming soon to the App Store">Coming soon <small>to the App Store</small></span>
+  </div>
 
   <footer>
     <span>© 2026 Sumin Kim · Myne is an independent app.</span>
-    <nav>
+    <nav aria-label="Footer">
       <a href="/support">Support</a>
       <a href="/privacy">Privacy Policy</a>
       <a href="/terms">Terms of Service</a>
@@ -100,6 +137,6 @@
     </nav>
   </footer>
 
-</div>
+</main>
 </body>
 </html>
