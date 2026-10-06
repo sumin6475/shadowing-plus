@@ -1,0 +1,134 @@
+/* Myne site: landing + legal pages. Static, no build step, no third-party
+   requests (system fonts on purpose). Colors follow the iPhone app's navy
+   brand. Light and dark via prefers-color-scheme. */
+:root {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --ink: #131c38;
+  --ink-2: #3b4968;
+  --ink-3: #66738d;
+  --line: #dbe2ef;
+  --navy: #0d1a3b;
+  --navy-2: #344e91;
+  --accent: #2f55c8;
+  --note-bg: #eaf0fb;
+  --on-navy: #f4f7ff;
+  --on-navy-2: #c3cdea;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c1330;
+    --surface: #151e42;
+    --ink: #f4f7ff;
+    --ink-2: #c7cde0;
+    --ink-3: #8f9ab8;
+    --line: #26315c;
+    --accent: #9db4f2;
+    --note-bg: #151e42;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+}
+a { color: var(--accent); }
+img { max-width: 100%; display: block; }
+
+/* ── Landing ─────────────────────────────────────────────────────────── */
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 650; font-size: 18px; }
+.brand img { width: 34px; height: 34px; border-radius: 9px; }
+.top nav { display: flex; gap: 20px; font-size: 14.5px; }
+.top nav a { color: var(--ink-2); text-decoration: none; }
+.top nav a:hover { color: var(--ink); text-decoration: underline; }
+
+.hero {
+  margin-top: 8px;
+  border-radius: 28px;
+  background: linear-gradient(160deg, var(--navy) 0%, #1c2c63 55%, var(--navy-2) 100%);
+  color: var(--on-navy);
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 24px;
+  align-items: end;
+  overflow: hidden;
+}
+.hero-copy { padding: 64px 0 64px 56px; align-self: center; }
+.kicker { font-size: 12.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--on-navy-2); margin: 0 0 18px; }
+.hero h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(2.4rem, 5.2vw, 3.7rem); line-height: 1.06; letter-spacing: -0.01em; margin: 0 0 20px; }
+.hero p.lede { font-size: 1.1rem; line-height: 1.55; color: var(--on-navy-2); max-width: 30em; margin: 0 0 30px; }
+.store {
+  display: inline-flex; flex-direction: column; gap: 2px;
+  padding: 12px 22px; border-radius: 14px;
+  background: var(--on-navy); color: var(--navy);
+  font-weight: 650; font-size: 16px; text-decoration: none;
+}
+.store small { font-weight: 500; font-size: 12px; color: #4a5a85; }
+.hero-note { font-size: 13.5px; color: var(--on-navy-2); margin: 16px 0 0; }
+.hero-shot { padding: 40px 48px 0 0; }
+.phone { border-radius: 34px 34px 0 0; overflow: hidden; border: 8px solid #060c1f; border-bottom: 0; background: #060c1f; box-shadow: 0 24px 60px rgba(3, 8, 24, 0.5); }
+.phone img { width: 100%; height: 520px; object-fit: cover; object-position: top; }
+
+section { padding: 72px 0 0; }
+.section-head { max-width: 34em; }
+.section-head h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(1.8rem, 3.4vw, 2.5rem); line-height: 1.12; margin: 0 0 12px; }
+.section-head p { color: var(--ink-2); margin: 0; font-size: 1.05rem; }
+
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 26px 24px; }
+.card .num { font-size: 12.5px; letter-spacing: 0.1em; color: var(--ink-3); text-transform: uppercase; }
+.card h3 { font-size: 1.15rem; margin: 10px 0 8px; letter-spacing: -0.005em; }
+.card p { margin: 0; color: var(--ink-2); font-size: 15.5px; }
+.card ul { margin: 12px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 15px; }
+.card li { margin: 4px 0; }
+
+.split { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 40px; align-items: center; margin-top: 8px; }
+.split .phone { border-radius: 34px; border-bottom: 8px solid #060c1f; max-width: 320px; }
+.split .phone img { height: auto; }
+.facts { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 14px; }
+.facts li { padding-left: 28px; position: relative; color: var(--ink-2); }
+.facts li::before { content: ""; position: absolute; left: 4px; top: 0.62em; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.facts strong { color: var(--ink); }
+
+footer { margin-top: 88px; border-top: 1px solid var(--line); padding: 28px 0 48px; font-size: 14px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+footer nav { display: flex; gap: 20px; }
+footer a { color: var(--ink-2); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+@media (max-width: 820px) {
+  .hero { grid-template-columns: 1fr; }
+  .hero-copy { padding: 44px 28px 8px; }
+  .hero-shot { padding: 24px 44px 0; }
+  .phone img { height: 400px; }
+  .steps { grid-template-columns: 1fr; }
+  .split { grid-template-columns: 1fr; gap: 28px; }
+  .split .phone { margin: 0 auto; }
+  section { padding-top: 56px; }
+}
+
+/* ── Legal + support pages ───────────────────────────────────────────── */
+.legal { min-height: 100vh; padding: 64px 20px 96px; }
+.legal-wrap { max-width: 720px; margin: 0 auto; }
+.legal-back { display: inline-block; margin-bottom: 40px; font-size: 14px; font-weight: 500; text-decoration: none; }
+.legal-back:hover { text-decoration: underline; }
+.legal h1 { font-family: var(--serif); font-weight: 400; font-size: 2.5rem; line-height: 1.1; margin: 0 0 8px; }
+.legal-updated { color: var(--ink-3); font-size: 13px; margin: 0 0 40px; }
+.legal h2 { font-size: 1.15rem; margin: 40px 0 12px; letter-spacing: -0.01em; }
+.legal h3 { font-size: 1rem; margin: 26px 0 6px; }
+.legal p, .legal li { font-size: 15px; line-height: 1.7; color: var(--ink-2); }
+.legal h3 + p { margin-top: 0; }
+.legal ul { padding-left: 20px; margin: 12px 0; }
+.legal li { margin: 6px 0; }
+.legal strong { color: var(--ink); }
+.legal-note { margin-top: 48px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--note-bg); font-size: 13px; color: var(--ink-3); }
