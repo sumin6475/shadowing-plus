@@ -116,24 +116,25 @@ There are no in-app purchases, subscriptions or ads. The app does not track user
 
 ## Screenshots
 
-6.5-inch slot needs 1284 × 2778 px (or 1242 × 2688), no alpha channel. Ready files are in `apps/mobile/docs/app-store-screenshots/` (1284 × 2778 JPG; simulator originals in `raw/`). Captured 2026-10-05 from the iPhone 17 Pro simulator on main `b0c34e0`, signed in as Sumin's own account.
+App Store Connect has one required iPhone slot: **iPhone with Dynamic Island (medium display)** — 1206 × 2622 or 1179 × 2556 px, portrait, no alpha ([Apple's screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications), checked 2026-10-06). iPhone Duo, iPad and Apple Watch are optional/not applicable (the app is iPhone-only). Uploading this one set covers every iPhone size and language.
 
-| File | Screen |
-|---|---|
-| `01-phrases.jpg` | Phrases home |
-| `02-phrase-detail.jpg` | Phrase detail — three practice steps ("Buck up") |
-| `03-studio.jpg` | Studio — notes list |
-| `04-note.jpg` | Studio note with "Speak with this note" |
-| `05-profile.jpg` | Profile — speaking time and phrase counts |
+The screenshots are **designed, not captured**: each screen is redrawn in HTML from the app's tokens, fonts and icons with mock data (persona "Mina"), inside a headline + device frame. Source and how to re-render: `apps/mobile/docs/app-store-screenshots/design/README.md`. No real account data appears in them.
 
-**Missing: Talk (mirror) and session stats.** The simulator has no camera and speech recognition fails there ("Failed to initialize recognizer"), so these must be captured on a real iPhone. A 6.9-inch phone (1320 × 2868) or 6.5/6.7-inch phone screenshot is accepted as is; other sizes need resizing to 1284 × 2778.
+Ready files: `apps/mobile/docs/app-store-screenshots/1206x2622/` — upload in this order (the first three show in search results):
 
-Suggested order — the first three show on the install sheet: Phrases home → Talk mirror → Phrase detail → Session stats → Studio note → Profile.
+| # | File | Screen | Headline |
+|---|---|---|---|
+| 1 | `01-phrases.jpg` | Phrases home | Say the English you save. |
+| 2 | `02-mirror.jpg` | Talk (mirror) | Say it out loud, in the mirror. |
+| 3 | `03-practice.jpg` | Phrase detail | Three small steps for every phrase. |
+| 4 | `04-save.jpg` | Add a phrase | Save the phrases you want to use. |
+| 5 | `05-studio.jpg` | Studio note | Write what you want to say first. |
+| 6 | `06-result.jpg` | Mirror result | See what you actually said. |
+| 7 | `07-profile.jpg` | Profile | Watch your speaking add up. |
 
-Before uploading, look at the content: the shots show the real account (name, profile photo, personal phrases and note titles, e.g. "I never would have though", "gibberish", "Question: about agent's context").
+The person in the mirror frame is AI-generated (Higgsfield), not a real person. `06-result.jpg` shows the result footer of build 40 (Listen back above; Speak again and Done below) — submit it with build 40 or later.
 
 ## Open items before pressing "심사에 추가"
 
-- **Build 39 is needed** for the in-app wording fixes and the new legal links (PR #28); pick 39, not 38, when submitting.
-- **Talk (mirror) and session-stats screenshots** must come from a real iPhone.
+- **Build 40 is needed**: it carries the mirror result footer shown in screenshot 6 (PR #31, not merged yet). Build 39 has the wording fixes and legal links but the old footer.
 - **App Privacy labels** (separate page in App Store Connect) must match `expo.ios.privacyManifests` in `app.json`.

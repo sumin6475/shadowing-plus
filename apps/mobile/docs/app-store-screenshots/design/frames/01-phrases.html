@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>01 · Phrases home</title>
+<link rel="stylesheet" href="../kit.css">
+<script src="../icons.js"></script>
+<script src="../kit.js"></script>
+</head>
+<body class="shot">
+<h1 class="headline">Say the English<br>you save.</h1>
+
+<div class="phone"><div class="phone-clip">
+<!-- PhraseBank — apps/mobile/src/screens/mvp/index.tsx -->
+<div class="screen">
+  <status-bar></status-bar>
+  <div class="page">
+
+    <!-- Header -->
+    <div class="row" style="gap:10px;padding:4px 0">
+      <p style="flex:1;font-weight:700;font-size:32px;color:var(--ink)">Phrases</p>
+      <div class="row" style="gap:20px;height:48px;padding:0 12px;border-radius:100px;background:var(--card)">
+        <i-c n="plus" s="28" w="1.75" c="#111114"></i-c>
+        <i-c n="filter" s="28" c="#111114"></i-c>
+      </div>
+      <div style="width:48px;height:48px;border-radius:24px;background:var(--pill);align-items:center;justify-content:center;box-shadow:0 4px 8px rgba(0,0,0,0.08)">
+        <p style="color:#fff;font-weight:700;font-size:18.2px">M</p>
+      </div>
+    </div>
+
+    <!-- Hero cards (horizontal scroller, second card peeks) -->
+    <div class="row" style="margin:0 -18px;padding:4px 18px;gap:16px;align-items:stretch">
+      <div style="width:271px;height:200px;border-radius:20px;padding:20px;justify-content:space-between;overflow:hidden;background:linear-gradient(180deg,#010101 0%,#2E395A 50%,#E1DFDC 100%)">
+        <div style="gap:4px">
+          <p style="font-weight:500;font-size:12px;color:#fff">Start the day with practice.</p>
+          <p class="serif" style="font-size:24px;line-height:28px;color:#fff;letter-spacing:0;top:-1.3px">Your “Team intro” note is waiting.</p>
+        </div>
+        <div style="background:#FAFAFA;border-radius:100px;padding:14px 0;align-items:center">
+          <p style="font-weight:700;font-size:16px;color:#0A0A0A">Speaking</p>
+        </div>
+      </div>
+      <div style="width:271px;height:200px;border-radius:20px;padding:20px;justify-content:space-between;overflow:hidden;background:var(--card)">
+        <p style="font-weight:500;font-size:12px;color:var(--ink)">Today’s phrases for you.</p>
+        <p style="font-weight:700;font-size:28px;color:var(--ink);text-align:center">2/4</p>
+        <div style="background:var(--acc);border-radius:100px;padding:14px 0;align-items:center">
+          <p style="font-weight:700;font-size:16px;color:#fff">CONTINUE</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sections -->
+    <div style="gap:8px">
+      <p style="font-weight:700;font-size:14px;color:var(--ink);padding:12px 2px 0">TODAY</p>
+      <div style="background:var(--card);border-radius:24px;padding:12px 20px">
+        <div class="row phrase-row"><listen-btn></listen-btn><p>get the hang of</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+        <div class="row phrase-row last"><listen-btn></listen-btn><p>I’m on the fence about it</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+      </div>
+    </div>
+
+    <div style="gap:8px">
+      <p style="font-weight:700;font-size:14px;color:var(--ink);padding:12px 2px 0">LAST 7 DAYS</p>
+      <div style="background:var(--card);border-radius:24px;padding:12px 20px">
+        <div class="row phrase-row"><listen-btn></listen-btn><p>it slipped my mind</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+        <div class="row phrase-row"><listen-btn></listen-btn><p>let’s circle back to that</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+        <div class="row phrase-row"><listen-btn></listen-btn><p>off the top of my head</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+        <div class="row phrase-row last"><listen-btn></listen-btn><p>I couldn’t agree more</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+      </div>
+    </div>
+
+    <div style="gap:8px">
+      <p style="font-weight:700;font-size:14px;color:var(--ink);padding:12px 2px 0">LAST 30 DAYS</p>
+      <div style="background:var(--card);border-radius:24px;padding:12px 20px">
+        <div class="row phrase-row"><listen-btn></listen-btn><p>play it by ear</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+        <div class="row phrase-row"><listen-btn></listen-btn><p>bear with me</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+        <div class="row phrase-row last"><listen-btn></listen-btn><p>the bottom line is</p><i-c n="chev" s="14" c="rgba(60,60,67,0.6)"></i-c></div>
+      </div>
+    </div>
+  </div>
+  <tab-bar on="phrases"></tab-bar>
+</div>
+</div></div>
+
+<style>
+  /* Row in a SectionCard: 16pt vertical padding, whisper divider */
+  .phrase-row { padding: 16px 0; border-bottom: 1px solid rgba(234,234,234,0.5); }
+  .phrase-row.last { border-bottom-width: 0; }
+  .phrase-row > p { flex: 1; margin-left: 6px; margin-right: 12px; font-weight: 600; font-size: 16px; color: var(--ink); }
+</style>
+</body>
+</html>

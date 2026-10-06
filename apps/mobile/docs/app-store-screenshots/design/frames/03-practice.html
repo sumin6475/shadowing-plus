@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>03 · Phrase detail</title>
+<link rel="stylesheet" href="../kit.css">
+<script src="../icons.js"></script>
+<script src="../kit.js"></script>
+</head>
+<body class="shot">
+<h1 class="headline">Three small steps<br>for every phrase.</h1>
+
+<div class="phone"><div class="phone-clip">
+<!-- PhraseChecklist — apps/mobile/src/screens/mvp/index.tsx
+     State: steps 1 and 2 cleared, one saved sentence, step 3 not cleared yet
+     (saving a sentence does not clear the step; the learner taps Clear). -->
+<div class="screen">
+  <status-bar></status-bar>
+  <div class="page">
+
+    <!-- BackBar + PhraseMenu ("…" is the SF Symbol ellipsis, 18pt) -->
+    <div class="backbar">
+      <div class="round"><i-c n="back" s="18" w="2.2" c="#111114"></i-c></div>
+      <p class="title">Phrases</p>
+      <div class="right">
+        <div class="round">
+          <svg width="18" height="18" viewBox="0 0 18 18"><circle cx="2.4" cy="9" r="1.65" fill="#111114"/><circle cx="9" cy="9" r="1.65" fill="#111114"/><circle cx="15.6" cy="9" r="1.65" fill="#111114"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stage, phrase, meaning -->
+    <div style="align-items:center;gap:10px;padding-top:6px">
+      <p style="font-size:11px;font-weight:700;letter-spacing:1.1px;color:var(--ink3)">LEARNING · 2 OF 3</p>
+      <p class="serif ios-tight" style="font-size:43px;line-height:50px;text-align:center">get the hang of</p>
+      <p style="font-size:17px;line-height:24px;color:var(--ink2);text-align:center">감을 잡다, 요령을 익히다</p>
+    </div>
+
+    <!-- Progress: one segment per step -->
+    <div class="row" style="gap:5px;margin:8px 0">
+      <div style="flex:1;height:5px;border-radius:3px;background:var(--acc)"></div>
+      <div style="flex:1;height:5px;border-radius:3px;background:var(--acc)"></div>
+      <div style="flex:1;height:5px;border-radius:3px;background:var(--sep)"></div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="card" style="gap:14px">
+      <div class="row" style="gap:12px;min-height:44px">
+        <div style="flex:1;gap:4px">
+          <p class="step-title">1 · Say it until it feels natural</p>
+          <p class="step-sub done">Done · Oct 2</p>
+        </div>
+        <div class="clear done"><p>Clear</p><i-c n="check" s="14" w="2.4" c="#ffffff"></i-c></div>
+      </div>
+      <div style="gap:10px">
+        <div class="row" style="justify-content:center;gap:18px;padding:4px 0">
+          <div class="transport"><p style="font-weight:600;font-size:17px;color:var(--ink2)">1×</p></div>
+          <!-- PlayCircle: SF Symbol play.fill, 22pt, nudged 3pt right -->
+          <div style="width:56px;height:56px;border-radius:28px;background:var(--acc)">
+            <svg width="56" height="56" viewBox="0 0 56 56" style="position:absolute;left:0;top:0"><path d="M23.25 19.65v16.6l14.7-8.3z" fill="#fff" stroke="#fff" stroke-width="2.7" stroke-linejoin="round"/></svg>
+          </div>
+          <!-- SF Symbol repeat, 22pt semibold -->
+          <div class="transport">
+            <svg width="18" height="15.3" viewBox="0 0 18 15.3" style="color:#3C3C43;opacity:0.6">
+              <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M0.9 7.3V6.1a2.6 2.6 0 0 1 2.6-2.6h7.6"/><path d="M17.1 7.6v1.75a2.6 2.6 0 0 1-2.6 2.6H6.9"/></g>
+              <g fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M11.1 0.6v5.45l3.3-2.72z"/><path d="M6.9 9.35v5.3L3.45 12z"/></g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="card" style="gap:14px">
+      <div class="row" style="gap:12px;min-height:44px">
+        <div style="flex:1;gap:4px">
+          <p class="step-title">2 · Hear it in real sentences</p>
+          <p class="step-sub done">Done · Oct 4</p>
+        </div>
+        <div class="clear done"><p>Clear</p><i-c n="check" s="14" w="2.4" c="#ffffff"></i-c></div>
+      </div>
+      <div style="gap:10px">
+        <div class="pill tint" style="align-self:stretch"><i-c n="link" s="17" w="2"></i-c><p>Open YouGlish</p></div>
+        <p style="font-size:13px;line-height:19px;color:var(--ink3)">Real videos from youglish.com, opened in a browser inside Myne.</p>
+      </div>
+    </div>
+
+    <!-- Step 3: one saved sentence (filled radio), then the blank entry row -->
+    <div class="card" style="gap:14px">
+      <div class="row" style="gap:12px;min-height:44px">
+        <div style="flex:1;gap:4px">
+          <p class="step-title">3 · Make your own sentence</p>
+          <p class="step-sub">At least one saved sentence</p>
+        </div>
+        <div class="clear"><p>Clear</p></div>
+      </div>
+      <div style="gap:10px">
+        <div>
+          <div class="row reminder">
+            <div style="padding-top:12px"><div class="radio done"><i-c n="check" s="13" w="2.4" c="#ffffff"></i-c></div></div>
+            <div class="reminder-body sep"><p style="font-size:17px;line-height:24px;color:var(--ink)">I’m finally getting the hang of presenting in English.</p></div>
+          </div>
+          <div class="row reminder">
+            <div style="padding-top:12px"><div class="radio"></div></div>
+            <div class="reminder-body"><p style="font-size:17px;line-height:24px;color:var(--ink3);min-height:48px">Use “get the hang of” in a sentence</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div></div>
+
+<style>
+  /* t.shadowCard is { opacity 0.09, radius 12, offset 0/6 }. An iOS shadowRadius is the blur's
+     sigma, so the CSS blur that matches it is twice that (24px), measured against the
+     simulator capture. kit.css uses 12px; this is the one place to change it back. */
+  .screen { --shadow-card: 0 6px 24px rgba(0, 0, 0, 0.09); }
+
+  /* Chrome rounds a 0.33px border up to a full 1px before the screen is scaled, which made
+     every card 1.3pt taller than in the app. Draw the hairline ring as an inset shadow instead. */
+  .screen .card { border-width: 0; padding: 19.33px; box-shadow: var(--shadow-card), inset 0 0 0 0.34px var(--ring); }
+  .screen .backbar .round { border-width: 0; box-shadow: var(--shadow-card), inset 0 0 0 0.34px var(--ring); }
+
+  /* Instrument Serif is taller (1.3em) than this 50pt line. iOS keeps the descent at the
+     bottom of the line and cuts the top; CSS splits the difference. Measured on the
+     simulator capture: the baseline sits 2.35pt higher than CSS puts it. */
+  .screen .ios-tight { top: -2.35px; }
+
+  /* Step header text */
+  .step-title { font-size: 16px; font-weight: 700; color: var(--ink); }
+  .step-sub { font-size: 13.5px; font-weight: 400; color: var(--ink3); }
+  .step-sub.done { font-weight: 600; color: var(--acc); }
+
+  /* ClearChip: 34pt capsule, 15/600; card-white with ring + shadow until done, then accent + check */
+  .screen .clear {
+    height: 34px; border-radius: 9999px; padding: 0 15.33px;
+    flex-direction: row; align-items: center; gap: 6px;
+    background: var(--card); color: var(--ink2);
+    box-shadow: var(--shadow-card), inset 0 0 0 0.34px var(--ring);
+  }
+  .screen .clear.done { background: var(--acc); color: var(--onAcc); box-shadow: none; padding: 0 15px; }
+  .clear p { font-size: 15px; font-weight: 600; }
+
+  /* TransportToggle: 64 × 44, bare glyph */
+  .screen .transport { width: 64px; height: 44px; align-items: center; justify-content: center; }
+
+  /* ReminderRow: 22pt radio, text column with a hairline under it */
+  .screen .reminder { align-items: flex-start; gap: 12px; }
+  .screen .reminder-body { flex: 1; min-height: 44px; justify-content: center; padding: 10px 0; }
+  .screen .reminder-body.sep { box-shadow: inset 0 -0.34px 0 var(--sep); }
+  .screen .radio { width: 22px; height: 22px; border-radius: 11px; border: 1.5px solid var(--ink3); align-items: center; justify-content: center; }
+  .screen .radio.done { border-width: 0; background: var(--acc); }
+</style>
+</body>
+</html>
