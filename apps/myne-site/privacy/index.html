@@ -5,42 +5,102 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy Policy · Myne</title>
 <meta name="description" content="What Myne collects, what stays on your phone, and who processes your data.">
+<meta name="theme-color" content="#f5f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1230" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/assets/icon-180.png">
 <link rel="apple-touch-icon" href="/assets/icon-180.png">
+<link rel="preload" href="/assets/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/pretendard-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/styles.css">
+<script src="/reveal.js"></script>
 </head>
 <body>
-<main class="legal">
-<div class="legal-wrap">
-<a href="/" class="legal-back">← Back to Myne</a>
-<h1>Privacy Policy</h1>
-<p class="legal-updated">Last updated: 5 October 2026</p>
 
-<p>
+<header class="nav wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/"><img src="/assets/icon-180.png" alt="" width="30" height="30">Myne</a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="/privacy" aria-current="page">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/support">Support</a>
+      <a class="pill" href="/">Home</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="help-hero doc-hero">
+    <p class="eyebrow enter" style="--i:0">Privacy</p>
+    <h1 class="display enter" style="--i:1">Privacy Policy</h1>
+    <p class="doc-updated enter" style="--i:2">Last updated: 5 October 2026</p>
+    <p class="enter" style="--i:3">
   Myne (&ldquo;the app&rdquo;) is an independently run speaking-practice app
   for iPhone. This policy explains what we collect,
   why, what stays on your phone, and who processes your data. We try not to
   collect more than the product needs. We do not sell your data, show ads, or
   track you across other companies&rsquo; apps or websites.
 </p>
+  </div>
 
-<h2>What we collect</h2>
+  <div class="cards">
+    <div class="card reveal">
+      <span class="tag">Your voice</span>
+      <strong>Recordings stay on your phone</strong>
+      <span class="sub">Speaking audio is never uploaded. Speech becomes text on your device.</span>
+    </div>
+    <div class="card reveal">
+      <span class="tag">AI</span>
+      <strong>Only with your permission</strong>
+      <span class="sub">Nothing is sent to OpenAI unless you allow it, and you can turn it off any time.</span>
+    </div>
+    <div class="card reveal">
+      <span class="tag">No tracking</span>
+      <strong>No ads, no selling data</strong>
+      <span class="sub">We do not sell your data, show ads, or track you across other apps or websites.</span>
+    </div>
+  </div>
+
+  <div class="doc-grid">
+    <aside class="toc reveal" aria-label="On this page">
+      <p class="eyebrow">On this page</p>
+      <ol>
+        <li><a href="#what-we-collect">What we collect</a></li>
+        <li><a href="#your-voice-and-mirror-mode">Your voice and Mirror mode</a></li>
+        <li><a href="#ai-features-only-with-your-permission">AI features (only with your permission)</a></li>
+        <li><a href="#usage-analytics">Usage analytics</a></li>
+        <li><a href="#service-providers">Service providers</a></li>
+        <li><a href="#links-to-other-sites">Links to other sites</a></li>
+        <li><a href="#keeping-and-deleting-your-data">Keeping and deleting your data</a></li>
+        <li><a href="#security-and-international-processing">Security and international processing</a></li>
+        <li><a href="#children">Children</a></li>
+        <li><a href="#your-rights">Your rights</a></li>
+        <li><a href="#changes">Changes</a></li>
+      </ol>
+    </aside>
+    <article class="doc">
+      <section class="doc-section reveal" id="what-we-collect">
+        <h2 class="display">What we collect</h2>
 <ul>
   <li><strong>Account details.</strong> Your email address and a securely hashed password, handled by our authentication provider (Supabase). We never see or store your password in plain text.</li>
   <li><strong>Profile.</strong> The name, speaking goal, and optional profile photo you add, plus app preferences such as your first language, English level, and daily goal. Your profile photo is stored with Supabase and served from a web address that is hard to guess but not password-protected, so anyone who has that exact link can view it.</li>
   <li><strong>Learning content.</strong> The phrases, speaking notes, practice transcripts, and practice history you save. These are private to your account.</li>
   <li><strong>Usage analytics.</strong> Basic product interactions and crash diagnostics (see &ldquo;Usage analytics&rdquo; below).</li>
 </ul>
+      </section>
 
-<h2>Your voice and Mirror mode</h2>
+      <section class="doc-section reveal" id="your-voice-and-mirror-mode">
+        <h2 class="display">Your voice and Mirror mode</h2>
 <ul>
   <li>Practice recordings made in the iPhone app <strong>stay on your device</strong>. They are never uploaded to us.</li>
   <li>Speech is turned into text <strong>on your device</strong> by iOS speech recognition. The resulting transcript is saved to your account so you can review it.</li>
   <li>Mirror mode shows your camera image live on your screen only. Myne does not record or save video of your mirror practice.</li>
   <li>You can delete any speaking session, with its recording, from your Profile (swipe it under Recent sessions).</li>
 </ul>
+      </section>
 
-<h2>AI features (only with your permission)</h2>
+      <section class="doc-section reveal" id="ai-features-only-with-your-permission">
+        <h2 class="display">AI features (only with your permission)</h2>
 <p>
   Some features use OpenAI: filling in the meaning and usage of a phrase,
   reading text from a photo you choose, phrase search, and spoken
@@ -53,8 +113,10 @@
   <li>A photo you use to capture a phrase is processed for that capture and is not stored.</li>
   <li>OpenAI processes this content under its API data policy and does not use API data to train its models by default.</li>
 </ul>
+      </section>
 
-<h2>Usage analytics</h2>
+      <section class="doc-section reveal" id="usage-analytics">
+        <h2 class="display">Usage analytics</h2>
 <p>
   We use PostHog to understand how the app is used and to find crashes, so we
   can improve it. PostHog receives app events (for example, that a screen was
@@ -62,8 +124,10 @@
   internal account ID. We do not send your email, recordings, transcripts,
   phrase text, photos, or advertising identifiers to PostHog.
 </p>
+      </section>
 
-<h2>Service providers</h2>
+      <section class="doc-section reveal" id="service-providers">
+        <h2 class="display">Service providers</h2>
 <p>These companies process data on our behalf, only to run the service:</p>
 <ul>
   <li><strong>Supabase</strong> — sign-in, database, file storage (profile photos), and server functions.</li>
@@ -73,16 +137,20 @@
   <li><strong>Vercel</strong> — hosting for this website.</li>
   <li><strong>ElevenLabs, Groq and Cloudflare R2</strong> — only if you also sign in to our separate web app (shadowing-plus.vercel.app) with the same account and use its clip feature: storage and speech-to-text for audio or video files you upload there. The iPhone app does not use them for this.</li>
 </ul>
+      </section>
 
-<h2>Links to other sites</h2>
+      <section class="doc-section reveal" id="links-to-other-sites">
+        <h2 class="display">Links to other sites</h2>
 <p>
   &ldquo;Open YouGlish&rdquo; on a phrase opens youglish.com inside the app so you
   can hear the phrase in real videos. Only the phrase you tapped is sent, as
   part of the web address, and only when you tap it. That site and the videos it
   plays have their own privacy policies.
 </p>
+      </section>
 
-<h2>Keeping and deleting your data</h2>
+      <section class="doc-section reveal" id="keeping-and-deleting-your-data">
+        <h2 class="display">Keeping and deleting your data</h2>
 <ul>
   <li><strong>Delete your account in the app:</strong> Settings &rarr; Delete account. Your account, profile and photo, phrases, notes, transcripts, and saved pronunciation audio are deleted right away and cannot be recovered.</li>
   <li>You can also remove individual phrases, notes, and recordings in the app at any time.</li>
@@ -90,8 +158,10 @@
   <li>Waitlist details are kept until you ask us to remove them or they are no longer needed for launch. Email sumin002@gmail.com to be removed.</li>
   <li>Otherwise, we keep your data for as long as your account exists.</li>
 </ul>
+      </section>
 
-<h2>Security and international processing</h2>
+      <section class="doc-section reveal" id="security-and-international-processing">
+        <h2 class="display">Security and international processing</h2>
 <p>
   Your learning content is protected by your account and is not public. We take
   reasonable measures to protect your data, but no online service can be
@@ -99,28 +169,47 @@
   own under their applicable safeguards. Please do not add highly sensitive or
   confidential information.
 </p>
+      </section>
 
-<h2>Children</h2>
+      <section class="doc-section reveal" id="children">
+        <h2 class="display">Children</h2>
 <p>The app is not directed at children under 13, or under the minimum age of digital consent in their country, and they should not use it.</p>
+      </section>
 
-<h2>Your rights</h2>
+      <section class="doc-section reveal" id="your-rights">
+        <h2 class="display">Your rights</h2>
 <p>
   Depending on where you live, you may have rights to access, correct, delete,
   export, restrict, or object to processing of your personal data, and to
   withdraw consent. Most of this can be done in the app; for anything else,
   contact sumin002@gmail.com.
 </p>
+      </section>
 
-<h2>Changes</h2>
+      <section class="doc-section reveal" id="changes">
+        <h2 class="display">Changes</h2>
 <p>
   We will update this policy when the app changes how it handles data, and the
   date above will show the latest version. If we introduce a feature that shares
   your content with other people, it will be optional and will ask for your
   permission first.
 </p>
+      </section>
 
-<p class="legal-note">Questions about privacy: <a href="mailto:sumin002@gmail.com">sumin002@gmail.com</a> · <a href="/support">Support</a></p>
-</div>
+      <p class="legal-note">Questions about privacy: <a href="mailto:sumin002@gmail.com">sumin002@gmail.com</a> · <a href="/support">Support</a></p>
+    </article>
+  </div>
+
+  <footer>
+    <span>© 2026 Sumin Kim · Myne is an independent app.</span>
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="/support">Support</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+    </nav>
+  </footer>
+
 </main>
 </body>
 </html>
