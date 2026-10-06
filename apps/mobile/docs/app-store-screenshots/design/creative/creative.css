@@ -1,0 +1,25 @@
+/* App Store creative assets: product page header (21:9) and search result (3:2).
+   Navy brand surface, the splash screen's loop mark, the app's serif.
+   Specs: developer.apple.com/help/app-store-connect/reference/app-information/creative-assets-specifications */
+@font-face { font-family: "Pretendard"; src: url("../../../../assets/fonts/Pretendard-Medium.otf"); font-weight: 500; }
+@font-face { font-family: "Pretendard"; src: url("../../../../assets/fonts/Pretendard-SemiBold.otf"); font-weight: 600; }
+@font-face { font-family: "Instrument Serif"; src: url("../../../../assets/fonts/InstrumentSerif-Regular.ttf"); font-weight: 400; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  position: relative; overflow: hidden;
+  font-family: "Pretendard", -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #F2F7FE;
+  /* BRAND ramp from mobile-tokens.ts: #0D1A3B → #162555 → #344E91 */
+  background:
+    radial-gradient(60% 90% at 78% 18%, rgba(110, 141, 213, 0.55) 0%, rgba(110, 141, 213, 0) 62%),
+    radial-gradient(70% 90% at 8% 110%, rgba(52, 78, 145, 0.75) 0%, rgba(52, 78, 145, 0) 60%),
+    linear-gradient(155deg, #0D1A3B 0%, #132049 42%, #1B2D66 72%, #2A4186 100%);
+}
+.serif { font-family: "Instrument Serif", ui-serif, Georgia, serif; font-weight: 400; letter-spacing: -0.02em; }
+.loop { position: absolute; }
+.loop path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* fine grain so the gradient does not band when the store recompresses it */
+.grain { position: absolute; inset: 0; opacity: 0.05; mix-blend-mode: overlay; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>"); }
