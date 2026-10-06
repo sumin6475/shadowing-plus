@@ -1,6 +1,7 @@
 // Mirror hints: phrase cards to try while speaking. The live transcript checks
 // a card off the moment its phrase is said (see lib/phrase-use), and the deck
-// moves on to the next one. A note's outline rides along as the first card,
+// moves on to the next one. The learner can also tick a card by hand — speech
+// recognition does not catch every phrase. A note's outline rides along as the first card,
 // its points ticked by hand. Everything here draws over the camera.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
@@ -74,6 +75,7 @@ function PhrasePage({
   total,
   open,
   toggle,
+  toggleUsed,
 }: {
   card: HintPhrase;
   used: boolean;
@@ -81,6 +83,7 @@ function PhrasePage({
   total: number;
   open: boolean;
   toggle: () => void;
+  toggleUsed: () => void;
 }) {
   return (
     <Pressable
@@ -102,7 +105,15 @@ function PhrasePage({
         >
           {card.text}
         </Text>
-        <UsedMark used={used} />
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: used }}
+          accessibilityLabel={`Mark ${card.text} as used`}
+          hitSlop={12}
+          onPress={toggleUsed}
+        >
+          <UsedMark used={used} />
+        </Pressable>
       </View>
       {open ? (
         <View style={{ gap: 6 }}>
@@ -120,7 +131,7 @@ function PhrasePage({
         </View>
       ) : (
         <Text style={{ color: used ? USED : "rgba(255,255,255,0.6)", fontSize: 13 }}>
-          {used ? "You used it. Nice." : "Say it to check it off · Tap for meaning"}
+          {used ? "You used it. Nice." : "Say it or tap the circle to check it off · Tap for meaning"}
         </Text>
       )}
     </Pressable>
@@ -202,6 +213,7 @@ export function HintDeck({
   visible,
   cards,
   usedIds,
+  onToggleUsed,
   latestId,
   note,
   bottom,
@@ -209,6 +221,8 @@ export function HintDeck({
   visible: boolean;
   cards: HintPhrase[];
   usedIds: Set<string>;
+  /** A tap on a card's circle: ticks it by hand, or takes a hand tick back. */
+  onToggleUsed: (id: string) => void;
   /** The phrase used most recently — the deck moves on from it. */
   latestId: string | null;
   note: { title: string; points: OutlinePoint[] } | null;
@@ -297,6 +311,7 @@ export function HintDeck({
                 total={cards.length}
                 open={openId === p.card.id}
                 toggle={() => setOpenId(openId === p.card.id ? null : p.card.id)}
+                toggleUsed={() => onToggleUsed(p.card.id)}
               />
             ) : p.kind === "note" && note ? (
               <NotePage

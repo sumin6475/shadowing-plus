@@ -109,9 +109,19 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     const words = spokenWords(spoken);
     return cards.map((card) => phraseIndex(words, card.text));
   }, [cards, spoken]);
+  // Cards the learner ticked by hand, for phrases recognition missed. A hand
+  // tick can be taken back; a phrase the transcript shows stays checked.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleTicked = useCallback((id: string) => {
+    setTicked((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
   const usedIds = useMemo(
-    () => new Set(cards.filter((_, i) => usage[i] >= 0).map((card) => card.id)),
-    [cards, usage],
+    () => new Set(cards.filter((card, i) => usage[i] >= 0 || ticked.has(card.id)).map((card) => card.id)),
+    [cards, usage, ticked],
   );
   // The most recently used card is the one said furthest into the talk.
   const latest = cards.reduce<HintPhrase | null>(
@@ -645,6 +655,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             visible={hintOpen}
             cards={cards}
             usedIds={usedIds}
+            onToggleUsed={toggleTicked}
             latestId={latestId}
             note={note}
             bottom={insets.bottom + 132}
