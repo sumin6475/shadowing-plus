@@ -228,7 +228,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setTranscript(text);
     setPhase("done");
     // Nothing heard, nothing saved: an empty session is only noise in the
-    // learner's records. The recording can still be played on the result.
+    // learner's records, and its recording is not offered for playback.
     if (text.trim()) void persist(text);
   };
   const exit = useCallback(() => {
@@ -332,10 +332,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           )}
         </Screen>
         {/* Pinned, so the actions sit in the same place however long the
-            transcript is. */}
+            transcript is. Listen back is its own full-width row and only
+            exists when there are words to listen for; below it, Speak again
+            on the left and Done — which leaves the mirror — on the right. */}
         <View
           style={{
-            flexDirection: "row",
             gap: 10,
             paddingHorizontal: 18,
             paddingTop: 10,
@@ -343,11 +344,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             backgroundColor: t.colors.bg,
           }}
         >
-          {movedUri || speech.audioUri ? (
+          {!empty && (movedUri || speech.audioUri) ? (
+            // Not `full`: that sets flex 1, which collapses in this
+            // auto-height column.
             <Pill
-              full
               tone="soft"
               icon={playStatus.playing ? "pause" : "play"}
+              style={{ alignSelf: "stretch" }}
               onPress={() => {
                 if (playStatus.playing) player.pause();
                 else
@@ -361,9 +364,14 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </Pill>
           ) : null}
           {empty || saveState === "saved" ? (
-            <Pill full icon="mic" onPress={restart}>
-              {empty ? "Try again" : "Speak again"}
-            </Pill>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pill full tone="soft" icon="mic" onPress={restart}>
+                {empty ? "Try again" : "Speak again"}
+              </Pill>
+              <Pill full icon="check" onPress={exit}>
+                Done
+              </Pill>
+            </View>
           ) : null}
         </View>
       </View>
