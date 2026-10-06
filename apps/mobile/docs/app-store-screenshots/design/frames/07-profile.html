@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>07 · Profile</title>
+<link rel="stylesheet" href="../kit.css">
+<script src="../icons.js"></script>
+<script src="../kit.js"></script>
+</head>
+<body class="shot">
+<h1 class="headline">Watch your speaking<br>add up.</h1>
+
+<div class="phone"><div class="phone-clip">
+<!-- MvpProfile — apps/mobile/src/screens/mvp/index.tsx -->
+<div class="screen">
+  <status-bar></status-bar>
+  <div class="page">
+
+    <!-- BackBar title="Profile" -->
+    <div class="backbar">
+      <div class="round"><i-c n="back" s="18" w="2.2" c="#111114"></i-c></div>
+      <p class="title clamp1">Profile</p>
+      <div class="right"></div>
+    </div>
+
+    <!-- Avatar s=58 (no photo: initial on the dark circle) + name -->
+    <div class="row" style="gap:15px;padding:12px 0">
+      <div style="width:58px;height:58px;border-radius:29px;background:var(--pill);align-items:center;justify-content:center;overflow:hidden">
+        <p style="color:#fff;font-weight:700;font-size:22.04px">M</p>
+      </div>
+      <div style="flex:1">
+        <p class="serif name">Mina</p>
+        <p class="copy">Every minute is yours.</p>
+      </div>
+    </div>
+
+    <!-- Pill tone="card" icon="gear" full -->
+    <div class="pill cardtone" style="align-self:stretch;color:var(--ink)">
+      <div class="row" style="justify-content:center;gap:7px">
+        <i-c n="gear" s="17" w="2" c="#111114"></i-c>
+        <p>Settings &amp; account</p>
+      </div>
+    </div>
+
+    <!-- Speaking time. The week ends today, Mon Oct 5. Seconds per day:
+         Tue 248 · Wed 306 · Thu 268 · Fri 312 · Sat 0 · Sun 182 · Mon 134  = 1450 = 24 min 10s.
+         Bar height = max(3, seconds / 312 * 75). -->
+    <div class="card" style="gap:18px">
+      <p class="label">SPEAKING TIME · LAST 7 DAYS</p>
+      <p class="serif total"><span class="fig">24</span> min <span class="fig">10</span>s</p>
+      <div style="height:100px;flex-direction:row;gap:10px;align-items:flex-end">
+        <div class="day"><div class="bar" style="height:59.62px"></div><p class="label">T</p></div>
+        <div class="day"><div class="bar" style="height:73.56px"></div><p class="label">W</p></div>
+        <div class="day"><div class="bar" style="height:64.42px"></div><p class="label">T</p></div>
+        <div class="day"><div class="bar" style="height:75px"></div><p class="label">F</p></div>
+        <div class="day"><div class="bar" style="height:3px"></div><p class="label">S</p></div>
+        <div class="day"><div class="bar" style="height:43.75px"></div><p class="label">S</p></div>
+        <div class="day"><div class="bar today" style="height:32.21px"></div><p class="label">M</p></div>
+      </div>
+      <p class="copy">3 h 12 min spoken in total · 41 sessions</p>
+    </div>
+
+    <!-- Phrases by stage -->
+    <div class="card">
+      <p class="label">YOUR PHRASES</p>
+      <div style="flex-direction:row;justify-content:space-between;padding-top:16px">
+        <div style="gap:6px"><p class="fig count">31</p><p class="copy">Collected</p></div>
+        <div style="gap:6px"><p class="fig count">12</p><p class="copy">Learning</p></div>
+        <div style="gap:6px"><p class="fig count">9</p><p class="copy">Ready</p></div>
+      </div>
+    </div>
+
+    <p class="label">RECENT SESSIONS</p>
+
+    <!-- Session rows (SwipeRow > Card). At the top of the scroll the 874pt screen ends
+         just under the first row, as in refs/sim-05-profile.png; rows 2 and 3 are below the fold. -->
+    <div class="card">
+      <div style="flex-direction:row;justify-content:space-between">
+        <p class="session-title">2 min 14s of speaking</p>
+        <p class="label">Oct 5</p>
+      </div>
+      <p class="clamp2 transcript">It took me a while to get the hang of the new workflow, but bear with me, I think the bottom line is that the team has been really patient</p>
+    </div>
+    <div class="card">
+      <div style="flex-direction:row;justify-content:space-between">
+        <p class="session-title">3 min 2s of speaking</p>
+        <p class="label">Oct 4</p>
+      </div>
+      <p class="clamp2 transcript">Hi everyone, I’m Mina. I just joined as a product designer, and I’ve spent five years designing mobile apps</p>
+    </div>
+    <div class="card">
+      <div style="flex-direction:row;justify-content:space-between">
+        <p class="session-title">1 min 40s of speaking</p>
+        <p class="label">Oct 2</p>
+      </div>
+      <p class="clamp2 transcript">For the weekly update, I couldn’t agree more with what Daniel said about the onboarding flow</p>
+    </div>
+
+  </div>
+</div>
+</div></div>
+
+<style>
+  /* Chrome has no ui-serif, so the kit's .fig falls through to Georgia (old-style
+     figures). Load the system New York face directly; figure runs carry no tracking. */
+  @font-face { font-family: "NY Figure"; src: url("file:///System/Library/Fonts/NewYork.ttf"); }
+  .screen .fig { font-family: "NY Figure", ui-serif, "New York", Georgia, serif; letter-spacing: 0; }
+
+  /* Chrome draws the kit's 0.33px hairline border 1px wide, which pushes card content
+     0.67pt in on every side. Draw the ring as an overlay and keep RN's box: hairline + padc 19. */
+  .screen .card, .screen .backbar .round { border-width: 0; }
+  .screen .card { padding: 19.33px; }
+  .screen .card::after, .screen .backbar .round::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    box-shadow: inset 0 0 0 0.33px var(--ring); pointer-events: none;
+  }
+
+  /* Label / Copy (mvp/index.tsx). Line boxes and the small `top` nudges are measured on
+     refs/sim-05-profile.png: iOS sets this text a fraction lower in its line than CSS does. */
+  .screen .label { font-size: 11px; line-height: 13.33px; top: 0.5px; font-weight: 700; letter-spacing: 1.1px; color: var(--ink3); }
+  .screen .copy { font-size: 14px; line-height: 21px; top: 0.67px; color: var(--ink2); }
+
+  /* Serif lines: black (RN default, no color in the style), natural line height as iOS lays it out. */
+  .screen .name { font-size: 32px; line-height: 41.67px; top: 0.67px; color: #000; }
+  .screen .total { font-size: 39px; line-height: 51px; color: #000; }
+  /* A count is figures only, so the whole line is the figure face (and takes its line height). */
+  .screen .count { font-size: 29px; line-height: 34.67px; top: 0.67px; color: #000; }
+
+  /* 7-day chart column: bar, 9pt gap, weekday letter */
+  .screen .day { flex: 1; align-items: center; gap: 9px; }
+  .screen .bar { width: 100%; border-radius: 5px; background: var(--accS); }
+  .screen .bar.today { background: var(--acc); }
+
+  /* Session row */
+  .screen .session-title { line-height: 17px; top: 0.67px; font-weight: 600; color: var(--ink); }
+  .screen .transcript { margin-top: 8px; font-size: 14px; line-height: 21px; top: 0.67px; color: var(--ink2); }
+</style>
+</body>
+</html>

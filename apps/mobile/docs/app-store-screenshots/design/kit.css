@@ -1,0 +1,256 @@
+/* Myne App Store screenshot kit.
+
+   Each frame is one 1206 × 2622 page: a headline, and the app screen redrawn
+   in HTML inside a soft device frame. The screen is authored in iOS points
+   (402 × 874, iPhone 17 Pro) with the app's own tokens and fonts, then scaled.
+
+   Inside `.screen`, elements behave like React Native views: column flexbox,
+   border-box, no shrinking. So a screen's JSX styles translate one to one
+   into inline styles here (`fontSize: 16` → `font-size:16px`). Text goes in
+   <p> or <span>. Values come from apps/mobile/src/design/mobile-tokens.ts. */
+
+@font-face { font-family: "Pretendard"; src: url("../../../assets/fonts/Pretendard-Regular.otf"); font-weight: 400; }
+@font-face { font-family: "Pretendard"; src: url("../../../assets/fonts/Pretendard-Medium.otf"); font-weight: 500; }
+@font-face { font-family: "Pretendard"; src: url("../../../assets/fonts/Pretendard-SemiBold.otf"); font-weight: 600; }
+@font-face { font-family: "Pretendard"; src: url("../../../assets/fonts/Pretendard-Bold.otf"); font-weight: 700; }
+@font-face { font-family: "Instrument Serif"; src: url("../../../assets/fonts/InstrumentSerif-Regular.ttf"); font-weight: 400; }
+/* iOS `ui-serif` is New York. Chrome does not resolve `ui-serif`, so load the system file. */
+@font-face { font-family: "New York"; src: url("file:///System/Library/Fonts/NewYork.ttf"); font-weight: 100 900; }
+
+:root {
+  /* app tokens — PALETTES.ios.light */
+  --bg: #F2F2F7;
+  --card: #ffffff;
+  --soft: rgba(118, 118, 128, 0.12);
+  --sep: #C6C6C8;
+  --ink: #111114;
+  --ink2: rgba(60, 60, 67, 0.6);
+  --ink3: rgba(60, 60, 67, 0.3);
+  --acc: #162555;
+  --accD: #344E91;
+  --accS: rgba(22, 37, 85, 0.11);
+  --onAcc: #ffffff;
+  --warn: #D70015;
+  --pill: #1C1C1E;
+  --ring: #ECECEC;
+  --used: #34C759;
+  --brand-dark: #0D1A3B;
+  --brand-main: #162555;
+  --brand-light: #344E91;
+
+  --serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --ui: "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif;
+  --sf: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+
+  /* frame geometry (px on the 1206 × 2622 canvas) */
+  --scale: 2.25;
+  --bezel: 24px;
+  --screen-r: 56px; /* in points, scaled with the screen */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+/* ── The marketing frame ─────────────────────────────────────────────── */
+body.shot {
+  width: 1206px;
+  height: 2622px;
+  overflow: hidden;
+  position: relative;
+  background:
+    radial-gradient(120% 60% at 50% 108%, #7F9AE6 0%, rgba(127, 154, 230, 0) 62%),
+    linear-gradient(180deg, #FFFFFF 0%, #F6F8FE 26%, #DCE5FA 58%, #AEC1F0 82%, #8CA6E8 100%);
+  font-family: var(--ui);
+  -webkit-font-smoothing: antialiased;
+}
+.headline {
+  position: absolute;
+  top: 150px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 132px;
+  line-height: 1.03;
+  letter-spacing: -0.02em;
+  color: var(--brand-dark);
+}
+.headline em { font-style: normal; color: var(--brand-light); }
+
+.phone {
+  position: absolute;
+  top: 506px;
+  left: 50%;
+  width: calc(402px * var(--scale) + var(--bezel) * 2);
+  height: calc(874px * var(--scale) + var(--bezel) * 2);
+  margin-left: calc((402px * var(--scale) + var(--bezel) * 2) / -2);
+  padding: var(--bezel);
+  border-radius: calc(var(--screen-r) * var(--scale) + var(--bezel));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(232, 238, 252, 0.92) 55%, rgba(205, 217, 247, 0.9) 100%);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.7),
+    0 6px 14px rgba(22, 37, 85, 0.1),
+    0 60px 120px rgba(22, 37, 85, 0.28),
+    inset 0 2px 0 rgba(255, 255, 255, 0.9);
+}
+.phone-clip {
+  width: calc(402px * var(--scale));
+  height: calc(874px * var(--scale));
+  border-radius: calc(var(--screen-r) * var(--scale));
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 0 1.5px rgba(22, 37, 85, 0.08);
+}
+
+/* ── The app screen, in points ───────────────────────────────────────── */
+.screen {
+  width: 402px;
+  height: 874px;
+  transform: scale(var(--scale));
+  transform-origin: 0 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 14px;
+  font-weight: 400;
+}
+.screen.dark { background: #000; color: #fff; }
+
+/* React Native view defaults */
+/* :where() keeps these at zero specificity, so any class or inline style wins. */
+:where(.screen) :where(div, section, header, footer, nav) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0 solid transparent;
+}
+:where(.screen) :where(p) { margin: 0; padding: 0; display: block; flex-shrink: 0; min-width: 0; position: relative; }
+:where(.screen) :where(span) { display: inline; }
+:where(.screen) :where(svg) { display: block; flex-shrink: 0; }
+:where(.screen) :where(img) { display: block; }
+.screen .row { flex-direction: row; align-items: center; }
+.screen .serif { font-family: var(--serif); letter-spacing: -0.2px; font-weight: 400; }
+/* Figures inside the brand serif use the system serif (New York), as in the app. */
+.screen .fig { font-family: "New York", ui-serif, Georgia, serif; }
+.screen .clamp1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.screen .clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Screen container: Screen in design/ui.tsx (safe top 62 + 8, 18 side, gap 13) */
+.screen .page {
+  position: absolute;
+  inset: 0;
+  padding: 70px 18px 0;
+  gap: 13px;
+}
+
+/* Card (design/ui.tsx): radius 26, padding 19, hairline ring, shadowCard */
+.screen .card {
+  background: var(--card);
+  border-radius: 26px;
+  padding: 19px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.09), inset 0 0 0 0.4px var(--ring);
+}
+/* Pill (design/ui.tsx): 50pt capsule, 17/600; .small = 34pt, 15pt text */
+.screen .pill {
+  height: 50px;
+  border-radius: 9999px;
+  padding: 0 24px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--acc);
+  color: var(--onAcc);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  align-self: flex-start;
+}
+.screen .pill.full { flex: 1; align-self: stretch; }
+.screen .pill.small { height: 34px; padding: 0 16px; font-size: 15px; }
+.screen .pill.soft { background: var(--accS); color: var(--accD); }
+.screen .pill.tint { background: var(--soft); color: var(--ink); }
+.screen .pill.dark { background: var(--pill); color: #fff; }
+.screen .pill.ghost { background: transparent; color: var(--ink2); }
+.screen .pill.white { background: #fff; color: var(--brand-dark); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.09); }
+.screen .pill.cardtone { background: var(--card); color: var(--ink); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.09); }
+
+/* Chip (design/ui.tsx): 34pt capsule */
+.screen .chip {
+  height: 34px;
+  border-radius: 9999px;
+  padding: 0 15px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--card);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.09), inset 0 0 0 0.4px var(--ring);
+  color: var(--ink2);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.screen .chip.active { background: var(--pill); color: #fff; box-shadow: none; }
+
+/* BackBar (design/ui.tsx) */
+.screen .backbar { flex-direction: row; align-items: center; padding: 4px 0; min-height: 44px; }
+.screen .backbar .round {
+  width: 44px; height: 44px; border-radius: 22px; background: var(--card);
+  align-items: center; justify-content: center;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.09), inset 0 0 0 0.4px var(--ring);
+}
+.screen .backbar .title { flex: 1; text-align: center; font-size: 17px; font-weight: 700; color: var(--ink); }
+.screen .backbar .right { min-width: 44px; min-height: 44px; align-items: flex-end; justify-content: center; }
+
+/* ── System chrome ───────────────────────────────────────────────────── */
+.screen .statusbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 54px; z-index: 30;
+  flex-direction: row; align-items: center; justify-content: space-between;
+  padding: 10px 35px 0 56px;
+  font-family: var(--sf);
+  color: #000;
+}
+.screen .statusbar.light { color: #fff; }
+.screen .statusbar .time { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+.screen .statusbar .sys { flex-direction: row; align-items: center; gap: 7px; }
+
+/* Native tab bar (liquid glass capsule), measured from the simulator. */
+.screen .tabbar {
+  position: absolute; left: 50%; bottom: 21px; z-index: 20;
+  width: 274px; height: 60px; margin-left: -137px;
+  border-radius: 30px;
+  flex-direction: row; align-items: center;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+.screen .tabbar .tab { flex: 1; height: 52px; border-radius: 26px; align-items: center; justify-content: center; gap: 0; padding-bottom: 2px; color: #1C1C1E; }
+.screen .tabbar .tab.on { flex: 1.08; background: rgba(118, 118, 128, 0.14); color: var(--acc); }
+.screen .tabbar .tabicon { height: 30px; align-items: center; justify-content: center; }
+.screen .tabbar .tab p { font-family: var(--sf); font-size: 10px; font-weight: 500; letter-spacing: 0.1px; margin-top: -2px; }
+/* soft fade behind the bar so list rows dissolve under it, as on device */
+.screen .tabfade { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; z-index: 19; background: linear-gradient(180deg, rgba(242, 242, 247, 0) 0%, rgba(242, 242, 247, 0.86) 62%, rgba(242, 242, 247, 0.96) 100%); }
+
+.screen i-c, .screen listen-btn { display: block; flex-shrink: 0; line-height: 0; }
+.screen status-bar { display: flex; }
+
+/* ── Bare mode (frame.html?bare): the screen alone at 3x, 1206 × 2622 ──
+   Pixel-comparable with a simulator screenshot. Used by compare.py. */
+body.bare { background: #000; }
+body.bare .headline { display: none; }
+body.bare .phone { top: 0; left: 0; margin: 0; padding: 0; width: 1206px; height: 2622px; border-radius: 0; background: none; box-shadow: none; }
+body.bare .phone-clip { width: 1206px; height: 2622px; border-radius: 0; box-shadow: none; }
+body.bare .screen { transform: scale(3); }

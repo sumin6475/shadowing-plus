@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>06 · Mirror result</title>
+<link rel="stylesheet" href="../kit.css">
+<script src="../icons.js"></script>
+<script src="../kit.js"></script>
+</head>
+<body class="shot">
+<h1 class="headline">See what you<br>actually said.</h1>
+
+<div class="phone"><div class="phone-clip">
+<!-- TalkScreen, phase "done" — apps/mobile/src/screens/talk.tsx (footer as on
+     fix/talk-result-actions) and session-stats.tsx. Safe area: top 62, bottom 34. -->
+<div class="screen">
+  <status-bar></status-bar>
+
+  <div style="position:absolute;inset:0;background:var(--bg)">
+
+    <!-- Screen (design/ui.tsx): a scroll view; the footer below is pinned -->
+    <div style="flex:1;overflow:hidden">
+      <div class="scroll" style="padding:70px 18px 46px;gap:13px">
+
+        <!-- BackBar -->
+        <div class="backbar">
+          <div class="round"><i-c n="back" s="18" w="2.2" c="#111114"></i-c></div>
+          <p class="title">Mirror</p>
+          <div class="right"></div>
+        </div>
+
+        <p style="font-size:12px;font-weight:700;letter-spacing:1px;color:var(--ink3)">SESSION SAVED</p>
+
+        <!-- SessionStatsCard -->
+        <div class="card" style="gap:18px">
+          <div style="gap:6px">
+            <div style="flex-direction:row;align-items:baseline;flex-wrap:wrap;column-gap:10px">
+              <p class="fig" style="font-size:64px;line-height:72px;letter-spacing:-1.5px;color:var(--ink)">212</p>
+              <p style="font-size:17px;color:var(--ink2)">words spoken</p>
+            </div>
+            <p style="font-size:15px;line-height:22px;color:var(--ink2)">A little more English, in your own voice.</p>
+          </div>
+          <div style="height:0.33px;background:var(--sep)"></div>
+          <div style="flex-direction:row;flex-wrap:wrap;row-gap:20px">
+            <div class="stat">
+              <!-- SF Symbol: timer -->
+              <svg class="sym" width="22" height="22" viewBox="0 0 22 22"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11 2.7v3.5"/><path d="M11 2.7A8.3 8.3 0 1 1 4.93 5.34"/></g><path d="M6.9 6.9l5.07 3.25a1.35 1.35 0 1 1-1.94 1.9z" fill="currentColor"/></svg>
+              <div><p class="fig val">2m 14s</p><p class="lab">Speaking time</p></div>
+            </div>
+            <div class="stat">
+              <!-- SF Symbol: speedometer -->
+              <svg class="sym" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8.3" fill="none" stroke="currentColor" stroke-width="1.5"/><g fill="currentColor"><path d="M14.8 7.4l-3.3 4.94a1.3 1.3 0 1 1-1.8-1.88z"/><circle cx="11" cy="5.9" r=".75"/><circle cx="7.35" cy="7.4" r=".75"/><circle cx="5.85" cy="11.1" r=".75"/><circle cx="16.15" cy="11.1" r=".75"/><circle cx="7.35" cy="14.7" r=".75"/><circle cx="14.65" cy="14.7" r=".75"/></g></svg>
+              <div><p class="fig val">95</p><p class="lab">Words per minute</p></div>
+            </div>
+            <div class="stat">
+              <!-- SF Symbol: checkmark.circle -->
+              <svg class="sym" width="22" height="22" viewBox="0 0 22 22"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8.3"/><path d="M7.4 11.4l2.5 2.9 4.8-6.3"/></g></svg>
+              <div><p class="fig val">3/4</p><p class="lab">Phrases used</p></div>
+            </div>
+            <div class="stat">
+              <!-- SF Symbol: character.book.closed -->
+              <svg class="sym" width="22" height="22" viewBox="0 0 22 22"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><g stroke-width="1.4"><path d="M18 16.4V4.2a2 2 0 0 0-2-2H6.3a2 2 0 0 0-2 2v14"/><path d="M18 16.4H6.2a1.9 1.9 0 0 0 0 3.8H18"/><path d="M6.9 2.4v13.8"/></g><path d="M10.2 12.3l2.3-6.3 2.3 6.3M11 10.3h3" stroke-width="1.2"/></g></svg>
+              <div><p class="fig val">104</p><p class="lab">Different words</p></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PhraseChipsCard: a check and the accent tint on the ones said -->
+        <div class="card" style="gap:14px">
+          <p style="color:var(--ink3);font-size:11px;font-weight:700;letter-spacing:1px">PHRASES YOU TRIED</p>
+          <div style="flex-direction:row;flex-wrap:wrap;gap:8px">
+            <div class="tried used"><i-c n="check" s="13" w="2.6" c="#162555"></i-c><p>get the hang of</p></div>
+            <div class="tried used"><i-c n="check" s="13" w="2.6" c="#162555"></i-c><p>bear with me</p></div>
+            <div class="tried used"><i-c n="check" s="13" w="2.6" c="#162555"></i-c><p>the bottom line is</p></div>
+            <div class="tried"><p>play it by ear</p></div>
+          </div>
+        </div>
+
+        <!-- TranscriptCard: maxHeight = round(window height 874 × 0.32) -->
+        <div class="card" style="gap:14px">
+          <div style="flex-direction:row;align-items:center;gap:12px">
+            <p style="flex:1;color:var(--ink3);font-size:11px;font-weight:700;letter-spacing:1px">TRANSCRIPT</p>
+            <div style="flex-direction:row;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:var(--soft)">
+              <!-- SF Symbol: doc.on.doc -->
+              <svg width="14" height="14" viewBox="0 0 14 14" style="color:var(--ink2)"><g fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.3V2.6a1.3 1.3 0 0 1 1.3-1.3h2.6l3.5 3.5v5.3a1.3 1.3 0 0 1-1.3 1.3H9.4"/><path d="M8.9 1.4v2.4a1 1 0 0 0 1 1h2.4"/><path d="M2.8 3.7h2.6l3.5 3.5v4.4a1.3 1.3 0 0 1-1.3 1.3H2.8a1.3 1.3 0 0 1-1.3-1.3V5a1.3 1.3 0 0 1 1.3-1.3z"/><path d="M5.4 3.8v2.4a1 1 0 0 0 1 1h2.4"/></g></svg>
+              <p style="font-size:13px;font-weight:600;color:var(--ink2)">Copy</p>
+            </div>
+          </div>
+          <div style="max-height:var(--transcript-max);overflow:hidden">
+            <p style="font-size:17px;line-height:28px;color:var(--ink)">It took me a while to get the hang of the new workflow, but bear with me. The bottom line is that the team has been really patient, and I’m finally comfortable sharing my ideas in English. Last week I walked everyone through the new onboarding, and it went better than I expected.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Screen's top frost: a blur faded out by a gradient mask, height = inset 62 + 40.
+         It only shows once content scrolls under the status bar. -->
+    <div class="frost"></div>
+
+    <!-- Pinned actions (paddingBottom = inset 34 + 10) -->
+    <div style="gap:10px;padding:10px 18px 44px;background:var(--bg)">
+      <div class="pill soft" style="align-self:stretch"><i-c n="play" s="17" w="2"></i-c><span>Listen back</span></div>
+      <div style="flex-direction:row;gap:10px">
+        <div class="pill full soft"><i-c n="mic" s="17" w="2"></i-c><span>Speak again</span></div>
+        <div class="pill full"><i-c n="check" s="17" w="2"></i-c><span>Done</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div></div>
+
+<style>
+  /* Text without its own lineHeight is one Pretendard line: (1950 + 494) / 2048 em. */
+  .screen { line-height: 1.1934; --transcript-max: 280px; --page-scroll: 0px; }
+  /* How far the result is scrolled. 0 = as the screen opens: on a 402 × 874 phone the
+     transcript body then starts below the pinned actions (y 725 against 710). */
+  .scroll { transform: translateY(calc(-1 * var(--page-scroll))); }
+  .frost {
+    position: absolute; top: 0; left: 0; right: 0; height: 102px;
+    backdrop-filter: blur(18px) saturate(160%);
+    mask-image: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.14) 80%, transparent 100%);
+  }
+
+  /* One cell of the 2 × 2 grid in SessionStatsCard */
+  .stat { width: 50%; flex-direction: row; gap: 10px; padding-right: 8px; }
+  .stat > div { flex: 1; gap: 2px; }
+  .stat .sym { margin-top: 5px; color: var(--ink3); }
+  .stat .val { font-size: 28px; line-height: 33px; letter-spacing: -0.4px; color: var(--ink); white-space: nowrap; }
+  .stat .lab { font-size: 13px; color: var(--ink2); white-space: nowrap; }
+
+  /* A chip in PhraseChipsCard */
+  .tried { flex-direction: row; align-items: center; gap: 6px; max-width: 100%; padding: 8px 14px; border-radius: 999px; background: var(--soft); }
+  .tried p { font-size: 15px; font-weight: 500; color: var(--ink2); white-space: nowrap; }
+  .tried.used { padding-left: 10px; background: var(--accS); }
+  .tried.used p { font-weight: 600; color: var(--acc); }
+</style>
+</body>
+</html>

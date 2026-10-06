@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>04 · Add a phrase</title>
+<link rel="stylesheet" href="../kit.css">
+<script src="../icons.js"></script>
+<script src="../kit.js"></script>
+</head>
+<body class="shot">
+<h1 class="headline">Save the phrases<br>you want to use.</h1>
+
+<div class="phone"><div class="phone-clip">
+<!-- PhraseCaptureScreen — apps/mobile/src/screens/capture.tsx
+     State: adding (not editing), no photo, no clip. The learner typed the context and
+     tapped "Fill from context", so the phrase, kind, meaning, usage and the context
+     translation are filled. Scrolled to the top; the Save button is the last item in
+     the scroll content (not pinned), so the screen is cut by the bottom of the phone. -->
+<div class="screen">
+  <status-bar></status-bar>
+  <div class="page">
+
+    <!-- BackBar -->
+    <div class="backbar">
+      <div class="round"><i-c n="back" s="18" w="2.2" c="#111114"></i-c></div>
+      <p class="title">Add a phrase</p>
+      <div class="right"></div>
+    </div>
+
+    <!-- CONTEXT -->
+    <div class="card">
+      <div class="row cap-label"><p>CONTEXT</p><p class="tag">OPTIONAL</p></div>
+      <p class="cap-help">The sentence or example that contains this phrase. Optional if you already know it.</p>
+      <p style="min-height:96px;font-size:15px;line-height:22px;color:var(--ink);margin-top:10px">It took me a few weeks to get the hang of the new workflow.</p>
+
+      <div style="border-top:1px solid var(--sep);margin-top:14px;padding-top:13px">
+        <p style="font-size:11.5px;font-weight:700;letter-spacing:0.6px;color:var(--accD)">CONTEXT TRANSLATION</p>
+        <p style="font-size:14.5px;line-height:21px;color:var(--ink2);margin-top:7px">새 업무 방식에 익숙해지는 데 몇 주가 걸렸어요.</p>
+      </div>
+
+      <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:11px">
+        <!-- Clipboard.ClipboardPasteButton: the system paste control, 98 × 34, capsule,
+             icon and label. iOS draws it on the opaque version of the given colour. -->
+        <div class="row paste">
+          <svg width="14" height="17" viewBox="0 0 14 17">
+            <path d="M5.3 2.5h1.2a1.75 1.75 0 0 1 3.3 0H11a2 2 0 0 1 2 2v7.4a2 2 0 0 1-2 2H5.3a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2z" fill="#111114"/>
+            <rect x="0.7" y="5.9" width="8.7" height="10.5" rx="2" fill="#111114" stroke="rgb(118,118,128)" stroke-width="1.3"/>
+          </svg>
+          <p>Paste</p>
+        </div>
+        <div class="pill small soft"><i-c n="sparkle" s="15" w="2"></i-c><p>Fill from context</p></div>
+        <div class="pill small tint"><i-c n="camera" s="15" w="2"></i-c><p>Camera</p></div>
+        <div class="pill small tint"><i-c n="photo" s="15" w="2"></i-c><p>Photos</p></div>
+      </div>
+
+      <p style="font-size:11.5px;color:var(--ink3);margin-top:9px">AI suggests one phrase and drafts the details. You can edit everything.</p>
+    </div>
+
+    <!-- PHRASE TO KEEP -->
+    <div class="card">
+      <div class="row cap-label"><p>PHRASE TO KEEP</p><p class="tag">REQUIRED</p></div>
+      <p style="font-family:var(--serif);font-size:20px;color:var(--ink);margin-top:9px">get the hang of</p>
+      <!-- horizontal ScrollView: clips at the card's content edge -->
+      <div class="row" style="gap:7px;padding-top:14px;overflow:visible;clip-path:inset(-40px 0px -40px 0px)">
+        <div class="chip active"><p>Expression</p></div>
+        <div class="chip"><p>Phrasal verb</p></div>
+        <div class="chip"><p>Pattern</p></div>
+        <div class="chip"><p>Idiom</p></div>
+        <div class="chip"><p>Word</p></div>
+      </div>
+      <div class="pill soft" style="width:100%;align-self:stretch;margin-top:13px"><i-c n="sparkle" s="17" w="2"></i-c><p>Refresh with AI</p></div>
+    </div>
+
+    <!-- MEANING / HOW IT'S USED -->
+    <div class="card">
+      <div class="row cap-label"><p>MEANING</p><p class="tag">OPTIONAL</p></div>
+      <p style="font-size:15px;color:var(--ink);margin-top:8px">감을 잡다, 요령을 익히다</p>
+      <div style="margin-top:18px">
+        <div class="row cap-label"><p>HOW IT’S USED</p><p class="tag">OPTIONAL</p></div>
+      </div>
+      <p class="cap-help">Not an example sentence. Context holds the sentence.</p>
+      <p style="min-height:46px;font-size:15px;line-height:21px;color:var(--ink);margin-top:8px">Use it when you’re starting to do something well after some practice.</p>
+    </div>
+
+    <!-- MORE (collapsed) -->
+    <div class="row" style="justify-content:space-between;padding:6px 4px">
+      <p style="font-size:12px;font-weight:700;letter-spacing:0.6px;color:var(--accD)">MORE</p>
+      <i-c n="chev" s="14" c="rgba(60,60,67,0.3)"></i-c>
+    </div>
+
+    <div class="pill" style="align-self:stretch"><i-c n="bank" s="17" w="2"></i-c><p>Save to Phrase Bank</p></div>
+
+  </div>
+</div>
+</div></div>
+
+<style>
+  /* t.shadowCard is { opacity 0.09, radius 12, offset 0/6 }. An iOS shadowRadius is the blur's
+     sigma, so the CSS blur that matches it is twice that (24px), measured against the
+     simulator capture. kit.css uses 12px; this is the one place to change it back. */
+  .screen { --shadow-card: 0 6px 24px rgba(0, 0, 0, 0.09); }
+
+  /* Chrome rounds a 0.33px border up to a full 1px before the screen is scaled, which makes
+     every card 1.3pt taller than in the app. Draw the hairline ring as an inset shadow instead. */
+  .screen .card { border-width: 0; padding: 19.33px; box-shadow: var(--shadow-card), inset 0 0 0 0.34px var(--ring); }
+  .screen .backbar .round { border-width: 0; box-shadow: var(--shadow-card), inset 0 0 0 0.34px var(--ring); }
+  .screen .chip { border-width: 0; padding: 0 15.33px; box-shadow: var(--shadow-card), inset 0 0 0 0.34px var(--ring); }
+  .screen .chip.active { padding: 0 15px; box-shadow: none; }
+
+  /* CaptureLabel: accent label left, REQUIRED / OPTIONAL right, on one baseline */
+  .screen .cap-label { align-items: baseline; justify-content: space-between; gap: 8px; }
+  .cap-label p { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: var(--accD); }
+  .cap-label p.tag { font-size: 11px; letter-spacing: 0.5px; color: var(--ink3); }
+  .cap-help { font-size: 12.5px; line-height: 18px; color: var(--ink3); margin-top: 5px; }
+
+  /* System paste control */
+  .screen .paste {
+    width: 98px; height: 34px; border-radius: 17px; background: rgb(118, 118, 128);
+    justify-content: center; gap: 6px; color: var(--ink);
+  }
+  .paste p { font-family: var(--sf); font-size: 17px; font-weight: 400; letter-spacing: -0.1px; }
+</style>
+</body>
+</html>

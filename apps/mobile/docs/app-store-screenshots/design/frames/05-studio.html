@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>05 · Studio note</title>
+<link rel="stylesheet" href="../kit.css">
+<script src="../icons.js"></script>
+<script src="../kit.js"></script>
+</head>
+<body class="shot">
+<h1 class="headline">Write what you<br>want to say first.</h1>
+
+<div class="phone"><div class="phone-clip">
+<!-- NoteEditor — apps/mobile/src/screens/mvp/index.tsx -->
+<div class="screen">
+  <status-bar></status-bar>
+  <div class="page">
+
+    <!-- BackBar title="Studio" -->
+    <div class="backbar">
+      <div class="round"><i-c n="back" s="18" w="2.2" c="#111114"></i-c></div>
+      <p class="title clamp1">Studio</p>
+      <div class="right"></div>
+    </div>
+
+    <!-- Title input: FONT.display 36 / 42 (a TextInput, so no serif tracking) -->
+    <p class="serif note-title">Team intro</p>
+
+    <!-- Label: save state -->
+    <p class="label">All changes saved</p>
+
+    <!-- Outline input: 18 / 29, paddingVertical 20, minHeight 360. Raw text, as typed. -->
+    <p class="note-body">Opening
+- Hi everyone, I’m Mina. I just joined as a product designer.
+
+Body
+- Five years designing mobile apps
+- Still getting the hang of our process
+- First project: the new onboarding
+
+Closing
+- Looking forward to working with all of you</p>
+
+    <!-- Pill full icon="mic" · Pill full tone="soft" · Pill tone="ghost" alignSelf stretch -->
+    <div class="pill" style="align-self:stretch">
+      <div class="row" style="justify-content:center;gap:7px">
+        <i-c n="mic" s="17" w="2" c="#ffffff"></i-c>
+        <p>Speak with this note</p>
+      </div>
+    </div>
+    <div class="pill soft" style="align-self:stretch"><p>Done</p></div>
+    <div class="pill ghost" style="align-self:stretch"><p>Delete note</p></div>
+
+  </div>
+</div>
+</div></div>
+
+<style>
+  /* Chrome draws the kit's 0.33px hairline border 1px wide; draw the ring as an overlay instead. */
+  .screen .backbar .round { border-width: 0; }
+  .screen .backbar .round::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    box-shadow: inset 0 0 0 0.33px var(--ring); pointer-events: none;
+  }
+
+  /* Label (mvp/index.tsx): 11 / 700, tracking 1.1, ink3 */
+  .screen .label { font-size: 11px; line-height: 13.33px; top: 0.5px; font-weight: 700; letter-spacing: 1.1px; color: var(--ink3); }
+
+  /* iOS text fields do not centre glyphs in the line box the way CSS does. Measured on
+     refs/sim-04-note.png: the title sits 4.33pt higher, the outline 3.67pt lower. */
+  .screen .note-title { height: 42px; top: -4.33px; font-size: 36px; line-height: 42px; letter-spacing: 0; color: var(--ink); white-space: nowrap; }
+  .screen .note-body {
+    min-height: 360px; padding: 23.67px 0 16.33px; /* paddingVertical 20, shifted */
+    font-size: 18px; line-height: 29px; color: var(--ink);
+    white-space: pre-wrap;
+  }
+</style>
+</body>
+</html>
