@@ -379,7 +379,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   }
   // ── mirror: live ──
   const live = phase === "live";
-  const subPill = p0.sub || (ctx !== "Free talk" ? ctx : null);
+  // A line under the heading, when the caller has one to add. The heading is
+  // already the note's title, so it is never repeated here.
+  const subPill = p0.sub && p0.sub !== ctx ? p0.sub : null;
   return (
     <View style={{ position: "absolute", inset: 0 }}>
       <MirrorPreview />

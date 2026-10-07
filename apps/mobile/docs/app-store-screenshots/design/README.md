@@ -55,7 +55,7 @@ Featured phrase everywhere: **get the hang of** — context sentence "It took me
 
 Studio notes: **Team intro** (today), Weekly update (last 7 days), Explaining a design decision (last 30 days), Tell me about yourself (earlier).
 
-Team intro note body:
+Team intro note (the editor draws each section as a card and each line as a point; the stored body keeps the `Opening` / `- point` shape):
 
 ```
 Opening
@@ -67,7 +67,8 @@ Body
 - First project: the new onboarding
 
 Closing
-- Looking forward to working with all of you
+- Looking forward to working with you
+- Feel free to say hi anytime
 ```
 
 Mirror session: Free talk, 2m 14s, 212 words, 95 words per minute, 104 different words, 3 of 4 phrases used (get the hang of, bear with me, the bottom line is used; play it by ear not used). Phrases per day is 4, so the home card reads 2/4 and the mirror deck has 4 cards.

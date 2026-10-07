@@ -132,9 +132,9 @@ Ready files: `apps/mobile/docs/app-store-screenshots/1206x2622/` — upload in t
 | 6 | `06-result.jpg` | Mirror result | See what you actually said. |
 | 7 | `07-profile.jpg` | Profile | Watch your speaking add up. |
 
-The person in the mirror frame is AI-generated (Higgsfield), not a real person. `06-result.jpg` shows the result footer of build 40 (Listen back above; Speak again and Done below) — submit it with build 40 or later.
+The person in the mirror frame is AI-generated (Higgsfield), not a real person. `06-result.jpg` shows the result footer of build 40 (Listen back above; Speak again and Done below) — submit it with build 40 or later. `05-studio.jpg` shows the note editor of build 41 (a card per section, a point per line, the Speak button pinned at the bottom) — submit it with build 41 or later.
 
 ## Open items before pressing "심사에 추가"
 
-- **Build 40 is needed**: it carries the mirror result footer shown in screenshot 6 (PR #31, not merged yet). Build 39 has the wording fixes and legal links but the old footer.
+- **Build 41 is needed**: it carries the Studio note editor shown in screenshot 5. Build 40 has the mirror result footer of screenshot 6 but the old plain-text note editor.
 - **App Privacy labels** (separate page in App Store Connect) must match `expo.ios.privacyManifests` in `app.json`.

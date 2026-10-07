@@ -6,7 +6,7 @@ Implemented from the user-provided September 16 MVP simplification plan and scre
 
 - **Phrases** is the launch destination: save an expression, filter by Collected / Learning / Ready, search, and open its checklist. Each row shows three completion dots and independent pronunciation playback.
 - **Phrase checklist:** listen at normal or 0.75 speed, play once or five times, open YouGlish, and save personal sentences. Check and uncheck each step independently. The third check requires a saved sentence. Removing the last sentence clears that check. Ready phrases are sorted by their most recent completion timestamp.
-- **Studio:** one flat note per speaking situation, sorted by last edit. New notes start with an Opening / Body / Closing outline. Changes save after a short pause, serially; a user-scoped local draft supports recovery after a failed save. Leaving explicitly waits for saving.
+- **Studio:** one flat note per speaking situation, sorted by last edit. New notes start with an Opening / Body / Closing outline. The editor draws each section as a card and each line as a point (Return adds a point, Backspace at its start joins it to the one above); the stored body is unchanged. Changes save after a short pause, serially; a user-scoped local draft supports recovery after a failed save. Leaving explicitly waits for saving.
 - **Mirror:** the existing camera, live captions and bottom controls remain. Hints show recent Ready phrases and the selected note. The result has transcript, speaking duration, replay and return/repeat controls. No coaching or phrase-suggestion request runs.
 - **Profile:** avatar entry, cumulative speaking time, seven-day chart, phrase counts, recent transcripts, and settings. Settings stays accessible when records fail to load.
 
