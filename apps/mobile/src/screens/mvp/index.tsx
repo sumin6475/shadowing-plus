@@ -32,7 +32,8 @@ import {
   Text as SwiftText,
 } from "@expo/ui/swift-ui";
 import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
-import { SEARCH_ENABLED } from "@/lib/release-flags";
+import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
+import { AskSheet } from "@/components/ask-sheet";
 import { FONT, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
 import {
@@ -202,6 +203,7 @@ function Header({
           backgroundColor: t.colors.card,
         }}
       >
+        {ASK_ENABLED ? <AskEntry nav={nav} /> : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={addLabel}
@@ -273,6 +275,32 @@ function Header({
   );
 }
 /** Inline search under the header — only reachable while SEARCH_ENABLED. */
+/** The sparkle in a tab's header: opens Ask in the "How to say" mode. */
+function AskEntry({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ask"
+        onPress={() => setOpen(true)}
+        hitSlop={8}
+      >
+        <Icon name="sparkle" s={26} w={1.75} c={t.colors.ink} />
+      </Pressable>
+      <AskSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        onSaved={nav.invalidateSpeakingData}
+        onOpenNote={(id) => {
+          setOpen(false);
+          nav.push("mvpNote", { id });
+        }}
+      />
+    </>
+  );
+}
 function SearchBar({
   query,
   setQuery,
@@ -1489,7 +1517,8 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
     [body, setBody] = useState(""),
     [status, setStatus] = useState("Loading…"),
     [error, setError] = useState<string | null>(null),
-    [typing, setTyping] = useState(false);
+    [typing, setTyping] = useState(false),
+    [asking, setAsking] = useState(false);
   const outline = useRef<NoteOutlineHandle>(null),
     titleInput = useRef<TextInput>(null);
   // While the keyboard is up, "…" turns into Done and the Speak button gives
@@ -1793,20 +1822,49 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
           />
           <View
             style={{
+              flexDirection: "row",
+              gap: 10,
               backgroundColor: t.colors.bg,
               paddingHorizontal: 18,
               paddingBottom: Math.max(insets.bottom, 16),
             }}
           >
-            <Pill
-              style={{ alignSelf: "stretch" }}
-              icon="mic"
-              onPress={() => void leave(true)}
-            >
+            {ASK_ENABLED ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Ask for help with this note"
+                onPress={() => setAsking(true)}
+                style={[
+                  {
+                    width: Motif.buttonHeight.large,
+                    height: Motif.buttonHeight.large,
+                    borderRadius: Motif.buttonHeight.large / 2,
+                    backgroundColor: t.colors.card,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: t.ring,
+                  },
+                  t.shadowCard,
+                ]}
+              >
+                <Icon name="sparkle" s={22} w={1.8} c={t.colors.ink} />
+              </Pressable>
+            ) : null}
+            <Pill style={{ flex: 1 }} icon="mic" onPress={() => void leave(true)}>
               Speak with this note
             </Pill>
           </View>
         </View>
+      ) : null}
+      {ASK_ENABLED ? (
+        <AskSheet
+          open={asking}
+          onClose={() => setAsking(false)}
+          initialMode="note"
+          note={{ append: (sections) => outline.current?.append(sections) }}
+          onSaved={nav.invalidateSpeakingData}
+        />
       ) : null}
     </View>
   );
