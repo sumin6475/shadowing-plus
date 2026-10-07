@@ -109,9 +109,19 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     const words = spokenWords(spoken);
     return cards.map((card) => phraseIndex(words, card.text));
   }, [cards, spoken]);
+  // Cards the learner ticked by hand, for phrases recognition missed. A hand
+  // tick can be taken back; a phrase the transcript shows stays checked.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleTicked = useCallback((id: string) => {
+    setTicked((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
   const usedIds = useMemo(
-    () => new Set(cards.filter((_, i) => usage[i] >= 0).map((card) => card.id)),
-    [cards, usage],
+    () => new Set(cards.filter((card, i) => usage[i] >= 0 || ticked.has(card.id)).map((card) => card.id)),
+    [cards, usage, ticked],
   );
   // The most recently used card is the one said furthest into the talk.
   const latest = cards.reduce<HintPhrase | null>(
@@ -218,7 +228,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setTranscript(text);
     setPhase("done");
     // Nothing heard, nothing saved: an empty session is only noise in the
-    // learner's records. The recording can still be played on the result.
+    // learner's records, and its recording is not offered for playback.
     if (text.trim()) void persist(text);
   };
   const exit = useCallback(() => {
@@ -322,10 +332,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           )}
         </Screen>
         {/* Pinned, so the actions sit in the same place however long the
-            transcript is. */}
+            transcript is. Listen back is its own full-width row and only
+            exists when there are words to listen for; below it, Speak again
+            on the left and Done — which leaves the mirror — on the right. */}
         <View
           style={{
-            flexDirection: "row",
             gap: 10,
             paddingHorizontal: 18,
             paddingTop: 10,
@@ -333,11 +344,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             backgroundColor: t.colors.bg,
           }}
         >
-          {movedUri || speech.audioUri ? (
+          {!empty && (movedUri || speech.audioUri) ? (
+            // Not `full`: that sets flex 1, which collapses in this
+            // auto-height column.
             <Pill
-              full
               tone="soft"
               icon={playStatus.playing ? "pause" : "play"}
+              style={{ alignSelf: "stretch" }}
               onPress={() => {
                 if (playStatus.playing) player.pause();
                 else
@@ -351,9 +364,14 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </Pill>
           ) : null}
           {empty || saveState === "saved" ? (
-            <Pill full icon="mic" onPress={restart}>
-              {empty ? "Try again" : "Speak again"}
-            </Pill>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pill full tone="soft" icon="mic" onPress={restart}>
+                {empty ? "Try again" : "Speak again"}
+              </Pill>
+              <Pill full icon="check" onPress={exit}>
+                Done
+              </Pill>
+            </View>
           ) : null}
         </View>
       </View>
@@ -361,7 +379,9 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   }
   // ── mirror: live ──
   const live = phase === "live";
-  const subPill = p0.sub || (ctx !== "Free talk" ? ctx : null);
+  // A line under the heading, when the caller has one to add. The heading is
+  // already the note's title, so it is never repeated here.
+  const subPill = p0.sub && p0.sub !== ctx ? p0.sub : null;
   return (
     <View style={{ position: "absolute", inset: 0 }}>
       <MirrorPreview />
@@ -645,6 +665,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             visible={hintOpen}
             cards={cards}
             usedIds={usedIds}
+            onToggleUsed={toggleTicked}
             latestId={latestId}
             note={note}
             bottom={insets.bottom + 132}

@@ -65,20 +65,50 @@ export interface OutlinePoint {
   section: string | null;
   text: string;
 }
+/** A note body as its outline: sections, each a list of one-line points. */
+export interface OutlineSection {
+  /** "Opening", "Body" or "Closing"; null for points above the first heading. */
+  heading: string | null;
+  points: string[];
+}
+const OUTLINE_HEADING = /^(Opening|Body|Closing)$/;
+/** Reads a note body as sections of points. A heading is a line that is only
+ *  the section name, so a point that happens to say "Body" stays a point.
+ *  Bullet markers, blank lines and empty template bullets are dropped. */
+export function parseOutline(body: string): OutlineSection[] {
+  const sections: OutlineSection[] = [];
+  for (const line of body.split("\n")) {
+    const heading = line.trim();
+    if (OUTLINE_HEADING.test(heading)) {
+      sections.push({ heading, points: [] });
+      continue;
+    }
+    const text = line.replace(/^\s*[-•]\s*/, "").trim();
+    if (!text) continue;
+    if (!sections.length) sections.push({ heading: null, points: [] });
+    sections[sections.length - 1].points.push(text);
+  }
+  return sections.length ? sections : [{ heading: null, points: [] }];
+}
+/** Writes sections back as a note body, in the shape of NOTE_TEMPLATE: one
+ *  "- " line per point, and a bare "- " under a heading with nothing yet. */
+export const serializeOutline = (sections: OutlineSection[]) =>
+  sections
+    .map((s) => {
+      const points = s.points.map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+      return [
+        ...(s.heading ? [s.heading] : []),
+        ...(points.length ? points.map((p) => `- ${p}`) : ["- "]),
+      ].join("\n");
+    })
+    .join("\n\n");
 /** A note's outline as the points to cover while speaking. The section
  *  headings label the points under them and aren't points themselves; empty
  *  template bullets are dropped. */
-export function outlinePoints(lines: string[]): OutlinePoint[] {
-  let section: string | null = null;
-  const points: OutlinePoint[] = [];
-  for (const line of lines) {
-    const text = line.replace(/^\s*[-•]\s*/, "").trim();
-    if (!text) continue;
-    if (/^(Opening|Body|Closing)$/.test(text)) section = text;
-    else points.push({ section, text });
-  }
-  return points;
-}
+export const outlinePoints = (lines: string[]): OutlinePoint[] =>
+  parseOutline(lines.join("\n")).flatMap((s) =>
+    s.points.map((text) => ({ section: s.heading, text })),
+  );
 export type Period = "Today" | "Yesterday" | "Last 7 days" | "Last 30 days" | "Earlier";
 /** Which list section a saved date falls in, counted in calendar days. */
 export function periodOf(iso: string, now = new Date()): Period {
@@ -97,22 +127,15 @@ export function periodOf(iso: string, now = new Date()): Period {
           : "Earlier";
 }
 export const NOTE_TEMPLATE = "Opening\n- \n\nBody\n- \n\nClosing\n- ";
-/** First real line of a note — headings and bullet markers dropped. */
+/** A note's points on one line — headings and bullet markers dropped. */
 export const notePreview = (body: string) =>
-  body
-    .replace(/Opening|Body|Closing/g, "")
-    .split("\n")
-    .map((l) => l.replace(/^[-•]\s*/, "").trim())
-    .filter(Boolean)
+  parseOutline(body)
+    .flatMap((s) => s.points)
     .join(" · ") || "A blank page for your next conversation.";
 /** True when a note holds nothing but the untouched template: no title, and
  *  no line beyond the section headings and empty bullets. */
 export const isBlankNote = (title: string, body: string) =>
-  !title.trim() &&
-  body
-    .split("\n")
-    .map((l) => l.replace(/^[-•]\s*/, "").trim())
-    .every((l) => !l || /^(Opening|Body|Closing)$/.test(l));
+  !title.trim() && parseOutline(body).every((s) => !s.points.length);
 export function durationLabel(seconds: number) {
   const value = Math.max(0, Math.floor(seconds));
   if (value < 60) return `${value}s`;

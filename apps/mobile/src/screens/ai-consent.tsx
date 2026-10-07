@@ -59,7 +59,7 @@ function ConsentBody({ onDecide }: { onDecide: (allowed: boolean) => Promise<voi
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.colors.bg }} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 36, paddingBottom: 24 }}>
-        <Serif style={{ fontSize: 34, lineHeight: 40, color: t.colors.ink }}>Before Myne gives you feedback</Serif>
+        <Serif style={{ fontSize: 34, lineHeight: 40, color: t.colors.ink }}>Before Myne uses AI</Serif>
         <Text style={{ fontSize: 16, lineHeight: 23, color: t.colors.ink2, marginTop: 14 }}>
           Some features use AI. Here is exactly what leaves your phone, and it only happens if you allow it.
         </Text>
@@ -69,7 +69,7 @@ function ConsentBody({ onDecide }: { onDecide: (allowed: boolean) => Promise<voi
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }}>Send what you choose to OpenAI</Text>
               <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 4 }}>
-                When you ask for feedback, a phrase suggestion, photo text help or pronunciation, only that text or photo
+                When you ask Myne to fill in a phrase, read text from a photo or play an AI voice, only that text or photo
                 is sent. OpenAI doesn’t train on it by default.{" "}
                 <Text
                   accessibilityRole="link"
@@ -112,7 +112,7 @@ function ConsentBody({ onDecide }: { onDecide: (allowed: boolean) => Promise<voi
         <Text style={{ fontSize: 14, lineHeight: 20, color: t.colors.ink3, marginBottom: 14 }}>
           {allowed
             ? "You can turn this off anytime in Settings → Privacy."
-            : "AI feedback stays off until you allow this. You can change it anytime in Settings → Privacy."}
+            : "AI features stay off until you allow this. You can change it anytime in Settings → Privacy."}
         </Text>
         {/* Not `full`: that sets flex 1, which collapses to 0 height in this auto-height footer. */}
         <Pill tone={allowed ? "acc" : "tint"} onPress={() => void decide()} style={{ alignSelf: "stretch", opacity: saving ? 0.7 : 1 }}>

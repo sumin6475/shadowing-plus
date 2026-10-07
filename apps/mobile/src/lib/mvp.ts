@@ -154,7 +154,7 @@ export async function saveNote(id: string, title: string, body: string) {
     .update({ title, body, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select("id")
-    .single();
+    .maybeSingle();
   if (error || !data)
     throw new Error(error?.message ?? "This note is no longer available.");
 }

@@ -14,11 +14,14 @@ const iconPath = "./assets/images/saylo-icon-v3.png";
 assert(app.icon === iconPath, `expo.icon must use ${iconPath}`);
 assert(app.ios?.icon === iconPath, `expo.ios.icon must use ${iconPath}`);
 
+// A profile's env after following `extends`, the way EAS resolves it.
+const buildEnv = (profile) => {
+  const config = eas.build?.[profile] ?? {};
+  return { ...(config.extends ? buildEnv(config.extends) : {}), ...(config["env"] ?? {}) };
+};
+
 for (const profile of ["development", "preview", "production", "testflight"]) {
-  assert(
-    eas.build?.[profile]?.env?.EXPO_PUBLIC_USE_RN_FETCH === "1",
-    `${profile} must set EXPO_PUBLIC_USE_RN_FETCH=1`,
-  );
+  assert(buildEnv(profile).EXPO_PUBLIC_USE_RN_FETCH === "1", `${profile} must set EXPO_PUBLIC_USE_RN_FETCH=1`);
 }
 
 // Privacy manifest (App Store submission gate). Apple rejects an upload whose
@@ -50,23 +53,16 @@ assert(
 );
 assert(privacy.NSPrivacyAccessedAPITypes?.length > 0, "NSPrivacyAccessedAPITypes must declare required-reason API use");
 
-// Unfinished surfaces (Library, Recommendations) must be absent from the App
-// Store build - Guideline 2.1. See src/lib/release-flags.ts.
-// `testflight` is production plus the preview flag and nothing else: the
-// owner's own TestFlight build, with Library. It must stay a store build that
-// inherits production, or it drifts silently from what App Review will get.
+// Every profile ships the same app since 2026-09-29 (see src/lib/release-flags.ts):
+// the preview-feature split is gone, so no profile may bring the flag back, and
+// `testflight` must stay a store build that inherits production or it drifts
+// silently from what App Review gets.
 assert(eas.build?.testflight?.extends === "production", "testflight must extend production");
 assert(eas.build?.testflight?.distribution === undefined, "testflight must stay a store (TestFlight) build");
-
-const buildEnv = (profile) => eas.build?.[profile]?.["env"] ?? {};
-assert(
-  buildEnv("production").EXPO_PUBLIC_PREVIEW_FEATURES === undefined,
-  "production must NOT set EXPO_PUBLIC_PREVIEW_FEATURES - preview-only surfaces would ship",
-);
-for (const profile of ["development", "preview", "testflight"]) {
+for (const profile of ["development", "preview", "production", "testflight"]) {
   assert(
-    buildEnv(profile).EXPO_PUBLIC_PREVIEW_FEATURES === "1",
-    `${profile} must set EXPO_PUBLIC_PREVIEW_FEATURES=1`,
+    buildEnv(profile).EXPO_PUBLIC_PREVIEW_FEATURES === undefined,
+    `${profile} must NOT set EXPO_PUBLIC_PREVIEW_FEATURES - the preview split was removed`,
   );
 }
 
@@ -75,4 +71,4 @@ assert(png.subarray(1, 4).toString("ascii") === "PNG", "Saylo icon must be a PNG
 assert(png.readUInt32BE(16) === 1024 && png.readUInt32BE(20) === 1024, "Saylo icon must be 1024×1024");
 assert(png[25] === 2, "Saylo icon must be opaque RGB with no alpha channel");
 
-console.log("PASS: release transport, iOS icon, privacy manifest, preview-feature gating");
+console.log("PASS: release transport, iOS icon, privacy manifest, single-build profiles");

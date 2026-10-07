@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support · Myne</title>
+<meta name="description" content="Get help with Myne, contact the developer, or delete your account.">
+<meta name="theme-color" content="#f5f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1230" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/icon-180.png">
+<link rel="apple-touch-icon" href="/assets/icon-180.png">
+<link rel="preload" href="/assets/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/pretendard-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles.css">
+<script src="/reveal.js"></script>
+</head>
+<body>
+
+<header class="nav wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/"><img src="/assets/icon-180.png" alt="" width="30" height="30">Myne</a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#questions">Questions</a>
+      <a href="#delete">Delete account</a>
+      <a href="/privacy">Privacy</a>
+      <a class="pill" href="mailto:sumin002@gmail.com?subject=Myne%20support">Email us</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="help-hero">
+    <p class="eyebrow enter" style="--i:0">Support</p>
+    <h1 class="display enter" style="--i:1">How can we help?</h1>
+    <p class="enter" style="--i:2">Myne is made and supported by one person. If something is broken, confusing or missing, write and you will usually hear back within two business days.</p>
+  </div>
+
+  <div class="cards">
+    <a class="card reveal" href="mailto:sumin002@gmail.com?subject=Myne%20support">
+      <span class="tag">Email</span>
+      <strong>Write to us</strong>
+      <span class="sub">sumin002@gmail.com. A reply usually comes within two business days.</span>
+      <span class="go">Open an email →</span>
+    </a>
+    <div class="card reveal">
+      <span class="tag">In the app</span>
+      <strong>Send feedback</strong>
+      <span class="sub">Open your Profile, then Settings &amp; account, then Help &amp; feedback.</span>
+      <span class="go" style="color:var(--ink-3)">Profile → Settings &amp; account</span>
+    </div>
+    <a class="card reveal" href="#delete">
+      <span class="tag">Account</span>
+      <strong>Delete your data</strong>
+      <span class="sub">Remove your account and everything in it, from the app or by email.</span>
+      <span class="go">See how →</span>
+    </a>
+  </div>
+
+  <section class="help-section" id="questions">
+    <div class="reveal">
+      <h2 class="display">Common questions</h2>
+    </div>
+    <div class="faq reveal">
+      <details>
+        <summary>Talk does not hear me, or there is no transcript</summary>
+        <div class="answer">
+          <p>Talk needs the microphone and speech recognition. On your iPhone open <span class="path">Settings → Apps → Myne</span> and turn on Microphone and Speech Recognition.</p>
+          <p>Speech is turned into text on your phone. Myne currently understands English.</p>
+        </div>
+      </details>
+      <details>
+        <summary>The mirror is black</summary>
+        <div class="answer">
+          <p>The mirror uses the front camera. Turn on Camera for Myne in <span class="path">Settings → Apps → Myne</span>.</p>
+          <p>Myne only shows the camera image live. It does not record video.</p>
+        </div>
+      </details>
+      <details>
+        <summary>“Fill” or reading text from a photo does not work</summary>
+        <div class="answer">
+          <p>Those are AI features and stay off until you allow them. In the app open <span class="path">Profile → Settings &amp; account → Privacy</span> and turn on “Allow OpenAI processing”.</p>
+          <p>Without it you can still add phrases by hand and listen with your device’s voice.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Where are my recordings?</summary>
+        <div class="answer">
+          <p>On your phone only. They are never uploaded, so they do not move to a new phone and they are removed if you delete the app.</p>
+          <p>Transcripts and stats are saved to your account.</p>
+        </div>
+      </details>
+      <details>
+        <summary>I forgot my password</summary>
+        <div class="answer">
+          <p>On the sign-in screen tap “Forgot password?” and follow the link in the email. If the email does not arrive, check spam, then write to us.</p>
+        </div>
+      </details>
+      <details>
+        <summary>How do I take a copy of my phrases?</summary>
+        <div class="answer">
+          <p>In the app open <span class="path">Profile → Settings &amp; account → Export my phrases</span>.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <div class="danger-panel reveal" id="delete">
+    <div>
+      <p class="eyebrow">Your data</p>
+      <h2 class="display">Delete your account and data.</h2>
+      <p>Your account, profile and photo, phrases, notes, transcripts and saved pronunciation audio are deleted right away and cannot be recovered.</p>
+      <p>Can’t open the app? Email <a href="mailto:sumin002@gmail.com?subject=Delete%20my%20Myne%20account">sumin002@gmail.com</a> from the address you signed up with and we will delete the account for you.</p>
+    </div>
+    <ol class="steps-list">
+      <li>Open your Profile</li>
+      <li>Tap Settings &amp; account</li>
+      <li>Tap Delete account and confirm</li>
+    </ol>
+  </div>
+
+  <footer>
+    <span>© 2026 Sumin Kim · Myne is an independent app.</span>
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="mailto:sumin002@gmail.com">Contact</a>
+    </nav>
+  </footer>
+
+</main>
+</body>
+</html>

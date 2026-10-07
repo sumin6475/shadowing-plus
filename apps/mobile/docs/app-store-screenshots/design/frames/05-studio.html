@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>05 · Studio note</title>
+<link rel="stylesheet" href="../kit.css">
+<script src="../icons.js"></script>
+<script src="../kit.js"></script>
+</head>
+<body class="shot">
+<h1 class="headline">Write what you<br>want to say first.</h1>
+
+<div class="phone"><div class="phone-clip">
+<!-- NoteEditor — apps/mobile/src/screens/mvp/index.tsx, outline in screens/note-outline.tsx -->
+<div class="screen">
+  <status-bar></status-bar>
+  <div class="page">
+
+    <!-- BackBar title="Studio" + MoreMenu ("…" is the SF Symbol ellipsis, 18pt). Fixed over the page. -->
+    <div class="backbar">
+      <div class="round"><i-c n="back" s="18" w="2.2" c="#111114"></i-c></div>
+      <p class="title clamp1">Studio</p>
+      <div class="right">
+        <div class="round">
+          <svg width="18" height="18" viewBox="0 0 18 18"><circle cx="2.4" cy="9" r="1.65" fill="#111114"/><circle cx="9" cy="9" r="1.65" fill="#111114"/><circle cx="15.6" cy="9" r="1.65" fill="#111114"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Title input: FONT.display 36 / 42 (a TextInput, so no serif tracking) + Label: save state -->
+    <div style="gap:6px">
+      <p class="serif note-title">Team intro</p>
+      <p class="label">All changes saved</p>
+    </div>
+
+    <!-- NoteOutline: a card per section, an input per point -->
+    <div style="gap:6px">
+      <div style="gap:8px">
+        <p class="sect">OPENING</p>
+        <div class="points">
+          <div class="point"><div class="dot"></div><p>Hi everyone, I’m Mina. I just joined as a product designer.</p></div>
+        </div>
+      </div>
+      <div style="gap:8px">
+        <p class="sect">BODY</p>
+        <div class="points">
+          <div class="point"><div class="dot"></div><p>Five years designing mobile apps</p></div>
+          <div class="point"><div class="dot"></div><p>Still getting the hang of our process</p></div>
+          <div class="point"><div class="dot"></div><p>First project: the new onboarding</p></div>
+        </div>
+      </div>
+      <div style="gap:8px">
+        <p class="sect">CLOSING</p>
+        <div class="points">
+          <div class="point"><div class="dot"></div><p>Looking forward to working with you</p></div>
+          <div class="point"><div class="dot"></div><p>Feel free to say hi anytime</p></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Pinned over the page: a 28pt fade, then the Speak pill above the home indicator (34pt) -->
+  <div class="note-footer">
+    <div class="fade"></div>
+    <div class="bar">
+      <div class="pill" style="align-self:stretch">
+        <div class="row" style="justify-content:center;gap:7px">
+          <i-c n="mic" s="17" w="2" c="#ffffff"></i-c>
+          <p>Speak with this note</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div></div>
+
+<style>
+  /* Chrome draws the kit's 0.33px hairline border 1px wide; draw the ring as an overlay instead. */
+  .screen .backbar .round { border-width: 0; }
+  .screen .backbar .round::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    box-shadow: inset 0 0 0 0.33px var(--ring); pointer-events: none;
+  }
+
+  /* Label (mvp/index.tsx): 11 / 700, tracking 1.1, ink3 */
+  .screen .label { font-size: 11px; line-height: 13.33px; top: 0.5px; font-weight: 700; letter-spacing: 1.1px; color: var(--ink3); }
+
+  /* iOS text fields do not centre glyphs in the line box the way CSS does: the title sits
+     4.33pt higher (measured on refs/sim-04-note.png), a 17 / 24 point 1.85pt lower. */
+  .screen .note-title { height: 42px; top: -4.33px; font-size: 36px; line-height: 42px; letter-spacing: 0; color: var(--ink); white-space: nowrap; }
+
+  /* Section label and card, as SectionCard on the list screens */
+  .screen .sect { font-weight: 700; font-size: 14px; color: var(--ink); padding: 12px 2px 0; }
+  .screen .points { background: var(--card); border-radius: 24px; padding: 9px 18px 9px 16px; }
+  /* A point: 5pt dot centred on the first line, text 17 / 24 with 7pt above and below */
+  .screen .point { flex-direction: row; align-items: flex-start; }
+  .screen .point .dot { width: 19px; height: 24px; margin-top: 8px; justify-content: center; }
+  .screen .point .dot::after { content: ""; display: block; width: 5px; height: 5px; border-radius: 2.5px; background: var(--ink2); }
+  .screen .point p { flex: 1; top: 1.85px; padding: 7px 0; font-size: 17px; line-height: 24px; color: var(--ink); }
+
+  .screen .note-footer { position: absolute; left: 0; right: 0; bottom: 0; }
+  .screen .note-footer .fade { height: 28px; background: linear-gradient(rgba(242, 242, 247, 0), var(--bg)); }
+  .screen .note-footer .bar { background: var(--bg); padding: 0 18px 34px; }
+</style>
+</body>
+</html>

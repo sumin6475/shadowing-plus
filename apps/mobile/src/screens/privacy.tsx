@@ -95,7 +95,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           title="What we store"
           lines={[
             "Your account email and profile (name, goal, and optional photo).",
-            "Your saved phrases, speaking notes, attempt transcripts, and practice history.",
+            "Your saved phrases, speaking notes, speaking session transcripts, and practice history.",
             "Learning content is protected by your account and is never public. Profile photos are stored with Supabase at a hard-to-guess link, so only someone with that exact link can view them.",
           ]}
         />
@@ -106,15 +106,15 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           lines={[
             "Practice recordings stay on this device. They are never uploaded.",
             "Speech is turned into text on your device by iOS speech recognition.",
-            "You can delete any recording from its attempt screen.",
+            "You can delete any session, with its recording, from your Profile: swipe it under Recent sessions.",
           ]}
         />
 
         <Section
           icon="sparkle"
-          title="AI feedback"
+          title="AI features"
           lines={[
-            "Only with your permission, the text or photo you choose is sent to OpenAI for feedback, phrase suggestions, language help, embeddings, or AI pronunciation.",
+            "Only with your permission, the text or photo you choose is sent to OpenAI to fill in a phrase’s meaning and usage, read text from a photo, index your phrases (embeddings), or generate an AI voice.",
             "Speaking recordings are not sent. OpenAI processes the selected content under its API data policy and does not use API data to train models by default.",
             "You can turn this processing off below at any time. AI features stay off until you allow it again.",
           ]}
@@ -160,7 +160,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           icon="x"
           title="Deleting your data"
           lines={[
-            "Recordings: delete in the app, from any attempt.",
+            "Recordings: swipe a session under Recent sessions in your Profile.",
             "Phrases and speaking notes: remove them in the app anytime.",
             "Your whole account: Settings → Delete account. Everything is removed right away.",
           ]}

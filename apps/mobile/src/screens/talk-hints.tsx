@@ -1,9 +1,19 @@
 // Mirror hints: phrase cards to try while speaking. The live transcript checks
 // a card off the moment its phrase is said (see lib/phrase-use), and the deck
-// moves on to the next one. A note's outline rides along as the first card,
+// moves on to the next one. The learner can also tick a card by hand — speech
+// recognition does not catch every phrase. A note's outline rides along as the first card,
 // its points ticked by hand. Everything here draws over the camera.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import {
+  Animated,
+  LayoutAnimation,
+  Pressable,
+  ScrollView,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import MaskedView from "@react-native-masked-view/masked-view";
 import { Text } from "@/design/text";
 import { Icon } from "@/design/ui";
 import type { HintPhrase, OutlinePoint } from "@/lib/mvp";
@@ -25,6 +35,8 @@ type Page =
   | { kind: "note" }
   | { kind: "phrase"; card: HintPhrase }
   | { kind: "empty" };
+
+const pageKey = (p: Page) => (p.kind === "phrase" ? p.card.id : p.kind);
 
 /** A card's check, popping in at the moment it turns on. */
 function UsedMark({ used }: { used: boolean }) {
@@ -74,6 +86,7 @@ function PhrasePage({
   total,
   open,
   toggle,
+  toggleUsed,
 }: {
   card: HintPhrase;
   used: boolean;
@@ -81,6 +94,7 @@ function PhrasePage({
   total: number;
   open: boolean;
   toggle: () => void;
+  toggleUsed: () => void;
 }) {
   return (
     <Pressable
@@ -102,7 +116,15 @@ function PhrasePage({
         >
           {card.text}
         </Text>
-        <UsedMark used={used} />
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: used }}
+          accessibilityLabel={`Mark ${card.text} as used`}
+          hitSlop={12}
+          onPress={toggleUsed}
+        >
+          <UsedMark used={used} />
+        </Pressable>
       </View>
       {open ? (
         <View style={{ gap: 6 }}>
@@ -120,77 +142,108 @@ function PhrasePage({
         </View>
       ) : (
         <Text style={{ color: used ? USED : "rgba(255,255,255,0.6)", fontSize: 13 }}>
-          {used ? "You used it. Nice." : "Say it to check it off · Tap for meaning"}
+          {used ? "You used it. Nice." : "Say it or tap the circle to check it off · Tap for meaning"}
         </Text>
       )}
     </Pressable>
   );
 }
 
+/** A note's outline, as tall as its points up to `maxHeight`. Past that it
+ *  scrolls, and its bottom edge fades out to say there is more below. */
 function NotePage({
   title,
   points,
   covered,
   toggle,
+  maxHeight,
 }: {
   title: string;
   points: OutlinePoint[];
   covered: number[];
   toggle: (i: number) => void;
+  maxHeight: number;
 }) {
+  const box = useRef({ view: 0, content: 0, y: 0 });
+  const [more, setMore] = useState(false);
+  const measure = (patch: Partial<typeof box.current>) => {
+    Object.assign(box.current, patch);
+    const { view, content, y } = box.current;
+    setMore(view > 0 && content - view - y > 4);
+  };
   return (
     <View style={{ gap: 10 }}>
       <Text numberOfLines={1} style={LABEL}>
         YOUR NOTE · {title.toUpperCase()}
       </Text>
-      <ScrollView style={{ maxHeight: 190 }} nestedScrollEnabled>
-        {points.map((point, i) => {
-          const done = covered.includes(i);
-          const heading = point.section && point.section !== points[i - 1]?.section;
-          return (
-            <View key={`${i}.${point.text}`}>
-              {heading ? (
-                <Text style={[LABEL, { marginTop: i ? 10 : 2, marginBottom: 4, color: "#8FA0BD" }]}>
-                  {point.section!.toUpperCase()}
-                </Text>
-              ) : null}
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: done }}
-                onPress={() => toggle(i)}
-                style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 5 }}
-              >
-                <View
-                  style={{
-                    width: 20,
-                    height: 20,
-                    marginTop: 1,
-                    borderRadius: 10,
-                    borderWidth: done ? 0 : 1.6,
-                    borderColor: "rgba(255,255,255,0.55)",
-                    backgroundColor: done ? USED : "transparent",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
+      {/* The card is see-through, so the fade is a mask on the list itself —
+          a painted gradient would show as a darker band over the camera. */}
+      <MaskedView
+        maskElement={
+          <LinearGradient
+            colors={["#000", "#000", more ? "transparent" : "#000"]}
+            locations={[0, 0.82, 1]}
+            style={{ flex: 1 }}
+          />
+        }
+      >
+        <ScrollView
+          style={{ maxHeight }}
+          nestedScrollEnabled
+          indicatorStyle="white"
+          scrollEventThrottle={32}
+          onLayout={(e) => measure({ view: e.nativeEvent.layout.height })}
+          onContentSizeChange={(_, h) => measure({ content: h })}
+          onScroll={(e) => measure({ y: e.nativeEvent.contentOffset.y })}
+        >
+          {points.map((point, i) => {
+            const done = covered.includes(i);
+            const heading = point.section && point.section !== points[i - 1]?.section;
+            return (
+              <View key={`${i}.${point.text}`}>
+                {heading ? (
+                  <Text style={[LABEL, { marginTop: i ? 10 : 2, marginBottom: 4, color: "#8FA0BD" }]}>
+                    {point.section!.toUpperCase()}
+                  </Text>
+                ) : null}
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: done }}
+                  onPress={() => toggle(i)}
+                  style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 5 }}
                 >
-                  {done ? <Icon name="check" s={11} w={2.8} c="#fff" /> : null}
-                </View>
-                <Text
-                  style={{
-                    flex: 1,
-                    color: done ? "rgba(255,255,255,0.55)" : "#fff",
-                    fontSize: 16,
-                    lineHeight: 22,
-                    textDecorationLine: done ? "line-through" : "none",
-                  }}
-                >
-                  {point.text}
-                </Text>
-              </Pressable>
-            </View>
-          );
-        })}
-      </ScrollView>
+                  <View
+                    style={{
+                      width: 20,
+                      height: 20,
+                      marginTop: 1,
+                      borderRadius: 10,
+                      borderWidth: done ? 0 : 1.6,
+                      borderColor: "rgba(255,255,255,0.55)",
+                      backgroundColor: done ? USED : "transparent",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {done ? <Icon name="check" s={11} w={2.8} c="#fff" /> : null}
+                  </View>
+                  <Text
+                    style={{
+                      flex: 1,
+                      color: done ? "rgba(255,255,255,0.55)" : "#fff",
+                      fontSize: 16,
+                      lineHeight: 22,
+                      textDecorationLine: done ? "line-through" : "none",
+                    }}
+                  >
+                    {point.text}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </MaskedView>
     </View>
   );
 }
@@ -202,6 +255,7 @@ export function HintDeck({
   visible,
   cards,
   usedIds,
+  onToggleUsed,
   latestId,
   note,
   bottom,
@@ -209,13 +263,18 @@ export function HintDeck({
   visible: boolean;
   cards: HintPhrase[];
   usedIds: Set<string>;
+  /** A tap on a card's circle: ticks it by hand, or takes a hand tick back. */
+  onToggleUsed: (id: string) => void;
   /** The phrase used most recently — the deck moves on from it. */
   latestId: string | null;
   note: { title: string; points: OutlinePoint[] } | null;
   bottom: number;
 }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const pageW = width - 28;
+  // Room for a three-part note without scrolling, while the mirror above the
+  // deck stays in view.
+  const noteMax = Math.round(Math.min(340, Math.max(200, height * 0.36)));
   const pages = useMemo<Page[]>(
     () => [
       ...(note ? [{ kind: "note" as const }] : []),
@@ -226,6 +285,10 @@ export function HintDeck({
   );
   const [page, setPage] = useState(0);
   const pageRef = useRef(0);
+  // The deck is as tall as the page it shows, not as its tallest page — a
+  // long note would otherwise leave every phrase card half empty.
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const shown = pages[Math.min(page, pages.length - 1)];
   const deck = useRef<ScrollView>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [covered, setCovered] = useState<number[]>([]);
@@ -275,10 +338,13 @@ export function HintDeck({
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={16}
+        style={{ height: shown ? heights[pageKey(shown)] : undefined }}
+        contentContainerStyle={{ alignItems: "flex-start" }}
         onScroll={(e) => {
           const i = Math.round(e.nativeEvent.contentOffset.x / pageW);
           if (i !== pageRef.current && i >= 0 && i < pages.length) {
             pageRef.current = i;
+            LayoutAnimation.configureNext(LayoutAnimation.create(200, "easeInEaseOut", "opacity"));
             setPage(i);
             setOpenId(null);
           }
@@ -286,7 +352,12 @@ export function HintDeck({
       >
         {pages.map((p) => (
           <View
-            key={p.kind === "phrase" ? p.card.id : p.kind}
+            key={pageKey(p)}
+            onLayout={(e) => {
+              const key = pageKey(p);
+              const h = Math.ceil(e.nativeEvent.layout.height);
+              setHeights((prev) => (prev[key] === h ? prev : { ...prev, [key]: h }));
+            }}
             style={{ width: pageW, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14 }}
           >
             {p.kind === "phrase" ? (
@@ -297,6 +368,7 @@ export function HintDeck({
                 total={cards.length}
                 open={openId === p.card.id}
                 toggle={() => setOpenId(openId === p.card.id ? null : p.card.id)}
+                toggleUsed={() => onToggleUsed(p.card.id)}
               />
             ) : p.kind === "note" && note ? (
               <NotePage
@@ -306,6 +378,7 @@ export function HintDeck({
                 toggle={(i) =>
                   setCovered((c) => (c.includes(i) ? c.filter((x) => x !== i) : [...c, i]))
                 }
+                maxHeight={noteMax}
               />
             ) : (
               <View style={{ gap: 10 }}>
@@ -326,7 +399,7 @@ export function HintDeck({
         >
           {pages.map((p, i) => (
             <View
-              key={p.kind === "phrase" ? p.card.id : p.kind}
+              key={pageKey(p)}
               style={{
                 width: i === page ? 16 : 6,
                 height: 6,
