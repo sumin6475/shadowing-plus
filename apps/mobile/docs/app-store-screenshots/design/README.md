@@ -26,6 +26,10 @@ Rendering needs Google Chrome and macOS (the system serif is loaded from `/Syste
 
 The device references in `refs/talk-*.png` and `refs/result-*.png` come from a larger phone (440 × 956) with a smaller text size, so `compare.py` shows layout, not exact pixels, for those two.
 
+## Creative assets (header, search result)
+
+`creative/header.html` (3840 × 1646) and `creative/search.html` (3840 × 2560) are the optional App Store header and search result images: navy brand surface, the splash screen's loop mark, the app serif. The search image embeds `frames/02-mirror.html?bare` in an iframe, so it follows the mirror frame. `./render-creative.sh` writes `../creative/header.jpg` and `../creative/search.jpg`.
+
 ## Rules
 
 - **Only draw what the app really shows.** Every screen mirrors a real screen in `apps/mobile/src/screens/`. No invented features (App Store Guideline 2.3).
