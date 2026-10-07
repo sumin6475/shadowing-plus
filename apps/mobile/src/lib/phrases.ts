@@ -111,7 +111,7 @@ export interface CreatePhraseInput {
   kind?: PhraseKind;
   context?: string | null;
   contextTranslation?: string | null;
-  source: "manual" | "paste" | "image_ocr" | "clip" | "speak";
+  source: "manual" | "paste" | "image_ocr" | "clip" | "speak" | "ask";
   sourceLabel?: string | null;
   imageUri?: string | null;
   ocrConfidence?: number | null;
@@ -255,6 +255,7 @@ function sourceLabel(
   if (context.source_label) return context.source_label;
   if (context.source === "image_ocr") return "Saved from photo";
   if (context.source === "speak") return "Saved while talking";
+  if (context.source === "ask") return "Saved from Ask";
   if (context.source === "paste") return "Pasted text";
   return "Added by me";
 }

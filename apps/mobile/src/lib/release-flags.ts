@@ -9,3 +9,11 @@
 /** Phrase/note search in the header filter menu. Hidden until its design is
  *  settled (2026-09-18) — flip to true to bring it back. */
 export const SEARCH_ENABLED = false;
+
+/** Ask, the expression assistant (sheet + its entry points). Development
+ *  builds only until the `ask-assist` function is deployed and the flow is
+ *  device-checked — `__DEV__` is false in every EAS build. */
+export const ASK_ENABLED = __DEV__;
+/** Ask answers from canned replies (lib/ask-fixtures) instead of calling the
+ *  function. Turn off once `ask-assist` is deployed. */
+export const ASK_MOCK = true;
