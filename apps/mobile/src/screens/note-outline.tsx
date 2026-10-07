@@ -10,7 +10,15 @@
 // The body is read once. Edits go up as a whole new body string in the stored
 // shape ("Opening\n- point\n…"), so saving, drafts and the mirror's outline
 // card don't know this editor exists.
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import { Keyboard, Pressable, useWindowDimensions, View } from "react-native";
 import { Text, TextInput } from "@/design/text";
 import { FONT } from "@/design/mobile-tokens";
@@ -70,6 +78,22 @@ export function NoteOutline({
   const pending = useRef<Caret | null>(null);
   const [, setCaretTick] = useState(0);
 
+  // React Native sizes a multiline input from the text its native view last
+  // reported, and only swaps in the text React gave it after measuring
+  // (BaseTextInputShadowNode: measureContent, then updateStateIfNeeded in
+  // layout). So when an edit sets a point's text from here — a split, a join,
+  // a paste — that point keeps the height of its old text: a blank line under
+  // a split point, a clipped line on a joined one. Any later revision of the
+  // input is measured again, with the right text by then, so such an edit is
+  // followed by one more commit that changes nothing but a nativeID. It comes
+  // from a layout effect, so the first commit is never painted.
+  const [textEdits, setTextEdits] = useState(0);
+  const [measured, setMeasured] = useState(0);
+  useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the second commit is the fix
+    setMeasured(textEdits);
+  }, [textEdits]);
+
   // A caret move lands after the render that carries its edit: a new point
   // has to mount first, and a joined point needs its new text before the
   // caret can sit at the seam.
@@ -87,6 +111,8 @@ export function NoteOutline({
     (edit: Edit) => {
       live.current = edit.sections;
       setSections(edit.sections);
+      // Every edit that moves the caret may have rewritten a point's text.
+      if (edit.caret !== undefined) setTextEdits((n) => n + 1);
       if (edit.caret === null) Keyboard.dismiss();
       else if (edit.caret) {
         pending.current = edit.caret;
@@ -196,6 +222,7 @@ export function NoteOutline({
                     else inputs.current.delete(point.id);
                   }}
                   accessibilityLabel={`${section.heading ?? "Note"}, point ${p + 1}`}
+                  nativeID={`note-point-${measured}`}
                   multiline
                   scrollEnabled={false}
                   submitBehavior="submit"
