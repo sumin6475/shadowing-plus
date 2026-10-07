@@ -30,6 +30,7 @@ import {
   tickCountsAsSpeaking,
   type HintPhrase,
 } from "@/lib/mvp";
+import { markMirrorUsed, unmarkMirrorUsed } from "@/lib/mirror-used";
 import { phraseIndex, spokenWords } from "@/lib/phrase-use";
 import type { Nav, TalkCtx } from "./nav";
 import { PhraseChipsCard, SessionStatsCard, TranscriptCard } from "./session-stats";
@@ -123,6 +124,19 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     () => new Set(cards.filter((card, i) => usage[i] >= 0 || ticked.has(card.id)).map((card) => card.id)),
     [cards, usage, ticked],
   );
+  // What is used here is kept for the day, so the next session's deck leads
+  // with phrases that have not had their turn (lib/mirror-used). An undone
+  // hand tick is taken back.
+  const [mirrorId] = useState(() => globalThis.expo.uuidv4());
+  const reported = useRef(new Set<string>());
+  useEffect(() => {
+    const added = [...usedIds].filter((id) => !reported.current.has(id));
+    const undone = [...reported.current].filter((id) => !usedIds.has(id));
+    for (const id of added) reported.current.add(id);
+    for (const id of undone) reported.current.delete(id);
+    if (added.length) void markMirrorUsed(added, mirrorId).catch(() => {});
+    if (undone.length) void unmarkMirrorUsed(undone, mirrorId).catch(() => {});
+  }, [usedIds, mirrorId]);
   // The most recently used card is the one said furthest into the talk.
   const latest = cards.reduce<HintPhrase | null>(
     (best, card, i) =>
