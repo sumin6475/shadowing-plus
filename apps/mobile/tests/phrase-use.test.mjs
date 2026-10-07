@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { phraseIndex, phraseUsed, spokenWords } from "../src/lib/phrase-use.ts";
+import { phraseIndex, phraseUsed, phrasesSaid, spokenWords } from "../src/lib/phrase-use.ts";
 
 test("a phrase counts when its words are said in order", () => {
   assert.equal(phraseUsed("honestly I am swamped this week with reports", "I'm swamped this week"), true);
@@ -37,4 +37,17 @@ test("the index orders phrases by when they were first said", () => {
   const day = phraseIndex(words, "call it a day");
   assert.ok(swamped >= 0 && day > swamped);
   assert.equal(phraseIndex(words, "on the fence"), -1);
+});
+
+
+test("the phrases said in a transcript come back in the order said", () => {
+  const phrases = [
+    { id: "hang", text: "get the hang of" },
+    { id: "ear", text: "play it by ear" },
+    { id: "bear", text: "bear with me" },
+  ];
+  const said = phrasesSaid("Bear with me, I am still getting the hang of this.", phrases);
+  assert.deepEqual(said.map((p) => p.id), ["bear", "hang"]);
+  assert.deepEqual(phrasesSaid("", phrases), []);
+  assert.deepEqual(phrasesSaid("nothing saved in here", phrases), []);
 });

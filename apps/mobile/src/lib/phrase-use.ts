@@ -183,3 +183,14 @@ export function phraseIndex(words: string[], phrase: string): number {
 
 export const phraseUsed = (transcript: string, phrase: string) =>
   phraseIndex(spokenWords(transcript), phrase) >= 0;
+
+/** The phrases said in a transcript, in the order they first come up. */
+export function phrasesSaid<T extends { text: string }>(transcript: string, phrases: T[]): T[] {
+  const words = spokenWords(transcript);
+  if (!words.length) return [];
+  return phrases
+    .map((phrase) => ({ phrase, at: phraseIndex(words, phrase.text) }))
+    .filter((hit) => hit.at >= 0)
+    .sort((a, b) => a.at - b.at)
+    .map((hit) => hit.phrase);
+}
