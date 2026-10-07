@@ -15,6 +15,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/design/text";
 import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -81,6 +82,7 @@ import {
 } from "@/lib/mvp";
 import { useAuth } from "@/lib/auth";
 import type { Nav } from "../nav";
+import { NoteOutline, type NoteOutlineHandle } from "../note-outline";
 import { SessionStatsCard, TranscriptCard } from "../session-stats";
 
 const message = (e: unknown) =>
@@ -785,9 +787,9 @@ function ClearChip({
     </Pressable>
   );
 }
-/** The detail screen's "…" — a native iOS menu, drawn in the same round
- *  card button as the back arrow opposite it. */
-function PhraseMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+/** A detail screen's "…" — a native iOS menu, drawn in the same round card
+ *  button as the back arrow opposite it. Children are the menu's buttons. */
+function MoreMenu({ children }: { children: ReactNode }) {
   const t = useTheme();
   return (
     <View
@@ -817,11 +819,18 @@ function PhraseMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
             />
           }
         >
-          <Button label="Edit" systemImage="pencil" onPress={onEdit} />
-          <Button label="Delete" systemImage="trash" role="destructive" onPress={onDelete} />
+          {children}
         </Menu>
       </Host>
     </View>
+  );
+}
+function PhraseMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <MoreMenu>
+      <Button label="Edit" systemImage="pencil" onPress={onEdit} />
+      <Button label="Delete" systemImage="trash" role="destructive" onPress={onDelete} />
+    </MoreMenu>
   );
 }
 /** A player-style toggle beside the play circle: no words, each tap moves to
@@ -1466,15 +1475,33 @@ export function NotesStudio({ nav }: { nav: Nav }) {
   );
 }
 
+/** Heights of the note's two fixed bars: the back bar at the top, and the
+ *  pinned Speak button (a 50pt pill under a fade) at the bottom. */
+const NOTE_HEADER = Motif.tapTarget + 8;
+const NOTE_FOOTER = 78;
 export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
   const { session } = useAuth();
   const draftKey = `saylo.note-draft.${session?.user.id}.${id}`;
   const t = useTheme(),
+    insets = useSafeAreaInsets(),
     [note, setNote] = useState<Note | null>(null),
     [title, setTitle] = useState(""),
     [body, setBody] = useState(""),
     [status, setStatus] = useState("Loading…"),
-    [error, setError] = useState<string | null>(null);
+    [error, setError] = useState<string | null>(null),
+    [typing, setTyping] = useState(false);
+  const outline = useRef<NoteOutlineHandle>(null),
+    titleInput = useRef<TextInput>(null);
+  // While the keyboard is up, "…" turns into Done and the Speak button gives
+  // its place to the keyboard.
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardWillShow", () => setTyping(true));
+    const hide = Keyboard.addListener("keyboardWillHide", () => setTyping(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const current = useRef({ title: "", body: "" }),
     saved = useRef(""),
     queue = useRef(Promise.resolve()),
@@ -1504,6 +1531,10 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
       setBody(current.current.body);
       setStatus(restored ? "Restored unsaved changes" : "All changes saved");
       setError(null);
+      // A brand-new note opens ready to type, title first — like a new note
+      // anywhere else. (After this render: the title field mounts with it.)
+      if (isBlankNote(current.current.title, current.current.body))
+        setTimeout(() => titleInput.current?.focus(), 0);
     } catch (e) {
       if (alive.current) setError(message(e));
     }
@@ -1606,114 +1637,178 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
       setError(message(e));
     }
   };
+  const edited = (patch: Partial<{ title: string; body: string }>) => {
+    Object.assign(current.current, patch);
+    setStatus("Unsaved changes");
+    void AsyncStorage.setItem(draftKey, JSON.stringify(current.current)).catch(() =>
+      setError("Couldn’t keep a local draft. Keep this screen open until saved."),
+    );
+  };
+  const remove = () =>
+    confirmDelete({
+      title: "Delete this note?",
+      message: "Your speaking sessions will stay in your profile.",
+      onConfirm: () => {
+        void queue.current
+          .catch(() => {})
+          .then(() => deleteNote(id))
+          .then(() => {
+            loaded.current = false;
+            void AsyncStorage.removeItem(draftKey);
+            nav.invalidateSpeakingData();
+            nav.pop();
+          })
+          .catch((e) => setError(message(e)));
+      },
+    });
   return (
-    <Screen>
-      <BackBar title="Studio" onBack={() => void leave()} />
-      {error ? (
-        <ErrorCard
-          error={error}
-          retry={() =>
-            note ? void flush().catch((e) => setError(message(e))) : void load()
-          }
-        />
-      ) : null}
-      {note ? (
-        <>
-          <TextInput
-            accessibilityLabel="Note title"
-            maxLength={120}
-            placeholder="Give this moment a title"
-            placeholderTextColor={t.colors.ink3}
-            value={title}
-            onChangeText={(value) => {
-              current.current.title = value;
-              setTitle(value);
-              setStatus("Unsaved changes");
-              void AsyncStorage.setItem(
-                draftKey,
-                JSON.stringify(current.current),
-              ).catch(() =>
-                setError(
-                  "Couldn’t keep a local draft. Keep this screen open until saved.",
-                ),
-              );
-            }}
-            style={{
-              fontFamily: FONT.display,
-              fontSize: 36,
-              lineHeight: 42,
-              color: t.colors.ink,
-            }}
-          />
-          <Label>{status}</Label>
-          <TextInput
-            accessibilityLabel="Note outline"
-            multiline
-            textAlignVertical="top"
-            value={body}
-            onChangeText={(value) => {
-              current.current.body = value;
-              setBody(value);
-              setStatus("Unsaved changes");
-              void AsyncStorage.setItem(
-                draftKey,
-                JSON.stringify(current.current),
-              ).catch(() =>
-                setError(
-                  "Couldn’t keep a local draft. Keep this screen open until saved.",
-                ),
-              );
-            }}
-            style={{
-              minHeight: 360,
-              fontSize: 18,
-              lineHeight: 29,
-              color: t.colors.ink,
-              paddingVertical: 20,
-            }}
-          />
-          <Pill full icon="mic" onPress={() => void leave(true)}>
-            Speak with this note
-          </Pill>
-          <Pill full tone="soft" onPress={() => void leave()}>
-            Done
-          </Pill>
-          <Pill
-            tone="ghost"
-            style={{ alignSelf: "stretch" }}
-            onPress={() =>
-              Alert.alert(
-                "Delete this note?",
-                "Your speaking sessions will stay in your profile.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () => {
-                      void queue.current
-                        .catch(() => {})
-                        .then(() => deleteNote(id))
-                        .then(() => {
-                          loaded.current = false;
-                          void AsyncStorage.removeItem(draftKey);
-                          nav.invalidateSpeakingData();
-                          nav.pop();
-                        })
-                        .catch((e) => setError(message(e)));
-                    },
-                  },
-                ],
-              )
+    <View style={{ flex: 1 }}>
+      {/* The page leaves room for the bars fixed over it: the back bar at the
+          top, the Speak button at the bottom. */}
+      <Screen bottomPad={note ? NOTE_FOOTER + 32 : 32}>
+        <View style={{ height: NOTE_HEADER }} />
+        {error ? (
+          <ErrorCard
+            error={error}
+            retry={() =>
+              note ? void flush().catch((e) => setError(message(e))) : void load()
             }
+          />
+        ) : null}
+        {note ? (
+          <>
+            <View style={{ gap: 6 }}>
+              <TextInput
+                ref={titleInput}
+                accessibilityLabel="Note title"
+                maxLength={120}
+                placeholder="Give this moment a title"
+                placeholderTextColor={t.colors.ink3}
+                value={title}
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => outline.current?.focusStart()}
+                onChangeText={(value) => {
+                  setTitle(value);
+                  edited({ title: value });
+                }}
+                style={{
+                  fontFamily: FONT.display,
+                  fontSize: 36,
+                  lineHeight: 42,
+                  color: t.colors.ink,
+                }}
+              />
+              <Label>{status}</Label>
+            </View>
+            <NoteOutline
+              ref={outline}
+              body={body}
+              onChangeBody={(value) => {
+                setBody(value);
+                edited({ body: value });
+              }}
+            />
+          </>
+        ) : !error ? (
+          <ActivityIndicator />
+        ) : null}
+      </Screen>
+      {/* Fixed, so Done is in reach however far the note has scrolled. The
+          page fades out under it instead of running through the title. */}
+      <View
+        pointerEvents="box-none"
+        style={{ position: "absolute", top: 0, left: 0, right: 0 }}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={[t.colors.bg, t.colors.bg, `${t.colors.bg}00`]}
+          locations={[0, 0.8, 1]}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: (insets.top + 8 + NOTE_HEADER) / 0.8,
+          }}
+        />
+        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 18 }}>
+          <BackBar
+            title="Studio"
+            onBack={() => void leave()}
+            right={
+              typing ? (
+                // As wide as the back button in the layout, so the title stays
+                // centred; the capsule itself reaches leftwards out of that box.
+                <View style={{ width: Motif.tapTarget, alignItems: "flex-end" }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Done, hide keyboard"
+                    onPress={() => Keyboard.dismiss()}
+                    style={[
+                      {
+                        width: 74,
+                        height: Motif.tapTarget,
+                        borderRadius: Motif.tapTarget / 2,
+                        backgroundColor: t.colors.card,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: StyleSheet.hairlineWidth,
+                        borderColor: t.ring,
+                      },
+                      t.shadowCard,
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontSize: 16, fontWeight: "600", color: t.colors.accD }}
+                    >
+                      Done
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : note ? (
+                <MoreMenu>
+                  <Button
+                    label="Delete note"
+                    systemImage="trash"
+                    role="destructive"
+                    onPress={remove}
+                  />
+                </MoreMenu>
+              ) : null
+            }
+          />
+        </View>
+      </View>
+      {note && !typing ? (
+        <View
+          pointerEvents="box-none"
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
+        >
+          <LinearGradient
+            pointerEvents="none"
+            colors={[`${t.colors.bg}00`, t.colors.bg]}
+            style={{ height: 28 }}
+          />
+          <View
+            style={{
+              backgroundColor: t.colors.bg,
+              paddingHorizontal: 18,
+              paddingBottom: Math.max(insets.bottom, 16),
+            }}
           >
-            Delete note
-          </Pill>
-        </>
-      ) : !error ? (
-        <ActivityIndicator />
+            <Pill
+              style={{ alignSelf: "stretch" }}
+              icon="mic"
+              onPress={() => void leave(true)}
+            >
+              Speak with this note
+            </Pill>
+          </View>
+        </View>
       ) : null}
-    </Screen>
+    </View>
   );
 }
 

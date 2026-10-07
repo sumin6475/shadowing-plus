@@ -16,10 +16,21 @@ import {
   periodOf,
   hintPicks,
   outlinePoints,
+  parseOutline,
+  serializeOutline,
+  notePreview,
   compactDuration,
   sessionStats,
 } from "../src/lib/mvp-model.ts";
 import { splitFigures } from "../src/lib/figures.ts";
+import {
+  dropIfEmpty,
+  fromEditable,
+  pressBackspaceAtStart,
+  pressReturn,
+  setPointText,
+  toEditable,
+} from "../src/lib/outline-edit.ts";
 const empty = {
   pronounced_at: null,
   examples_seen_at: null,
@@ -166,6 +177,110 @@ test("a note outline keeps its points, labelled by section", () => {
       { section: "Body", text: "a loose line" },
     ],
   );
+});
+
+test("a note body reads as sections and writes back in the template's shape", () => {
+  assert.equal(serializeOutline(parseOutline(NOTE_TEMPLATE)), NOTE_TEMPLATE);
+  const body = "Opening\n- say hi\n- thank them\n\nBody\n- the project\n\nClosing\n- ";
+  assert.deepEqual(parseOutline(body), [
+    { heading: "Opening", points: ["say hi", "thank them"] },
+    { heading: "Body", points: ["the project"] },
+    { heading: "Closing", points: [] },
+  ]);
+  assert.equal(serializeOutline(parseOutline(body)), body);
+  // Lines above the first heading, loose lines and blank lines all survive as points.
+  assert.deepEqual(parseOutline("- one\ntwo\n\n• three"), [
+    { heading: null, points: ["one", "two", "three"] },
+  ]);
+  assert.equal(serializeOutline(parseOutline("- one\ntwo")), "- one\n- two");
+  assert.deepEqual(parseOutline(""), [{ heading: null, points: [] }]);
+  // A point that says "Body" is a point, not a new section.
+  const tricky = serializeOutline([{ heading: "Opening", points: ["Body", " spaced  "] }]);
+  assert.equal(tricky, "Opening\n- Body\n- spaced");
+  assert.deepEqual(parseOutline(tricky), [{ heading: "Opening", points: ["Body", "spaced"] }]);
+  assert.equal(isBlankNote("", tricky), false);
+});
+
+test("a note's preview is its points, with section names inside a sentence left alone", () => {
+  assert.equal(notePreview(NOTE_TEMPLATE), "A blank page for your next conversation.");
+  assert.equal(
+    notePreview("Opening\n- Opening remarks first\n\nBody\n- Body language matters"),
+    "Opening remarks first · Body language matters",
+  );
+});
+
+const ids = () => {
+  let n = 0;
+  return () => `n${++n}`;
+};
+const outline = (body) => toEditable(parseOutline(body), ids());
+const texts = (sections) => sections.map((s) => s.points.map((p) => p.text));
+
+test("Return splits a point at the caret and carries on in the new one", () => {
+  const sections = outline("Opening\n- Hello world\n\nBody\n- ");
+  const hello = sections[0].points[0];
+  const mid = pressReturn(sections, hello.id, 5, () => "new");
+  assert.deepEqual(texts(mid.sections), [["Hello", " world"], [""]]);
+  assert.deepEqual(mid.caret, { id: "new", at: 0 });
+  const end = pressReturn(sections, hello.id, 11, () => "new");
+  assert.deepEqual(texts(end.sections), [["Hello world", ""], [""]]);
+  const start = pressReturn(sections, hello.id, 0, () => "new");
+  assert.deepEqual(texts(start.sections), [["", "Hello world"], [""]]);
+  assert.deepEqual(start.caret, { id: "new", at: 0 }, "the caret stays with the text");
+  // Splitting then joining gives the point back.
+  const rejoined = pressBackspaceAtStart(mid.sections, "new");
+  assert.deepEqual(texts(rejoined.sections), [["Hello world"], [""]]);
+  assert.deepEqual(rejoined.caret, { id: hello.id, at: 5 });
+});
+
+test("Return on an empty point leaves the section; after the last one the keyboard goes", () => {
+  const sections = outline("Opening\n- hi\n\nBody\n- the project\n\nClosing\n- ");
+  const added = pressReturn(sections, sections[0].points[0].id, 2, () => "blank");
+  const moved = pressReturn(added.sections, "blank", 0, ids());
+  assert.deepEqual(texts(moved.sections), [["hi"], ["the project"], [""]], "the empty point is gone");
+  assert.deepEqual(moved.caret, { id: sections[1].points[0].id, at: "the project".length });
+  // A section's only point stays to hold the placeholder.
+  const closing = sections[2].points[0];
+  const done = pressReturn(sections, closing.id, 0, ids());
+  assert.deepEqual(texts(done.sections), texts(sections));
+  assert.equal(done.caret, null);
+});
+
+test("Backspace at the start joins upward, and only removes a first point that is empty", () => {
+  const sections = outline("Opening\n- one\n- two\n\nBody\n- three");
+  const [one, two] = sections[0].points;
+  const joined = pressBackspaceAtStart(sections, two.id);
+  assert.deepEqual(texts(joined.sections), [["onetwo"], ["three"]]);
+  assert.deepEqual(joined.caret, { id: one.id, at: 3 });
+  assert.equal(pressBackspaceAtStart(sections, one.id), null, "nothing above the first point");
+  assert.equal(pressBackspaceAtStart(sections, sections[1].points[0].id), null, "sections don't join");
+  const emptied = setPointText(sections, one.id, "", ids()).sections;
+  const dropped = pressBackspaceAtStart(emptied, one.id);
+  assert.deepEqual(texts(dropped.sections), [["two"], ["three"]]);
+  assert.deepEqual(dropped.caret, { id: two.id, at: 0 });
+  const lone = outline("Opening\n- ");
+  assert.equal(pressBackspaceAtStart(lone, lone[0].points[0].id), null);
+});
+
+test("pasted lines become points, and a point left empty is tidied away", () => {
+  const sections = outline("Opening\n- hi");
+  const hi = sections[0].points[0];
+  const pasted = setPointText(sections, hi.id, "hi there\n- second line\n\n• third", ids());
+  assert.deepEqual(texts(pasted.sections), [["hi there", "second line", "third"]]);
+  assert.equal(pasted.sections[0].points[0].id, hi.id, "the point being typed in keeps its input");
+  assert.deepEqual(pasted.caret, { id: pasted.sections[0].points[2].id, at: 5 });
+  assert.equal(
+    serializeOutline(fromEditable(pasted.sections)),
+    "Opening\n- hi there\n- second line\n- third",
+  );
+  const typed = setPointText(sections, hi.id, "hi!", ids());
+  assert.deepEqual(texts(typed.sections), [["hi!"]]);
+  assert.equal(typed.caret, undefined);
+  const blank = pressReturn(sections, hi.id, 2, () => "blank").sections;
+  assert.deepEqual(texts(dropIfEmpty(blank, "blank")), [["hi"]]);
+  assert.deepEqual(texts(dropIfEmpty(blank, hi.id)), [["hi", ""]], "a point with text stays");
+  const lone = outline("Opening\n- ");
+  assert.equal(dropIfEmpty(lone, lone[0].points[0].id), lone, "the placeholder point stays");
 });
 
 test("session stats: words, different words, and a pace only once it means something", () => {
