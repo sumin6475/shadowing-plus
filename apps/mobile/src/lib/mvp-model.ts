@@ -39,6 +39,11 @@ export function todaysPicks<T extends Progress & { createdAt: string }>(
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
     .slice(0, count);
 }
+
+/** Text shown in the Phrases home daily-goal card. */
+export function dailyProgressLabel(done: number, _selectedCount: number, goal: number): string {
+  return `${done}/${goal}`;
+}
 /** Phrases to try in a mirror session, as cards: today's picks first — the
  *  same ones the Phrases home shows — then the most recently Ready. Between
  *  them every saved phrase is eligible, so the deck is never empty while the

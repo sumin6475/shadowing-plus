@@ -8,6 +8,7 @@
 // block the deletion — the account must always come out deleted.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { AwsClient } from "npm:aws4fetch@1";
+import { deleteAuthUser } from "../_shared/delete-user.ts";
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -115,7 +116,7 @@ Deno.serve(async (req: Request) => {
     console.error("tts cache cleanup failed for", user.id, e);
   }
 
-  const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);
+  const deleteError = await deleteAuthUser(admin, user.id);
   if (deleteError) {
     console.error("account deletion failed for", user.id, deleteError);
     return json({ error: "We couldn’t delete your account. Please try again." }, 500);
