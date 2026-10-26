@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyPatch,
   assistantContent,
+  buildAskRequest,
   draftAt,
   draftSections,
   exampleFor,
@@ -13,6 +14,7 @@ import {
   toPhraseInput,
   trimHistory,
 } from "../src/lib/ask-model.ts";
+import { parseAskBody } from "../../../supabase/functions/ask-assist/core.ts";
 
 const card = {
   type: "card",
@@ -45,6 +47,18 @@ test("history is the last turns, starts on a question, and replays replies as th
   assert.equal(sent[1].content, assistantContent(card));
   assert.equal(JSON.parse(sent[1].content).reply.type, "card");
   assert.deepEqual(trimHistory([user("1", "only")]), [{ role: "user", content: "only" }]);
+});
+
+test("client request preserves the learner language at the function boundary", () => {
+  const body = buildAskRequest("note", [user("1", "自己紹介したい", "note")], "ja");
+  assert.deepEqual(body, {
+    mode: "note",
+    messages: [{ role: "user", content: "自己紹介したい" }],
+    first_language: "ja",
+  });
+  const parsed = parseAskBody(body);
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) assert.equal(parsed.request.l1, "Japanese");
 });
 
 test("a draft follows the conversation: the latest card, then each answer's rewrite", () => {

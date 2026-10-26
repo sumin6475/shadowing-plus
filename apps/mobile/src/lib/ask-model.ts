@@ -91,6 +91,13 @@ export function trimHistory(turns: AskTurn[], max = ASK_HISTORY_TURNS): AskMessa
   );
 }
 
+/** Request shape shared with the Edge Function's parseAskBody contract. */
+export const buildAskRequest = (mode: AskMode, turns: AskTurn[], firstLanguage: string) => ({
+  mode,
+  messages: trimHistory(turns),
+  first_language: firstLanguage,
+});
+
 const EMPTY_DRAFT: Draft = { opening: "", body: "", closing: "" };
 /** A draft with an answer's rewritten sections laid over it. */
 export const applyPatch = (draft: Draft, patch: Draft | undefined): Draft => ({
