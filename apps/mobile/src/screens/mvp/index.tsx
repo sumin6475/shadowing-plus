@@ -34,6 +34,8 @@ import {
 import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
 import { AskSheet } from "@/components/ask-sheet";
+import { askDefaultMode } from "@/lib/ask-pref";
+import type { AskMode } from "@/lib/ask-model";
 import { FONT, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
 import {
@@ -279,12 +281,16 @@ function Header({
 function AskEntry({ nav }: { nav: Nav }) {
   const t = useTheme();
   const [open, setOpen] = useState(false);
+  const [initialMode, setInitialMode] = useState<AskMode>("how_to_say");
   return (
     <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Ask"
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          setInitialMode(askDefaultMode());
+          setOpen(true);
+        }}
         hitSlop={8}
       >
         <Icon name="sparkle" s={26} w={1.75} c={t.colors.ink} />
@@ -292,6 +298,7 @@ function AskEntry({ nav }: { nav: Nav }) {
       <AskSheet
         open={open}
         onClose={() => setOpen(false)}
+        initialMode={initialMode}
         onSaved={nav.invalidateSpeakingData}
         onOpenNote={(id) => {
           setOpen(false);
