@@ -47,8 +47,11 @@ Deno.serve(async (req: Request) => {
     .eq("user_id", user.id)
     .eq("kind", "ask")
     .gte("created_at", since);
-  if (countError) console.error("ask-assist: usage count failed", countError.message);
-  if ((count ?? 0) >= DAILY_LIMIT) {
+  if (countError || count === null) {
+    console.error("ask-assist: usage count failed", countError?.message ?? "No count returned");
+    return json({ error: "Ask is temporarily unavailable. Try again later.", code: "ask_usage_unavailable" }, 503);
+  }
+  if (count >= DAILY_LIMIT) {
     return json({ error: "You've used today's questions. More tomorrow.", code: "ask_daily_limit" }, 429);
   }
 
@@ -90,5 +93,5 @@ Deno.serve(async (req: Request) => {
   const reply = normalizeReply(request.mode, choice?.message?.content ?? "");
   if (!reply) return json({ error: "Couldn't understand the answer. Try again.", code: "ask_parse" }, 502);
 
-  return json({ mode: request.mode, reply, remaining: Math.max(0, DAILY_LIMIT - (count ?? 0) - 1) });
+  return json({ mode: request.mode, reply, remaining: Math.max(0, DAILY_LIMIT - count - 1) });
 });
