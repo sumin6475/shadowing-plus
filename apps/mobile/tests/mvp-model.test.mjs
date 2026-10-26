@@ -15,6 +15,8 @@ import {
   practicedOn,
   periodOf,
   hintPicks,
+  firstUseOrder,
+  startOfDay,
   outlinePoints,
   parseOutline,
   serializeOutline,
@@ -165,6 +167,67 @@ test("mirror cards: the phrase you came from, then today's picks, then Ready", (
     "the phrase you came from leads, once",
   );
   assert.deepEqual(hintPicks([], 5, now), []);
+});
+
+test("mirror cards: a phrase used today goes to the back, and comes round when the rest run out", () => {
+  const now = new Date(2026, 8, 26, 12);
+  const at = (d) => new Date(2026, 8, d, 9).toISOString();
+  const done = (d) => ({ pronounced_at: at(d), examples_seen_at: at(d), own_example_at: at(d) });
+  const mk = (id, created, steps = {}) => ({ ...empty, id, createdAt: at(created), ...steps });
+  const phrases = [
+    mk("ready-old", 1, done(10)),
+    mk("ready-new", 2, done(20)),
+    mk("pick-1", 3),
+    mk("pick-2", 4),
+    mk("later-1", 5),
+    mk("later-2", 6),
+  ];
+  const ids = (count, used, first) => hintPicks(phrases, count, now, first, used).map((p) => p.id);
+  assert.deepEqual(ids(2, []), ["pick-1", "pick-2"], "nothing used yet: today's picks");
+  assert.deepEqual(
+    ids(2, ["pick-1"]),
+    ["pick-2", "ready-new"],
+    "the used pick gives its place to the next fresh phrase",
+  );
+  assert.deepEqual(
+    ids(2, ["pick-2", "pick-1"]),
+    ["ready-new", "ready-old"],
+    "both picks used: the second session is all new cards",
+  );
+  assert.deepEqual(
+    ids(2, ["pick-1", "pick-2", "ready-new", "ready-old"]),
+    ["later-1", "later-2"],
+    "then the rest of the bank, oldest first",
+  );
+  assert.deepEqual(
+    ids(3, ["pick-2", "ready-new", "pick-1", "ready-old", "later-1"]),
+    ["later-2", "pick-2", "ready-new"],
+    "fresh ones first, then the used ones — earliest used first",
+  );
+  assert.deepEqual(
+    ids(3, phrases.map((p) => p.id).reverse()),
+    ["later-2", "later-1", "pick-2"],
+    "everything used: the deck starts over from the earliest used",
+  );
+  assert.deepEqual(ids(2, ["pick-1"], "pick-1"), ["pick-1", "pick-2"], "the phrase you came from still leads");
+  assert.deepEqual(ids(2, ["gone", "pick-1"]), ["pick-2", "ready-new"], "a deleted phrase's id is ignored");
+});
+
+test("uses from several records merge into first-use order", () => {
+  const t = (h, m = 0) => new Date(2026, 8, 26, h, m).toISOString();
+  assert.deepEqual(
+    firstUseOrder([
+      { id: "b", at: t(15) },
+      { id: "a", at: t(9) },
+      { id: "b", at: t(8) },
+      { id: "c", at: t(9, 30) },
+    ]),
+    ["b", "a", "c"],
+    "a phrase used twice counts from the earlier time",
+  );
+  assert.deepEqual(firstUseOrder([]), []);
+  const now = new Date(2026, 8, 26, 23, 59);
+  assert.equal(startOfDay(now).getTime(), new Date(2026, 8, 26).getTime());
 });
 
 test("a note outline keeps its points, labelled by section", () => {

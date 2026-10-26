@@ -39,28 +39,45 @@ export function todaysPicks<T extends Progress & { createdAt: string }>(
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
     .slice(0, count);
 }
-/** Phrases to try in a mirror session, as cards: today's picks first — the
- *  same ones the Phrases home shows — then the most recently Ready. Between
- *  them every saved phrase is eligible, so the deck is never empty while the
- *  learner has one. `firstId` (the phrase "Use it in the mirror" came from)
- *  leads when given. */
+/** Phrases to try in a mirror session, as cards. Ones not used in the mirror
+ *  yet today come first: today's picks — the same ones the Phrases home shows
+ *  — then the most recently Ready, then the rest, oldest first. Every saved
+ *  phrase is eligible, so the deck is never empty while the learner has one.
+ *  A phrase already used today (`usedToday`, in the order used) has had its
+ *  turn: it goes to the back, earliest-used first, and only comes round again
+ *  when the fresh ones run out. `firstId` (the phrase "Use it in the mirror"
+ *  came from) leads when given, used or not. */
 export function hintPicks<T extends Progress & { id: string; createdAt: string }>(
   phrases: T[],
   count: number,
   now = new Date(),
   firstId?: string | null,
+  usedToday: readonly string[] = [],
 ): T[] {
+  const used = new Set(usedToday);
   const ready = phrases
     .filter((p) => readyAt(p) > 0)
     .sort((a, b) => readyAt(b) - readyAt(a));
+  const oldest = [...phrases].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const fresh = [...todaysPicks(phrases, count, now), ...ready, ...oldest].filter((p) => !used.has(p.id));
+  const again = usedToday.flatMap((id) => phrases.filter((p) => p.id === id));
   const first = phrases.filter((p) => p.id === firstId);
   const out: T[] = [];
-  for (const p of [...first, ...todaysPicks(phrases, count, now), ...ready]) {
+  for (const p of [...first, ...fresh, ...again]) {
     if (out.length === count) break;
     if (!out.some((q) => q.id === p.id)) out.push(p);
   }
   return out;
 }
+/** Ids in the order they were first used, from any number of records of use
+ *  (a phrase said in two sessions counts from the earlier one). */
+export function firstUseOrder(uses: { id: string; at: string }[]): string[] {
+  const sorted = [...uses].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return [...new Set(sorted.map((use) => use.id))];
+}
+/** The first moment of `now`'s calendar day, local time. */
+export const startOfDay = (now = new Date()) =>
+  new Date(now.getFullYear(), now.getMonth(), now.getDate());
 export interface OutlinePoint {
   section: string | null;
   text: string;

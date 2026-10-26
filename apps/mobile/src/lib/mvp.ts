@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { deleteTalkSessionAudio } from "./talk-audio";
 import { NOTE_TEMPLATE, hintPicks, type Progress, type Step } from "./mvp-model";
+import { usedInMirrorToday } from "./mirror-used";
 export * from "./mvp-model";
 export interface MvpPhrase extends Progress {
   id: string;
@@ -77,7 +78,11 @@ export async function loadHintPhrases(
   count: number,
   firstId?: string | null,
 ): Promise<HintPhrase[]> {
-  const picks = hintPicks(await loadPhraseBank(), count, new Date(), firstId);
+  const bank = await loadPhraseBank();
+  // What was already used today goes to the back. Not knowing must not cost
+  // the learner their cards: on any failure the deck is simply unordered by use.
+  const used = await usedInMirrorToday(bank).catch(() => []);
+  const picks = hintPicks(bank, count, new Date(), firstId, used);
   if (!picks.length) return [];
   const { data } = await supabase
     .from("phrase_examples")
