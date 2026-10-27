@@ -1,6 +1,7 @@
 // Unit tests for the Ask core. Run: node --test supabase/tests/ask-assist/core.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   buildOpenAIRequest,
@@ -8,7 +9,6 @@ import {
   learnerLanguage,
   MAX_TURNS,
   MAX_USER_CHARS,
-  noteClarificationCount,
   normalizeReply,
   parseAskBody,
   SCHEMAS,
@@ -60,20 +60,19 @@ test("buildOpenAIRequest keeps the fixed prompt first so the prefix is cacheable
   assert.equal(a.response_format.json_schema.strict, true);
 });
 
-test("Note clarification is allowed before the draft and closed after two questions or Draft now", () => {
+test("Note always asks until the learner chooses Draft now", () => {
   const first = { mode: "note", messages: [user("새 팀에서 자기소개")], l1: "Korean" };
   assert.equal(buildOpenAIRequest(first).response_format.json_schema.name, "ask_note_intake");
   const clarify = bot(JSON.stringify({ reply: { type: "clarify", text: "", question: "어떤 일을 맡으셨나요?" } }));
   const messages = [user("새 팀에서 자기소개"), clarify, user("디자인 일을 해요"), clarify, user("협업을 강조하고 싶어요")];
-  assert.equal(noteClarificationCount(messages), 2);
-  assert.equal(buildOpenAIRequest({ ...first, messages }).response_format.json_schema.name, "ask_note_draft");
+  assert.equal(buildOpenAIRequest({ ...first, messages }).response_format.json_schema.name, "ask_note_intake");
   assert.equal(buildOpenAIRequest({ ...first, draftNow: true }).response_format.json_schema.name, "ask_note_draft");
   const withDraft = [user("새 팀에서 자기소개"), bot(JSON.stringify({ reply: { type: "card", draft: { body: "I'm a designer." } } })), user("더 짧게")];
-  assert.equal(buildOpenAIRequest({ ...first, messages: withDraft }).response_format.json_schema.name, "ask_note");
-  assert.deepEqual(SCHEMAS.note.properties.reply.anyOf.map((option) => option.properties.type.enum[0]), ["clarify", "card", "answer", "off_topic"]);
+  assert.equal(buildOpenAIRequest({ ...first, messages: withDraft }).response_format.json_schema.name, "ask_note_intake");
   const newTopic = [...withDraft, bot(JSON.stringify({ reply: { type: "clarify", text: "", question: "왜요?" } })), user("제 의견은 이래요")];
-  assert.equal(buildOpenAIRequest({ ...first, messages: newTopic }).response_format.json_schema.name, "ask_note");
+  assert.equal(buildOpenAIRequest({ ...first, messages: newTopic }).response_format.json_schema.name, "ask_note_intake");
   assert.equal(buildOpenAIRequest({ ...first, messages: newTopic, draftNow: true }).response_format.json_schema.name, "ask_note_draft");
+  assert.deepEqual(SCHEMAS.note_intake.properties.reply.anyOf.map((option) => option.properties.type.enum[0]), ["clarify", "off_topic"]);
   assert.deepEqual(SCHEMAS.note_draft.properties.reply.anyOf.map((option) => option.properties.type.enum[0]), ["card", "off_topic"]);
   assert.equal(buildOpenAIRequest(first).messages[0].content, buildOpenAIRequest({ ...first, draftNow: true }).messages[0].content);
 });
@@ -81,6 +80,15 @@ test("Note clarification is allowed before the draft and closed after two questi
 test("parseAskBody accepts only an explicit Draft now flag", () => {
   assert.equal(parseAskBody({ mode: "note", messages: [user("초안 보여줘")], draft_now: true }).request.draftNow, true);
   assert.equal(parseAskBody({ mode: "note", messages: [user("초안 보여줘")], draft_now: "true" }).request.draftNow, false);
+});
+
+test("Note context accepts a valid Note id but never client-supplied facts", () => {
+  const id = "e59566b6-847d-4b24-b8b5-0cf73323c841";
+  const parsed = parseAskBody({ mode: "note", messages: [user("Introduce my work")], note_id: id, confirmedFacts: ["I was CEO"] });
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.request.noteId, id);
+  assert.equal(parsed.request.confirmedFacts, undefined);
+  assert.equal(parseAskBody({ mode: "note", messages: [user("x")], note_id: "not-a-uuid" }).request.noteId, null);
 });
 
 /** Every object in a strict schema must list all its properties as required
@@ -159,4 +167,14 @@ test("costUsd prices per model and meters unknown models at zero", () => {
   assert.equal(costUsd(1_000_000, 1_000_000, "gpt-4.1-mini"), 2);
   assert.equal(costUsd(1500, 400), costUsd(1500, 400, "gpt-4.1-mini"));
   assert.equal(costUsd(1500, 400, "some-future-model"), 0);
+});
+
+test("golden Note cases only expect drafts after an explicit Draft now", () => {
+  const cases = JSON.parse(readFileSync(new URL("./golden.json", import.meta.url), "utf8")).cases;
+  for (const item of cases.filter((entry) => entry.mode === "note")) {
+    assert.equal(item.draft_now_turns.length, item.turns.length, item.id);
+    const expected = item.expect_turns?.at(-1) ?? item.expect;
+    if (expected === "card") assert.equal(item.draft_now_turns.at(-1), true, item.id);
+    if (expected === "clarify") assert.equal(item.draft_now_turns.at(-1), false, item.id);
+  }
 });

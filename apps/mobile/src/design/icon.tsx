@@ -8,6 +8,7 @@ export type IconName =
   | "bank"
   | "map"
   | "book"
+  | "folder"
   | "search"
   | "plus"
   | "play"
@@ -124,6 +125,9 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
           <Path d="M19.5 4.5h-6a1 1 0 0 0-1 1v14a2.5 2.5 0 0 1 2.5-2.5h4.5z" />
         </G>
       );
+      break;
+    case "folder":
+      body = <Path {...common} d="M3 6.5a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />;
       break;
     case "search":
       body = (

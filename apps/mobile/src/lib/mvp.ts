@@ -13,6 +13,7 @@ export interface Note {
   id: string;
   title: string;
   body: string;
+  folder_id: string | null;
   updated_at: string;
   created_at: string;
 }
@@ -24,6 +25,7 @@ export interface MirrorSession {
   id: string;
   audio_key: string | null;
   note_id: string | null;
+  note_version_id: string | null;
   transcript: string | null;
   seconds: number;
   created_at: string;
@@ -167,7 +169,7 @@ export async function loadMirrorSessions(): Promise<MirrorSession[]> {
   for (let start = 0; ; start += 1000) {
     const { data, error } = await supabase
       .from("talk_sessions")
-      .select("id,note_id,transcript,seconds,duration_seconds,audio_key,created_at")
+      .select("id,note_id,note_version_id,transcript,seconds,duration_seconds,audio_key,created_at")
       .order("created_at", { ascending: false })
       .order("id")
       .range(start, start + 999);
@@ -200,6 +202,7 @@ export async function deleteMirrorSession(session: {
 export async function saveMirrorSession(input: {
   id: string;
   noteId?: string | null;
+  noteVersionId?: string | null;
   transcript: string;
   seconds: number;
 }) {
@@ -208,6 +211,7 @@ export async function saveMirrorSession(input: {
     {
       id: input.id,
       note_id: input.noteId ?? null,
+      note_version_id: input.noteVersionId ?? null,
       transcript: input.transcript,
       seconds,
       duration_seconds: seconds,

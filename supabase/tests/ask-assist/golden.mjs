@@ -41,12 +41,12 @@ const { cases } = JSON.parse(await readFile(path.join(here, "golden.json"), "utf
 const selectedCases = cases.filter((c) => !only || c.id === only);
 if (!selectedCases.length) throw new Error(`No golden case matches --only ${only}`);
 
-async function turn(mode, messages, l1) {
+async function turn(mode, messages, l1, draftNow = false) {
   const started = performance.now();
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(buildOpenAIRequest({ mode, messages, l1 }, model)),
+    body: JSON.stringify(buildOpenAIRequest({ mode, messages, l1, draftNow }, model)),
   });
   const ms = Math.round(performance.now() - started);
   if (!res.ok) return { ms, error: `OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}` };
@@ -72,7 +72,7 @@ for (const c of selectedCases) {
     const isLast = i === c.turns.length - 1;
     const mode = isLast ? c.mode : (c.history_mode ?? c.mode);
     messages.push({ role: "user", content });
-    last = await turn(mode, messages, l1);
+    last = await turn(mode, messages, l1, c.draft_now_turns?.[i] === true);
     turnReplies.push(last);
     if (last.error || !last.reply) break;
     if (!isLast) messages.push({ role: "assistant", content: assistantContent(last.reply) });

@@ -8,7 +8,7 @@ import type { OutlineSection } from "./mvp-model";
 
 export type AskMode = "how_to_say" | "note";
 /** Turns kept as history, user and assistant together (server: MAX_TURNS). */
-export const ASK_HISTORY_TURNS = 6;
+export const ASK_HISTORY_TURNS = 40;
 /** Longest question the server accepts (server: MAX_USER_CHARS). */
 export const ASK_MAX_CHARS = 800;
 
@@ -97,11 +97,13 @@ export function trimHistory(turns: AskTurn[], max = ASK_HISTORY_TURNS): AskMessa
 }
 
 /** Request shape shared with the Edge Function's parseAskBody contract. */
-export const buildAskRequest = (mode: AskMode, turns: AskTurn[], firstLanguage: string, draftNow = false) => ({
+export const buildAskRequest = (mode: AskMode, turns: AskTurn[], firstLanguage: string, draftNow = false, noteId?: string | null, practiceSessionId?: string | null) => ({
   mode,
   messages: trimHistory(turns),
   first_language: firstLanguage,
   draft_now: draftNow,
+  ...(mode === "note" && noteId ? { note_id: noteId } : {}),
+  ...(mode === "note" && practiceSessionId ? { practice_session_id: practiceSessionId } : {}),
 });
 
 const EMPTY_DRAFT: Draft = { opening: "", body: "", closing: "" };

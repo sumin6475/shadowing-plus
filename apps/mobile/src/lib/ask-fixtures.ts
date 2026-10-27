@@ -80,25 +80,6 @@ const NOTE_CLARIFY: NoteClarify = {
   question: "상대가 가장 기억했으면 하는 점은 무엇인가요?",
 };
 
-const NOTE_ANSWER: AskAnswer = {
-  type: "answer",
-  text: "첫 문장과 마무리를 더 공손하게 바꿨어요. 'I was hoping to…'는 부탁을 부드럽게 꺼낼 때 써요.",
-  draft_patch: {
-    opening: "I was hoping to ask you about taking next Friday off.",
-    body: "",
-    closing: "Please let me know if that would be okay. I really appreciate it.",
-  },
-  expressions: [
-    {
-      en: "I was hoping to",
-      meaning: "~했으면 해서요 (공손한 요청)",
-      when: "업무, 공손",
-      example: { en: "I was hoping to get your feedback on this.", l1: "이것에 대해 피드백을 받았으면 해서요." },
-    },
-  ],
-  follow_ups: ["더 짧게 줄여 줘", "이유를 덧붙이고 싶어"],
-};
-
 export type MockOutcome = { reply: AskReply } | { fail: "limit" | "error" };
 
 /** The canned reply for this point in the conversation: a card for the first
@@ -110,7 +91,6 @@ export function mockReply(mode: AskMode, turns: AskTurn[], draftNow = false): Mo
   if (asked === "/limit") return { fail: "limit" };
   if (asked === "/error") return { fail: "error" };
   const answered = turns.some((t) => t.role === "assistant" && t.mode === mode && t.reply.type === "card");
-  const clarified = turns.some((t) => t.role === "assistant" && t.mode === "note" && t.reply.type === "clarify");
-  if (mode === "note") return { reply: answered ? NOTE_ANSWER : (draftNow || clarified ? NOTE : NOTE_CLARIFY) };
+  if (mode === "note") return { reply: draftNow ? NOTE : NOTE_CLARIFY };
   return { reply: answered ? HOW_TO_SAY_ANSWER : HOW_TO_SAY };
 }

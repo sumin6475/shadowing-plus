@@ -35,6 +35,7 @@ import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
 import { AskSheet } from "@/components/ask-sheet";
 import { askDefaultMode } from "@/lib/ask-pref";
+import { addConfirmedFact, applyNoteVersion, createNoteFolder, loadNoteFacts, loadNoteFolders, loadNotePracticeHistory, loadNoteVersions, moveNoteToFolder } from "@/lib/note-growth";
 import type { AskMode } from "@/lib/ask-model";
 import { FONT, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
@@ -592,6 +593,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               nav.startTalk({
                 ctx: recent?.title || "Free talk",
                 noteId: recent?.id,
+                noteSnapshot: recent ? { title: recent.title, body: recent.body } : null,
                 beats: recent?.body.split("\n"),
                 from: "phrases",
               })
@@ -1364,7 +1366,12 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
 export function NotesStudio({ nav }: { nav: Nav }) {
   const t = useTheme();
   const state = useRefresh(loadNotes, nav.speakingDataRevision),
+    folders = useRefresh(loadNoteFolders, nav.speakingDataRevision),
     [query, setQuery] = useState(""),
+    [view, setView] = useState("home"),
+    [creatingFolder, setCreatingFolder] = useState(false),
+    [folderName, setFolderName] = useState(""),
+    [factText, setFactText] = useState(""),
     [searching, setSearching] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
@@ -1373,6 +1380,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
     setBusy(true);
     try {
       const note = await createNote();
+      if (view !== "home" && view !== "all") await moveNoteToFolder(note.id, view);
       nav.invalidateSpeakingData();
       nav.push("mvpNote", { id: note.id });
     } catch (e) {
@@ -1384,9 +1392,16 @@ export function NotesStudio({ nav }: { nav: Nav }) {
   const notes = (state.data ?? []).filter((n) =>
     `${n.title} ${n.body}`.toLowerCase().includes(query.trim().toLowerCase()),
   );
+  const visibleNotes = query.trim() || view === "all"
+    ? notes
+    : view === "home"
+      ? notes.slice(0, 4)
+      : notes.filter((n) => n.folder_id === view);
+  const loadFolderFacts = useCallback(() => view !== "home" && view !== "all" ? loadNoteFacts(view) : Promise.resolve([]), [view]);
+  const folderFacts = useRefresh(loadFolderFacts, nav.speakingDataRevision);
   // loadNotes returns newest first, so the Map fills Today → Earlier in order.
   const groups = new Map<Period, Note[]>();
-  for (const n of notes) {
+  for (const n of visibleNotes) {
     const label = periodOf(n.updated_at);
     groups.set(label, [...(groups.get(label) ?? []), n]);
   }
@@ -1416,6 +1431,11 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           }}
         />
       ) : null}
+      {view !== "home" && !query.trim() ? (
+        <Pressable accessibilityRole="button" onPress={() => setView("home")} style={{ paddingVertical: 10 }}>
+          <Text style={{ color: t.colors.accD, fontWeight: "600" }}>‹ Studio · {view === "all" ? "All notes" : folders.data?.find((folder) => folder.id === view)?.name ?? "Folder"}</Text>
+        </Pressable>
+      ) : null}
       {query.trim() ? (
         <FilterSummary
           text={`${notes.length} note${notes.length === 1 ? "" : "s"} matching “${query.trim()}”`}
@@ -1430,7 +1450,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           void state.refresh();
         }}
       />
-      {!state.loading && !notes.length && !state.error ? (
+      {!state.loading && !visibleNotes.length && !state.error && !folders.data?.length ? (
         query ? (
           <EmptyState compact title="No matching notes." body="Try a different word." />
         ) : (
@@ -1456,6 +1476,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                     nav.startTalk({
                       ctx: title,
                       noteId: n.id,
+                      noteSnapshot: { title: n.title, body: n.body },
                       beats: n.body.split("\n"),
                       from: "topics",
                       returnTo: {
@@ -1506,6 +1527,48 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           })}
         </SectionCard>
       ))}
+      {view !== "home" && view !== "all" && !query.trim() ? (
+        <SectionCard label="Shared context · optional">
+          <Text style={{ color: t.colors.ink2, lineHeight: 21, paddingVertical: 8 }}>
+            Only facts you confirm here can guide Notes in this folder. A pasted paper does not become your story.
+          </Text>
+          {(folderFacts.data ?? []).map((fact) => <Text key={fact.id} style={{ color: t.colors.ink, lineHeight: 22, paddingVertical: 6 }}>• {fact.text}</Text>)}
+          <TextInput accessibilityLabel="Fact to share with this folder" placeholder="Add a fact you have checked" value={factText} onChangeText={setFactText} multiline style={{ color: t.colors.ink, fontSize: 16, paddingVertical: 10 }} />
+          <Pressable accessibilityRole="button" disabled={!factText.trim()} onPress={() => {
+            void addConfirmedFact(view, factText).then(() => { setFactText(""); nav.invalidateSpeakingData(); }).catch((e) => setError(message(e)));
+          }} style={{ paddingVertical: 10, opacity: factText.trim() ? 1 : 0.4 }}><Text style={{ color: t.colors.accD, fontWeight: "700" }}>Confirm fact</Text></Pressable>
+        </SectionCard>
+      ) : null}
+      {view === "home" && !query.trim() ? (
+        <>
+          {notes.length > 4 ? (
+            <Pressable accessibilityRole="button" onPress={() => setView("all")} style={{ alignSelf: "flex-start", paddingVertical: 10 }}>
+              <Text style={{ color: t.colors.accD, fontWeight: "600" }}>See all {notes.length} notes</Text>
+            </Pressable>
+          ) : null}
+          <SectionCard label="Your folders">
+            {(folders.data ?? []).map((folder, index) => (
+              <Row key={folder.id} last={false}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Icon name="folder" s={20} c={t.colors.ink2} />
+                  <Text style={{ color: t.colors.ink, fontSize: 16, flex: 1 }}>{folder.name}</Text>
+                  <Text style={{ color: t.colors.ink3 }}>{notes.filter((n) => n.folder_id === folder.id).length}</Text>
+                </Pressable>
+              </Row>
+            ))}
+            {creatingFolder ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}>
+                <TextInput autoFocus accessibilityLabel="Folder name" placeholder="Folder name" value={folderName} onChangeText={setFolderName} style={{ flex: 1, color: t.colors.ink, fontSize: 16 }} />
+                <Pressable accessibilityRole="button" onPress={() => {
+                  void createNoteFolder(folderName).then(() => { setFolderName(""); setCreatingFolder(false); nav.invalidateSpeakingData(); }).catch((e) => setError(message(e)));
+                }}><Text style={{ color: t.colors.accD, fontWeight: "700" }}>Create</Text></Pressable>
+              </View>
+            ) : (
+              <Pressable accessibilityRole="button" onPress={() => setCreatingFolder(true)} style={{ paddingVertical: 14 }}><Text style={{ color: t.colors.accD, fontWeight: "600" }}>+ Create folder</Text></Pressable>
+            )}
+          </SectionCard>
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -1514,8 +1577,14 @@ export function NotesStudio({ nav }: { nav: Nav }) {
  *  pinned Speak button (a 50pt pill under a fade) at the bottom. */
 const NOTE_HEADER = Motif.tapTarget + 8;
 const NOTE_FOOTER = 78;
-export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
+export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: string; practiceSessionId?: string }) {
   const { session } = useAuth();
+  const folderState = useRefresh(loadNoteFolders, nav.speakingDataRevision);
+  const loadGrowth = useCallback(async () => {
+    const [versions, practices] = await Promise.all([loadNoteVersions(id), loadNotePracticeHistory(id)]);
+    return { versions, practices };
+  }, [id]);
+  const growth = useRefresh(loadGrowth, nav.speakingDataRevision);
   const draftKey = `saylo.note-draft.${session?.user.id}.${id}`;
   const t = useTheme(),
     insets = useSafeAreaInsets(),
@@ -1525,7 +1594,8 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
     [status, setStatus] = useState("Loading…"),
     [error, setError] = useState<string | null>(null),
     [typing, setTyping] = useState(false),
-    [asking, setAsking] = useState(false);
+    [asking, setAsking] = useState(Boolean(practiceSessionId)),
+    [outlineRevision, setOutlineRevision] = useState(0);
   const outline = useRef<NoteOutlineHandle>(null),
     titleInput = useRef<TextInput>(null);
   // While the keyboard is up, "…" turns into Done and the Speak button gives
@@ -1661,6 +1731,7 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
         nav.startTalk({
           ctx: current.current.title || "Untitled note",
           noteId: id,
+          noteSnapshot: { ...current.current },
           beats: current.current.body.split("\n"),
           from: "topics",
           returnTo: {
@@ -1738,6 +1809,7 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
               <Label>{status}</Label>
             </View>
             <NoteOutline
+              key={outlineRevision}
               ref={outline}
               body={body}
               onChangeBody={(value) => {
@@ -1745,6 +1817,20 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
                 edited({ body: value });
               }}
             />
+            {growth.data && (growth.data.versions.length || growth.data.practices.length) ? (
+              <SectionCard label="How this Note grew">
+                {growth.data.versions.filter((version) => version.origin !== "manual").slice(0, 3).map((version) => (
+                  <Text key={version.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
+                    {version.origin === "practice" ? "Practice ideas applied" : "Draft accepted"} · {dateLabel(version.created_at)}
+                  </Text>
+                ))}
+                {growth.data.practices.slice(0, 3).map((practice) => (
+                  <Text key={practice.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
+                    Spoke from this Note · {dateLabel(practice.created_at)}
+                  </Text>
+                ))}
+              </SectionCard>
+            ) : null}
           </>
         ) : !error ? (
           <ActivityIndicator />
@@ -1805,6 +1891,23 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
                 </View>
               ) : note ? (
                 <MoreMenu>
+                  {(folderState.data ?? []).map((folder) => (
+                    <Button
+                      key={folder.id}
+                      label={`${note.folder_id === folder.id ? "✓ " : ""}Move to ${folder.name}`}
+                      systemImage="folder"
+                      onPress={() => void moveNoteToFolder(id, folder.id).then(() => {
+                        setNote({ ...note, folder_id: folder.id });
+                        nav.invalidateSpeakingData();
+                      }).catch((e) => setError(message(e)))}
+                    />
+                  ))}
+                  {note.folder_id ? (
+                    <Button label="Remove from folder" systemImage="tray" onPress={() => void moveNoteToFolder(id, null).then(() => {
+                      setNote({ ...note, folder_id: null });
+                      nav.invalidateSpeakingData();
+                    }).catch((e) => setError(message(e)))} />
+                  ) : null}
                   <Button
                     label="Delete note"
                     systemImage="trash"
@@ -1866,10 +1969,26 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
       ) : null}
       {ASK_ENABLED ? (
         <AskSheet
-          open={asking}
+          open={asking && Boolean(note)}
           onClose={() => setAsking(false)}
           initialMode="note"
-          note={{ append: (sections) => outline.current?.append(sections) }}
+          practiceSessionId={practiceSessionId}
+          note={{
+            id,
+            title,
+            body,
+            apply: async (value) => {
+              await flush();
+              await applyNoteVersion(id, current.current.title, value, practiceSessionId ? "practice" : "ask", practiceSessionId);
+              current.current.body = value;
+              saved.current = JSON.stringify(current.current);
+              await AsyncStorage.removeItem(draftKey);
+              setBody(value);
+              setOutlineRevision((revision) => revision + 1);
+              setStatus("All changes saved");
+              nav.invalidateSpeakingData();
+            },
+          }}
           onSaved={nav.invalidateSpeakingData}
         />
       ) : null}

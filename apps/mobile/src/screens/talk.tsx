@@ -31,6 +31,7 @@ import {
   type HintPhrase,
 } from "@/lib/mvp";
 import { phraseIndex, spokenWords } from "@/lib/phrase-use";
+import { snapshotNoteVersion } from "@/lib/note-growth";
 import type { Nav, TalkCtx } from "./nav";
 import { PhraseChipsCard, SessionStatsCard, TranscriptCard } from "./session-stats";
 import { FROST, HintDeck, USED, UsedToast } from "./talk-hints";
@@ -66,6 +67,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     [saveErr, setSaveErr] = useState<string | null>(null);
   const started = useRef(false),
     sessionId = useRef<string | null>(null),
+    noteVersionId = useRef<string | null>(null),
     finishing = useRef(false),
     saving = useRef(false);
   const [savedId, setSavedId] = useState<string | null>(null),
@@ -183,9 +185,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setSaveErr(null);
     try {
       if (!sessionId.current) sessionId.current = globalThis.expo.uuidv4();
+      if (p0.noteId && p0.noteSnapshot && !noteVersionId.current) {
+        noteVersionId.current = await snapshotNoteVersion(p0.noteId, p0.noteSnapshot.title, p0.noteSnapshot.body);
+      }
       const id = await saveMirrorSession({
         id: sessionId.current,
         noteId: p0.noteId,
+        noteVersionId: noteVersionId.current,
         transcript: text,
         // Words were heard, so some speaking happened even if the talk ended
         // before the first one-second tick.
@@ -328,6 +334,14 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                 maxHeight={Math.round(windowHeight * 0.32)}
                 onCopied={() => nav.notify("Transcript copied")}
               />
+              {p0.noteId && savedId ? (
+                <Pill tone="soft" icon="pen" onPress={() => nav.restore({
+                  tab: "topics",
+                  stack: [{ name: "mvpNote", props: { id: p0.noteId, practiceSessionId: savedId } }],
+                })}>
+                  Develop this Note from practice
+                </Pill>
+              ) : null}
             </>
           )}
         </Screen>

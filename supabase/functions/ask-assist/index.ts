@@ -36,6 +36,28 @@ Deno.serve(async (req: Request) => {
   if (!parsedBody.ok) return json({ error: parsedBody.error, code: parsedBody.code }, 400);
   const { request } = parsedBody;
 
+  // Folder context is fetched under the signed-in user's RLS. The client can
+  // name a Note, but cannot supply or impersonate its confirmed facts.
+  if (request.mode === "note" && request.noteId) {
+    const { data: note, error: noteError } = await supabase.from("notes")
+      .select("folder_id").eq("id", request.noteId).maybeSingle();
+    if (noteError) return json({ error: "Couldn’t read Note context.", code: "ask_note_context" }, 503);
+    if (!note) return json({ error: "This Note is no longer available.", code: "ask_note_missing" }, 404);
+    if (note.folder_id) {
+      const { data: facts, error: factsError } = await supabase.from("note_facts")
+        .select("text").eq("folder_id", note.folder_id).order("confirmed_at").limit(20);
+      if (factsError) return json({ error: "Couldn’t read confirmed context.", code: "ask_note_context" }, 503);
+      request.confirmedFacts = (facts ?? []).map((fact) => fact.text);
+    }
+    if (request.practiceSessionId) {
+      const { data: session, error: sessionError } = await supabase.from("talk_sessions")
+        .select("transcript").eq("id", request.practiceSessionId).eq("note_id", request.noteId).maybeSingle();
+      if (sessionError) return json({ error: "Couldn’t read practice context.", code: "ask_practice_context" }, 503);
+      if (!session) return json({ error: "This practice session is no longer available.", code: "ask_practice_missing" }, 404);
+      request.practiceTranscript = (session.transcript ?? "").slice(0, 6000);
+    }
+  }
+
   // Rolling 24h window, so there is no timezone question about "today". The
   // user-scoped client is enough: the usage_events owner policy (008) lets a
   // user count and insert their own rows. Concurrent requests can overshoot by

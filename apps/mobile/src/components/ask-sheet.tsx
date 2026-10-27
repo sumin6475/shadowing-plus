@@ -4,10 +4,10 @@
 // own language, get natural English with a meaning, a nuance note and
 // examples. "Note": start from a question or topic, answer a focused prompt
 // when needed, then get a short Opening / Body / Closing draft. The mode is picked per question; the conversation is
-// shared across modes and lives only while the sheet is open.
+// shared across modes; Note turns are persisted with the Note.
 //
 // Every reply is structured (lib/ask-model), so it is drawn as a card with its
-// own actions — Save to Phrase on each expression, Save to Note on a draft —
+// own actions — Save to Phrase on each expression, review a Note draft —
 // not as a wall of text. Follow-up questions are one tap.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -50,8 +50,10 @@ import {
   type NoteCard,
 } from "@/lib/ask-model";
 import { firstLanguage, type L1 } from "@/lib/first-language";
-import { createNote, serializeOutline, type OutlineSection } from "@/lib/mvp";
+import { createNote, parseOutline, serializeOutline } from "@/lib/mvp";
 import { createPhrase } from "@/lib/phrases";
+import { applyNoteVersion, loadNoteTurns, saveNoteTurn } from "@/lib/note-growth";
+import { noteWordDiff } from "@/lib/note-diff";
 
 const MODE_LABEL: Record<AskMode, string> = { how_to_say: "How to say", note: "Note" };
 const INTRO: Record<AskMode, { title: string; body: string; placeholder: string }> = {
@@ -101,9 +103,9 @@ export interface AskSheetProps {
   open: boolean;
   onClose: () => void;
   initialMode?: AskMode;
-  /** Set when opened from a note: a draft is added to that note, not saved as
-   *  a new one. */
-  note?: { append: (sections: OutlineSection[]) => void };
+  practiceSessionId?: string | null;
+  /** Set when opened from a Note: accepting a proposal creates a version. */
+  note?: { id: string; title: string; body: string; apply: (body: string) => Promise<void> };
   /** A phrase or a note was written — lists elsewhere should reload. */
   onSaved?: () => void;
   /** Open a note this sheet just created (the sheet closes first). */
@@ -111,8 +113,7 @@ export interface AskSheetProps {
 }
 
 export function AskSheet(props: AskSheetProps) {
-  // The body mounts with the sheet, so a closed sheet keeps nothing: every
-  // open is a new conversation.
+  // The body mounts with the sheet. Note history reloads from its own record.
   return (
     <Modal
       visible={props.open}
@@ -125,8 +126,7 @@ export function AskSheet(props: AskSheetProps) {
   );
 }
 
-let turnSeq = 0;
-const turnId = () => `t${++turnSeq}`;
+const turnId = () => globalThis.expo.uuidv4();
 
 function useReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -156,19 +156,25 @@ function ReplyReveal({ children, reducedMotion }: { children: ReactNode; reduced
   );
 }
 
-function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNote }: AskSheetProps) {
+function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNote, practiceSessionId }: AskSheetProps) {
   const t = useTheme();
   const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AskMode>(initialMode);
   const [turns, setTurns] = useState<AskTurn[]>([]);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(practiceSessionId ? "I want to develop this Note using what I said in practice. What should I clarify first?" : "");
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [limited, setLimited] = useState(false);
   const [saves, setSaves] = useState<Record<string, SaveState>>({});
   const [madeNotes, setMadeNotes] = useState<Record<string, string>>({});
   const [typing, setTyping] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(Boolean(note));
+  const [draftReview, setDraftReview] = useState<{ key: string; title: string; body: string } | null>(null);
+  const readable = (value: string) => parseOutline(value).flatMap((section) => section.points).join(" ");
+  const comparison = draftReview ? noteWordDiff(readable(note?.body ?? ""), readable(draftReview.body)) : null;
+  const activeNoteId = useRef<string | null>(note?.id ?? null);
+  const noteId = note?.id;
   // A page sheet starts below the top of the screen, and the keyboard reports
   // its position in screen terms — so keyboard avoidance needs to know how far
   // down the sheet begins: the screen's height less the sheet's own.
@@ -177,6 +183,17 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const list = useRef<ScrollView>(null);
   const input = useRef<TextInput>(null);
   const turnTops = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    if (!noteId) return;
+    let alive = true;
+    void loadNoteTurns(noteId).then((history) => {
+      if (alive) setTurns(history);
+    }).catch((error) => {
+      if (alive) setFailure(error instanceof Error ? error.message : "Couldn’t load this conversation.");
+    }).finally(() => { if (alive) setLoadingHistory(false); });
+    return () => { alive = false; };
+  }, [noteId]);
 
   useEffect(() => {
     const show = Keyboard.addListener("keyboardWillShow", () => setTyping(true));
@@ -194,8 +211,19 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
     setPending(true);
     setFailure(null);
     try {
-      const { reply } = await askAssist(asked, next, draftNow);
+      if (asked === "note") {
+        if (!activeNoteId.current) {
+          const first = next.find((turn) => turn.role === "user" && turn.mode === "note");
+          const made = await createNote(noteTitle(first?.role === "user" ? first.text : "New thought"), "");
+          activeNoteId.current = made.id;
+          onSaved?.();
+        }
+        const lastUser = next[next.length - 1];
+        if (lastUser.role === "user") await saveNoteTurn(activeNoteId.current, lastUser);
+      }
+      const { reply } = await askAssist(asked, next, draftNow, activeNoteId.current, practiceSessionId);
       const answer: AskTurn = { id: turnId(), role: "assistant", reply, mode: asked };
+      if (asked === "note" && activeNoteId.current) await saveNoteTurn(activeNoteId.current, answer);
       setTurns([...next, answer]);
       // Bring the question to the top, so the answer reads from its first line.
       const question = next[next.length - 1];
@@ -211,7 +239,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   };
   const send = (question: string, draftNow = false, requestedMode: AskMode = mode) => {
     const asked = question.replace(/\s+/g, " ").trim().slice(0, ASK_MAX_CHARS);
-    if (!asked || pending || limited) return;
+    if (!asked || pending || limited || loadingHistory || turns[turns.length - 1]?.role === "user") return;
     const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode: requestedMode, draftNow }];
     setTurns(next);
     setText("");
@@ -244,21 +272,20 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       mark(key, "failed");
     }
   };
-  /** `rewritten` is what an answer changed. A note being edited only takes
-   *  those sections — the rest of the draft may already be in it. */
-  const saveDraft = async (key: string, draft: Draft, question: string, rewritten?: Draft) => {
-    if (note) {
-      note.append(draftSections(rewritten ?? draft));
-      mark(key, "saved");
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      return;
-    }
+  const saveDraft = (key: string, draft: Draft, question: string) => {
     const sections = draftSections(draft);
+    setDraftReview({ key, title: note?.title || noteTitle(question), body: serializeOutline(sections) });
+  };
+  const confirmDraft = async () => {
+    if (!draftReview || !activeNoteId.current) return;
+    const { key, title, body } = draftReview;
     mark(key, "saving");
     try {
-      const made = await createNote(noteTitle(question), serializeOutline(sections));
-      setMadeNotes((m) => ({ ...m, [key]: made.id }));
+      if (note) await note.apply(body);
+      else await applyNoteVersion(activeNoteId.current, title, body, "ask");
+      setMadeNotes((m) => ({ ...m, [key]: activeNoteId.current! }));
       mark(key, "saved");
+      setDraftReview(null);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onSaved?.();
     } catch {
@@ -274,7 +301,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const collecting = mode === "note" && last?.role === "assistant" && last.reply.type === "clarify";
   const intro = INTRO[mode];
   const starters = STARTERS[mode][firstLanguage()] ?? STARTERS[mode].en;
-  const canSend = Boolean(text.trim()) && !pending && !limited;
+  const canSend = Boolean(text.trim()) && !pending && !limited && !loadingHistory && last?.role !== "user";
   // iOS pageSheet can report a bottom inset that includes the sheet offset
   // (83pt on the simulator). Keep only the home-indicator allowance.
   const composerBottomInset = typing ? 8 : Math.max(12, Math.min(insets.bottom, 34));
@@ -304,7 +331,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
         }}
       >
         <View style={{ flex: 1, alignItems: "flex-start" }}>
-          {turns.length ? (
+          {turns.length && !note ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Start a new conversation"
@@ -314,6 +341,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                 setFailure(null);
                 setSaves({});
                 setMadeNotes({});
+                activeNoteId.current = null;
                 turnTops.current.clear();
               }}
             >
@@ -422,11 +450,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   }
                 />
               ) : turn.reply.type === "clarify" ? (
-                <ClarifyingQuestion
-                  text={turn.reply.text}
-                  question={turn.reply.question}
-                  onDraftNow={() => send(DRAFT_NOW[firstLanguage()], true, "note")}
-                />
+                <ClarifyingQuestion text={turn.reply.text} question={turn.reply.question} />
               ) : (
                 <Answer
                   answer={turn.reply}
@@ -435,7 +459,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   draftState={saves[`${turn.id}.draft`]}
                   madeNote={madeNotes[`${turn.id}.draft`]}
                   onSaveDraft={(draft) =>
-                    void saveDraft(`${turn.id}.draft`, draft, questionFor(turns, i), (turn.reply as AskAnswer).draft_patch)
+                    saveDraft(`${turn.id}.draft`, draft, questionFor(turns, i))
                   }
                   onOpenNote={onOpenNote}
                   saveState={(n) => saves[`${turn.id}.${n}`]}
@@ -449,11 +473,14 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
           ))}
 
           {pending ? <TypingDots reducedMotion={reducedMotion} /> : null}
-          {failure && !limited ? (
+          {failure && last?.role !== "user" ? (
+            <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.warn }}>{failure}</Text>
+          ) : null}
+          {!pending && last?.role === "user" && !loadingHistory && !limited ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 2 }}>
-              <Text style={{ flex: 1, fontSize: 15, lineHeight: 21, color: t.colors.warn }}>{failure}</Text>
+              <Text style={{ flex: 1, fontSize: 15, lineHeight: 21, color: t.colors.warn }}>{failure ?? "Your last question is waiting for a reply."}</Text>
               <Pressable accessibilityRole="button" hitSlop={10} onPress={retry}>
-                <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>Try again</Text>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>Continue</Text>
               </Pressable>
             </View>
           ) : null}
@@ -471,6 +498,17 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
 
         {/* Composer: the question, with the mode and send under it. */}
         <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: composerBottomInset }}>
+          {mode === "note" && turns.some((turn) => turn.role === "user" && turn.mode === "note") ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Draft now with what I have shared"
+              disabled={pending || limited || loadingHistory || last?.role === "user"}
+              onPress={() => send(DRAFT_NOW[firstLanguage()], true, "note")}
+              style={{ alignSelf: "flex-end", paddingHorizontal: 12, paddingVertical: 8, opacity: pending || limited || loadingHistory || last?.role === "user" ? 0.4 : 1 }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.accD }}>Draft now</Text>
+            </Pressable>
+          ) : null}
           {limited ? (
             <Text style={{ fontSize: 14, lineHeight: 20, color: t.colors.ink2, textAlign: "center", paddingBottom: 10 }}>
               You’ve used today’s questions. More tomorrow.
@@ -519,6 +557,31 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
           </View>
         </View>
       </KeyboardAvoidingView>
+      {draftReview ? (
+        <View style={{ position: "absolute", inset: 0, backgroundColor: t.colors.bg, padding: 24, paddingTop: 56 }}>
+          <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: "700", color: t.colors.ink }}>Review draft</Text>
+          <Text style={{ marginTop: 12, color: t.colors.ink2 }}>Your Note changes only when you apply this draft.</Text>
+          <ScrollView style={{ flex: 1, marginTop: 24 }}>
+            {note?.body ? (
+              <View style={{ marginBottom: 22 }}>
+                <Text style={{ color: t.colors.ink3, marginBottom: 8 }}>Current Note</Text>
+                <Text style={{ color: t.colors.ink2, lineHeight: 24 }}>
+                  {comparison?.before.map((part, i) => <Text key={i} style={part.changed ? { textDecorationLine: "line-through", color: t.colors.warn } : undefined}>{part.text}</Text>)}
+                </Text>
+              </View>
+            ) : null}
+            <Text style={{ color: t.colors.ink3, marginBottom: 8 }}>Proposed draft</Text>
+            <Text style={{ color: t.colors.ink, lineHeight: 24 }}>
+              {comparison?.after.map((part, i) => <Text key={i} style={part.changed ? { fontWeight: "700", textDecorationLine: "underline", color: t.colors.accD } : undefined}>{part.text}</Text>)}
+            </Text>
+          </ScrollView>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingBottom: composerBottomInset }}>
+            <Pressable accessibilityRole="button" onPress={() => setDraftReview(null)}><Text style={{ color: t.colors.ink2, fontSize: 16 }}>Keep current</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={saves[draftReview.key] === "saving"} onPress={() => void confirmDraft()}><Text style={{ color: t.colors.accD, fontSize: 16, fontWeight: "700" }}>Apply draft</Text></Pressable>
+          </View>
+          {saves[draftReview.key] === "failed" ? <Text style={{ color: t.colors.warn }}>Couldn’t save the revision. Your Note is unchanged; try Apply draft again.</Text> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -726,16 +789,13 @@ function ExpressionRow({
   );
 }
 
-function ClarifyingQuestion({ text, question, onDraftNow }: { text: string; question: string; onDraftNow: () => void }) {
+function ClarifyingQuestion({ text, question }: { text: string; question: string }) {
   const t = useTheme();
   return (
     <Sheet>
       <Caption>One thing first</Caption>
       {text ? <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>{text}</Text> : null}
       <Text style={{ fontSize: 18, lineHeight: 26, fontWeight: "600", color: t.colors.ink }}>{question}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Draft now" hitSlop={8} onPress={onDraftNow} style={{ alignSelf: "flex-start", paddingVertical: 7 }}>
-        <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.accD }}>Draft now</Text>
-      </Pressable>
     </Sheet>
   );
 }
@@ -831,15 +891,15 @@ function DraftBlock({
   const open = saved && madeNote && onOpenNote ? () => onOpenNote(madeNote) : null;
   const label = saved
     ? inNote
-      ? "Added to this note"
+      ? "Applied to this Note"
       : open
         ? "Saved · Open note"
         : "Saved to Studio"
     : state === "failed"
       ? "Couldn’t save · Try again"
       : inNote
-        ? "Add to this note"
-        : "Save to Note";
+        ? "Review changes"
+        : "Review & save";
   return (
     <View style={{ gap: 14 }}>
       {parts.map((k) => (
