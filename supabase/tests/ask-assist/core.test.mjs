@@ -8,6 +8,7 @@ import {
   learnerLanguage,
   MAX_TURNS,
   MAX_USER_CHARS,
+  noteClarificationCount,
   normalizeReply,
   parseAskBody,
   SCHEMAS,
@@ -57,6 +58,29 @@ test("buildOpenAIRequest keeps the fixed prompt first so the prefix is cacheable
   assert.equal(a.messages[0].content, b.messages[0].content);
   assert.notEqual(a.messages[1].content, b.messages[1].content);
   assert.equal(a.response_format.json_schema.strict, true);
+});
+
+test("Note clarification is allowed before the draft and closed after two questions or Draft now", () => {
+  const first = { mode: "note", messages: [user("새 팀에서 자기소개")], l1: "Korean" };
+  assert.equal(buildOpenAIRequest(first).response_format.json_schema.name, "ask_note_intake");
+  const clarify = bot(JSON.stringify({ reply: { type: "clarify", text: "", question: "어떤 일을 맡으셨나요?" } }));
+  const messages = [user("새 팀에서 자기소개"), clarify, user("디자인 일을 해요"), clarify, user("협업을 강조하고 싶어요")];
+  assert.equal(noteClarificationCount(messages), 2);
+  assert.equal(buildOpenAIRequest({ ...first, messages }).response_format.json_schema.name, "ask_note_draft");
+  assert.equal(buildOpenAIRequest({ ...first, draftNow: true }).response_format.json_schema.name, "ask_note_draft");
+  const withDraft = [user("새 팀에서 자기소개"), bot(JSON.stringify({ reply: { type: "card", draft: { body: "I'm a designer." } } })), user("더 짧게")];
+  assert.equal(buildOpenAIRequest({ ...first, messages: withDraft }).response_format.json_schema.name, "ask_note");
+  assert.deepEqual(SCHEMAS.note.properties.reply.anyOf.map((option) => option.properties.type.enum[0]), ["clarify", "card", "answer", "off_topic"]);
+  const newTopic = [...withDraft, bot(JSON.stringify({ reply: { type: "clarify", text: "", question: "왜요?" } })), user("제 의견은 이래요")];
+  assert.equal(buildOpenAIRequest({ ...first, messages: newTopic }).response_format.json_schema.name, "ask_note");
+  assert.equal(buildOpenAIRequest({ ...first, messages: newTopic, draftNow: true }).response_format.json_schema.name, "ask_note_draft");
+  assert.deepEqual(SCHEMAS.note_draft.properties.reply.anyOf.map((option) => option.properties.type.enum[0]), ["card", "off_topic"]);
+  assert.equal(buildOpenAIRequest(first).messages[0].content, buildOpenAIRequest({ ...first, draftNow: true }).messages[0].content);
+});
+
+test("parseAskBody accepts only an explicit Draft now flag", () => {
+  assert.equal(parseAskBody({ mode: "note", messages: [user("초안 보여줘")], draft_now: true }).request.draftNow, true);
+  assert.equal(parseAskBody({ mode: "note", messages: [user("초안 보여줘")], draft_now: "true" }).request.draftNow, false);
 });
 
 /** Every object in a strict schema must list all its properties as required
@@ -119,6 +143,13 @@ test("normalizeReply shapes answers per mode and passes off_topic through", () =
   assert.equal(noteAnswer.draft_patch.closing, "See you!");
   const howAnswer = normalizeReply("how_to_say", JSON.stringify({ reply: { type: "answer", text: "차이는…", draft_patch: { closing: "x" } } }));
   assert.equal("draft_patch" in howAnswer, false);
+});
+
+test("normalizeReply keeps one usable Note clarification question", () => {
+  const raw = JSON.stringify({ reply: { type: "clarify", text: "자기소개를 준비하시네요.", question: "새 팀에서 맡은 역할이 무엇인가요?" } });
+  assert.deepEqual(normalizeReply("note", raw), { type: "clarify", text: "자기소개를 준비하시네요.", question: "새 팀에서 맡은 역할이 무엇인가요?" });
+  assert.equal(normalizeReply("how_to_say", raw), null);
+  assert.equal(normalizeReply("note", JSON.stringify({ reply: { type: "clarify", text: "", question: " " } })), null);
 });
 
 test("costUsd prices per model and meters unknown models at zero", () => {

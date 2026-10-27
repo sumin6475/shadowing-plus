@@ -8,6 +8,7 @@ import {
   draftSections,
   exampleFor,
   noteTitle,
+  noteTopicFor,
   patchesDraft,
   questionFor,
   sentences,
@@ -55,10 +56,22 @@ test("client request preserves the learner language at the function boundary", (
     mode: "note",
     messages: [{ role: "user", content: "自己紹介したい" }],
     first_language: "ja",
+    draft_now: false,
   });
   const parsed = parseAskBody(body);
   assert.equal(parsed.ok, true);
   if (parsed.ok) assert.equal(parsed.request.l1, "Japanese");
+});
+
+test("Draft now travels as an explicit request flag while clarification remains in history", () => {
+  const clarify = { type: "clarify", text: "", question: "어떤 일을 맡으셨나요?" };
+  const turns = [user("1", "새 팀 자기소개", "note"), bot("2", clarify, "note"), user("3", "지금 초안 써줘", "note")];
+  const body = buildAskRequest("note", turns, "ko", true);
+  assert.equal(body.draft_now, true);
+  assert.equal(JSON.parse(body.messages[1].content).reply.type, "clarify");
+  const parsed = parseAskBody(body);
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) assert.equal(parsed.request.draftNow, true);
 });
 
 test("a draft follows the conversation: the latest card, then each answer's rewrite", () => {
@@ -128,4 +141,14 @@ test("a note made from a draft is titled with the question, cut to fit", () => {
   const long = noteTitle("a".repeat(80));
   assert.equal(long.length, 58);
   assert.ok(long.endsWith("…"));
+});
+
+test("a draft after clarification keeps the original Note topic as its title", () => {
+  const turns = [
+    user("1", "What motivates you at work?", "note"),
+    bot("2", { type: "clarify", text: "", question: "What motivates you?" }, "note"),
+    user("3", "User feedback", "note"),
+    bot("4", noteCard, "note"),
+  ];
+  assert.equal(noteTopicFor(turns, 3), "What motivates you at work?");
 });

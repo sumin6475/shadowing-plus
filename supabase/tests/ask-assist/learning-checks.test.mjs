@@ -21,3 +21,9 @@ test("flags excessively formal wording for ordinary workplace lateness", () => {
   assert.equal(checkLearningConstraints(c, { expressions: [{ en: "I regret to inform you that I will be late." }] }).length, 1);
   assert.deepEqual(checkLearningConstraints(c, { expressions: [{ en: "Sorry, I may be a little late." }] }), []);
 });
+
+test("flags invented project details from the simulator failure", () => {
+  const c = { learning_constraints: { forbidden_draft_fragments: ["TensorFlow", "Flask", "30%"] } };
+  assert.equal(checkLearningConstraints(c, { draft: { opening: "", body: "I used TensorFlow and cut tickets by 30%.", closing: "" } }).length, 2);
+  assert.deepEqual(checkLearningConstraints(c, { draft: { opening: "", body: "I built the mobile UI and Supabase functions.", closing: "" } }), []);
+});

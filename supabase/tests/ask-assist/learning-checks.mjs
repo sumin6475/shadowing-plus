@@ -37,5 +37,12 @@ export function checkLearningConstraints(testCase, reply) {
     }
   }
 
+  if (constraints.forbidden_draft_fragments?.length && reply?.draft) {
+    const draft = Object.values(reply.draft).join(" ").toLowerCase();
+    for (const fragment of constraints.forbidden_draft_fragments) {
+      if (draft.includes(fragment.toLowerCase())) failures.push(`Draft invents an unsupported detail: ${fragment}`);
+    }
+  }
+
   return failures;
 }

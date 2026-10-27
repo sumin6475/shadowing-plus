@@ -2,8 +2,8 @@
 //
 // A chat that only does two things. "How to say": type what you mean in your
 // own language, get natural English with a meaning, a nuance note and
-// examples. "Note": describe a moment, get a short Opening / Body / Closing
-// draft to speak from. The mode is picked per question; the conversation is
+// examples. "Note": start from a question or topic, answer a focused prompt
+// when needed, then get a short Opening / Body / Closing draft. The mode is picked per question; the conversation is
 // shared across modes and lives only while the sheet is open.
 //
 // Every reply is structured (lib/ask-model), so it is drawn as a card with its
@@ -36,6 +36,7 @@ import {
   isHowToSayCard,
   isNoteCard,
   noteTitle,
+  noteTopicFor,
   patchesDraft,
   questionFor,
   toPhraseInput,
@@ -60,9 +61,9 @@ const INTRO: Record<AskMode, { title: string; body: string; placeholder: string 
     placeholder: "Ask how to say something",
   },
   note: {
-    title: "What is the moment?",
-    body: "A meeting, an interview, a call. Describe it and get a short draft to speak from.",
-    placeholder: "Describe the situation",
+    title: "What do you want to talk about?",
+    body: "Start with a question or topic. I'll ask for the details that matter, then shape a short draft you can say aloud.",
+    placeholder: "A question or topic to speak about",
   },
 };
 /** First questions to tap, in the learner's own language. */
@@ -76,15 +77,23 @@ const STARTERS: Record<AskMode, Record<L1, string[]>> = {
     ru: ["Я немного опоздаю", "Можно обсудить это позже?"],
   },
   note: {
-    en: ["Introducing myself to a new team", "Asking my manager for a day off"],
-    ko: ["새 팀에서 자기소개하기", "팀장님께 연차 쓰고 싶다고 말하기"],
-    ja: ["新しいチームで自己紹介する", "上司に休みを取りたいと伝える"],
-    "zh-Hant": ["向新團隊自我介紹", "跟主管說想請一天假"],
-    es: ["Presentarme ante un equipo nuevo", "Pedirle un día libre a mi jefe"],
-    ru: ["Представиться новой команде", "Попросить у руководителя выходной"],
+    en: ["Introducing myself to a new team", "Answering what motivates me at work"],
+    ko: ["새 팀에서 자기소개하기", "일할 때 무엇이 동기부여가 되는지 답하기"],
+    ja: ["新しいチームで自己紹介する", "仕事のモチベーションについて答える"],
+    "zh-Hant": ["向新團隊自我介紹", "回答工作動力是什麼"],
+    es: ["Presentarme ante un equipo nuevo", "Responder qué me motiva en el trabajo"],
+    ru: ["Представиться новой команде", "Ответить, что мотивирует меня в работе"],
   },
 };
-const OFF_TOPIC = "I can help with how to say something in English, or with a note to speak from.";
+const DRAFT_NOW: Record<L1, string> = {
+  en: "Draft now with what I've shared so far.",
+  ko: "지금까지 말한 내용으로 초안 써줘",
+  ja: "ここまで話した内容で下書きを作って",
+  "zh-Hant": "請根據目前說過的內容先寫草稿",
+  es: "Haz un borrador con lo que he contado hasta ahora.",
+  ru: "Составь черновик на основе того, что я уже рассказал.",
+};
+const OFF_TOPIC = "I can help you find an English expression or shape a speaking note for a question or topic.";
 
 type SaveState = "saving" | "saved" | "failed";
 
@@ -181,11 +190,11 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
     };
   }, []);
 
-  const request = async (next: AskTurn[], asked: AskMode) => {
+  const request = async (next: AskTurn[], asked: AskMode, draftNow = false) => {
     setPending(true);
     setFailure(null);
     try {
-      const { reply } = await askAssist(asked, next);
+      const { reply } = await askAssist(asked, next, draftNow);
       const answer: AskTurn = { id: turnId(), role: "assistant", reply, mode: asked };
       setTurns([...next, answer]);
       // Bring the question to the top, so the answer reads from its first line.
@@ -200,21 +209,21 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       setPending(false);
     }
   };
-  const send = (question: string) => {
+  const send = (question: string, draftNow = false, requestedMode: AskMode = mode) => {
     const asked = question.replace(/\s+/g, " ").trim().slice(0, ASK_MAX_CHARS);
     if (!asked || pending || limited) return;
-    const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode }];
+    const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode: requestedMode, draftNow }];
     setTurns(next);
     setText("");
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     // The answer is a card or two, not a line: give it the whole sheet.
     Keyboard.dismiss();
     setTimeout(() => list.current?.scrollToEnd({ animated: !reducedMotion }), 60);
-    void request(next, mode);
+    void request(next, requestedMode, draftNow);
   };
   const retry = () => {
     const last = turns[turns.length - 1];
-    if (last?.role === "user" && !pending) void request(turns, last.mode);
+    if (last?.role === "user" && !pending) void request(turns, last.mode, last.draftNow);
   };
 
   const mark = (key: string, state: SaveState | null) =>
@@ -259,9 +268,10 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
 
   const last = turns[turns.length - 1];
   const followUps =
-    !pending && !failure && last?.role === "assistant" && last.reply.type !== "off_topic"
+    !pending && !failure && last?.role === "assistant" && (last.reply.type === "card" || last.reply.type === "answer")
       ? last.reply.follow_ups
       : [];
+  const collecting = mode === "note" && last?.role === "assistant" && last.reply.type === "clarify";
   const intro = INTRO[mode];
   const starters = STARTERS[mode][firstLanguage()] ?? STARTERS[mode].en;
   const canSend = Boolean(text.trim()) && !pending && !limited;
@@ -404,12 +414,18 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   inNote={Boolean(note)}
                   draftState={saves[`${turn.id}.draft`]}
                   madeNote={madeNotes[`${turn.id}.draft`]}
-                  onSaveDraft={() => void saveDraft(`${turn.id}.draft`, (turn.reply as NoteCard).draft, questionFor(turns, i))}
+                  onSaveDraft={() => void saveDraft(`${turn.id}.draft`, (turn.reply as NoteCard).draft, noteTopicFor(turns, i))}
                   onOpenNote={onOpenNote}
                   saveState={(n) => saves[`${turn.id}.${n}`]}
                   onSave={(n, phrase) =>
                     void savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i))
                   }
+                />
+              ) : turn.reply.type === "clarify" ? (
+                <ClarifyingQuestion
+                  text={turn.reply.text}
+                  question={turn.reply.question}
+                  onDraftNow={() => send(DRAFT_NOW[firstLanguage()], true, "note")}
                 />
               ) : (
                 <Answer
@@ -482,7 +498,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
               editable={!limited}
               multiline
               maxLength={ASK_MAX_CHARS}
-              placeholder={intro.placeholder}
+              placeholder={collecting ? "Answer in your own words" : intro.placeholder}
               placeholderTextColor={t.colors.ink3}
               value={text}
               onChangeText={setText}
@@ -707,6 +723,20 @@ function ExpressionRow({
         </View>
       ) : null}
     </View>
+  );
+}
+
+function ClarifyingQuestion({ text, question, onDraftNow }: { text: string; question: string; onDraftNow: () => void }) {
+  const t = useTheme();
+  return (
+    <Sheet>
+      <Caption>One thing first</Caption>
+      {text ? <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>{text}</Text> : null}
+      <Text style={{ fontSize: 18, lineHeight: 26, fontWeight: "600", color: t.colors.ink }}>{question}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Draft now" hitSlop={8} onPress={onDraftNow} style={{ alignSelf: "flex-start", paddingVertical: 7 }}>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.accD }}>Draft now</Text>
+      </Pressable>
+    </Sheet>
   );
 }
 

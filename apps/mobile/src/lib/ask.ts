@@ -29,10 +29,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Sends the conversation so far (the last turn is the new question) and
  *  returns the reply. Throws AskLimitError at the daily limit, and an Error
  *  whose message can be shown as is for anything else. */
-export async function askAssist(mode: AskMode, turns: AskTurn[]): Promise<AskResult> {
+export async function askAssist(mode: AskMode, turns: AskTurn[], draftNow = false): Promise<AskResult> {
   if (ASK_MOCK) {
     await wait(900);
-    const outcome = mockReply(mode, turns);
+    const outcome = mockReply(mode, turns, draftNow);
     if ("fail" in outcome) {
       if (outcome.fail === "limit") throw new AskLimitError();
       throw new Error("Couldn’t answer right now. Try again.");
@@ -42,7 +42,7 @@ export async function askAssist(mode: AskMode, turns: AskTurn[]): Promise<AskRes
   await requireAiProcessingConsent();
   const { data, error } = await supabase.functions.invoke<{ reply: AskReply; remaining: number }>(
     "ask-assist",
-    { body: buildAskRequest(mode, turns, firstLanguage()) },
+    { body: buildAskRequest(mode, turns, firstLanguage(), draftNow) },
   );
   if (error) {
     // A non-2xx reply carries `{ error, code }`; the daily limit is a 429.

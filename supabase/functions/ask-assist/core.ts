@@ -9,6 +9,7 @@
  *  fixed those and was faster, at ~2.9x the cost (~$0.001 per turn). */
 export const MODEL = "gpt-4.1-mini";
 export const MAX_TURNS = 6;
+export const MAX_NOTE_CLARIFICATIONS = 2;
 export const DAILY_LIMIT = 50;
 export const MAX_USER_CHARS = 800;
 const MAX_ASSISTANT_CHARS = 2400;
@@ -38,6 +39,7 @@ export interface AskRequest {
   mode: AskMode;
   messages: AskMessage[];
   l1: string;
+  draftNow?: boolean;
 }
 
 /** Learner first languages (mirror of apps/mobile/src/lib/first-language.ts).
@@ -64,7 +66,7 @@ const text = (value: unknown, limit: number) =>
  *  History is trimmed to the last MAX_TURNS exchanges and must end on a user
  *  turn — that is the question being asked now. */
 export function parseAskBody(body: unknown): { ok: true; request: AskRequest } | { ok: false; error: string; code: string } {
-  const raw = (body ?? {}) as { mode?: unknown; messages?: unknown; first_language?: unknown };
+  const raw = (body ?? {}) as { mode?: unknown; messages?: unknown; first_language?: unknown; draft_now?: unknown };
   const mode = MODES.find((m) => m === raw.mode);
   if (!mode) return { ok: false, error: "Unknown Ask mode.", code: "ask_bad_mode" };
   if (!Array.isArray(raw.messages)) return { ok: false, error: "Ask something first.", code: "ask_empty" };
@@ -82,7 +84,7 @@ export function parseAskBody(body: unknown): { ok: true; request: AskRequest } |
   let trimmed = messages.slice(-MAX_TURNS * 2);
   // A trimmed window must not open on an orphan assistant reply.
   while (trimmed.length && trimmed[0].role === "assistant") trimmed = trimmed.slice(1);
-  return { ok: true, request: { mode, messages: trimmed, l1: learnerLanguage(raw.first_language) } };
+  return { ok: true, request: { mode, messages: trimmed, l1: learnerLanguage(raw.first_language), draftNow: raw.draft_now === true } };
 }
 
 // ── Prompts ────────────────────────────────────────────────────────────────
@@ -107,13 +109,14 @@ Learner-language quality (equally important):
 Reply types — choose exactly one:
 - "card": the learner asks about a NEW thing to say or a new expression to understand.
 - "answer": a follow-up about something already discussed in this conversation (difference between two expressions, more casual version, why, can I say X instead). Keep it short.
+- "clarify" (NOTE mode only): one focused question needed to write the learner's own speaking note.
 - "off_topic": the message has nothing to do with English expression or speaking (coding, weather, math, general chat). Return only the type.
 
-Ambiguity: never ask the learner a clarifying question. Before answering, check whether the meaning depends on WHO (who is sick, who is upset, whose fault), on the listener (friend / colleague / boss / stranger), or on the setting. If it does, branch inside the reply: give one expression per reading and say in "when" which reading it fits. Korean and Japanese often omit the subject — treat a missing subject as a reason to branch.
+For HOW TO SAY ambiguity, answer quickly rather than asking a question. Check whether meaning depends on WHO (who is sick, who is upset, whose fault), on the listener, or on the setting. If it does, branch inside the reply: give one expression per reading and say in "when" which reading it fits. Korean and Japanese often omit the subject — treat a missing subject as a reason to branch.
 
 Language: every field named "en" and every English draft is English. All other text fields are in the learner's first language (given in the next system message). Keep explanations brief and concrete — one to three sentences. Never pad.
 
-"follow_ups": exactly two short questions the learner would plausibly tap next, in the learner's first language, phrased as the learner speaking. They must fit THIS conversation: never suggest something the reply already covers (no "at work?" if the situation is already at work).`;
+For a "card" or "answer", "follow_ups" are exactly two short questions the learner would plausibly tap next, in the learner's first language, phrased as the learner speaking. They must fit THIS conversation: never suggest something the reply already covers (no "at work?" if the situation is already at work).`;
 
 const HOW_TO_SAY_PROMPT = `${SHARED_RULES}
 
@@ -134,12 +137,22 @@ Example (Korean learner) — input "눈치 보여":
 
 const NOTE_PROMPT = `${SHARED_RULES}
 
-Mode: NOTE — help write a short speaking note.
-A note is a short script the learner will say out loud: Opening, Body, Closing. The learner describes a situation ("tell my manager I need a day off") or a domain ("explaining a bug in standup").
+Mode: NOTE — draw out the learner's message, then write a short speaking note.
+A note is a short script the learner will say out loud: Opening, Body, Closing. The learner may start with a question they want to answer, a topic they want to discuss or organize, or a situation ("tell my manager I need a day off").
+
+Before the first draft, check the conversation for the learner's own position, experience or facts, intended listener, and desired point. Ask only for information whose absence would make the draft generic or force you to invent something personal. Do not ask for details already supplied. If the learner supplied enough to make a useful, faithful draft, return a "card" immediately.
+
+For a "clarify":
+- "text": a brief, specific acknowledgement of what the learner wants to express, in their first language. Do not flatter or repeat their whole message.
+- "question": ONE focused, open question in their first language. Ask for the most useful missing detail, such as their actual view, one real example or reason, who will hear it, or what they want the listener to understand. You may group two tightly related facts in one question (for example, the product and the part they built), but do not present a generic questionnaire. The learner may answer in their own language.
+- If the learner has already answered one clarification, ask a second only when a different missing detail is essential. After two clarifications, make the draft with what they gave. If they ask for a draft now, make it now.
+- Never manufacture their opinions, biography, dates, results, feelings, or promises. In the draft, omit nonessential unknowns; use a short square-bracket placeholder only when an essential personal fact is still missing.
+
+After clarification, the first draft MUST be a "card", not an "answer". Use the learner's actual words and priorities, not a generic speech about the topic. The draft should make one coherent point and be easy to say out loud. Do not imply the learner said something they did not say.
 
 For a "card":
 - "situation": one line in the learner's language — who they are talking to and the setting.
-- "draft": "opening", "body", "closing" in natural SPOKEN English at a register that fits the listener. With no length request, opening 1–2 sentences, body 2–3 sentences with real substance (reason, detail, what happens next), closing 1–2 sentences. Sound like a person talking: no email greetings ("Hi [name],"), no letter sign-offs. Placeholders, if any, are short English in square brackets, e.g. [your name].
+- "draft": "opening", "body", "closing" in natural SPOKEN English at a register that fits the listener. For a message to someone, use Opening / Body / Closing when they help: normally an opening sentence, 1–3 body sentences grounded in supplied facts, and a short closing. Omit a section if it would add filler. For an answer to a direct question (e.g. an interview question), answer directly in "body"; do not force a greeting, self-introduction or sign-off. Never add a reason, result, metric, tool, user adoption, or next step that the learner did not provide. Sound like a person talking: no email greetings ("Hi [name],"), no letter sign-offs. Placeholders, if any, are short English in square brackets, e.g. [your name].
 - Obey the learner's requested length even when it conflicts with the normal Opening/Body/Closing template. If the learner asks for ONE sentence (e.g. "한 문장으로", "one sentence"), the entire draft MUST contain exactly one English sentence: put that sentence in "body" and return "opening":"" and "closing":"". Do not write an introduction, a second sentence, or a sign-off in another section. Key phrases may be fewer than three when one sentence cannot supply three useful chunks.
 - "key_phrases": usually 3 to 5 reusable chunks taken from the draft that the learner can reuse in other situations (e.g. "I was wondering if…", "take next Friday off"); use fewer if the requested short draft has fewer useful chunks. Cut each down to the reusable part — never a whole content-specific sentence, never a trivial word.
 - "terms": 3 to 6 field-specific words people in this setting actually say and a learner may not know (standup: "repro", "hotfix", "roll back"; clinic: "symptoms", "prescription", "swollen") — whenever the setting has its own vocabulary: any workplace function (engineering, sales, design, HR…), medical, legal, finance, travel/airport, housing, school, customer service. Never list everyday words ("team", "project", "delay"). Use an empty array for social talk, self-introductions and anything without real jargon.
@@ -201,25 +214,59 @@ const noteAnswer = obj({
   expressions: arr(expressionWithExample),
   follow_ups: arr(str),
 });
+const noteClarify = obj({ type: tag("clarify"), text: str, question: str });
 
-export const SCHEMAS: Record<AskMode, unknown> = {
+export const SCHEMAS: Record<AskMode | "note_intake" | "note_draft", unknown> = {
   how_to_say: obj({ reply: { anyOf: [howToSayCard, howToSayAnswer, offTopic] } }),
-  note: obj({ reply: { anyOf: [noteCard, noteAnswer, offTopic] } }),
+  note_intake: obj({ reply: { anyOf: [noteClarify, noteCard, offTopic] } }),
+  note_draft: obj({ reply: { anyOf: [noteCard, offTopic] } }),
+  note: obj({ reply: { anyOf: [noteClarify, noteCard, noteAnswer, offTopic] } }),
 };
+
+export function noteClarificationCount(messages: AskMessage[]): number {
+  return messages.filter((message) => {
+    if (message.role !== "assistant") return false;
+    try { return JSON.parse(message.content)?.reply?.type === "clarify"; }
+    catch { return false; }
+  }).length;
+}
+
+function hasNoteCard(messages: AskMessage[]): boolean {
+  return messages.some((message) => {
+    if (message.role !== "assistant") return false;
+    try {
+      const reply = JSON.parse(message.content)?.reply;
+      return reply?.type === "card" && reply.draft != null;
+    }
+    catch { return false; }
+  });
+}
+
+function recentNoteClarificationCount(messages: AskMessage[]): number {
+  let afterCard = 0;
+  for (let i = 0; i < messages.length; i++) {
+    if (hasNoteCard([messages[i]])) afterCard = i + 1;
+  }
+  return noteClarificationCount(messages.slice(afterCard));
+}
 
 /** Chat Completions body for one Ask turn. */
 export function buildOpenAIRequest(request: AskRequest, model: string = MODEL) {
+  const needsFirstDraft = request.mode === "note" && !hasNoteCard(request.messages);
+  const finishNote = request.mode === "note" &&
+    (request.draftNow || recentNoteClarificationCount(request.messages) >= MAX_NOTE_CLARIFICATIONS);
+  const schemaName = finishNote ? "note_draft" : (needsFirstDraft ? "note_intake" : request.mode);
   return {
     model,
     temperature: 0.3,
     max_tokens: MAX_OUTPUT_TOKENS[request.mode],
     response_format: {
       type: "json_schema",
-      json_schema: { name: `ask_${request.mode}`, strict: true, schema: SCHEMAS[request.mode] },
+      json_schema: { name: `ask_${schemaName}`, strict: true, schema: SCHEMAS[schemaName] },
     },
     messages: [
       { role: "system", content: PROMPTS[request.mode] },
-      { role: "system", content: `The learner's first language is ${request.l1}. Write every explanation field in ${request.l1}.` },
+      { role: "system", content: `The learner's first language is ${request.l1}. Write every explanation field in ${request.l1}.${finishNote ? " The learner has finished clarification or chose Draft now. Return a speaking-note card using only known facts; do not ask another question." : ""}` },
       ...request.messages,
     ],
   };
@@ -242,9 +289,10 @@ export interface NoteCard {
   terms: { en: string; meaning: string }[]; follow_ups: string[];
 }
 export interface NoteAnswer { type: "answer"; text: string; draft_patch: Draft; expressions: ExpressionWithExample[]; follow_ups: string[] }
+export interface NoteClarify { type: "clarify"; text: string; question: string }
 export interface OffTopic { type: "off_topic" }
 
-export type AskReply = HowToSayCard | HowToSayAnswer | NoteCard | NoteAnswer | OffTopic;
+export type AskReply = HowToSayCard | HowToSayAnswer | NoteCard | NoteAnswer | NoteClarify | OffTopic;
 
 const list = <T>(value: unknown, max: number, map: (v: Record<string, unknown>) => T | null): T[] =>
   (Array.isArray(value) ? value : [])
@@ -288,6 +336,12 @@ export function normalizeReply(mode: AskMode, raw: string): AskReply | null {
   if (!r || typeof r !== "object") return null;
 
   if (r.type === "off_topic") return { type: "off_topic" };
+
+  if (r.type === "clarify") {
+    if (mode !== "note") return null;
+    const question = text(r.question, 300);
+    return question ? { type: "clarify", text: text(r.text, 400), question } : null;
+  }
 
   if (r.type === "answer") {
     const answerText = text(r.text, 1200);

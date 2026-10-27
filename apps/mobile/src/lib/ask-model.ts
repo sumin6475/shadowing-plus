@@ -55,10 +55,15 @@ export interface AskAnswer {
   draft_patch?: Draft;
   follow_ups: string[];
 }
+export interface NoteClarify {
+  type: "clarify";
+  text: string;
+  question: string;
+}
 export interface OffTopic {
   type: "off_topic";
 }
-export type AskReply = HowToSayCard | NoteCard | AskAnswer | OffTopic;
+export type AskReply = HowToSayCard | NoteCard | AskAnswer | NoteClarify | OffTopic;
 
 export const isNoteCard = (reply: AskReply): reply is NoteCard =>
   reply.type === "card" && "draft" in reply;
@@ -67,7 +72,7 @@ export const isHowToSayCard = (reply: AskReply): reply is HowToSayCard =>
 
 /** One line of the conversation as the sheet holds it. */
 export type AskTurn =
-  | { id: string; role: "user"; text: string; mode: AskMode }
+  | { id: string; role: "user"; text: string; mode: AskMode; draftNow?: boolean }
   | { id: string; role: "assistant"; reply: AskReply; mode: AskMode };
 
 export interface AskMessage {
@@ -92,10 +97,11 @@ export function trimHistory(turns: AskTurn[], max = ASK_HISTORY_TURNS): AskMessa
 }
 
 /** Request shape shared with the Edge Function's parseAskBody contract. */
-export const buildAskRequest = (mode: AskMode, turns: AskTurn[], firstLanguage: string) => ({
+export const buildAskRequest = (mode: AskMode, turns: AskTurn[], firstLanguage: string, draftNow = false) => ({
   mode,
   messages: trimHistory(turns),
   first_language: firstLanguage,
+  draft_now: draftNow,
 });
 
 const EMPTY_DRAFT: Draft = { opening: "", body: "", closing: "" };
@@ -141,6 +147,20 @@ export function questionFor(turns: AskTurn[], index: number): string {
     if (turn.role === "user") return turn.text;
   }
   return "";
+}
+
+/** The Note request that began the current draft, before intake answers. */
+export function noteTopicFor(turns: AskTurn[], index: number): string {
+  let afterCard = 0;
+  for (let i = 0; i < index; i++) {
+    const turn = turns[i];
+    if (turn.role === "assistant" && turn.mode === "note" && isNoteCard(turn.reply)) afterCard = i + 1;
+  }
+  for (let i = afterCard; i <= index; i++) {
+    const turn = turns[i];
+    if (turn.role === "user" && turn.mode === "note") return turn.text;
+  }
+  return questionFor(turns, index);
 }
 
 /** A note title from the question that started the draft. */

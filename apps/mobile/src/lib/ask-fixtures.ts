@@ -1,14 +1,14 @@
 // ask-fixtures.ts — canned replies for building the Ask sheet before the
 // `ask-assist` function is deployed (release-flags: ASK_MOCK).
 //
-// The shapes are real: each is a reply the function produced in a golden run
-// (docs/journal/quality/2026-10-05-ask-golden-gpt-4.1-mini.md), lightly
-// trimmed. They are Korean because that is the language the runs were in; the
-// live function answers in the learner's own.
+// The sample cards came from a golden run and were lightly trimmed. The
+// clarification is a synthetic UI fixture; its following draft is unrelated
+// to the learner's input and must not be used to judge model quality. These
+// fixtures are Korean; the live function answers in the learner's own language.
 //
 // A question can force a state while reviewing the UI:
 //   "/off" → off-topic line · "/limit" → daily limit · "/error" → failed turn
-import type { AskAnswer, AskMode, AskReply, AskTurn, HowToSayCard, NoteCard } from "./ask-model";
+import type { AskAnswer, AskMode, AskReply, AskTurn, HowToSayCard, NoteCard, NoteClarify } from "./ask-model";
 
 const HOW_TO_SAY: HowToSayCard = {
   type: "card",
@@ -74,6 +74,12 @@ const NOTE: NoteCard = {
   follow_ups: ["더 공손하게 바꿔 줘", "더 짧게 줄여 줘"],
 };
 
+const NOTE_CLARIFY: NoteClarify = {
+  type: "clarify",
+  text: "어떤 말을 하고 싶은지 같이 정리해 볼게요.",
+  question: "상대가 가장 기억했으면 하는 점은 무엇인가요?",
+};
+
 const NOTE_ANSWER: AskAnswer = {
   type: "answer",
   text: "첫 문장과 마무리를 더 공손하게 바꿨어요. 'I was hoping to…'는 부탁을 부드럽게 꺼낼 때 써요.",
@@ -97,13 +103,14 @@ export type MockOutcome = { reply: AskReply } | { fail: "limit" | "error" };
 
 /** The canned reply for this point in the conversation: a card for the first
  *  question in a mode, a short answer for a follow-up. */
-export function mockReply(mode: AskMode, turns: AskTurn[]): MockOutcome {
+export function mockReply(mode: AskMode, turns: AskTurn[], draftNow = false): MockOutcome {
   const last = turns[turns.length - 1];
   const asked = last?.role === "user" ? last.text.trim().toLowerCase() : "";
   if (asked === "/off") return { reply: { type: "off_topic" } };
   if (asked === "/limit") return { fail: "limit" };
   if (asked === "/error") return { fail: "error" };
   const answered = turns.some((t) => t.role === "assistant" && t.mode === mode && t.reply.type === "card");
-  if (mode === "note") return { reply: answered ? NOTE_ANSWER : NOTE };
+  const clarified = turns.some((t) => t.role === "assistant" && t.mode === "note" && t.reply.type === "clarify");
+  if (mode === "note") return { reply: answered ? NOTE_ANSWER : (draftNow || clarified ? NOTE : NOTE_CLARIFY) };
   return { reply: answered ? HOW_TO_SAY_ANSWER : HOW_TO_SAY };
 }

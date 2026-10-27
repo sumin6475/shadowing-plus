@@ -66,23 +66,28 @@ const results = [];
 for (const c of selectedCases) {
   const l1 = learnerLanguage(c.l1);
   const messages = [];
+  const turnReplies = [];
   let last;
   for (const [i, content] of c.turns.entries()) {
     const isLast = i === c.turns.length - 1;
     const mode = isLast ? c.mode : (c.history_mode ?? c.mode);
     messages.push({ role: "user", content });
     last = await turn(mode, messages, l1);
+    turnReplies.push(last);
     if (last.error || !last.reply) break;
     if (!isLast) messages.push({ role: "assistant", content: assistantContent(last.reply) });
   }
   const expected = [c.expect].flat();
-  const technicalPass = !last.error && last.finish === "stop" && expected.includes(last.reply?.type);
+  const expectedTurns = c.expect_turns ?? [];
+  const sequencePass = !expectedTurns.length ||
+    (turnReplies.length === expectedTurns.length && turnReplies.every((result, i) => result.reply?.type === expectedTurns[i]));
+  const technicalPass = !last.error && last.finish === "stop" && expected.includes(last.reply?.type) && sequencePass;
   const learningFailures = technicalPass ? checkLearningConstraints(c, last.reply) : [];
   const pass = technicalPass && learningFailures.length === 0;
-  results.push({ c, last, pass, technicalPass, learningFailures });
+  results.push({ c, last, turnReplies, pass, technicalPass, learningFailures });
   const detail = last.error ?? (learningFailures.length
     ? learningFailures.join("; ")
-    : `${last.reply?.type ?? "unparsed"} (${last.finish}), ${last.output} out, ${last.ms}ms`);
+    : `${turnReplies.map((result) => result.reply?.type ?? "unparsed").join(" → ")} (${last.finish}), ${last.output} out, ${last.ms}ms${sequencePass ? "" : `; expected ${expectedTurns.join(" → ")}`}`);
   console.log(`${pass ? "PASS" : "FAIL"} ${c.id} — ${detail}`);
 }
 
@@ -91,7 +96,7 @@ const technicalOk = results.filter((r) => r.technicalPass).length;
 const byMode = (mode) => results.filter((r) => r.c.mode === mode && !r.last.error);
 const mean = (xs) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0);
-const totalCost = results.reduce((sum, r) => sum + costUsd(r.last.input ?? 0, r.last.output ?? 0, model), 0);
+const totalCost = results.reduce((sum, r) => sum + r.turnReplies.reduce((turnSum, reply) => turnSum + costUsd(reply.input ?? 0, reply.output ?? 0, model), 0), 0);
 
 const lines = [
   `# Ask golden run — ${today} · ${model}`,
@@ -105,21 +110,22 @@ const lines = [
     return `| ${mode} | ${mean(rs.map((r) => r.last.output))} (${mode === "note" ? 700 : 350}) | ${MAX_OUTPUT_TOKENS[mode]} | ${median(rs.map((r) => r.last.ms))}ms | ${mean(rs.map((r) => r.last.cached))} |`;
   }),
   "",
-  `Last-turn cost for the run: $${totalCost.toFixed(5)}.`,
+  `All-turn cost for the run: $${totalCost.toFixed(5)}.`,
   "",
   "Use [learning-rubric.md](../../../supabase/tests/ask-assist/learning-rubric.md) to review each case. Automated checks catch only explicit constraints; a PASS here does not approve the language for learners.",
   "Reviewer: [ ] · review date: [ ] · languages reviewed: [ ] · release decision: [ ]",
   "",
 ];
-for (const { c, last, pass, learningFailures } of results) {
+for (const { c, last, turnReplies, pass, learningFailures } of results) {
   lines.push(`## ${pass ? "PASS" : "FAIL"} · ${c.id} (${c.mode}, ${c.l1})`, "");
   lines.push(`- Turns: ${c.turns.map((t) => `“${t}”`).join(" → ")}`);
   lines.push(`- Expect: \`${[c.expect].flat().join(" | ")}\` — check: ${c.check}`);
+  if (c.expect_turns) lines.push(`- Expected turn sequence: ${c.expect_turns.join(" → ")}; got: ${turnReplies.map((reply) => reply.reply?.type ?? "unparsed").join(" → ")}`);
   lines.push(`- Got: ${last.error ?? `\`${last.reply?.type ?? "unparsed"}\`, finish ${last.finish}, ${last.input} in (${last.cached} cached) / ${last.output} out, ${last.ms}ms`}`);
   lines.push(`- Deterministic learning checks: ${learningFailures.length ? learningFailures.join("; ") : "pass or none configured"}`);
   lines.push("- Human review (0 harmful/wrong · 1 usable with revision · 2 good): intent/meaning [ ] · naturalness/register [ ] · L1 explanation [ ] · examples/transfer [ ] · length/load [ ]");
   lines.push("- Learner-facing issue and revised expression, if any: ");
-  lines.push("", "```json", JSON.stringify(last.reply ?? null, null, 2), "```", "");
+  lines.push("", "```json", JSON.stringify(turnReplies.map((reply) => reply.reply ?? null), null, 2), "```", "");
 }
 await writeFile(out, lines.join("\n"));
 console.log(`\n${ok}/${results.length} passed · report → ${path.relative(repoRoot, out)}`);
