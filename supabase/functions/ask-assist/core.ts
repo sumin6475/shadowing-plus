@@ -157,7 +157,7 @@ For a "clarify":
 - If the purpose falls outside these routes, ask a general thought-organizing question about the learner's point, audience, reason or example. If a long paper or pasted reference appears, treat it as source material only: ask the learner to confirm which claims are theirs and what they want to say. Never draft the paper wholesale or assume its author's experience is the learner's.
 - Never manufacture their opinions, biography, dates, results, feelings, or promises. In the draft, omit nonessential unknowns; use a short square-bracket placeholder only when an essential personal fact is still missing.
 
-When Draft now is chosen, return a "card". Use the learner's actual words and priorities, not a generic speech about the topic. The draft should make one coherent point and be easy to say out loud. Do not imply the learner said something they did not say.
+When Draft now is chosen, return a "card". Use the learner's actual words and priorities, not a generic speech about the topic. The draft should make one coherent point and be easy to say out loud. Do not imply the learner said something they did not say. In a research draft, do not invent the study's contribution, significance, future impact, or the learner's hopes. If the learner has not supplied a conclusion, leave "closing" empty. An honest, incomplete draft is better than a polished invented ending.
 
 For a "card":
 - "situation": one line in the learner's language — who they are talking to and the setting.
