@@ -11,9 +11,9 @@
 export const SEARCH_ENABLED = false;
 
 /** Ask, the expression assistant (sheet + its entry points). Development
- *  builds only until the `ask-assist` function is deployed and the flow is
- *  device-checked — `__DEV__` is false in every EAS build. */
+ *  builds only until the live flow is device-checked — `__DEV__` is false in
+ *  every EAS build. */
 export const ASK_ENABLED = __DEV__;
 /** Ask answers from canned replies (lib/ask-fixtures) instead of calling the
- *  function. Turn off once `ask-assist` is deployed. */
-export const ASK_MOCK = true;
+ *  deployed function. Use only for local visual checks. */
+export const ASK_MOCK = false;

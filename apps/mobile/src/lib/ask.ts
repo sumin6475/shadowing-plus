@@ -1,9 +1,8 @@
 // ask.ts — one question to the Ask assistant.
 //
 // Calls the `ask-assist` Supabase Edge Function (see lib/talk.ts for why the
-// app's server logic lives there). While ASK_MOCK is on, nothing leaves the
-// device: replies come from lib/ask-fixtures, so the sheet can be built and
-// reviewed before the function is deployed.
+// app's server logic lives there). ASK_MOCK keeps canned replies available
+// for local visual checks without calling the function.
 import { requireAiProcessingConsent } from "./ai-consent";
 import { mockReply } from "./ask-fixtures";
 import { buildAskRequest, type AskMode, type AskReply, type AskTurn } from "./ask-model";

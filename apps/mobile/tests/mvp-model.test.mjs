@@ -302,6 +302,15 @@ test("points added from outside go under their headings, after what is written",
   assert.deepEqual(plain.map((s) => s.heading), [null, "Opening"]);
   assert.deepEqual(texts(plain), [["one"], ["Hello."]]);
   assert.equal(appendPoints(sections, [{ heading: "Body", points: [""] }], ids()), sections);
+  const deduped = appendPoints(
+    outline("Opening\n- Hi everyone.\n\nBody\n- Existing."),
+    [
+      { heading: "Opening", points: ["Hi everyone.", "New opening.", "New opening."] },
+      { heading: "Body", points: ["Hi everyone."] },
+    ],
+    ids(),
+  );
+  assert.deepEqual(texts(deduped), [["Hi everyone.", "New opening."], ["Existing.", "Hi everyone."]]);
 });
 
 test("session stats: words, different words, and a pace only once it means something", () => {
