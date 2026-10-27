@@ -265,6 +265,9 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const intro = INTRO[mode];
   const starters = STARTERS[mode][firstLanguage()] ?? STARTERS[mode].en;
   const canSend = Boolean(text.trim()) && !pending && !limited;
+  // iOS pageSheet can report a bottom inset that includes the sheet offset
+  // (83pt on the simulator). Keep only the home-indicator allowance.
+  const composerBottomInset = typing ? 8 : Math.max(12, Math.min(insets.bottom, 34));
   const changeMode = (next: AskMode) => {
     if (next === mode) return;
     void Haptics.selectionAsync().catch(() => {});
@@ -451,7 +454,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
         </ScrollView>
 
         {/* Composer: the question, with the mode and send under it. */}
-        <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: typing ? 8 : Math.max(insets.bottom, 12) }}>
+        <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: composerBottomInset }}>
           {limited ? (
             <Text style={{ fontSize: 14, lineHeight: 20, color: t.colors.ink2, textAlign: "center", paddingBottom: 10 }}>
               You’ve used today’s questions. More tomorrow.
