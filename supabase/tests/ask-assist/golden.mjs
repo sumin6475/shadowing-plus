@@ -1,13 +1,13 @@
 // Golden run for ask-assist: calls OpenAI with the exact prompt/schema from
-// core.ts (no deploy or auth needed), checks reply type + schema, and writes a
-// markdown report for eyeballing naturalness.
+// core.ts (no deploy or auth needed), checks reply type + schema and explicit
+// learning constraints, then writes a review sheet for educational quality.
 //
 //   OPENAI_API_KEY=… node supabase/tests/ask-assist/golden.mjs [--model <id>] [--only <id>] [--out <file>]
 //
-// Cost: ~25 gpt-4o-mini calls, well under $0.05 per full run.
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { checkLearningConstraints } from "./learning-checks.mjs";
 
 import {
   assistantContent,
@@ -38,6 +38,8 @@ const model = flag("--model") ?? MODEL;
 const out = flag("--out") ?? path.join(repoRoot, "docs/journal/quality", `${today}-ask-golden-${model}.md`);
 const only = flag("--only");
 const { cases } = JSON.parse(await readFile(path.join(here, "golden.json"), "utf8"));
+const selectedCases = cases.filter((c) => !only || c.id === only);
+if (!selectedCases.length) throw new Error(`No golden case matches --only ${only}`);
 
 async function turn(mode, messages, l1) {
   const started = performance.now();
@@ -61,7 +63,7 @@ async function turn(mode, messages, l1) {
 }
 
 const results = [];
-for (const c of cases.filter((c) => !only || c.id === only)) {
+for (const c of selectedCases) {
   const l1 = learnerLanguage(c.l1);
   const messages = [];
   let last;
@@ -74,12 +76,18 @@ for (const c of cases.filter((c) => !only || c.id === only)) {
     if (!isLast) messages.push({ role: "assistant", content: assistantContent(last.reply) });
   }
   const expected = [c.expect].flat();
-  const pass = !last.error && last.finish === "stop" && expected.includes(last.reply?.type);
-  results.push({ c, last, pass });
-  console.log(`${pass ? "PASS" : "FAIL"} ${c.id} — ${last.error ?? `${last.reply?.type ?? "unparsed"} (${last.finish}), ${last.output} out, ${last.ms}ms`}`);
+  const technicalPass = !last.error && last.finish === "stop" && expected.includes(last.reply?.type);
+  const learningFailures = technicalPass ? checkLearningConstraints(c, last.reply) : [];
+  const pass = technicalPass && learningFailures.length === 0;
+  results.push({ c, last, pass, technicalPass, learningFailures });
+  const detail = last.error ?? (learningFailures.length
+    ? learningFailures.join("; ")
+    : `${last.reply?.type ?? "unparsed"} (${last.finish}), ${last.output} out, ${last.ms}ms`);
+  console.log(`${pass ? "PASS" : "FAIL"} ${c.id} — ${detail}`);
 }
 
 const ok = results.filter((r) => r.pass).length;
+const technicalOk = results.filter((r) => r.technicalPass).length;
 const byMode = (mode) => results.filter((r) => r.c.mode === mode && !r.last.error);
 const mean = (xs) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0);
@@ -88,7 +96,7 @@ const totalCost = results.reduce((sum, r) => sum + costUsd(r.last.input ?? 0, r.
 const lines = [
   `# Ask golden run — ${today} · ${model}`,
   "",
-  `Result: **${ok}/${results.length}** reply type + schema pass (bar: 20/20 schema, ≥18/20 type).`,
+  `Result: **${technicalOk}/${results.length}** schema + reply type; **${ok}/${results.length}** including deterministic learning checks. Human learning review remains open.`,
   "",
   "| mode | mean out tokens (target) | cap | p50 latency | mean cached input |",
   "|---|---|---|---|---|",
@@ -99,14 +107,18 @@ const lines = [
   "",
   `Last-turn cost for the run: $${totalCost.toFixed(5)}.`,
   "",
-  "Naturalness is judged by eye below. Mark each case ✅ / ⚠️ and add any failure to golden.json.",
+  "Use [learning-rubric.md](../../../supabase/tests/ask-assist/learning-rubric.md) to review each case. Automated checks catch only explicit constraints; a PASS here does not approve the language for learners.",
+  "Reviewer: [ ] · review date: [ ] · languages reviewed: [ ] · release decision: [ ]",
   "",
 ];
-for (const { c, last, pass } of results) {
+for (const { c, last, pass, learningFailures } of results) {
   lines.push(`## ${pass ? "PASS" : "FAIL"} · ${c.id} (${c.mode}, ${c.l1})`, "");
   lines.push(`- Turns: ${c.turns.map((t) => `“${t}”`).join(" → ")}`);
   lines.push(`- Expect: \`${[c.expect].flat().join(" | ")}\` — check: ${c.check}`);
   lines.push(`- Got: ${last.error ?? `\`${last.reply?.type ?? "unparsed"}\`, finish ${last.finish}, ${last.input} in (${last.cached} cached) / ${last.output} out, ${last.ms}ms`}`);
+  lines.push(`- Deterministic learning checks: ${learningFailures.length ? learningFailures.join("; ") : "pass or none configured"}`);
+  lines.push("- Human review (0 harmful/wrong · 1 usable with revision · 2 good): intent/meaning [ ] · naturalness/register [ ] · L1 explanation [ ] · examples/transfer [ ] · length/load [ ]");
+  lines.push("- Learner-facing issue and revised expression, if any: ");
   lines.push("", "```json", JSON.stringify(last.reply ?? null, null, 2), "```", "");
 }
 await writeFile(out, lines.join("\n"));
