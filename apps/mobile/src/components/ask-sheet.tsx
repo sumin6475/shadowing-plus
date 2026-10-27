@@ -11,6 +11,7 @@
 // not as a wall of text. Follow-up questions are one tap.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Animated,
   Keyboard,
@@ -21,10 +22,11 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/design/text";
 import { hairline, useTheme } from "@/design/theme";
-import { Icon, Serif } from "@/design/ui";
+import { AnimatedPressable, Icon, Serif, usePressFx } from "@/design/ui";
 import { AskLimitError, askAssist } from "@/lib/ask";
 import {
   ASK_MAX_CHARS,
@@ -117,8 +119,37 @@ export function AskSheet(props: AskSheetProps) {
 let turnSeq = 0;
 const turnId = () => `t${++turnSeq}`;
 
+function useReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => { if (mounted) setReducedMotion(enabled); })
+      .catch(() => {});
+    const listener = AccessibilityInfo.addEventListener("reduceMotionChanged", setReducedMotion);
+    return () => { mounted = false; listener.remove(); };
+  }, []);
+  return reducedMotion;
+}
+
+function ReplyReveal({ children, reducedMotion }: { children: ReactNode; reducedMotion: boolean }) {
+  const progress = useMemo(() => new Animated.Value(0), []);
+  useEffect(() => {
+    if (reducedMotion) { progress.setValue(1); return; }
+    const animation = Animated.timing(progress, { toValue: 1, duration: 230, useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, reducedMotion]);
+  return (
+    <Animated.View style={{ opacity: progress, transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
 function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNote }: AskSheetProps) {
   const t = useTheme();
+  const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AskMode>(initialMode);
   const [turns, setTurns] = useState<AskTurn[]>([]);
@@ -161,7 +192,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       const question = next[next.length - 1];
       const top = turnTops.current.get(question.id);
       if (top !== undefined)
-        setTimeout(() => list.current?.scrollTo({ y: Math.max(0, top - 6), animated: true }), 60);
+        setTimeout(() => list.current?.scrollTo({ y: Math.max(0, top - 6), animated: !reducedMotion }), 60);
     } catch (e) {
       if (e instanceof AskLimitError) setLimited(true);
       setFailure(e instanceof Error ? e.message : "Couldn’t answer right now. Try again.");
@@ -175,9 +206,10 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
     const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode }];
     setTurns(next);
     setText("");
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     // The answer is a card or two, not a line: give it the whole sheet.
     Keyboard.dismiss();
-    setTimeout(() => list.current?.scrollToEnd({ animated: true }), 60);
+    setTimeout(() => list.current?.scrollToEnd({ animated: !reducedMotion }), 60);
     void request(next, mode);
   };
   const retry = () => {
@@ -197,6 +229,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
     try {
       await createPhrase(toPhraseInput(expression, example, nuance, question));
       mark(key, "saved");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onSaved?.();
     } catch {
       mark(key, "failed");
@@ -208,6 +241,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
     if (note) {
       note.append(draftSections(rewritten ?? draft));
       mark(key, "saved");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return;
     }
     const sections = draftSections(draft);
@@ -216,6 +250,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       const made = await createNote(noteTitle(question), serializeOutline(sections));
       setMadeNotes((m) => ({ ...m, [key]: made.id }));
       mark(key, "saved");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onSaved?.();
     } catch {
       mark(key, "failed");
@@ -230,6 +265,11 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const intro = INTRO[mode];
   const starters = STARTERS[mode][firstLanguage()] ?? STARTERS[mode].en;
   const canSend = Boolean(text.trim()) && !pending && !limited;
+  const changeMode = (next: AskMode) => {
+    if (next === mode) return;
+    void Haptics.selectionAsync().catch(() => {});
+    setMode(next);
+  };
 
   return (
     <View
@@ -296,20 +336,26 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
         <ScrollView
           ref={list}
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 20, gap: 14, flexGrow: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 20, gap: 16, flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           {turns.length === 0 ? (
-            <View style={{ flex: 1, justifyContent: "center", gap: 18, paddingBottom: 12 }}>
-              <View style={{ gap: 8 }}>
-                <Serif style={{ fontSize: 30, lineHeight: 35, color: t.colors.ink }}>{intro.title}</Serif>
-                <Text style={{ fontSize: 16, lineHeight: 23, color: t.colors.ink2 }}>{intro.body}</Text>
+            <View style={{ flex: 1, justifyContent: "center", gap: 26, paddingBottom: 24 }}>
+              <View style={{ gap: 14 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 15, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                  <Icon name="sparkle" s={21} w={1.7} c={t.colors.accD} />
+                </View>
+                <View style={{ gap: 9 }}>
+                  <Serif style={{ fontSize: 34, lineHeight: 39, color: t.colors.ink }}>{intro.title}</Serif>
+                  <Text style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink2 }}>{intro.body}</Text>
+                </View>
               </View>
-              <View style={{ gap: 8, alignItems: "flex-start" }}>
+              <View style={{ gap: 9 }}>
+                <Caption>Try a question</Caption>
                 {starters.map((starter) => (
-                  <QuestionChip key={starter} onPress={() => send(starter)}>
+                  <QuestionChip key={starter} variant="starter" reducedMotion={reducedMotion} onPress={() => send(starter)}>
                     {starter}
                   </QuestionChip>
                 ))}
@@ -322,6 +368,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
               key={turn.id}
               onLayout={(e) => turnTops.current.set(turn.id, e.nativeEvent.layout.y)}
             >
+              <ReplyReveal reducedMotion={reducedMotion}>
               {turn.role === "user" ? (
                 <View
                   style={{
@@ -378,10 +425,11 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   }
                 />
               )}
+              </ReplyReveal>
             </View>
           ))}
 
-          {pending ? <TypingDots /> : null}
+          {pending ? <TypingDots reducedMotion={reducedMotion} /> : null}
           {failure && !limited ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 2 }}>
               <Text style={{ flex: 1, fontSize: 15, lineHeight: 21, color: t.colors.warn }}>{failure}</Text>
@@ -391,9 +439,10 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
             </View>
           ) : null}
           {followUps.length ? (
-            <View style={{ gap: 8, alignItems: "flex-start" }}>
+            <View style={{ gap: 9, alignItems: "flex-start" }}>
+              <Caption>Keep going</Caption>
               {followUps.map((question) => (
-                <QuestionChip key={question} onPress={() => send(question)}>
+                <QuestionChip key={question} reducedMotion={reducedMotion} onPress={() => send(question)}>
                   {question}
                 </QuestionChip>
               ))}
@@ -445,26 +494,8 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
               }}
             />
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <ModeSwitch mode={mode} onChange={setMode} />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Send"
-                accessibilityState={{ disabled: !canSend }}
-                disabled={!canSend}
-                onPress={() => send(text)}
-                style={({ pressed }) => ({
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: canSend ? t.colors.acc : t.colors.soft,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: pressed ? 0.8 : 1,
-                  transform: [{ rotate: "-90deg" }],
-                })}
-              >
-                <Icon name="arrow" s={17} w={2.4} c={canSend ? t.colors.onAcc : t.colors.ink3} />
-              </Pressable>
+              <ModeSwitch mode={mode} onChange={changeMode} />
+              <SendButton enabled={canSend} reducedMotion={reducedMotion} onPress={() => send(text)} />
             </View>
           </View>
         </View>
@@ -475,12 +506,41 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
 
+function SendButton({ enabled, reducedMotion, onPress }: { enabled: boolean; reducedMotion: boolean; onPress: () => void }) {
+  const t = useTheme();
+  const fx = usePressFx(0.9);
+  return (
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityLabel="Send"
+      accessibilityState={{ disabled: !enabled }}
+      disabled={!enabled}
+      onPress={onPress}
+      onPressIn={reducedMotion ? undefined : fx.pressIn}
+      onPressOut={reducedMotion ? undefined : fx.pressOut}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: enabled ? t.colors.acc : t.colors.soft,
+        alignItems: "center",
+        justifyContent: "center",
+        transform: [{ scale: fx.scale }],
+      }}
+    >
+      <View style={{ transform: [{ rotate: "-90deg" }] }}>
+        <Icon name="arrow" s={18} w={2.3} c={enabled ? t.colors.onAcc : t.colors.ink3} />
+      </View>
+    </AnimatedPressable>
+  );
+}
+
 function ModeSwitch({ mode, onChange }: { mode: AskMode; onChange: (mode: AskMode) => void }) {
   const t = useTheme();
   return (
     <View
       accessibilityRole="tablist"
-      style={{ flexDirection: "row", backgroundColor: t.colors.soft, borderRadius: 18, padding: 3 }}
+      style={{ flexDirection: "row", backgroundColor: t.colors.soft, borderRadius: 21, padding: 3 }}
     >
       {(Object.keys(MODE_LABEL) as AskMode[]).map((m) => {
         const on = m === mode;
@@ -492,9 +552,9 @@ function ModeSwitch({ mode, onChange }: { mode: AskMode; onChange: (mode: AskMod
             onPress={() => onChange(m)}
             style={[
               {
-                height: 30,
-                paddingHorizontal: 12,
-                borderRadius: 15,
+                height: 36,
+                paddingHorizontal: 14,
+                borderRadius: 18,
                 justifyContent: "center",
                 backgroundColor: on ? t.colors.card : "transparent",
               },
@@ -511,33 +571,44 @@ function ModeSwitch({ mode, onChange }: { mode: AskMode; onChange: (mode: AskMod
   );
 }
 
-/** A question to send with one tap: a starter, or a follow-up. */
-function QuestionChip({ children, onPress }: { children: string; onPress: () => void }) {
+/** Starter rows and follow-ups share one quiet, tactile interaction. */
+function QuestionChip({ children, onPress, variant = "followup", reducedMotion }: { children: string; onPress: () => void; variant?: "starter" | "followup"; reducedMotion: boolean }) {
   const t = useTheme();
+  const fx = usePressFx(0.985);
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => ({
-        maxWidth: "100%",
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: t.colors.accS,
-        backgroundColor: t.colors.card,
-        paddingVertical: 9,
-        paddingHorizontal: 14,
-        opacity: pressed ? 0.7 : 1,
-      })}
+      onPressIn={reducedMotion ? undefined : fx.pressIn}
+      onPressOut={reducedMotion ? undefined : fx.pressOut}
+      style={[
+        {
+          minHeight: 44,
+          maxWidth: "100%",
+          alignSelf: variant === "starter" ? "stretch" : "flex-start",
+          borderRadius: variant === "starter" ? 16 : 22,
+          borderWidth: hairline,
+          borderColor: t.ring,
+          backgroundColor: t.colors.card,
+          paddingVertical: 11,
+          paddingHorizontal: 15,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+        },
+        { transform: [{ scale: fx.scale }] },
+      ]}
     >
-      <Text style={{ fontSize: 15, lineHeight: 20, fontWeight: "500", color: t.colors.accD }}>{children}</Text>
-    </Pressable>
+      <Text style={{ flex: variant === "starter" ? 1 : undefined, fontSize: 15, lineHeight: 21, fontWeight: "600", color: t.colors.accD }}>{children}</Text>
+      <Icon name="arrow" s={15} w={1.9} c={t.colors.accD} />
+    </AnimatedPressable>
   );
 }
 
 function Sheet({ children }: { children: ReactNode }) {
   const t = useTheme();
   return (
-    <View style={{ backgroundColor: t.colors.card, borderRadius: 24, paddingHorizontal: 18, paddingVertical: 16, gap: 14 }}>
+    <View style={{ backgroundColor: t.colors.card, borderRadius: 24, borderWidth: hairline, borderColor: t.ring, paddingHorizontal: 18, paddingVertical: 17, gap: 16 }}>
       {children}
     </View>
   );
@@ -549,7 +620,7 @@ function Rule() {
 function Caption({ children }: { children: string }) {
   const t = useTheme();
   return (
-    <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 1.1, color: t.colors.ink3 }}>
+    <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.9, color: t.colors.ink2 }}>
       {children.toUpperCase()}
     </Text>
   );
@@ -567,10 +638,10 @@ function SaveButton({ state, onPress }: { state: SaveState | undefined; onPress:
       hitSlop={8}
       onPress={onPress}
       style={({ pressed }) => ({
-        height: 30,
-        minWidth: 64,
+        height: 36,
+        minWidth: 72,
         paddingHorizontal: 11,
-        borderRadius: 15,
+        borderRadius: 18,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
@@ -755,16 +826,16 @@ function DraftBlock({
           alignItems: "center",
           justifyContent: "center",
           gap: 7,
-          backgroundColor: saved ? t.colors.soft : t.colors.accS,
+          backgroundColor: saved ? t.colors.soft : t.colors.acc,
           opacity: pressed ? 0.75 : 1,
         })}
       >
         {state === "saving" ? (
-          <ActivityIndicator size="small" color={t.colors.accD} />
+          <ActivityIndicator size="small" color={t.colors.onAcc} />
         ) : (
           <>
             {saved ? <Icon name="check" s={14} w={2.6} c={open ? t.colors.accD : t.colors.ink2} /> : null}
-            <Text style={{ fontSize: 15.5, fontWeight: "600", color: saved && !open ? t.colors.ink2 : t.colors.accD }}>
+            <Text style={{ fontSize: 15.5, fontWeight: "600", color: saved ? (open ? t.colors.accD : t.colors.ink2) : t.colors.onAcc }}>
               {label}
             </Text>
           </>
@@ -895,27 +966,30 @@ function Answer({
 }
 
 /** Three dots while the answer is on its way. */
-function TypingDots() {
+function TypingDots({ reducedMotion }: { reducedMotion: boolean }) {
   const t = useTheme();
   const phase = useMemo(() => new Animated.Value(0), []);
   useEffect(() => {
+    if (reducedMotion) { phase.setValue(0); return; }
     const loop = Animated.loop(
       Animated.timing(phase, { toValue: 3, duration: 1050, useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
-  }, [phase]);
+  }, [phase, reducedMotion]);
   return (
     <View
       accessibilityLabel="Answering"
+      accessibilityLiveRegion="polite"
       style={{
         alignSelf: "flex-start",
         flexDirection: "row",
         gap: 5,
         backgroundColor: t.colors.card,
         borderRadius: 18,
-        paddingVertical: 14,
+        paddingVertical: 13,
         paddingHorizontal: 16,
+        alignItems: "center",
       }}
     >
       {[0, 1, 2].map((n) => (
@@ -934,6 +1008,7 @@ function TypingDots() {
           }}
         />
       ))}
+      <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink2, marginLeft: 7 }}>Thinking</Text>
     </View>
   );
 }
