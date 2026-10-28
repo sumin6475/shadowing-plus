@@ -478,6 +478,31 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         </Text>
       </View>
 
+      {live && note ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={noteOpen ? "Hide Studio Note" : "Show Studio Note"}
+          accessibilityState={{ expanded: noteOpen }}
+          hitSlop={8}
+          onPress={() => {
+            setNoteOpen((open) => !open);
+            setHintOpen(false);
+          }}
+          style={{
+            position: "absolute",
+            top: insets.top + (subPill ? 80 : 52),
+            right: 14,
+            width: 40,
+            height: 40,
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 20,
+          }}
+        >
+          <Icon name="book" s={23} w={1.9} c={noteOpen ? "#BBD0FF" : "#fff"} />
+        </Pressable>
+      ) : null}
+
       {dd ? (
         <View
           style={{
@@ -534,7 +559,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               position: "absolute",
               top: insets.top + (subPill ? 84 : 56),
               left: 0,
-              right: 0,
+              right: note ? 54 : 0,
               alignItems: "center",
               zIndex: 12,
             }}
@@ -683,7 +708,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           {note ? <TalkNoteCue visible={noteOpen} note={note} bottom={insets.bottom + 148} /> : null}
           <UsedToast phrase={latest} hidden={hintOpen || noteOpen} bottom={insets.bottom + 140} />
 
-          {/* Note and phrase hints are separate, mutually exclusive surfaces. */}
+          {/* The Note control sits beside mic status; these are recording controls. */}
           <View
             style={{
               position: "absolute",
@@ -693,36 +718,10 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               flexDirection: "row",
               justifyContent: "center",
               alignItems: "flex-end",
-              gap: note ? 16 : 40,
+              gap: 40,
               zIndex: 15,
             }}
           >
-            {note ? (
-              <View style={{ alignItems: "center", gap: 8 }}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={noteOpen ? "Hide Studio Note" : "Show Studio Note"}
-                  accessibilityState={{ expanded: noteOpen }}
-                  onPress={() => {
-                    setNoteOpen((open) => !open);
-                    setHintOpen(false);
-                  }}
-                  style={{
-                    backgroundColor: noteOpen ? CAMERA_ACC : "rgba(28,30,36,0.66)",
-                    width: 60,
-                    height: 60,
-                    borderRadius: 30,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Icon name="book" s={23} w={1.9} c={noteOpen ? CAMERA_ON_ACC : "#fff"} />
-                </Pressable>
-                <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>
-                  Note
-                </Text>
-              </View>
-            ) : null}
             <View style={{ alignItems: "center", gap: 8 }}>
               <Pressable
                 accessibilityRole="button"
