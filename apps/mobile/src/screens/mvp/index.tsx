@@ -797,6 +797,7 @@ function ClearChip({
 }) {
   const t = useTheme();
   const fg = done ? t.colors.onAcc : t.colors.ink2;
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   return (
     <Pressable
       accessibilityRole="button"
@@ -818,11 +819,11 @@ function ClearChip({
           gap: 6,
           backgroundColor: done ? t.colors.acc : t.colors.card,
           borderWidth: done ? 0 : attention ? 2 : StyleSheet.hairlineWidth,
-          borderColor: attention && !done ? t.colors.warn : t.ring,
+          borderColor: attention && !done ? feedbackRed : t.ring,
           opacity: pressed ? 0.8 : 1,
         },
         done ? null : t.shadowCard,
-        attention && !done ? { shadowColor: t.colors.warn, shadowOpacity: 0.48, shadowRadius: 11, shadowOffset: { width: 0, height: 0 } } : null,
+        attention && !done ? { shadowColor: feedbackRed, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } } : null,
       ]}
     >
       <Text style={{ fontSize: 15, fontWeight: "600", color: fg }}>Clear</Text>
@@ -997,6 +998,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const p = state.data?.phrase;
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   const insets = useSafeAreaInsets();
   const [gateAttention, setGateAttention] = useState(false);
   const [gateBanner, setGateBanner] = useState(false);
@@ -1405,14 +1407,14 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
         pointerEvents="none"
         style={{
           position: "absolute", top: insets.top + 58, left: 18, right: 18, zIndex: 10,
-          backgroundColor: t.colors.card, borderColor: t.colors.warn, borderWidth: 1,
+          backgroundColor: t.colors.card, borderColor: feedbackRed, borderWidth: 1,
           borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12,
-          shadowColor: t.colors.warn, shadowOpacity: 0.2, shadowRadius: 12,
+          shadowColor: feedbackRed, shadowOpacity: 0.15, shadowRadius: 12,
           shadowOffset: { width: 0, height: 4 }, elevation: 4,
           opacity: bannerOpacity, transform: [{ translateY: bannerY }],
         }}
       >
-        <Text style={{ color: t.colors.warn, fontSize: 14, fontWeight: "600", textAlign: "center" }}>
+        <Text style={{ color: feedbackRed, fontSize: 14, fontWeight: "600", textAlign: "center" }}>
           {gateMessage}
         </Text>
       </Animated.View>
@@ -1423,26 +1425,53 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
 
 export function NotesStudio({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   const state = useRefresh(loadNotes, nav.speakingDataRevision),
     folders = useRefresh(loadNoteFolders, nav.speakingDataRevision),
     [query, setQuery] = useState(""),
-    [view, setView] = useState("home"),
+    [view, setView] = useState("notes"),
     [creatingFolder, setCreatingFolder] = useState(false),
     [folderName, setFolderName] = useState(""),
     [factText, setFactText] = useState(""),
     [searching, setSearching] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const errorY = useMemo(() => new Animated.Value(-20), []);
+  const errorOpacity = useMemo(() => new Animated.Value(0), []);
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+  }, []);
+  const showError = (detail: string) => {
+    setError(detail);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    AccessibilityInfo.announceForAccessibility(detail);
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+    errorY.stopAnimation();
+    errorOpacity.stopAnimation();
+    errorY.setValue(-20);
+    errorOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(errorY, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(errorOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+    ]).start();
+    errorTimer.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(errorY, { toValue: -20, duration: 180, useNativeDriver: true }),
+        Animated.timing(errorOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      ]).start(() => setError(null));
+    }, 3000);
+  };
   const create = async () => {
     if (busy) return;
     setBusy(true);
     try {
       const note = await createNote();
-      if (view !== "home" && view !== "all") await moveNoteToFolder(note.id, view);
+      if (view !== "notes" && view !== "folders") await moveNoteToFolder(note.id, view);
       nav.invalidateSpeakingData();
       nav.push("mvpNote", { id: note.id });
     } catch (e) {
-      setError(message(e));
+      showError(message(e));
     } finally {
       setBusy(false);
     }
@@ -1450,12 +1479,12 @@ export function NotesStudio({ nav }: { nav: Nav }) {
   const notes = (state.data ?? []).filter((n) =>
     `${n.title} ${n.body}`.toLowerCase().includes(query.trim().toLowerCase()),
   );
-  const visibleNotes = query.trim() || view === "all"
+  const visibleNotes = query.trim() || view === "notes"
     ? notes
-    : view === "home"
-      ? notes.slice(0, 4)
+    : view === "folders"
+      ? []
       : notes.filter((n) => n.folder_id === view);
-  const loadFolderFacts = useCallback(() => view !== "home" && view !== "all" ? loadNoteFacts(view) : Promise.resolve([]), [view]);
+  const loadFolderFacts = useCallback(() => view !== "notes" && view !== "folders" ? loadNoteFacts(view) : Promise.resolve([]), [view]);
   const folderFacts = useRefresh(loadFolderFacts, nav.speakingDataRevision);
   // loadNotes returns newest first, so the Map fills Today → Earlier in order.
   const groups = new Map<Period, Note[]>();
@@ -1468,16 +1497,48 @@ export function NotesStudio({ nav }: { nav: Nav }) {
       <Header
         nav={nav}
         title="Studio"
-        add={() => void create()}
-        addLabel="New note"
+        add={() => view === "folders" ? setCreatingFolder(true) : void create()}
+        addLabel={view === "folders" ? "New folder" : "New note"}
         menu={{
           options: [],
           selected: "",
           onSelect: () => {},
-          onSearch: () => setSearching(true),
+          onSearch: () => { setView("notes"); setSearching(true); },
         }}
         filtered={!!query.trim()}
       />
+      {!searching ? (
+        <View style={{ flexDirection: "row", alignSelf: "flex-start", gap: 6, paddingVertical: 2 }}>
+          {(["Folders", "Notes"] as const).map((tab) => {
+            const selected = tab === "Folders" ? view !== "notes" : view === "notes";
+            return (
+              <Pressable
+                key={tab}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => setView(tab === "Folders" ? "folders" : "notes")}
+                style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: Motif.radius.pill, backgroundColor: selected ? t.colors.soft : "transparent" }}
+              >
+                <Text style={{ color: selected ? t.colors.ink : t.colors.ink2, fontSize: 14, fontWeight: selected ? "600" : "500" }}>{tab}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {error ? (
+        <Animated.View
+          accessibilityRole="alert"
+          style={{
+            backgroundColor: t.colors.card, borderColor: feedbackRed, borderWidth: 1,
+            borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12,
+            shadowColor: feedbackRed, shadowOpacity: 0.15, shadowRadius: 12,
+            shadowOffset: { width: 0, height: 4 }, elevation: 4,
+            opacity: errorOpacity, transform: [{ translateY: errorY }],
+          }}
+        >
+          <Text style={{ color: feedbackRed, fontSize: 14, fontWeight: "600", textAlign: "center" }}>{error}</Text>
+        </Animated.View>
+      ) : null}
       {searching ? (
         <SearchBar
           query={query}
@@ -1489,9 +1550,9 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           }}
         />
       ) : null}
-      {view !== "home" && !query.trim() ? (
-        <Pressable accessibilityRole="button" onPress={() => setView("home")} style={{ paddingVertical: 10 }}>
-          <Text style={{ color: t.colors.accD, fontWeight: "600" }}>‹ Studio · {view === "all" ? "All notes" : folders.data?.find((folder) => folder.id === view)?.name ?? "Folder"}</Text>
+      {view !== "notes" && view !== "folders" && !query.trim() ? (
+        <Pressable accessibilityRole="button" onPress={() => setView("folders")} style={{ paddingVertical: 10 }}>
+          <Text style={{ color: t.colors.accD, fontWeight: "600" }}>‹ Folders · {folders.data?.find((folder) => folder.id === view)?.name ?? "Folder"}</Text>
         </Pressable>
       ) : null}
       {query.trim() ? (
@@ -1502,13 +1563,10 @@ export function NotesStudio({ nav }: { nav: Nav }) {
       ) : null}
 
       <ErrorCard
-        error={state.error || error}
-        retry={() => {
-          setError(null);
-          void state.refresh();
-        }}
+        error={state.error || (view !== "notes" ? folders.error : null)}
+        retry={() => { void state.refresh(); void folders.refresh(); }}
       />
-      {!state.loading && !visibleNotes.length && !state.error && !folders.data?.length ? (
+      {!state.loading && view === "notes" && !visibleNotes.length && !state.error ? (
         query ? (
           <EmptyState compact title="No matching notes." body="Try a different word." />
         ) : (
@@ -1519,6 +1577,9 @@ export function NotesStudio({ nav }: { nav: Nav }) {
             action={{ label: "Write your first note", icon: "pen", onPress: () => void create() }}
           />
         )
+      ) : null}
+      {view !== "notes" && view !== "folders" && !visibleNotes.length && !state.loading && !state.error ? (
+        <EmptyState compact title="No notes in this folder yet." body="Create a note here or move one from Notes." />
       ) : null}
       {[...groups].map(([label, items]) => (
         <SectionCard key={label} label={label}>
@@ -1585,7 +1646,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           })}
         </SectionCard>
       ))}
-      {view !== "home" && view !== "all" && !query.trim() ? (
+      {view !== "notes" && view !== "folders" && !query.trim() ? (
         <SectionCard label="Shared context · optional">
           <Text style={{ color: t.colors.ink2, lineHeight: 21, paddingVertical: 8 }}>
             Only facts you confirm here can guide Notes in this folder. A pasted paper does not become your story.
@@ -1593,19 +1654,13 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           {(folderFacts.data ?? []).map((fact) => <Text key={fact.id} style={{ color: t.colors.ink, lineHeight: 22, paddingVertical: 6 }}>• {fact.text}</Text>)}
           <TextInput accessibilityLabel="Fact to share with this folder" placeholder="Add a fact you have checked" value={factText} onChangeText={setFactText} multiline style={{ color: t.colors.ink, fontSize: 16, paddingVertical: 10 }} />
           <Pressable accessibilityRole="button" disabled={!factText.trim()} onPress={() => {
-            void addConfirmedFact(view, factText).then(() => { setFactText(""); nav.invalidateSpeakingData(); }).catch((e) => setError(message(e)));
+            void addConfirmedFact(view, factText).then(() => { setFactText(""); nav.invalidateSpeakingData(); }).catch((e) => showError(message(e)));
           }} style={{ paddingVertical: 10, opacity: factText.trim() ? 1 : 0.4 }}><Text style={{ color: t.colors.accD, fontWeight: "700" }}>Confirm fact</Text></Pressable>
         </SectionCard>
       ) : null}
-      {view === "home" && !query.trim() ? (
-        <>
-          {notes.length > 4 ? (
-            <Pressable accessibilityRole="button" onPress={() => setView("all")} style={{ alignSelf: "flex-start", paddingVertical: 10 }}>
-              <Text style={{ color: t.colors.accD, fontWeight: "600" }}>See all {notes.length} notes</Text>
-            </Pressable>
-          ) : null}
+      {view === "folders" && !query.trim() ? (
           <SectionCard label="Your folders">
-            {(folders.data ?? []).map((folder, index) => (
+            {(folders.data ?? []).map((folder) => (
               <Row key={folder.id} last={false}>
                 <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <Icon name="folder" s={20} c={t.colors.ink2} />
@@ -1618,14 +1673,13 @@ export function NotesStudio({ nav }: { nav: Nav }) {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}>
                 <TextInput autoFocus accessibilityLabel="Folder name" placeholder="Folder name" value={folderName} onChangeText={setFolderName} style={{ flex: 1, color: t.colors.ink, fontSize: 16 }} />
                 <Pressable accessibilityRole="button" onPress={() => {
-                  void createNoteFolder(folderName).then(() => { setFolderName(""); setCreatingFolder(false); nav.invalidateSpeakingData(); }).catch((e) => setError(message(e)));
+                  void createNoteFolder(folderName).then(() => { setFolderName(""); setCreatingFolder(false); nav.invalidateSpeakingData(); }).catch((e) => showError(message(e)));
                 }}><Text style={{ color: t.colors.accD, fontWeight: "700" }}>Create</Text></Pressable>
               </View>
             ) : (
               <Pressable accessibilityRole="button" onPress={() => setCreatingFolder(true)} style={{ paddingVertical: 14 }}><Text style={{ color: t.colors.accD, fontWeight: "600" }}>+ Create folder</Text></Pressable>
             )}
           </SectionCard>
-        </>
       ) : null}
     </Screen>
   );
