@@ -570,7 +570,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                 </Text>
               </Pressable>
             ) : speech.error ? (
-              speech.startupInterrupted ? (
+              (speech.startupInterrupted || !speech.transcript.trim()) ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Retry listening"
@@ -775,7 +775,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                   t.shadowLg,
                 ]}
               >
-                <Wave n={5} h={30} active color={CAMERA_ON_ACC} />
+                <Wave n={5} h={30} active={speech.recognizing} color={CAMERA_ON_ACC} />
               </View>
             </View>
             <View style={{ alignItems: "center", gap: 8 }}>
