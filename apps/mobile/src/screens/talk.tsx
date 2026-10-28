@@ -35,6 +35,7 @@ import { snapshotNoteVersion } from "@/lib/note-growth";
 import type { Nav, TalkCtx } from "./nav";
 import { PhraseChipsCard, SessionStatsCard, TranscriptCard } from "./session-stats";
 import { FROST, HintDeck, USED, UsedToast } from "./talk-hints";
+import { TalkNoteCue } from "./talk-note-cue";
 const CAMERA_ACC = "#6E8DD5";
 const CAMERA_ON_ACC = "#0D1A3B";
 const fmt2 = (s: number) =>
@@ -45,7 +46,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     { height: windowHeight } = useWindowDimensions(),
     p0 = talkCtx ?? {},
     speech = useSpeechSession();
-  // A note's outline is the deck's first card; with one, the deck starts open.
+  // The note is a speaking cue; phrase hints have their own control.
   const note = useMemo(() => {
     const points = outlinePoints(p0.beats ?? []);
     return points.length ? { title: p0.ctx || "Your note", points } : null;
@@ -54,10 +55,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     [sec, setSec] = useState(0),
     [ctx, setCtx] = useState(p0.ctx || "Free talk"),
     [dd, setDd] = useState(false),
-    [hintOpen, setHintOpen] = useState(note !== null),
+    [noteOpen, setNoteOpen] = useState(note !== null),
+    [hintOpen, setHintOpen] = useState(false),
     // Whether the cards were on screen at all — the result only reports on
     // phrases the learner could see (or used anyway).
-    [hintSeen, setHintSeen] = useState(note !== null);
+    [hintSeen, setHintSeen] = useState(false);
   const [cards, setCards] = useState<HintPhrase[]>([]),
     [transcript, setTranscript] = useState(""),
     [micDenied, setMicDenied] = useState(false),
@@ -85,18 +87,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       }),
     [player],
   );
-  // Cards load once; they open the deck unless the learner already chose.
-  const hintTouched = useRef(false);
+  // Phrase cards load quietly; the learner chooses when to view them.
   useEffect(() => {
     let active = true;
     void loadHintPhrases(phrasesPerDay(), p0.phraseId)
       .then((next) => {
         if (!active) return;
         setCards(next);
-        if (next.length && !hintTouched.current) {
-          setHintOpen(true);
-          setHintSeen(true);
-        }
       })
       .catch(() => {});
     return () => {
@@ -681,12 +678,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             usedIds={usedIds}
             onToggleUsed={toggleTicked}
             latestId={latestId}
-            note={note}
             bottom={insets.bottom + 132}
           />
-          <UsedToast phrase={latest} hidden={hintOpen} bottom={insets.bottom + 140} />
+          {note ? <TalkNoteCue visible={noteOpen} note={note} bottom={insets.bottom + 148} /> : null}
+          <UsedToast phrase={latest} hidden={hintOpen || noteOpen} bottom={insets.bottom + 140} />
 
-          {/* bottom controls — Hint · record indicator · Finish */}
+          {/* Note and phrase hints are separate, mutually exclusive surfaces. */}
           <View
             style={{
               position: "absolute",
@@ -696,18 +693,45 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               flexDirection: "row",
               justifyContent: "center",
               alignItems: "flex-end",
-              gap: 40,
+              gap: note ? 16 : 40,
               zIndex: 15,
             }}
           >
+            {note ? (
+              <View style={{ alignItems: "center", gap: 8 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={noteOpen ? "Hide Studio Note" : "Show Studio Note"}
+                  accessibilityState={{ expanded: noteOpen }}
+                  onPress={() => {
+                    setNoteOpen((open) => !open);
+                    setHintOpen(false);
+                  }}
+                  style={{
+                    backgroundColor: noteOpen ? CAMERA_ACC : "rgba(28,30,36,0.66)",
+                    width: 60,
+                    height: 60,
+                    borderRadius: 30,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Icon name="book" s={23} w={1.9} c={noteOpen ? CAMERA_ON_ACC : "#fff"} />
+                </Pressable>
+                <Text style={{ fontSize: 12.5, fontWeight: "600", color: "rgba(255,255,255,0.85)" }}>
+                  Note
+                </Text>
+              </View>
+            ) : null}
             <View style={{ alignItems: "center", gap: 8 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={hintOpen ? "Hide phrase cards" : "Show phrase cards"}
+                accessibilityLabel={hintOpen ? "Hide phrase hints" : "Show phrase hints"}
+                accessibilityState={{ expanded: hintOpen }}
                 onPress={() => {
-                  hintTouched.current = true;
                   setHintSeen(true);
                   setHintOpen((open) => !open);
+                  setNoteOpen(false);
                 }}
                 style={{
                   backgroundColor: hintOpen
@@ -758,7 +782,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                   color: "rgba(255,255,255,0.85)",
                 }}
               >
-                {hintOpen ? "Hide" : "Hint"}
+                Hint
               </Text>
             </View>
             <View style={{ alignItems: "center", gap: 8, paddingBottom: 22 }}>
