@@ -1017,6 +1017,35 @@ export async function recordPhraseEvent(input: {
   if (error) throw new Error(error.message);
 }
 
+/** Persist the phrase checks shown in a saved Talk result. A save can be
+ * retried after only some events were written, so only missing pairs are
+ * inserted for this session. The source records whether speech or a manual
+ * check supplied the evidence without storing another copy of the transcript. */
+export async function recordTalkPhraseUses(
+  talkSessionId: string,
+  uses: { phraseItemId: string; source: "transcript" | "manual" }[],
+): Promise<void> {
+  if (!uses.length) return;
+  const { data, error } = await supabase
+    .from("phrase_events")
+    .select("phrase_item_id")
+    .eq("talk_session_id", talkSessionId)
+    .eq("event", "used");
+  if (error) throw new Error(error.message);
+  const existing = new Set((data ?? []).map((row) => row.phrase_item_id as string));
+  const missing = uses.filter((use) => !existing.has(use.phraseItemId));
+  if (!missing.length) return;
+  const { error: insertError } = await supabase.from("phrase_events").insert(
+    missing.map((use) => ({
+      talk_session_id: talkSessionId,
+      phrase_item_id: use.phraseItemId,
+      event: "used",
+      evidence: { source: "self_talk", marked_by: use.source },
+    })),
+  );
+  if (insertError) throw new Error(insertError.message);
+}
+
 const REVIEW_LADDER_DAYS = [1, 3, 7, 30] as const;
 
 export function nextReviewInterval(current: number, verdict: SrsVerdict): number {

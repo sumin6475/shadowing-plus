@@ -31,6 +31,7 @@ import {
   type HintPhrase,
 } from "@/lib/mvp";
 import { phraseIndex, spokenWords } from "@/lib/phrase-use";
+import { recordTalkPhraseUses } from "@/lib/phrases";
 import { snapshotNoteVersion } from "@/lib/note-growth";
 import type { Nav, TalkCtx } from "./nav";
 import { PhraseChipsCard, SessionStatsCard, TranscriptCard } from "./session-stats";
@@ -194,6 +195,17 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         // before the first one-second tick.
         seconds: Math.max(1, sec),
       });
+      // Persist the same checks the result shows. The saved transcript wins
+      // over a manual check when both identify the same phrase.
+      const phraseCards = cards.length ? cards : await loadHintPhrases(phrasesPerDay(), p0.phraseId);
+      if (!cards.length) setCards(phraseCards);
+      const words = spokenWords(text);
+      await recordTalkPhraseUses(id, phraseCards.flatMap((card) => {
+        const heard = phraseIndex(words, card.text) >= 0;
+        return heard || ticked.has(card.id)
+          ? [{ phraseItemId: card.id, source: heard ? "transcript" as const : "manual" as const }]
+          : [];
+      }));
       setSavedId(id);
       setSaveState("saved");
       nav.invalidateSpeakingData();

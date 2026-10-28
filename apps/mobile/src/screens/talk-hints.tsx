@@ -96,7 +96,7 @@ function PhrasePage({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${card.text}. ${used ? "Used." : "Not used yet."}`}
-      accessibilityHint={open ? "Hides the meaning" : "Shows the meaning and your sentence"}
+      accessibilityHint={open ? "Hides the meaning" : "Shows the meaning and how it is used"}
       onPress={toggle}
       style={{ gap: 12 }}
     >
@@ -133,7 +133,7 @@ function PhrasePage({
             numberOfLines={3}
             style={{ color: "rgba(255,255,255,0.72)", fontSize: 15, lineHeight: 21 }}
           >
-            {card.sentence ? `“${card.sentence}”` : "No sentence of yours yet."}
+            How it’s used · {card.usageNote || "Add this in Phrase Bank"}
           </Text>
         </View>
       ) : (

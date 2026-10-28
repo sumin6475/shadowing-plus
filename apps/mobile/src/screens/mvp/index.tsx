@@ -2,13 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  Animated,
   Pressable,
   Keyboard,
   ScrollView,
@@ -784,10 +787,12 @@ function PlayCircle({
 function ClearChip({
   done,
   disabled,
+  attention,
   onPress,
 }: {
   done: boolean;
   disabled?: boolean;
+  attention?: boolean;
   onPress: () => void;
 }) {
   const t = useTheme();
@@ -812,11 +817,12 @@ function ClearChip({
           alignItems: "center",
           gap: 6,
           backgroundColor: done ? t.colors.acc : t.colors.card,
-          borderWidth: done ? 0 : StyleSheet.hairlineWidth,
-          borderColor: t.ring,
+          borderWidth: done ? 0 : attention ? 2 : StyleSheet.hairlineWidth,
+          borderColor: attention && !done ? t.colors.warn : t.ring,
           opacity: pressed ? 0.8 : 1,
         },
         done ? null : t.shadowCard,
+        attention && !done ? { shadowColor: t.colors.warn, shadowOpacity: 0.48, shadowRadius: 11, shadowOffset: { width: 0, height: 0 } } : null,
       ]}
     >
       <Text style={{ fontSize: 15, fontWeight: "600", color: fg }}>Clear</Text>
@@ -991,6 +997,41 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const p = state.data?.phrase;
+  const insets = useSafeAreaInsets();
+  const [gateAttention, setGateAttention] = useState(false);
+  const [gateBanner, setGateBanner] = useState(false);
+  const [gateMessage, setGateMessage] = useState("Clear all three steps before Self-talk practice.");
+  const bannerY = useMemo(() => new Animated.Value(-20), []);
+  const bannerOpacity = useMemo(() => new Animated.Value(0), []);
+  const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (gateTimer.current) clearTimeout(gateTimer.current);
+  }, []);
+  const explainMissing = (detail = "Clear all three steps before Self-talk practice.") => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    AccessibilityInfo.announceForAccessibility(detail);
+    setGateMessage(detail);
+    setGateAttention(true);
+    setGateBanner(true);
+    if (gateTimer.current) clearTimeout(gateTimer.current);
+    bannerY.stopAnimation();
+    bannerOpacity.stopAnimation();
+    bannerY.setValue(-20);
+    bannerOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(bannerY, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(bannerOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+    ]).start();
+    gateTimer.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(bannerY, { toValue: -20, duration: 180, useNativeDriver: true }),
+        Animated.timing(bannerOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      ]).start(() => {
+        setGateBanner(false);
+        setGateAttention(false);
+      });
+    }, 2600);
+  };
   // The page scrolls under the keyboard (Screen adjusts its insets) but never
   // brings the sentence field into view by itself, so a focused or growing
   // field slid behind the keyboard. The field and its Save button are the last
@@ -1033,6 +1074,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
       },
     ]);
   return (
+    <View style={{ flex: 1 }}>
     <Screen scrollRef={scrollRef}>
       <BackBar
         title="Phrases"
@@ -1130,15 +1172,14 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                 <ClearChip
                   done={!!p[step]}
                   disabled={busy}
+                  attention={gateAttention && !p[step]}
                   onPress={() => {
                     if (
                       index === 2 &&
                       !p[step] &&
                       !state.data?.sentences.length
                     ) {
-                      setError(
-                        "Save at least one sentence before clearing this step.",
-                      );
+                      explainMissing("Save at least one sentence before clearing this step.");
                       return;
                     }
                     void mutate(() => setStep(id, step, !p[step]));
@@ -1347,19 +1388,36 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
               </View>
             </Card>
           ))}
-          <ErrorCard error={error} retry={() => setError(null)} />
-          {phraseStage(p) === "Ready" ? (
+          {error ? <Card><Copy>{error}</Copy></Card> : null}
             <Pill
-              style={{ alignSelf: "stretch", marginTop: 6 }}
+              tone={phraseStage(p) === "Ready" ? "acc" : "soft"}
+              style={{ alignSelf: "stretch", marginTop: 6, opacity: phraseStage(p) === "Ready" ? 1 : 0.48 }}
               icon="mic"
-              onPress={() => nav.startTalk({ from: "phrases", phraseId: p.id })}
+              onPress={() => phraseStage(p) === "Ready" ? nav.startTalk({ from: "phrases", phraseId: p.id }) : explainMissing()}
             >
               Use it in the mirror
             </Pill>
-          ) : null}
         </>
       )}
     </Screen>
+    {gateBanner ? (
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: "absolute", top: insets.top + 58, left: 18, right: 18, zIndex: 10,
+          backgroundColor: t.colors.card, borderColor: t.colors.warn, borderWidth: 1,
+          borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12,
+          shadowColor: t.colors.warn, shadowOpacity: 0.2, shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 }, elevation: 4,
+          opacity: bannerOpacity, transform: [{ translateY: bannerY }],
+        }}
+      >
+        <Text style={{ color: t.colors.warn, fontSize: 14, fontWeight: "600", textAlign: "center" }}>
+          {gateMessage}
+        </Text>
+      </Animated.View>
+    ) : null}
+    </View>
   );
 }
 
