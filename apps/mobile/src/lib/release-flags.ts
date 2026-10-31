@@ -10,10 +10,9 @@
  *  settled (2026-09-18) — flip to true to bring it back. */
 export const SEARCH_ENABLED = false;
 
-/** Ask, the expression assistant (sheet + its entry points). Development
- *  builds only until the live flow is device-checked — `__DEV__` is false in
- *  every EAS build. */
-export const ASK_ENABLED = __DEV__;
+/** Ask, the expression assistant (sheet + its entry points). The live flow is
+ *  available in release builds; backend requests use the deployed function. */
+export const ASK_ENABLED = true;
 /** Ask answers from canned replies (lib/ask-fixtures) instead of calling the
  *  deployed function. Use only for local visual checks. */
 export const ASK_MOCK = false;
