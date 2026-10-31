@@ -22,6 +22,9 @@ import { fetchPhrases } from "@/lib/phrases";
 import { openLegalUrl, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import { reminderSummary } from "@/lib/reminders";
 import { themePref, THEME_PREF_LABEL } from "@/lib/theme-pref";
+import { askDefaultMode, persistAskDefaultMode } from "@/lib/ask-pref";
+import { ASK_ENABLED } from "@/lib/release-flags";
+import type { AskMode } from "@/lib/ask-model";
 import { Avatar, Card, Icon, Screen, Stagger } from "@/design/ui";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
@@ -94,6 +97,21 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
   const posthog = usePostHog();
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [defaultAskMode, setDefaultAskMode] = useState<AskMode>(askDefaultMode());
+
+  const chooseAskMode = () => {
+    Alert.alert("Ask default mode", "Choose how Ask opens from Phrases or Studio.", [
+      { text: "How to say", onPress: () => {
+        setDefaultAskMode("how_to_say");
+        void persistAskDefaultMode("how_to_say");
+      } },
+      { text: "Note", onPress: () => {
+        setDefaultAskMode("note");
+        void persistAskDefaultMode("note");
+      } },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
   const confirmLogOut = () => {
     Alert.alert("Log out?", "Your phrases and notes stay saved to your account. Sign in again to pick up where you left off.", [
@@ -194,6 +212,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
       <SettingsGroup t={t} title="Preferences">
         <SettingsRow t={t} icon="translate" label="English level" detail={ENGLISH_LEVEL_LABEL[englishLevel()]} onPress={() => nav.push("englishLevel")} />
         <SettingsRow t={t} icon="chat" label="First language" detail={L1_LABEL[firstLanguage()]} onPress={() => nav.push("firstLanguage")} />
+        {ASK_ENABLED ? <SettingsRow t={t} icon="sparkle" label="Ask default mode" detail={defaultAskMode === "note" ? "Note" : "How to say"} onPress={chooseAskMode} /> : null}
         <SettingsRow t={t} icon="contrast" label="Theme" detail={THEME_PREF_LABEL[themePref()]} onPress={() => nav.push("themePref")} />
         <SettingsRow t={t} icon="repeat" label="Phrases per day" detail={String(phrasesPerDay())} onPress={() => nav.push("phrasesPerDay")} last />
       </SettingsGroup>

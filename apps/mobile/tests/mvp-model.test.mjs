@@ -24,6 +24,7 @@ import {
 } from "../src/lib/mvp-model.ts";
 import { splitFigures } from "../src/lib/figures.ts";
 import {
+  appendPoints,
   dropIfEmpty,
   fromEditable,
   pressBackspaceAtStart,
@@ -281,6 +282,35 @@ test("pasted lines become points, and a point left empty is tidied away", () => 
   assert.deepEqual(texts(dropIfEmpty(blank, hi.id)), [["hi", ""]], "a point with text stays");
   const lone = outline("Opening\n- ");
   assert.equal(dropIfEmpty(lone, lone[0].points[0].id), lone, "the placeholder point stays");
+});
+
+test("points added from outside go under their headings, after what is written", () => {
+  const sections = outline("Opening\n- hi\n\nBody\n- \n\nClosing\n- bye");
+  const added = appendPoints(
+    sections,
+    [
+      { heading: "Opening", points: ["Thanks for having me."] },
+      { heading: "Body", points: ["First.", " ", "Second."] },
+      { heading: "Closing", points: [] },
+    ],
+    ids(),
+  );
+  assert.deepEqual(texts(added), [["hi", "Thanks for having me."], ["First.", "Second."], ["bye"]]);
+  assert.equal(added[0].points[0].id, sections[0].points[0].id, "existing points keep their inputs");
+  // A note without that heading gains the section; nothing is merged into another one.
+  const plain = appendPoints(outline("- one"), [{ heading: "Opening", points: ["Hello."] }], ids());
+  assert.deepEqual(plain.map((s) => s.heading), [null, "Opening"]);
+  assert.deepEqual(texts(plain), [["one"], ["Hello."]]);
+  assert.equal(appendPoints(sections, [{ heading: "Body", points: [""] }], ids()), sections);
+  const deduped = appendPoints(
+    outline("Opening\n- Hi everyone.\n\nBody\n- Existing."),
+    [
+      { heading: "Opening", points: ["Hi everyone.", "New opening.", "New opening."] },
+      { heading: "Body", points: ["Hi everyone."] },
+    ],
+    ids(),
+  );
+  assert.deepEqual(texts(deduped), [["Hi everyone.", "New opening."], ["Existing.", "Hi everyone."]]);
 });
 
 test("session stats: words, different words, and a pace only once it means something", () => {

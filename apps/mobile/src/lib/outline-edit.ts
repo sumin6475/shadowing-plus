@@ -157,3 +157,35 @@ export function dropIfEmpty(sections: EditSection[], id: string): EditSection[] 
     points.filter((p) => p.id !== id),
   );
 }
+
+/** Points that arrive from outside the keyboard (a draft from Ask). Each goes
+ *  to the end of the section with its heading, taking the place of that
+ *  section's empty placeholder point; a heading the note does not have yet is
+ *  added as a new section at the end. Exact duplicate points under the same
+ *  heading are skipped. Nothing already written is changed. */
+export function appendPoints(
+  sections: EditSection[],
+  additions: OutlineSection[],
+  newId: () => string,
+): EditSection[] {
+  let next = sections;
+  for (const addition of additions) {
+    const at = next.findIndex((section) => section.heading === addition.heading);
+    const seen = new Set(at < 0 ? [] : next[at].points.map((point) => point.text.trim()));
+    const points = addition.points
+      .map((text) => text.trim())
+      .filter((text) => {
+        if (!text || seen.has(text)) return false;
+        seen.add(text);
+        return true;
+      })
+      .map((text) => ({ id: newId(), text }));
+    if (!points.length) continue;
+    if (at < 0) {
+      next = [...next, { heading: addition.heading, points }];
+      continue;
+    }
+    next = withPoints(next, at, [...next[at].points.filter((p) => p.text.trim()), ...points]);
+  }
+  return next;
+}

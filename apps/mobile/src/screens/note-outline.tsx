@@ -23,8 +23,9 @@ import { Keyboard, Pressable, useWindowDimensions, View } from "react-native";
 import { Text, TextInput } from "@/design/text";
 import { FONT } from "@/design/mobile-tokens";
 import { useTheme } from "@/design/theme";
-import { parseOutline, serializeOutline } from "@/lib/mvp";
+import { parseOutline, serializeOutline, type OutlineSection } from "@/lib/mvp";
 import {
+  appendPoints,
   dropIfEmpty,
   fromEditable,
   pressBackspaceAtStart,
@@ -50,6 +51,9 @@ const newId = () => `p${++seq}`;
 export interface NoteOutlineHandle {
   /** Puts the caret in the first point — where Return in the title goes. */
   focusStart: () => void;
+  /** Adds points under their headings, after what is already written (a
+   *  draft from Ask). Goes through the same path as typing, so it autosaves. */
+  append: (sections: OutlineSection[]) => void;
 }
 
 export function NoteOutline({
@@ -162,8 +166,9 @@ export function NoteOutline({
         const first = live.current[0]?.points[0];
         if (first) focusEnd(first);
       },
+      append: (additions) => apply({ sections: appendPoints(live.current, additions, newId) }),
     }),
-    [focusEnd],
+    [focusEnd, apply],
   );
 
   return (

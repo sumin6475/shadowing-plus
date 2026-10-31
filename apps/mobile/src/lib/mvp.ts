@@ -6,6 +6,7 @@ export interface MvpPhrase extends Progress {
   id: string;
   text: string;
   translation: string | null;
+  usageNote: string | null;
   source: string;
   createdAt: string;
 }
@@ -13,6 +14,7 @@ export interface Note {
   id: string;
   title: string;
   body: string;
+  folder_id: string | null;
   updated_at: string;
   created_at: string;
 }
@@ -24,6 +26,7 @@ export interface MirrorSession {
   id: string;
   audio_key: string | null;
   note_id: string | null;
+  note_version_id: string | null;
   transcript: string | null;
   seconds: number;
   created_at: string;
@@ -37,7 +40,7 @@ export async function loadPhraseBank(): Promise<MvpPhrase[]> {
     const { data, error } = await supabase
       .from("phrase_items")
       .select(
-        "id,text,meaning,source_context,created_at,pronounced_at,examples_seen_at,own_example_at",
+        "id,text,meaning,usage_note,source_context,created_at,pronounced_at,examples_seen_at,own_example_at",
       )
       .eq("status", "ready")
       .order("created_at", { ascending: false })
@@ -53,6 +56,7 @@ export async function loadPhraseBank(): Promise<MvpPhrase[]> {
         id: row.id,
         text: row.text,
         translation: row.meaning,
+        usageNote: row.usage_note,
         source:
           typeof context.source_label === "string"
             ? context.source_label
@@ -66,28 +70,15 @@ export async function loadPhraseBank(): Promise<MvpPhrase[]> {
     if (data.length < 1000) return phrases;
   }
 }
-/** A mirror hint card: the phrase, plus the learner's latest sentence with it. */
-export interface HintPhrase extends MvpPhrase {
-  sentence: string | null;
-}
-/** The phrases to try while speaking (see `hintPicks`), each with the newest
- *  sentence the learner wrote for it. The sentences are a nicety: if they
- *  fail to load, the cards still come back without them. */
+/** A mirror hint card uses the same How it's used guidance as Phrase Bank. */
+export type HintPhrase = MvpPhrase;
+/** The phrases to try while speaking (see `hintPicks`). */
 export async function loadHintPhrases(
   count: number,
   firstId?: string | null,
 ): Promise<HintPhrase[]> {
   const picks = hintPicks(await loadPhraseBank(), count, new Date(), firstId);
-  if (!picks.length) return [];
-  const { data } = await supabase
-    .from("phrase_examples")
-    .select("phrase_id,text")
-    .in("phrase_id", picks.map((p) => p.id))
-    .order("created_at", { ascending: false });
-  const latest = new Map<string, string>();
-  for (const row of data ?? [])
-    if (!latest.has(row.phrase_id)) latest.set(row.phrase_id, row.text);
-  return picks.map((p) => ({ ...p, sentence: latest.get(p.id) ?? null }));
+  return picks;
 }
 export async function setStep(id: string, step: Step, checked: boolean) {
   const { error } = await supabase
@@ -167,7 +158,7 @@ export async function loadMirrorSessions(): Promise<MirrorSession[]> {
   for (let start = 0; ; start += 1000) {
     const { data, error } = await supabase
       .from("talk_sessions")
-      .select("id,note_id,transcript,seconds,duration_seconds,audio_key,created_at")
+      .select("id,note_id,note_version_id,transcript,seconds,duration_seconds,audio_key,created_at")
       .order("created_at", { ascending: false })
       .order("id")
       .range(start, start + 999);
@@ -200,6 +191,7 @@ export async function deleteMirrorSession(session: {
 export async function saveMirrorSession(input: {
   id: string;
   noteId?: string | null;
+  noteVersionId?: string | null;
   transcript: string;
   seconds: number;
 }) {
@@ -208,6 +200,7 @@ export async function saveMirrorSession(input: {
     {
       id: input.id,
       note_id: input.noteId ?? null,
+      note_version_id: input.noteVersionId ?? null,
       transcript: input.transcript,
       seconds,
       duration_seconds: seconds,

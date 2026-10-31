@@ -1,6 +1,6 @@
 # Ask — in-app English expression assistant (implementation plan)
 
-Status: **In progress (PR 1)** · 2026-10-02 · scope: `apps/mobile` + `supabase/functions` · design settled in a grilling session (decisions below are final unless a revisit trigger fires).
+Status: **In progress (PR 2 — sheet built on canned replies; function not deployed)** · started 2026-10-02, PR 2 on 2026-10-07 · scope: `apps/mobile` + `supabase/functions` · design settled in a grilling session (decisions below are final unless a revisit trigger fires).
 
 ## Goal
 
@@ -92,9 +92,16 @@ Each request sends one schema per mode (how_to_say: `HowToSayCard | Answer | Off
 
 **Done when:** on the simulator, a how_to_say question → card → Save to Phrase shows up in Phrases with context filled; a note question → Save to Note creates a note whose body has the draft in the template.
 
+**As built (2026-10-07, branch `feat/ask-sheet`):** the sheet, both card types, answers, follow-up chips and both save actions work end to end on the simulator, against `lib/ask-fixtures.ts` (`ASK_MOCK` in `release-flags.ts`; typing `/off`, `/limit` or `/error` shows those states). Differences from the list above:
+
+- The draft is written to a note as one point per sentence, through `serializeOutline` / the editor's own `append` (the note editor became sections of points in PR #34, after this plan was written). `toNoteBody` / `appendToNote` became `draftSections` + `appendPoints` (`lib/outline-edit.ts`).
+- An answer that rewrites part of a draft shows only the rewritten sections. Saving it as a new note stores the whole merged draft; adding it to an open note adds only the rewritten sections (nothing in a note is overwritten).
+- Both entry points already exist behind `ASK_ENABLED = __DEV__`, so the sheet can be reviewed: a sparkle in the Phrases / Studio header capsule ("How to say"), and a round sparkle beside "Speak with this note" in the note editor ("Note", adds to that note).
+- Sending a question puts the keyboard away so the answer card has the sheet.
+
 ### Phase 3 — entry points + setting (PR 3)
 
-- Global "Ask" icon in each tab header (`src/shell.tsx` header area) → sheet with the default mode.
+- Entry points: built in PR 2 behind `ASK_ENABLED` (see above). Left for PR 3: read the default mode from the setting, and decide where the note editor's entry lives while the keyboard is up (the bottom bar is hidden then).
 - NoteEditor toolbar icon (`src/screens/mvp/index.tsx` ~1469) → sheet with `initialMode="note"`, `noteId`; save appends and refreshes the editor's body state (avoid fighting the debounced autosave: append through the editor's own setter, not a direct DB write).
 - Settings row "Ask default mode" (`src/screens/settings.tsx`) backed by `src/lib/ask-pref.ts` (AsyncStorage, same pattern as `theme-pref.ts`).
 - Limit state: input disabled + "You've used today's questions. More tomorrow."

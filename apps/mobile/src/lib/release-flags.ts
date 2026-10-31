@@ -9,3 +9,10 @@
 /** Phrase/note search in the header filter menu. Hidden until its design is
  *  settled (2026-09-18) — flip to true to bring it back. */
 export const SEARCH_ENABLED = false;
+
+/** Ask, the expression assistant (sheet + its entry points). The live flow is
+ *  available in release builds; backend requests use the deployed function. */
+export const ASK_ENABLED = true;
+/** Ask answers from canned replies (lib/ask-fixtures) instead of calling the
+ *  deployed function. Use only for local visual checks. */
+export const ASK_MOCK = false;

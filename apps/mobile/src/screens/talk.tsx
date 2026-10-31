@@ -31,9 +31,12 @@ import {
   type HintPhrase,
 } from "@/lib/mvp";
 import { phraseIndex, spokenWords } from "@/lib/phrase-use";
+import { recordTalkPhraseUses } from "@/lib/phrases";
+import { snapshotNoteVersion } from "@/lib/note-growth";
 import type { Nav, TalkCtx } from "./nav";
 import { PhraseChipsCard, SessionStatsCard, TranscriptCard } from "./session-stats";
 import { FROST, HintDeck, USED, UsedToast } from "./talk-hints";
+import { TalkNoteCue } from "./talk-note-cue";
 const CAMERA_ACC = "#6E8DD5";
 const CAMERA_ON_ACC = "#0D1A3B";
 const fmt2 = (s: number) =>
@@ -44,7 +47,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     { height: windowHeight } = useWindowDimensions(),
     p0 = talkCtx ?? {},
     speech = useSpeechSession();
-  // A note's outline is the deck's first card; with one, the deck starts open.
+  // The note is a speaking cue; phrase hints have their own control.
   const note = useMemo(() => {
     const points = outlinePoints(p0.beats ?? []);
     return points.length ? { title: p0.ctx || "Your note", points } : null;
@@ -53,10 +56,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     [sec, setSec] = useState(0),
     [ctx, setCtx] = useState(p0.ctx || "Free talk"),
     [dd, setDd] = useState(false),
-    [hintOpen, setHintOpen] = useState(note !== null),
+    [noteOpen, setNoteOpen] = useState(note !== null),
+    [hintOpen, setHintOpen] = useState(false),
     // Whether the cards were on screen at all — the result only reports on
     // phrases the learner could see (or used anyway).
-    [hintSeen, setHintSeen] = useState(note !== null);
+    [hintSeen, setHintSeen] = useState(false);
   const [cards, setCards] = useState<HintPhrase[]>([]),
     [transcript, setTranscript] = useState(""),
     [micDenied, setMicDenied] = useState(false),
@@ -66,6 +70,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     [saveErr, setSaveErr] = useState<string | null>(null);
   const started = useRef(false),
     sessionId = useRef<string | null>(null),
+    noteVersionId = useRef<string | null>(null),
     finishing = useRef(false),
     saving = useRef(false);
   const [savedId, setSavedId] = useState<string | null>(null),
@@ -83,18 +88,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       }),
     [player],
   );
-  // Cards load once; they open the deck unless the learner already chose.
-  const hintTouched = useRef(false);
+  // Phrase cards load quietly; the learner chooses when to view them.
   useEffect(() => {
     let active = true;
     void loadHintPhrases(phrasesPerDay(), p0.phraseId)
       .then((next) => {
         if (!active) return;
         setCards(next);
-        if (next.length && !hintTouched.current) {
-          setHintOpen(true);
-          setHintSeen(true);
-        }
       })
       .catch(() => {});
     return () => {
@@ -183,14 +183,29 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setSaveErr(null);
     try {
       if (!sessionId.current) sessionId.current = globalThis.expo.uuidv4();
+      if (p0.noteId && p0.noteSnapshot && !noteVersionId.current) {
+        noteVersionId.current = await snapshotNoteVersion(p0.noteId, p0.noteSnapshot.title, p0.noteSnapshot.body);
+      }
       const id = await saveMirrorSession({
         id: sessionId.current,
         noteId: p0.noteId,
+        noteVersionId: noteVersionId.current,
         transcript: text,
         // Words were heard, so some speaking happened even if the talk ended
         // before the first one-second tick.
         seconds: Math.max(1, sec),
       });
+      // Persist the same checks the result shows. The saved transcript wins
+      // over a manual check when both identify the same phrase.
+      const phraseCards = cards.length ? cards : await loadHintPhrases(phrasesPerDay(), p0.phraseId);
+      if (!cards.length) setCards(phraseCards);
+      const words = spokenWords(text);
+      await recordTalkPhraseUses(id, phraseCards.flatMap((card) => {
+        const heard = phraseIndex(words, card.text) >= 0;
+        return heard || ticked.has(card.id)
+          ? [{ phraseItemId: card.id, source: heard ? "transcript" as const : "manual" as const }]
+          : [];
+      }));
       setSavedId(id);
       setSaveState("saved");
       nav.invalidateSpeakingData();
@@ -328,6 +343,14 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                 maxHeight={Math.round(windowHeight * 0.32)}
                 onCopied={() => nav.notify("Transcript copied")}
               />
+              {p0.noteId && savedId ? (
+                <Pill tone="soft" icon="pen" onPress={() => nav.restore({
+                  tab: "topics",
+                  stack: [{ name: "mvpNote", props: { id: p0.noteId, practiceSessionId: savedId } }],
+                })}>
+                  Develop this Note from practice
+                </Pill>
+              ) : null}
             </>
           )}
         </Screen>
@@ -467,6 +490,31 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         </Text>
       </View>
 
+      {live && note ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={noteOpen ? "Hide Studio Note" : "Show Studio Note"}
+          accessibilityState={{ expanded: noteOpen }}
+          hitSlop={8}
+          onPress={() => {
+            setNoteOpen((open) => !open);
+            setHintOpen(false);
+          }}
+          style={{
+            position: "absolute",
+            top: insets.top + (subPill ? 80 : 52),
+            right: 14,
+            width: 40,
+            height: 40,
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 20,
+          }}
+        >
+          <Icon name="book" s={23} w={1.9} c={noteOpen ? "#BBD0FF" : "#fff"} />
+        </Pressable>
+      ) : null}
+
       {dd ? (
         <View
           style={{
@@ -523,7 +571,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
               position: "absolute",
               top: insets.top + (subPill ? 84 : 56),
               left: 0,
-              right: 0,
+              right: note ? 54 : 0,
               alignItems: "center",
               zIndex: 12,
             }}
@@ -556,7 +604,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                 </Text>
               </Pressable>
             ) : speech.error ? (
-              speech.startupInterrupted ? (
+              (speech.startupInterrupted || !speech.transcript.trim()) ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Retry listening"
@@ -667,12 +715,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             usedIds={usedIds}
             onToggleUsed={toggleTicked}
             latestId={latestId}
-            note={note}
             bottom={insets.bottom + 132}
           />
-          <UsedToast phrase={latest} hidden={hintOpen} bottom={insets.bottom + 140} />
+          {note ? <TalkNoteCue visible={noteOpen} note={note} bottom={insets.bottom + 148} /> : null}
+          <UsedToast phrase={latest} hidden={hintOpen || noteOpen} bottom={insets.bottom + 140} />
 
-          {/* bottom controls — Hint · record indicator · Finish */}
+          {/* The Note control sits beside mic status; these are recording controls. */}
           <View
             style={{
               position: "absolute",
@@ -689,11 +737,12 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             <View style={{ alignItems: "center", gap: 8 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={hintOpen ? "Hide phrase cards" : "Show phrase cards"}
+                accessibilityLabel={hintOpen ? "Hide phrase hints" : "Show phrase hints"}
+                accessibilityState={{ expanded: hintOpen }}
                 onPress={() => {
-                  hintTouched.current = true;
                   setHintSeen(true);
                   setHintOpen((open) => !open);
+                  setNoteOpen(false);
                 }}
                 style={{
                   backgroundColor: hintOpen
@@ -744,7 +793,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                   color: "rgba(255,255,255,0.85)",
                 }}
               >
-                {hintOpen ? "Hide" : "Hint"}
+                Hint
               </Text>
             </View>
             <View style={{ alignItems: "center", gap: 8, paddingBottom: 22 }}>
@@ -761,7 +810,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
                   t.shadowLg,
                 ]}
               >
-                <Wave n={5} h={30} active color={CAMERA_ON_ACC} />
+                <Wave n={5} h={30} active={speech.recognizing} color={CAMERA_ON_ACC} />
               </View>
             </View>
             <View style={{ alignItems: "center", gap: 8 }}>

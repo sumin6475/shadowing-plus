@@ -435,7 +435,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
     case "mvpPhrase":
       return <PhraseChecklist nav={nav} id={p.id as string} />;
     case "mvpNote":
-      return <NoteEditor key={p.id as string} nav={nav} id={p.id as string} />;
+      return <NoteEditor key={`${p.id}:${p.practiceSessionId ?? ""}`} nav={nav} id={p.id as string} practiceSessionId={p.practiceSessionId as string | undefined} />;
     case "search":
       return <SearchScreen nav={nav} visit={p.visit as number} />;
     case "mirrorRecord":

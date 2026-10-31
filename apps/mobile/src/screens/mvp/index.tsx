@@ -2,13 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  Animated,
   Pressable,
   Keyboard,
   ScrollView,
@@ -32,7 +35,11 @@ import {
   Text as SwiftText,
 } from "@expo/ui/swift-ui";
 import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
-import { SEARCH_ENABLED } from "@/lib/release-flags";
+import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
+import { AskSheet } from "@/components/ask-sheet";
+import { askDefaultMode } from "@/lib/ask-pref";
+import { addConfirmedFact, applyNoteVersion, createNoteFolder, deleteNoteFolder, loadNoteFacts, loadNoteFolders, loadNotePracticeHistory, loadNoteVersions, moveNoteToFolder } from "@/lib/note-growth";
+import type { AskMode } from "@/lib/ask-model";
 import { FONT, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
 import {
@@ -202,6 +209,7 @@ function Header({
           backgroundColor: t.colors.card,
         }}
       >
+        {ASK_ENABLED ? <AskEntry nav={nav} /> : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={addLabel}
@@ -273,6 +281,37 @@ function Header({
   );
 }
 /** Inline search under the header — only reachable while SEARCH_ENABLED. */
+/** The sparkle in a tab's header: opens Ask in the "How to say" mode. */
+function AskEntry({ nav }: { nav: Nav }) {
+  const t = useTheme();
+  const [open, setOpen] = useState(false);
+  const [initialMode, setInitialMode] = useState<AskMode>("how_to_say");
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ask"
+        onPress={() => {
+          setInitialMode(askDefaultMode());
+          setOpen(true);
+        }}
+        hitSlop={8}
+      >
+        <Icon name="sparkle" s={26} w={1.75} c={t.colors.ink} />
+      </Pressable>
+      <AskSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        initialMode={initialMode}
+        onSaved={nav.invalidateSpeakingData}
+        onOpenNote={(id) => {
+          setOpen(false);
+          nav.push("mvpNote", { id });
+        }}
+      />
+    </>
+  );
+}
 function SearchBar({
   query,
   setQuery,
@@ -557,6 +596,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               nav.startTalk({
                 ctx: recent?.title || "Free talk",
                 noteId: recent?.id,
+                noteSnapshot: recent ? { title: recent.title, body: recent.body } : null,
                 beats: recent?.body.split("\n"),
                 from: "phrases",
               })
@@ -747,14 +787,17 @@ function PlayCircle({
 function ClearChip({
   done,
   disabled,
+  attention,
   onPress,
 }: {
   done: boolean;
   disabled?: boolean;
+  attention?: boolean;
   onPress: () => void;
 }) {
   const t = useTheme();
   const fg = done ? t.colors.onAcc : t.colors.ink2;
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   return (
     <Pressable
       accessibilityRole="button"
@@ -775,11 +818,12 @@ function ClearChip({
           alignItems: "center",
           gap: 6,
           backgroundColor: done ? t.colors.acc : t.colors.card,
-          borderWidth: done ? 0 : StyleSheet.hairlineWidth,
-          borderColor: t.ring,
+          borderWidth: done ? 0 : attention ? 2 : StyleSheet.hairlineWidth,
+          borderColor: attention && !done ? feedbackRed : t.ring,
           opacity: pressed ? 0.8 : 1,
         },
         done ? null : t.shadowCard,
+        attention && !done ? { shadowColor: feedbackRed, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } } : null,
       ]}
     >
       <Text style={{ fontSize: 15, fontWeight: "600", color: fg }}>Clear</Text>
@@ -954,6 +998,42 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const p = state.data?.phrase;
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
+  const insets = useSafeAreaInsets();
+  const [gateAttention, setGateAttention] = useState(false);
+  const [gateBanner, setGateBanner] = useState(false);
+  const [gateMessage, setGateMessage] = useState("Clear all three steps before Self-talk practice.");
+  const bannerY = useMemo(() => new Animated.Value(-20), []);
+  const bannerOpacity = useMemo(() => new Animated.Value(0), []);
+  const gateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (gateTimer.current) clearTimeout(gateTimer.current);
+  }, []);
+  const explainMissing = (detail = "Clear all three steps before Self-talk practice.") => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    AccessibilityInfo.announceForAccessibility(detail);
+    setGateMessage(detail);
+    setGateAttention(true);
+    setGateBanner(true);
+    if (gateTimer.current) clearTimeout(gateTimer.current);
+    bannerY.stopAnimation();
+    bannerOpacity.stopAnimation();
+    bannerY.setValue(-20);
+    bannerOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(bannerY, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(bannerOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+    ]).start();
+    gateTimer.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(bannerY, { toValue: -20, duration: 180, useNativeDriver: true }),
+        Animated.timing(bannerOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      ]).start(() => {
+        setGateBanner(false);
+        setGateAttention(false);
+      });
+    }, 2600);
+  };
   // The page scrolls under the keyboard (Screen adjusts its insets) but never
   // brings the sentence field into view by itself, so a focused or growing
   // field slid behind the keyboard. The field and its Save button are the last
@@ -996,6 +1076,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
       },
     ]);
   return (
+    <View style={{ flex: 1 }}>
     <Screen scrollRef={scrollRef}>
       <BackBar
         title="Phrases"
@@ -1093,15 +1174,14 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                 <ClearChip
                   done={!!p[step]}
                   disabled={busy}
+                  attention={gateAttention && !p[step]}
                   onPress={() => {
                     if (
                       index === 2 &&
                       !p[step] &&
                       !state.data?.sentences.length
                     ) {
-                      setError(
-                        "Save at least one sentence before clearing this step.",
-                      );
+                      explainMissing("Save at least one sentence before clearing this step.");
                       return;
                     }
                     void mutate(() => setStep(id, step, !p[step]));
@@ -1310,38 +1390,88 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
               </View>
             </Card>
           ))}
-          <ErrorCard error={error} retry={() => setError(null)} />
-          {phraseStage(p) === "Ready" ? (
+          {error ? <Card><Copy>{error}</Copy></Card> : null}
             <Pill
-              style={{ alignSelf: "stretch", marginTop: 6 }}
+              tone={phraseStage(p) === "Ready" ? "acc" : "soft"}
+              style={{ alignSelf: "stretch", marginTop: 6, opacity: phraseStage(p) === "Ready" ? 1 : 0.48 }}
               icon="mic"
-              onPress={() => nav.startTalk({ from: "phrases", phraseId: p.id })}
+              onPress={() => phraseStage(p) === "Ready" ? nav.startTalk({ from: "phrases", phraseId: p.id }) : explainMissing()}
             >
               Use it in the mirror
             </Pill>
-          ) : null}
         </>
       )}
     </Screen>
+    {gateBanner ? (
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: "absolute", top: insets.top + 58, left: 18, right: 18, zIndex: 10,
+          backgroundColor: t.colors.card, borderColor: feedbackRed, borderWidth: 1,
+          borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12,
+          shadowColor: feedbackRed, shadowOpacity: 0.15, shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 }, elevation: 4,
+          opacity: bannerOpacity, transform: [{ translateY: bannerY }],
+        }}
+      >
+        <Text style={{ color: feedbackRed, fontSize: 14, fontWeight: "600", textAlign: "center" }}>
+          {gateMessage}
+        </Text>
+      </Animated.View>
+    ) : null}
+    </View>
   );
 }
 
 export function NotesStudio({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   const state = useRefresh(loadNotes, nav.speakingDataRevision),
+    folders = useRefresh(loadNoteFolders, nav.speakingDataRevision),
     [query, setQuery] = useState(""),
+    [view, setView] = useState("notes"),
+    [creatingFolder, setCreatingFolder] = useState(false),
+    [folderName, setFolderName] = useState(""),
+    [factText, setFactText] = useState(""),
     [searching, setSearching] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const errorY = useMemo(() => new Animated.Value(-20), []);
+  const errorOpacity = useMemo(() => new Animated.Value(0), []);
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+  }, []);
+  const showError = (detail: string) => {
+    setError(detail);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    AccessibilityInfo.announceForAccessibility(detail);
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+    errorY.stopAnimation();
+    errorOpacity.stopAnimation();
+    errorY.setValue(-20);
+    errorOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(errorY, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(errorOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+    ]).start();
+    errorTimer.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(errorY, { toValue: -20, duration: 180, useNativeDriver: true }),
+        Animated.timing(errorOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      ]).start(() => setError(null));
+    }, 3000);
+  };
   const create = async () => {
     if (busy) return;
     setBusy(true);
     try {
       const note = await createNote();
+      if (view !== "notes" && view !== "folders") await moveNoteToFolder(note.id, view);
       nav.invalidateSpeakingData();
       nav.push("mvpNote", { id: note.id });
     } catch (e) {
-      setError(message(e));
+      showError(message(e));
     } finally {
       setBusy(false);
     }
@@ -1349,27 +1479,80 @@ export function NotesStudio({ nav }: { nav: Nav }) {
   const notes = (state.data ?? []).filter((n) =>
     `${n.title} ${n.body}`.toLowerCase().includes(query.trim().toLowerCase()),
   );
+  const visibleNotes = query.trim() || view === "notes"
+    ? notes
+    : view === "folders"
+      ? []
+      : notes.filter((n) => n.folder_id === view);
+  const folderDetail = view !== "notes" && view !== "folders";
+  const openFolder = folderDetail ? folders.data?.find((folder) => folder.id === view) : null;
+  const loadFolderFacts = useCallback(() => view !== "notes" && view !== "folders" ? loadNoteFacts(view) : Promise.resolve([]), [view]);
+  const folderFacts = useRefresh(loadFolderFacts, nav.speakingDataRevision);
   // loadNotes returns newest first, so the Map fills Today → Earlier in order.
   const groups = new Map<Period, Note[]>();
-  for (const n of notes) {
+  for (const n of visibleNotes) {
     const label = periodOf(n.updated_at);
     groups.set(label, [...(groups.get(label) ?? []), n]);
   }
   return (
-    <Screen onPullToSearch={() => nav.push("search", { visit: Date.now() })}>
-      <Header
-        nav={nav}
-        title="Studio"
-        add={() => void create()}
-        addLabel="New note"
-        menu={{
-          options: [],
-          selected: "",
-          onSelect: () => {},
-          onSearch: () => setSearching(true),
-        }}
-        filtered={!!query.trim()}
-      />
+    <Screen onPullToSearch={folderDetail ? undefined : () => nav.push("search", { visit: Date.now() })}>
+      {folderDetail ? (
+        <BackBar
+          title={openFolder?.name ?? "Folder"}
+          onBack={() => setView("folders")}
+          right={
+            <Pressable accessibilityRole="button" accessibilityLabel="New note in folder" onPress={() => void create()} hitSlop={8}>
+              <Icon name="plus" s={26} w={1.75} c={t.colors.ink} />
+            </Pressable>
+          }
+        />
+      ) : (
+        <Header
+          nav={nav}
+          title="Studio"
+          add={() => view === "folders" ? setCreatingFolder(true) : void create()}
+          addLabel={view === "folders" ? "New folder" : "New note"}
+          menu={{
+            options: [],
+            selected: "",
+            onSelect: () => {},
+            onSearch: () => { setView("notes"); setSearching(true); },
+          }}
+          filtered={!!query.trim()}
+        />
+      )}
+      {!searching && !folderDetail ? (
+        <View style={{ flexDirection: "row", alignSelf: "flex-start", gap: 6, paddingVertical: 2 }}>
+          {(["Folders", "Notes"] as const).map((tab) => {
+            const selected = tab === "Folders" ? view !== "notes" : view === "notes";
+            return (
+              <Pressable
+                key={tab}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => setView(tab === "Folders" ? "folders" : "notes")}
+                style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: Motif.radius.pill, backgroundColor: selected ? t.colors.soft : "transparent" }}
+              >
+                <Text style={{ color: selected ? t.colors.ink : t.colors.ink2, fontSize: 14, fontWeight: selected ? "600" : "500" }}>{tab}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {error ? (
+        <Animated.View
+          accessibilityRole="alert"
+          style={{
+            backgroundColor: t.colors.card, borderColor: feedbackRed, borderWidth: 1,
+            borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12,
+            shadowColor: feedbackRed, shadowOpacity: 0.15, shadowRadius: 12,
+            shadowOffset: { width: 0, height: 4 }, elevation: 4,
+            opacity: errorOpacity, transform: [{ translateY: errorY }],
+          }}
+        >
+          <Text style={{ color: feedbackRed, fontSize: 14, fontWeight: "600", textAlign: "center" }}>{error}</Text>
+        </Animated.View>
+      ) : null}
       {searching ? (
         <SearchBar
           query={query}
@@ -1389,13 +1572,10 @@ export function NotesStudio({ nav }: { nav: Nav }) {
       ) : null}
 
       <ErrorCard
-        error={state.error || error}
-        retry={() => {
-          setError(null);
-          void state.refresh();
-        }}
+        error={state.error || (view !== "notes" ? folders.error : null)}
+        retry={() => { void state.refresh(); void folders.refresh(); }}
       />
-      {!state.loading && !notes.length && !state.error ? (
+      {!state.loading && view === "notes" && !visibleNotes.length && !state.error ? (
         query ? (
           <EmptyState compact title="No matching notes." body="Try a different word." />
         ) : (
@@ -1406,6 +1586,9 @@ export function NotesStudio({ nav }: { nav: Nav }) {
             action={{ label: "Write your first note", icon: "pen", onPress: () => void create() }}
           />
         )
+      ) : null}
+      {view !== "notes" && view !== "folders" && !visibleNotes.length && !state.loading && !state.error ? (
+        <EmptyState compact title="No notes in this folder yet." body="Create a note here or move one from Notes." />
       ) : null}
       {[...groups].map(([label, items]) => (
         <SectionCard key={label} label={label}>
@@ -1421,6 +1604,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                     nav.startTalk({
                       ctx: title,
                       noteId: n.id,
+                      noteSnapshot: { title: n.title, body: n.body },
                       beats: n.body.split("\n"),
                       from: "topics",
                       returnTo: {
@@ -1471,6 +1655,56 @@ export function NotesStudio({ nav }: { nav: Nav }) {
           })}
         </SectionCard>
       ))}
+      {view !== "notes" && view !== "folders" && !query.trim() ? (
+        <SectionCard label="Shared context · optional">
+          <Text style={{ color: t.colors.ink2, lineHeight: 21, paddingVertical: 8 }}>
+            Only facts you confirm here can guide Notes in this folder. A pasted paper does not become your story.
+          </Text>
+          {(folderFacts.data ?? []).map((fact) => <Text key={fact.id} style={{ color: t.colors.ink, lineHeight: 22, paddingVertical: 6 }}>• {fact.text}</Text>)}
+          <TextInput accessibilityLabel="Fact to share with this folder" placeholder="Add a fact you have checked" value={factText} onChangeText={setFactText} multiline style={{ color: t.colors.ink, fontSize: 16, paddingVertical: 10 }} />
+          <Pressable accessibilityRole="button" disabled={!factText.trim()} onPress={() => {
+            void addConfirmedFact(view, factText).then(() => { setFactText(""); nav.invalidateSpeakingData(); }).catch((e) => showError(message(e)));
+          }} style={{ paddingVertical: 10, opacity: factText.trim() ? 1 : 0.4 }}><Text style={{ color: t.colors.accD, fontWeight: "700" }}>Confirm fact</Text></Pressable>
+        </SectionCard>
+      ) : null}
+      {view === "folders" && !query.trim() ? (
+          <SectionCard label="Your folders">
+            {(folders.data ?? []).map((folder) => (
+              <SwipeRow
+                key={folder.id}
+                flat
+                onDelete={() => confirmDelete({
+                  title: `Delete “${folder.name}”?`,
+                  message: "Notes will stay in Studio without a folder. Shared context saved in this folder will be deleted.",
+                  onConfirm: () => void deleteNoteFolder(folder.id)
+                    .then(async () => {
+                      nav.invalidateSpeakingData();
+                      await Promise.all([state.refresh(), folders.refresh()]);
+                    })
+                    .catch((e) => showError(message(e))),
+                })}
+              >
+                <Row last={false}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <Icon name="folder" s={20} c={t.colors.ink2} />
+                    <Text style={{ color: t.colors.ink, fontSize: 16, flex: 1 }}>{folder.name}</Text>
+                    <Text style={{ color: t.colors.ink3 }}>{notes.filter((n) => n.folder_id === folder.id).length}</Text>
+                  </Pressable>
+                </Row>
+              </SwipeRow>
+            ))}
+            {creatingFolder ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}>
+                <TextInput autoFocus accessibilityLabel="Folder name" placeholder="Folder name" value={folderName} onChangeText={setFolderName} style={{ flex: 1, color: t.colors.ink, fontSize: 16 }} />
+                <Pressable accessibilityRole="button" onPress={() => {
+                  void createNoteFolder(folderName).then(() => { setFolderName(""); setCreatingFolder(false); nav.invalidateSpeakingData(); }).catch((e) => showError(message(e)));
+                }}><Text style={{ color: t.colors.accD, fontWeight: "700" }}>Create</Text></Pressable>
+              </View>
+            ) : (
+              <Pressable accessibilityRole="button" onPress={() => setCreatingFolder(true)} style={{ paddingVertical: 14 }}><Text style={{ color: t.colors.accD, fontWeight: "600" }}>+ Create folder</Text></Pressable>
+            )}
+          </SectionCard>
+      ) : null}
     </Screen>
   );
 }
@@ -1479,8 +1713,14 @@ export function NotesStudio({ nav }: { nav: Nav }) {
  *  pinned Speak button (a 50pt pill under a fade) at the bottom. */
 const NOTE_HEADER = Motif.tapTarget + 8;
 const NOTE_FOOTER = 78;
-export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
+export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: string; practiceSessionId?: string }) {
   const { session } = useAuth();
+  const folderState = useRefresh(loadNoteFolders, nav.speakingDataRevision);
+  const loadGrowth = useCallback(async () => {
+    const [versions, practices] = await Promise.all([loadNoteVersions(id), loadNotePracticeHistory(id)]);
+    return { versions, practices };
+  }, [id]);
+  const growth = useRefresh(loadGrowth, nav.speakingDataRevision);
   const draftKey = `saylo.note-draft.${session?.user.id}.${id}`;
   const t = useTheme(),
     insets = useSafeAreaInsets(),
@@ -1489,7 +1729,9 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
     [body, setBody] = useState(""),
     [status, setStatus] = useState("Loading…"),
     [error, setError] = useState<string | null>(null),
-    [typing, setTyping] = useState(false);
+    [typing, setTyping] = useState(false),
+    [asking, setAsking] = useState(Boolean(practiceSessionId)),
+    [outlineRevision, setOutlineRevision] = useState(0);
   const outline = useRef<NoteOutlineHandle>(null),
     titleInput = useRef<TextInput>(null);
   // While the keyboard is up, "…" turns into Done and the Speak button gives
@@ -1625,6 +1867,7 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
         nav.startTalk({
           ctx: current.current.title || "Untitled note",
           noteId: id,
+          noteSnapshot: { ...current.current },
           beats: current.current.body.split("\n"),
           from: "topics",
           returnTo: {
@@ -1702,6 +1945,7 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
               <Label>{status}</Label>
             </View>
             <NoteOutline
+              key={outlineRevision}
               ref={outline}
               body={body}
               onChangeBody={(value) => {
@@ -1709,6 +1953,20 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
                 edited({ body: value });
               }}
             />
+            {growth.data && (growth.data.versions.length || growth.data.practices.length) ? (
+              <SectionCard label="How this Note grew">
+                {growth.data.versions.filter((version) => version.origin !== "manual").slice(0, 3).map((version) => (
+                  <Text key={version.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
+                    {version.origin === "practice" ? "Practice ideas applied" : "Draft accepted"} · {dateLabel(version.created_at)}
+                  </Text>
+                ))}
+                {growth.data.practices.slice(0, 3).map((practice) => (
+                  <Text key={practice.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
+                    Spoke from this Note · {dateLabel(practice.created_at)}
+                  </Text>
+                ))}
+              </SectionCard>
+            ) : null}
           </>
         ) : !error ? (
           <ActivityIndicator />
@@ -1769,6 +2027,23 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
                 </View>
               ) : note ? (
                 <MoreMenu>
+                  {(folderState.data ?? []).map((folder) => (
+                    <Button
+                      key={folder.id}
+                      label={`${note.folder_id === folder.id ? "✓ " : ""}Move to ${folder.name}`}
+                      systemImage="folder"
+                      onPress={() => void moveNoteToFolder(id, folder.id).then(() => {
+                        setNote({ ...note, folder_id: folder.id });
+                        nav.invalidateSpeakingData();
+                      }).catch((e) => setError(message(e)))}
+                    />
+                  ))}
+                  {note.folder_id ? (
+                    <Button label="Remove from folder" systemImage="tray" onPress={() => void moveNoteToFolder(id, null).then(() => {
+                      setNote({ ...note, folder_id: null });
+                      nav.invalidateSpeakingData();
+                    }).catch((e) => setError(message(e)))} />
+                  ) : null}
                   <Button
                     label="Delete note"
                     systemImage="trash"
@@ -1793,20 +2068,65 @@ export function NoteEditor({ nav, id }: { nav: Nav; id: string }) {
           />
           <View
             style={{
+              flexDirection: "row",
+              gap: 10,
               backgroundColor: t.colors.bg,
               paddingHorizontal: 18,
               paddingBottom: Math.max(insets.bottom, 16),
             }}
           >
-            <Pill
-              style={{ alignSelf: "stretch" }}
-              icon="mic"
-              onPress={() => void leave(true)}
-            >
+            {ASK_ENABLED ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Ask for help with this note"
+                onPress={() => setAsking(true)}
+                style={[
+                  {
+                    width: Motif.buttonHeight.large,
+                    height: Motif.buttonHeight.large,
+                    borderRadius: Motif.buttonHeight.large / 2,
+                    backgroundColor: t.colors.card,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: t.ring,
+                  },
+                  t.shadowCard,
+                ]}
+              >
+                <Icon name="sparkle" s={22} w={1.8} c={t.colors.ink} />
+              </Pressable>
+            ) : null}
+            <Pill style={{ flex: 1 }} icon="mic" onPress={() => void leave(true)}>
               Speak with this note
             </Pill>
           </View>
         </View>
+      ) : null}
+      {ASK_ENABLED ? (
+        <AskSheet
+          open={asking && Boolean(note)}
+          onClose={() => setAsking(false)}
+          initialMode="note"
+          practiceSessionId={practiceSessionId}
+          note={{
+            id,
+            title,
+            body,
+            apply: async (value) => {
+              await flush();
+              await applyNoteVersion(id, current.current.title, value, practiceSessionId ? "practice" : "ask", practiceSessionId);
+              current.current.body = value;
+              saved.current = JSON.stringify(current.current);
+              await AsyncStorage.removeItem(draftKey);
+              setBody(value);
+              setOutlineRevision((revision) => revision + 1);
+              setStatus("All changes saved");
+              nav.invalidateSpeakingData();
+            },
+          }}
+          onSaved={nav.invalidateSpeakingData}
+        />
       ) : null}
     </View>
   );

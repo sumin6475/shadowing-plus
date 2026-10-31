@@ -1,0 +1,1107 @@
+// ask-sheet.tsx — Ask, the expression assistant, as one sheet.
+//
+// A chat that only does two things. "How to say": type what you mean in your
+// own language, get natural English with a meaning, a nuance note and
+// examples. "Note": start from a question or topic, answer a focused prompt
+// when needed, then get a short Opening / Body / Closing draft. The mode is picked per question; the conversation is
+// shared across modes; Note turns are persisted with the Note.
+//
+// Every reply is structured (lib/ask-model), so it is drawn as a card with its
+// own actions — Save to Phrase on each expression, review a Note draft —
+// not as a wall of text. Follow-up questions are one tap.
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Animated,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Pressable,
+  ScrollView,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Text, TextInput } from "@/design/text";
+import { hairline, useTheme } from "@/design/theme";
+import { AnimatedPressable, Icon, Serif, usePressFx } from "@/design/ui";
+import { AskLimitError, askAssist } from "@/lib/ask";
+import {
+  ASK_MAX_CHARS,
+  draftAt,
+  draftSections,
+  exampleFor,
+  isHowToSayCard,
+  isNoteCard,
+  noteTitle,
+  noteTopicFor,
+  patchesDraft,
+  questionFor,
+  toPhraseInput,
+  type AskAnswer,
+  type AskMode,
+  type AskTurn,
+  type Draft,
+  type Example,
+  type Expression,
+  type HowToSayCard,
+  type NoteCard,
+} from "@/lib/ask-model";
+import { firstLanguage, type L1 } from "@/lib/first-language";
+import { createNote, parseOutline, serializeOutline } from "@/lib/mvp";
+import { createPhrase } from "@/lib/phrases";
+import { applyNoteVersion, loadNoteTurns, saveNoteTurn } from "@/lib/note-growth";
+import { noteWordDiff } from "@/lib/note-diff";
+
+const MODE_LABEL: Record<AskMode, string> = { how_to_say: "How to say", note: "Note" };
+const INTRO: Record<AskMode, { title: string; body: string; placeholder: string }> = {
+  how_to_say: {
+    title: "What do you want to say?",
+    body: "Type it in your own language. You get natural English, what it means and how it is used.",
+    placeholder: "Ask how to say something",
+  },
+  note: {
+    title: "What do you want to talk about?",
+    body: "Start with a question or topic. I'll ask for the details that matter, then shape a short draft you can say aloud.",
+    placeholder: "A question or topic to speak about",
+  },
+};
+/** First questions to tap, in the learner's own language. */
+const STARTERS: Record<AskMode, Record<L1, string[]>> = {
+  how_to_say: {
+    en: ["I’m running a bit late", "Can we talk about this later?"],
+    ko: ["조금 늦을 것 같아요", "나중에 다시 얘기해도 될까요?"],
+    ja: ["少し遅れそうです", "あとで話してもいいですか？"],
+    "zh-Hant": ["我可能會晚一點到", "可以晚點再聊嗎？"],
+    es: ["Voy a llegar un poco tarde", "¿Podemos hablarlo luego?"],
+    ru: ["Я немного опоздаю", "Можно обсудить это позже?"],
+  },
+  note: {
+    en: ["Introducing myself to a new team", "Answering what motivates me at work"],
+    ko: ["새 팀에서 자기소개하기", "일할 때 무엇이 동기부여가 되는지 답하기"],
+    ja: ["新しいチームで自己紹介する", "仕事のモチベーションについて答える"],
+    "zh-Hant": ["向新團隊自我介紹", "回答工作動力是什麼"],
+    es: ["Presentarme ante un equipo nuevo", "Responder qué me motiva en el trabajo"],
+    ru: ["Представиться новой команде", "Ответить, что мотивирует меня в работе"],
+  },
+};
+const DRAFT_NOW: Record<L1, string> = {
+  en: "Draft now with what I've shared so far.",
+  ko: "지금까지 말한 내용으로 초안 써줘",
+  ja: "ここまで話した内容で下書きを作って",
+  "zh-Hant": "請根據目前說過的內容先寫草稿",
+  es: "Haz un borrador con lo que he contado hasta ahora.",
+  ru: "Составь черновик на основе того, что я уже рассказал.",
+};
+const OFF_TOPIC = "I can help you find an English expression or shape a speaking note for a question or topic.";
+
+type SaveState = "saving" | "saved" | "failed";
+
+export interface AskSheetProps {
+  open: boolean;
+  onClose: () => void;
+  initialMode?: AskMode;
+  practiceSessionId?: string | null;
+  /** Set when opened from a Note: accepting a proposal creates a version. */
+  note?: { id: string; title: string; body: string; apply: (body: string) => Promise<void> };
+  /** A phrase or a note was written — lists elsewhere should reload. */
+  onSaved?: () => void;
+  /** Open a note this sheet just created (the sheet closes first). */
+  onOpenNote?: (id: string) => void;
+}
+
+export function AskSheet(props: AskSheetProps) {
+  // The body mounts with the sheet. Note history reloads from its own record.
+  return (
+    <Modal
+      visible={props.open}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={props.onClose}
+    >
+      {props.open ? <AskBody {...props} /> : null}
+    </Modal>
+  );
+}
+
+const turnId = () => globalThis.expo.uuidv4();
+
+function useReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => { if (mounted) setReducedMotion(enabled); })
+      .catch(() => {});
+    const listener = AccessibilityInfo.addEventListener("reduceMotionChanged", setReducedMotion);
+    return () => { mounted = false; listener.remove(); };
+  }, []);
+  return reducedMotion;
+}
+
+function ReplyReveal({ children, reducedMotion }: { children: ReactNode; reducedMotion: boolean }) {
+  const progress = useMemo(() => new Animated.Value(0), []);
+  useEffect(() => {
+    if (reducedMotion) { progress.setValue(1); return; }
+    const animation = Animated.timing(progress, { toValue: 1, duration: 230, useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, reducedMotion]);
+  return (
+    <Animated.View style={{ opacity: progress, transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNote, practiceSessionId }: AskSheetProps) {
+  const t = useTheme();
+  const reducedMotion = useReducedMotion();
+  const insets = useSafeAreaInsets();
+  const [mode, setMode] = useState<AskMode>(initialMode);
+  const [turns, setTurns] = useState<AskTurn[]>([]);
+  const [text, setText] = useState(practiceSessionId ? "I want to develop this Note using what I said in practice. What should I clarify first?" : "");
+  const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [limited, setLimited] = useState(false);
+  const [saves, setSaves] = useState<Record<string, SaveState>>({});
+  const [madeNotes, setMadeNotes] = useState<Record<string, string>>({});
+  const [typing, setTyping] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(Boolean(note));
+  const [draftReview, setDraftReview] = useState<{ key: string; title: string; body: string } | null>(null);
+  const readable = (value: string) => parseOutline(value).flatMap((section) => section.points).join(" ");
+  const comparison = draftReview ? noteWordDiff(readable(note?.body ?? ""), readable(draftReview.body)) : null;
+  const activeNoteId = useRef<string | null>(note?.id ?? null);
+  const noteId = note?.id;
+  // A page sheet starts below the top of the screen, and the keyboard reports
+  // its position in screen terms — so keyboard avoidance needs to know how far
+  // down the sheet begins: the screen's height less the sheet's own.
+  const { height: screenHeight } = useWindowDimensions();
+  const [sheetTop, setSheetTop] = useState(0);
+  const list = useRef<ScrollView>(null);
+  const input = useRef<TextInput>(null);
+  const turnTops = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    if (!noteId) return;
+    let alive = true;
+    void loadNoteTurns(noteId).then((history) => {
+      if (alive) setTurns(history);
+    }).catch((error) => {
+      if (alive) setFailure(error instanceof Error ? error.message : "Couldn’t load this conversation.");
+    }).finally(() => { if (alive) setLoadingHistory(false); });
+    return () => { alive = false; };
+  }, [noteId]);
+
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardWillShow", () => setTyping(true));
+    const hide = Keyboard.addListener("keyboardWillHide", () => setTyping(false));
+    // After the sheet has slid up, so the keyboard does not fight it.
+    const focus = setTimeout(() => input.current?.focus(), 450);
+    return () => {
+      show.remove();
+      hide.remove();
+      clearTimeout(focus);
+    };
+  }, []);
+
+  const request = async (next: AskTurn[], asked: AskMode, draftNow = false) => {
+    setPending(true);
+    setFailure(null);
+    try {
+      if (asked === "note") {
+        if (!activeNoteId.current) {
+          const first = next.find((turn) => turn.role === "user" && turn.mode === "note");
+          const made = await createNote(noteTitle(first?.role === "user" ? first.text : "New thought"), "");
+          activeNoteId.current = made.id;
+          onSaved?.();
+        }
+        const lastUser = next[next.length - 1];
+        if (lastUser.role === "user") await saveNoteTurn(activeNoteId.current, lastUser);
+      }
+      const { reply } = await askAssist(asked, next, draftNow, activeNoteId.current, practiceSessionId);
+      const answer: AskTurn = { id: turnId(), role: "assistant", reply, mode: asked };
+      if (asked === "note" && activeNoteId.current) await saveNoteTurn(activeNoteId.current, answer);
+      setTurns([...next, answer]);
+      // Bring the question to the top, so the answer reads from its first line.
+      const question = next[next.length - 1];
+      const top = turnTops.current.get(question.id);
+      if (top !== undefined)
+        setTimeout(() => list.current?.scrollTo({ y: Math.max(0, top - 6), animated: !reducedMotion }), 60);
+    } catch (e) {
+      if (e instanceof AskLimitError) setLimited(true);
+      setFailure(e instanceof Error ? e.message : "Couldn’t answer right now. Try again.");
+    } finally {
+      setPending(false);
+    }
+  };
+  const send = (question: string, draftNow = false, requestedMode: AskMode = mode) => {
+    const asked = question.replace(/\s+/g, " ").trim().slice(0, ASK_MAX_CHARS);
+    if (!asked || pending || limited || loadingHistory || turns[turns.length - 1]?.role === "user") return;
+    const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode: requestedMode, draftNow }];
+    setTurns(next);
+    setText("");
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // The answer is a card or two, not a line: give it the whole sheet.
+    Keyboard.dismiss();
+    setTimeout(() => list.current?.scrollToEnd({ animated: !reducedMotion }), 60);
+    void request(next, requestedMode, draftNow);
+  };
+  const retry = () => {
+    const last = turns[turns.length - 1];
+    if (last?.role === "user" && !pending) void request(turns, last.mode, last.draftNow);
+  };
+
+  const mark = (key: string, state: SaveState | null) =>
+    setSaves((s) => {
+      const next = { ...s };
+      if (state) next[key] = state;
+      else delete next[key];
+      return next;
+    });
+  const savePhrase = async (key: string, expression: Expression, example: Example | null, nuance: string, question: string) => {
+    mark(key, "saving");
+    try {
+      await createPhrase(toPhraseInput(expression, example, nuance, question));
+      mark(key, "saved");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      onSaved?.();
+    } catch {
+      mark(key, "failed");
+    }
+  };
+  const saveDraft = (key: string, draft: Draft, question: string) => {
+    const sections = draftSections(draft);
+    setDraftReview({ key, title: note?.title || noteTitle(question), body: serializeOutline(sections) });
+  };
+  const confirmDraft = async () => {
+    if (!draftReview || !activeNoteId.current) return;
+    const { key, title, body } = draftReview;
+    mark(key, "saving");
+    try {
+      if (note) await note.apply(body);
+      else await applyNoteVersion(activeNoteId.current, title, body, "ask");
+      setMadeNotes((m) => ({ ...m, [key]: activeNoteId.current! }));
+      mark(key, "saved");
+      setDraftReview(null);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      onSaved?.();
+    } catch {
+      mark(key, "failed");
+    }
+  };
+
+  const last = turns[turns.length - 1];
+  const followUps =
+    !pending && !failure && last?.role === "assistant" && (last.reply.type === "card" || last.reply.type === "answer")
+      ? last.reply.follow_ups
+      : [];
+  const collecting = mode === "note" && last?.role === "assistant" && last.reply.type === "clarify";
+  const intro = INTRO[mode];
+  const starters = STARTERS[mode][firstLanguage()] ?? STARTERS[mode].en;
+  const canSend = Boolean(text.trim()) && !pending && !limited && !loadingHistory && last?.role !== "user";
+  // iOS pageSheet can report a bottom inset that includes the sheet offset
+  // (83pt on the simulator). Keep only the home-indicator allowance.
+  const composerBottomInset = typing ? 8 : Math.max(12, Math.min(insets.bottom, 34));
+  const changeMode = (next: AskMode) => {
+    if (next === mode) return;
+    void Haptics.selectionAsync().catch(() => {});
+    setMode(next);
+  };
+
+  return (
+    <View
+      onLayout={(e) => setSheetTop(Math.max(0, screenHeight - e.nativeEvent.layout.height))}
+      style={{ flex: 1, backgroundColor: t.colors.bg }}
+    >
+      {/* Header: a grabber, the name, close. "New" appears once there is
+          something to clear. */}
+      <View style={{ alignItems: "center", paddingTop: 8 }}>
+        <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: t.colors.soft }} />
+      </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 18,
+          paddingTop: 10,
+          paddingBottom: 8,
+        }}
+      >
+        <View style={{ flex: 1, alignItems: "flex-start" }}>
+          {turns.length && !note ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start a new conversation"
+              hitSlop={10}
+              onPress={() => {
+                setTurns([]);
+                setFailure(null);
+                setSaves({});
+                setMadeNotes({});
+                activeNoteId.current = null;
+                turnTops.current.clear();
+              }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.accD }}>New</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        <Text accessibilityRole="header" style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>
+          Ask
+        </Text>
+        <View style={{ flex: 1, alignItems: "flex-end" }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close Ask"
+            hitSlop={8}
+            onPress={onClose}
+            style={({ pressed }) => ({
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: t.colors.soft,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Icon name="x" s={14} w={2.4} c={t.colors.ink2} />
+          </Pressable>
+        </View>
+      </View>
+
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={sheetTop} style={{ flex: 1 }}>
+        <ScrollView
+          ref={list}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 20, gap: 16, flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
+          {turns.length === 0 ? (
+            <View style={{ flex: 1, justifyContent: "center", gap: 26, paddingBottom: 24 }}>
+              <View style={{ gap: 14 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 15, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
+                  <Icon name="sparkle" s={21} w={1.7} c={t.colors.accD} />
+                </View>
+                <View style={{ gap: 9 }}>
+                  <Serif style={{ fontSize: 34, lineHeight: 39, color: t.colors.ink }}>{intro.title}</Serif>
+                  <Text style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink2 }}>{intro.body}</Text>
+                </View>
+              </View>
+              <View style={{ gap: 9 }}>
+                <Caption>Try a question</Caption>
+                {starters.map((starter) => (
+                  <QuestionChip key={starter} variant="starter" reducedMotion={reducedMotion} onPress={() => send(starter)}>
+                    {starter}
+                  </QuestionChip>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {turns.map((turn, i) => (
+            <View
+              key={turn.id}
+              onLayout={(e) => turnTops.current.set(turn.id, e.nativeEvent.layout.y)}
+            >
+              <ReplyReveal reducedMotion={reducedMotion}>
+              {turn.role === "user" ? (
+                <View
+                  style={{
+                    alignSelf: "flex-end",
+                    maxWidth: "86%",
+                    backgroundColor: t.colors.acc,
+                    borderRadius: 20,
+                    borderBottomRightRadius: 6,
+                    paddingVertical: 10,
+                    paddingHorizontal: 15,
+                  }}
+                >
+                  <Text style={{ fontSize: 16, lineHeight: 22, color: t.colors.onAcc }}>{turn.text}</Text>
+                </View>
+              ) : turn.reply.type === "off_topic" ? (
+                <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, paddingHorizontal: 2 }}>
+                  {OFF_TOPIC}
+                </Text>
+              ) : isHowToSayCard(turn.reply) ? (
+                <HowToSay
+                  card={turn.reply}
+                  saveState={(n) => saves[`${turn.id}.${n}`]}
+                  onSave={(n, expression, example) =>
+                    void savePhrase(`${turn.id}.${n}`, expression, example, (turn.reply as HowToSayCard).nuance, questionFor(turns, i))
+                  }
+                />
+              ) : isNoteCard(turn.reply) ? (
+                <NoteDraft
+                  card={turn.reply}
+                  inNote={Boolean(note)}
+                  draftState={saves[`${turn.id}.draft`]}
+                  madeNote={madeNotes[`${turn.id}.draft`]}
+                  onSaveDraft={() => void saveDraft(`${turn.id}.draft`, (turn.reply as NoteCard).draft, noteTopicFor(turns, i))}
+                  onOpenNote={onOpenNote}
+                  saveState={(n) => saves[`${turn.id}.${n}`]}
+                  onSave={(n, phrase) =>
+                    void savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i))
+                  }
+                />
+              ) : turn.reply.type === "clarify" ? (
+                <ClarifyingQuestion text={turn.reply.text} question={turn.reply.question} />
+              ) : (
+                <Answer
+                  answer={turn.reply}
+                  inNote={Boolean(note)}
+                  draft={patchesDraft(turn.reply) ? draftAt(turns, i) : null}
+                  draftState={saves[`${turn.id}.draft`]}
+                  madeNote={madeNotes[`${turn.id}.draft`]}
+                  onSaveDraft={(draft) =>
+                    saveDraft(`${turn.id}.draft`, draft, questionFor(turns, i))
+                  }
+                  onOpenNote={onOpenNote}
+                  saveState={(n) => saves[`${turn.id}.${n}`]}
+                  onSave={(n, phrase) =>
+                    void savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i))
+                  }
+                />
+              )}
+              </ReplyReveal>
+            </View>
+          ))}
+
+          {pending ? <TypingDots reducedMotion={reducedMotion} /> : null}
+          {failure && last?.role !== "user" ? (
+            <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.warn }}>{failure}</Text>
+          ) : null}
+          {!pending && last?.role === "user" && !loadingHistory && !limited ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 2 }}>
+              <Text style={{ flex: 1, fontSize: 15, lineHeight: 21, color: t.colors.warn }}>{failure ?? "Your last question is waiting for a reply."}</Text>
+              <Pressable accessibilityRole="button" hitSlop={10} onPress={retry}>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>Continue</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {followUps.length ? (
+            <View style={{ gap: 9, alignItems: "flex-start" }}>
+              <Caption>Keep going</Caption>
+              {followUps.map((question) => (
+                <QuestionChip key={question} reducedMotion={reducedMotion} onPress={() => send(question)}>
+                  {question}
+                </QuestionChip>
+              ))}
+            </View>
+          ) : null}
+        </ScrollView>
+
+        {/* Composer: the question, with the mode and send under it. */}
+        <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: composerBottomInset }}>
+          {mode === "note" && turns.some((turn) => turn.role === "user" && turn.mode === "note") ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Draft now with what I have shared"
+              disabled={pending || limited || loadingHistory || last?.role === "user"}
+              onPress={() => send(DRAFT_NOW[firstLanguage()], true, "note")}
+              style={{ alignSelf: "flex-end", paddingHorizontal: 12, paddingVertical: 8, opacity: pending || limited || loadingHistory || last?.role === "user" ? 0.4 : 1 }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.accD }}>Draft now</Text>
+            </Pressable>
+          ) : null}
+          {limited ? (
+            <Text style={{ fontSize: 14, lineHeight: 20, color: t.colors.ink2, textAlign: "center", paddingBottom: 10 }}>
+              You’ve used today’s questions. More tomorrow.
+            </Text>
+          ) : null}
+          <View
+            style={[
+              {
+                backgroundColor: t.colors.card,
+                borderRadius: 26,
+                borderWidth: hairline,
+                borderColor: t.ring,
+                paddingHorizontal: 8,
+                paddingTop: 6,
+                paddingBottom: 8,
+                gap: 6,
+                opacity: limited ? 0.5 : 1,
+              },
+              t.shadowCard,
+            ]}
+          >
+            <TextInput
+              ref={input}
+              accessibilityLabel="Your question"
+              editable={!limited}
+              multiline
+              maxLength={ASK_MAX_CHARS}
+              placeholder={collecting ? "Answer in your own words" : intro.placeholder}
+              placeholderTextColor={t.colors.ink3}
+              value={text}
+              onChangeText={setText}
+              style={{
+                fontSize: 17,
+                lineHeight: 23,
+                maxHeight: 120,
+                paddingHorizontal: 8,
+                paddingTop: 8,
+                paddingBottom: 6,
+                color: t.colors.ink,
+              }}
+            />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <ModeSwitch mode={mode} onChange={changeMode} />
+              <SendButton enabled={canSend} reducedMotion={reducedMotion} onPress={() => send(text)} />
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+      {draftReview ? (
+        <View style={{ position: "absolute", inset: 0, backgroundColor: t.colors.bg, padding: 24, paddingTop: 56 }}>
+          <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: "700", color: t.colors.ink }}>Review draft</Text>
+          <Text style={{ marginTop: 12, color: t.colors.ink2 }}>Your Note changes only when you apply this draft.</Text>
+          <ScrollView style={{ flex: 1, marginTop: 24 }}>
+            {note?.body ? (
+              <View style={{ marginBottom: 22 }}>
+                <Text style={{ color: t.colors.ink3, marginBottom: 8 }}>Current Note</Text>
+                <Text style={{ color: t.colors.ink2, lineHeight: 24 }}>
+                  {comparison?.before.map((part, i) => <Text key={i} style={part.changed ? { textDecorationLine: "line-through", color: t.colors.warn } : undefined}>{part.text}</Text>)}
+                </Text>
+              </View>
+            ) : null}
+            <Text style={{ color: t.colors.ink3, marginBottom: 8 }}>Proposed draft</Text>
+            <Text style={{ color: t.colors.ink, lineHeight: 24 }}>
+              {comparison?.after.map((part, i) => <Text key={i} style={part.changed ? { fontWeight: "700", textDecorationLine: "underline", color: t.colors.accD } : undefined}>{part.text}</Text>)}
+            </Text>
+          </ScrollView>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingBottom: composerBottomInset }}>
+            <Pressable accessibilityRole="button" onPress={() => setDraftReview(null)}><Text style={{ color: t.colors.ink2, fontSize: 16 }}>Keep current</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={saves[draftReview.key] === "saving"} onPress={() => void confirmDraft()}><Text style={{ color: t.colors.accD, fontSize: 16, fontWeight: "700" }}>Apply draft</Text></Pressable>
+          </View>
+          {saves[draftReview.key] === "failed" ? <Text style={{ color: t.colors.warn }}>Couldn’t save the revision. Your Note is unchanged; try Apply draft again.</Text> : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ── Pieces ──────────────────────────────────────────────────────────────────
+
+function SendButton({ enabled, reducedMotion, onPress }: { enabled: boolean; reducedMotion: boolean; onPress: () => void }) {
+  const t = useTheme();
+  const fx = usePressFx(0.9);
+  return (
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityLabel="Send"
+      accessibilityState={{ disabled: !enabled }}
+      disabled={!enabled}
+      onPress={onPress}
+      onPressIn={reducedMotion ? undefined : fx.pressIn}
+      onPressOut={reducedMotion ? undefined : fx.pressOut}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: enabled ? t.colors.acc : t.colors.soft,
+        alignItems: "center",
+        justifyContent: "center",
+        transform: [{ scale: fx.scale }],
+      }}
+    >
+      <View style={{ transform: [{ rotate: "-90deg" }] }}>
+        <Icon name="arrow" s={18} w={2.3} c={enabled ? t.colors.onAcc : t.colors.ink3} />
+      </View>
+    </AnimatedPressable>
+  );
+}
+
+function ModeSwitch({ mode, onChange }: { mode: AskMode; onChange: (mode: AskMode) => void }) {
+  const t = useTheme();
+  return (
+    <View
+      accessibilityRole="tablist"
+      style={{ flexDirection: "row", backgroundColor: t.colors.soft, borderRadius: 21, padding: 3 }}
+    >
+      {(Object.keys(MODE_LABEL) as AskMode[]).map((m) => {
+        const on = m === mode;
+        return (
+          <Pressable
+            key={m}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            onPress={() => onChange(m)}
+            style={[
+              {
+                height: 36,
+                paddingHorizontal: 14,
+                borderRadius: 18,
+                justifyContent: "center",
+                backgroundColor: on ? t.colors.card : "transparent",
+              },
+              on ? t.shadowCard : null,
+            ]}
+          >
+            <Text style={{ fontSize: 13.5, fontWeight: on ? "700" : "500", color: on ? t.colors.ink : t.colors.ink2 }}>
+              {MODE_LABEL[m]}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Starter rows and follow-ups share one quiet, tactile interaction. */
+function QuestionChip({ children, onPress, variant = "followup", reducedMotion }: { children: string; onPress: () => void; variant?: "starter" | "followup"; reducedMotion: boolean }) {
+  const t = useTheme();
+  const fx = usePressFx(0.985);
+  return (
+    <AnimatedPressable
+      accessibilityRole="button"
+      onPress={onPress}
+      onPressIn={reducedMotion ? undefined : fx.pressIn}
+      onPressOut={reducedMotion ? undefined : fx.pressOut}
+      style={[
+        {
+          minHeight: 44,
+          maxWidth: "100%",
+          alignSelf: variant === "starter" ? "stretch" : "flex-start",
+          borderRadius: variant === "starter" ? 16 : 22,
+          borderWidth: hairline,
+          borderColor: t.ring,
+          backgroundColor: t.colors.card,
+          paddingVertical: 11,
+          paddingHorizontal: 15,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+        },
+        { transform: [{ scale: fx.scale }] },
+      ]}
+    >
+      <Text style={{ flex: variant === "starter" ? 1 : undefined, fontSize: 15, lineHeight: 21, fontWeight: "600", color: t.colors.accD }}>{children}</Text>
+      <Icon name="arrow" s={15} w={1.9} c={t.colors.accD} />
+    </AnimatedPressable>
+  );
+}
+
+function Sheet({ children }: { children: ReactNode }) {
+  const t = useTheme();
+  return (
+    <View style={{ backgroundColor: t.colors.card, borderRadius: 24, borderWidth: hairline, borderColor: t.ring, paddingHorizontal: 18, paddingVertical: 17, gap: 16 }}>
+      {children}
+    </View>
+  );
+}
+function Rule() {
+  const t = useTheme();
+  return <View style={{ height: hairline, backgroundColor: t.colors.sep, opacity: 0.6 }} />;
+}
+function Caption({ children }: { children: string }) {
+  const t = useTheme();
+  return (
+    <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.9, color: t.colors.ink2 }}>
+      {children.toUpperCase()}
+    </Text>
+  );
+}
+
+/** Save to Phrase, on one expression. */
+function SaveButton({ state, onPress }: { state: SaveState | undefined; onPress: () => void }) {
+  const t = useTheme();
+  const saved = state === "saved";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={saved ? "Saved to Phrases" : "Save to Phrases"}
+      disabled={saved || state === "saving"}
+      hitSlop={8}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        height: 36,
+        minWidth: 72,
+        paddingHorizontal: 11,
+        borderRadius: 18,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        backgroundColor: saved ? t.colors.soft : t.colors.accS,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      {state === "saving" ? (
+        <ActivityIndicator size="small" color={t.colors.accD} />
+      ) : (
+        <>
+          <Icon name={saved ? "check" : "plus"} s={12} w={2.6} c={saved ? t.colors.ink2 : t.colors.accD} />
+          <Text style={{ fontSize: 13.5, fontWeight: "600", color: saved ? t.colors.ink2 : t.colors.accD }}>
+            {saved ? "Saved" : state === "failed" ? "Retry" : "Save"}
+          </Text>
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+/** The expression itself, with its situation label, meaning and Save. */
+function ExpressionRow({
+  expression,
+  large,
+  example,
+  state,
+  onSave,
+}: {
+  expression: Expression;
+  large?: boolean;
+  example?: Example;
+  state: SaveState | undefined;
+  onSave: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: 5 }}>
+      {expression.when ? <Caption>{expression.when}</Caption> : null}
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+        {large ? (
+          <Serif style={{ flex: 1, fontSize: 24, lineHeight: 29, color: t.colors.ink }}>{expression.en}</Serif>
+        ) : (
+          <Text style={{ flex: 1, fontSize: 17, lineHeight: 23, fontWeight: "600", color: t.colors.ink }}>
+            {expression.en}
+          </Text>
+        )}
+        <SaveButton state={state} onPress={onSave} />
+      </View>
+      {expression.meaning ? (
+        <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.ink2 }}>{expression.meaning}</Text>
+      ) : null}
+      {example?.en ? (
+        <View style={{ gap: 1, paddingTop: 3 }}>
+          <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.ink }}>{example.en}</Text>
+          {example.l1 ? (
+            <Text style={{ fontSize: 13.5, lineHeight: 19, color: t.colors.ink2 }}>{example.l1}</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ClarifyingQuestion({ text, question }: { text: string; question: string }) {
+  const t = useTheme();
+  return (
+    <Sheet>
+      <Caption>One thing first</Caption>
+      {text ? <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>{text}</Text> : null}
+      <Text style={{ fontSize: 18, lineHeight: 26, fontWeight: "600", color: t.colors.ink }}>{question}</Text>
+    </Sheet>
+  );
+}
+
+function HowToSay({
+  card,
+  saveState,
+  onSave,
+}: {
+  card: HowToSayCard;
+  saveState: (n: number) => SaveState | undefined;
+  onSave: (n: number, expression: Expression, example: Example | null) => void;
+}) {
+  const t = useTheme();
+  return (
+    <Sheet>
+      {card.expressions.map((expression, n) => (
+        <View key={expression.en} style={{ gap: 14 }}>
+          {n ? <Rule /> : null}
+          <ExpressionRow
+            large
+            expression={expression}
+            state={saveState(n)}
+            onSave={() => onSave(n, expression, exampleFor(expression, n, card.examples))}
+          />
+        </View>
+      ))}
+      {card.nuance ? (
+        <>
+          <Rule />
+          <View style={{ gap: 6 }}>
+            <Caption>Nuance</Caption>
+            <Text style={{ fontSize: 15.5, lineHeight: 23, color: t.colors.ink }}>{card.nuance}</Text>
+          </View>
+        </>
+      ) : null}
+      {card.examples.length ? (
+        <View style={{ gap: 8 }}>
+          <Caption>Examples</Caption>
+          {card.examples.map((example) => (
+            <View key={example.en} style={{ gap: 1 }}>
+              <Text style={{ fontSize: 16, lineHeight: 22, color: t.colors.ink }}>{example.en}</Text>
+              {example.l1 ? (
+                <Text style={{ fontSize: 14, lineHeight: 20, color: t.colors.ink2 }}>{example.l1}</Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {card.tip ? (
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 9,
+            backgroundColor: t.colors.soft,
+            borderRadius: 14,
+            paddingVertical: 11,
+            paddingHorizontal: 12,
+          }}
+        >
+          <View style={{ paddingTop: 2 }}>
+            <Icon name="bulb" s={15} w={1.9} c={t.colors.accD} />
+          </View>
+          <Text style={{ flex: 1, fontSize: 14.5, lineHeight: 21, color: t.colors.ink }}>{card.tip}</Text>
+        </View>
+      ) : null}
+    </Sheet>
+  );
+}
+
+/** Opening / Body / Closing as text, and the button that keeps it. */
+function DraftBlock({
+  draft,
+  only,
+  inNote,
+  state,
+  madeNote,
+  onSave,
+  onOpenNote,
+}: {
+  draft: Draft;
+  /** Show just these sections (an answer lists what it rewrote). */
+  only?: Draft;
+  inNote: boolean;
+  state: SaveState | undefined;
+  madeNote: string | undefined;
+  onSave: () => void;
+  onOpenNote?: (id: string) => void;
+}) {
+  const t = useTheme();
+  const parts = (["opening", "body", "closing"] as const).filter((k) => (only ? only[k] : draft[k]));
+  const saved = state === "saved";
+  const open = saved && madeNote && onOpenNote ? () => onOpenNote(madeNote) : null;
+  const label = saved
+    ? inNote
+      ? "Applied to this Note"
+      : open
+        ? "Saved · Open note"
+        : "Saved to Studio"
+    : state === "failed"
+      ? "Couldn’t save · Try again"
+      : inNote
+        ? "Review changes"
+        : "Review & save";
+  return (
+    <View style={{ gap: 14 }}>
+      {parts.map((k) => (
+        <View key={k} style={{ gap: 5 }}>
+          <Caption>{k}</Caption>
+          <Text style={{ fontSize: 17, lineHeight: 25, color: t.colors.ink }}>{draft[k]}</Text>
+        </View>
+      ))}
+      <Pressable
+        accessibilityRole="button"
+        disabled={state === "saving" || (saved && !open)}
+        onPress={open ?? onSave}
+        style={({ pressed }) => ({
+          height: 44,
+          borderRadius: 22,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 7,
+          backgroundColor: saved ? t.colors.soft : t.colors.acc,
+          opacity: pressed ? 0.75 : 1,
+        })}
+      >
+        {state === "saving" ? (
+          <ActivityIndicator size="small" color={t.colors.onAcc} />
+        ) : (
+          <>
+            {saved ? <Icon name="check" s={14} w={2.6} c={open ? t.colors.accD : t.colors.ink2} /> : null}
+            <Text style={{ fontSize: 15.5, fontWeight: "600", color: saved ? (open ? t.colors.accD : t.colors.ink2) : t.colors.onAcc }}>
+              {label}
+            </Text>
+          </>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function NoteDraft({
+  card,
+  inNote,
+  draftState,
+  madeNote,
+  onSaveDraft,
+  onOpenNote,
+  saveState,
+  onSave,
+}: {
+  card: NoteCard;
+  inNote: boolean;
+  draftState: SaveState | undefined;
+  madeNote: string | undefined;
+  onSaveDraft: () => void;
+  onOpenNote?: (id: string) => void;
+  saveState: (n: number) => SaveState | undefined;
+  onSave: (n: number, phrase: Expression & { example: Example }) => void;
+}) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: 10 }}>
+      <Sheet>
+        {card.situation ? (
+          <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2 }}>{card.situation}</Text>
+        ) : null}
+        <DraftBlock
+          draft={card.draft}
+          inNote={inNote}
+          state={draftState}
+          madeNote={madeNote}
+          onSave={onSaveDraft}
+          onOpenNote={onOpenNote}
+        />
+      </Sheet>
+      {card.key_phrases.length || card.terms.length ? (
+        <Sheet>
+          {card.key_phrases.length ? <Caption>Key phrases</Caption> : null}
+          {card.key_phrases.map((phrase, n) => (
+            <View key={phrase.en} style={{ gap: 14 }}>
+              {n ? <Rule /> : null}
+              <ExpressionRow
+                expression={{ ...phrase, when: "" }}
+                example={phrase.example}
+                state={saveState(n)}
+                onSave={() => onSave(n, phrase)}
+              />
+            </View>
+          ))}
+          {card.terms.length ? (
+            <>
+              {card.key_phrases.length ? <Rule /> : null}
+              <View style={{ gap: 8 }}>
+                <Caption>Terms</Caption>
+                {card.terms.map((term) => (
+                  <Text key={term.en} style={{ fontSize: 15, lineHeight: 21, color: t.colors.ink2 }}>
+                    <Text style={{ fontWeight: "600", color: t.colors.ink }}>{term.en}</Text>
+                    {term.meaning ? `  ${term.meaning}` : ""}
+                  </Text>
+                ))}
+              </View>
+            </>
+          ) : null}
+        </Sheet>
+      ) : null}
+    </View>
+  );
+}
+
+function Answer({
+  answer,
+  inNote,
+  draft,
+  draftState,
+  madeNote,
+  onSaveDraft,
+  onOpenNote,
+  saveState,
+  onSave,
+}: {
+  answer: AskAnswer;
+  inNote: boolean;
+  /** The whole draft with this answer's rewrite applied; null when the answer
+   *  did not touch the draft. */
+  draft: Draft | null;
+  draftState: SaveState | undefined;
+  madeNote: string | undefined;
+  onSaveDraft: (draft: Draft) => void;
+  onOpenNote?: (id: string) => void;
+  saveState: (n: number) => SaveState | undefined;
+  onSave: (n: number, phrase: Expression & { example: Example }) => void;
+}) {
+  const t = useTheme();
+  return (
+    <Sheet>
+      <Text style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink }}>{answer.text}</Text>
+      {draft ? (
+        <>
+          <Rule />
+          <DraftBlock
+            draft={draft}
+            only={answer.draft_patch}
+            inNote={inNote}
+            state={draftState}
+            madeNote={madeNote}
+            onSave={() => onSaveDraft(draft)}
+            onOpenNote={onOpenNote}
+          />
+        </>
+      ) : null}
+      {answer.expressions.map((phrase, n) => (
+        <View key={phrase.en} style={{ gap: 14 }}>
+          <Rule />
+          <ExpressionRow expression={phrase} example={phrase.example} state={saveState(n)} onSave={() => onSave(n, phrase)} />
+        </View>
+      ))}
+    </Sheet>
+  );
+}
+
+/** Three dots while the answer is on its way. */
+function TypingDots({ reducedMotion }: { reducedMotion: boolean }) {
+  const t = useTheme();
+  const phase = useMemo(() => new Animated.Value(0), []);
+  useEffect(() => {
+    if (reducedMotion) { phase.setValue(0); return; }
+    const loop = Animated.loop(
+      Animated.timing(phase, { toValue: 3, duration: 1050, useNativeDriver: true }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [phase, reducedMotion]);
+  return (
+    <View
+      accessibilityLabel="Answering"
+      accessibilityLiveRegion="polite"
+      style={{
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        gap: 5,
+        backgroundColor: t.colors.card,
+        borderRadius: 18,
+        paddingVertical: 13,
+        paddingHorizontal: 16,
+        alignItems: "center",
+      }}
+    >
+      {[0, 1, 2].map((n) => (
+        <Animated.View
+          key={n}
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 3.5,
+            backgroundColor: t.colors.ink2,
+            opacity: phase.interpolate({
+              inputRange: [n, n + 0.5, n + 1],
+              outputRange: [0.3, 1, 0.3],
+              extrapolate: "clamp",
+            }),
+          }}
+        />
+      ))}
+      <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink2, marginLeft: 7 }}>Thinking</Text>
+    </View>
+  );
+}

@@ -22,6 +22,7 @@ import { loadPhrasesPerDay } from "@/lib/daily-phrases";
 import { loadTalkFocus } from "@/lib/talk-focus";
 import { loadTalkHintSource } from "@/lib/talk-hint-source";
 import { loadThemePref } from "@/lib/theme-pref";
+import { loadAskDefaultMode } from "@/lib/ask-pref";
 import {
   importOnboardingDraft,
   loadOnboardingDraft,
@@ -69,7 +70,7 @@ function RootNavigator() {
   // and Speak diagnosis use them.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
-    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadTalkHintSource(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref()]).finally(() => setPrefsLoaded(true));
+    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadTalkHintSource(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref(), loadAskDefaultMode()]).finally(() => setPrefsLoaded(true));
   }, []);
 
   useEffect(() => {

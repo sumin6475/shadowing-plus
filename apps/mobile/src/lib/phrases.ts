@@ -111,7 +111,7 @@ export interface CreatePhraseInput {
   kind?: PhraseKind;
   context?: string | null;
   contextTranslation?: string | null;
-  source: "manual" | "paste" | "image_ocr" | "clip" | "speak";
+  source: "manual" | "paste" | "image_ocr" | "clip" | "speak" | "ask";
   sourceLabel?: string | null;
   imageUri?: string | null;
   ocrConfidence?: number | null;
@@ -255,6 +255,7 @@ function sourceLabel(
   if (context.source_label) return context.source_label;
   if (context.source === "image_ocr") return "Saved from photo";
   if (context.source === "speak") return "Saved while talking";
+  if (context.source === "ask") return "Saved from Ask";
   if (context.source === "paste") return "Pasted text";
   return "Added by me";
 }
@@ -1014,6 +1015,35 @@ export async function recordPhraseEvent(input: {
     evidence: input.evidence ?? {},
   });
   if (error) throw new Error(error.message);
+}
+
+/** Persist the phrase checks shown in a saved Talk result. A save can be
+ * retried after only some events were written, so only missing pairs are
+ * inserted for this session. The source records whether speech or a manual
+ * check supplied the evidence without storing another copy of the transcript. */
+export async function recordTalkPhraseUses(
+  talkSessionId: string,
+  uses: { phraseItemId: string; source: "transcript" | "manual" }[],
+): Promise<void> {
+  if (!uses.length) return;
+  const { data, error } = await supabase
+    .from("phrase_events")
+    .select("phrase_item_id")
+    .eq("talk_session_id", talkSessionId)
+    .eq("event", "used");
+  if (error) throw new Error(error.message);
+  const existing = new Set((data ?? []).map((row) => row.phrase_item_id as string));
+  const missing = uses.filter((use) => !existing.has(use.phraseItemId));
+  if (!missing.length) return;
+  const { error: insertError } = await supabase.from("phrase_events").insert(
+    missing.map((use) => ({
+      talk_session_id: talkSessionId,
+      phrase_item_id: use.phraseItemId,
+      event: "used",
+      evidence: { source: "self_talk", marked_by: use.source },
+    })),
+  );
+  if (insertError) throw new Error(insertError.message);
 }
 
 const REVIEW_LADDER_DAYS = [1, 3, 7, 30] as const;

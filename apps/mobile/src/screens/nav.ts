@@ -56,6 +56,8 @@ export interface TalkCtx {
   /** Link the saved Attempt to its Situation and Speaking Note, if any. */
   situationId?: string | null;
   noteId?: string | null;
+  /** Immutable copy of the Note the learner actually practiced. */
+  noteSnapshot?: { title: string; body: string } | null;
   /** The phrase "Use it in the mirror" came from — its hint card leads. */
   phraseId?: string | null;
   /** Where to land when the attempt ends. Without it Talk falls back to
