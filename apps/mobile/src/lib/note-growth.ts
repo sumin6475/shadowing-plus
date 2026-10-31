@@ -50,6 +50,13 @@ export async function createNoteFolder(name: string): Promise<NoteFolder> {
   return data;
 }
 
+/** Notes stay in Studio without a folder; folder-scoped context is removed by
+ * the database's foreign-key cascade. */
+export async function deleteNoteFolder(folderId: string): Promise<void> {
+  const { data, error } = await supabase.from("note_folders").delete().eq("id", folderId).select("id").maybeSingle();
+  if (error || !data) failed(error, "Couldn’t delete the folder.");
+}
+
 export async function moveNoteToFolder(noteId: string, folderId: string | null): Promise<void> {
   const { data, error } = await supabase.from("notes").update({ folder_id: folderId }).eq("id", noteId).select("id").maybeSingle();
   if (error || !data) failed(error, "Couldn’t move the note.");

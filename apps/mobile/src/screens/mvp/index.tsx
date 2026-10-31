@@ -38,7 +38,7 @@ import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
 import { AskSheet } from "@/components/ask-sheet";
 import { askDefaultMode } from "@/lib/ask-pref";
-import { addConfirmedFact, applyNoteVersion, createNoteFolder, loadNoteFacts, loadNoteFolders, loadNotePracticeHistory, loadNoteVersions, moveNoteToFolder } from "@/lib/note-growth";
+import { addConfirmedFact, applyNoteVersion, createNoteFolder, deleteNoteFolder, loadNoteFacts, loadNoteFolders, loadNotePracticeHistory, loadNoteVersions, moveNoteToFolder } from "@/lib/note-growth";
 import type { AskMode } from "@/lib/ask-model";
 import { FONT, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
@@ -1484,6 +1484,8 @@ export function NotesStudio({ nav }: { nav: Nav }) {
     : view === "folders"
       ? []
       : notes.filter((n) => n.folder_id === view);
+  const folderDetail = view !== "notes" && view !== "folders";
+  const openFolder = folderDetail ? folders.data?.find((folder) => folder.id === view) : null;
   const loadFolderFacts = useCallback(() => view !== "notes" && view !== "folders" ? loadNoteFacts(view) : Promise.resolve([]), [view]);
   const folderFacts = useRefresh(loadFolderFacts, nav.speakingDataRevision);
   // loadNotes returns newest first, so the Map fills Today → Earlier in order.
@@ -1493,21 +1495,33 @@ export function NotesStudio({ nav }: { nav: Nav }) {
     groups.set(label, [...(groups.get(label) ?? []), n]);
   }
   return (
-    <Screen onPullToSearch={() => nav.push("search", { visit: Date.now() })}>
-      <Header
-        nav={nav}
-        title="Studio"
-        add={() => view === "folders" ? setCreatingFolder(true) : void create()}
-        addLabel={view === "folders" ? "New folder" : "New note"}
-        menu={{
-          options: [],
-          selected: "",
-          onSelect: () => {},
-          onSearch: () => { setView("notes"); setSearching(true); },
-        }}
-        filtered={!!query.trim()}
-      />
-      {!searching ? (
+    <Screen onPullToSearch={folderDetail ? undefined : () => nav.push("search", { visit: Date.now() })}>
+      {folderDetail ? (
+        <BackBar
+          title={openFolder?.name ?? "Folder"}
+          onBack={() => setView("folders")}
+          right={
+            <Pressable accessibilityRole="button" accessibilityLabel="New note in folder" onPress={() => void create()} hitSlop={8}>
+              <Icon name="plus" s={26} w={1.75} c={t.colors.ink} />
+            </Pressable>
+          }
+        />
+      ) : (
+        <Header
+          nav={nav}
+          title="Studio"
+          add={() => view === "folders" ? setCreatingFolder(true) : void create()}
+          addLabel={view === "folders" ? "New folder" : "New note"}
+          menu={{
+            options: [],
+            selected: "",
+            onSelect: () => {},
+            onSearch: () => { setView("notes"); setSearching(true); },
+          }}
+          filtered={!!query.trim()}
+        />
+      )}
+      {!searching && !folderDetail ? (
         <View style={{ flexDirection: "row", alignSelf: "flex-start", gap: 6, paddingVertical: 2 }}>
           {(["Folders", "Notes"] as const).map((tab) => {
             const selected = tab === "Folders" ? view !== "notes" : view === "notes";
@@ -1549,11 +1563,6 @@ export function NotesStudio({ nav }: { nav: Nav }) {
             setQuery("");
           }}
         />
-      ) : null}
-      {view !== "notes" && view !== "folders" && !query.trim() ? (
-        <Pressable accessibilityRole="button" onPress={() => setView("folders")} style={{ paddingVertical: 10 }}>
-          <Text style={{ color: t.colors.accD, fontWeight: "600" }}>‹ Folders · {folders.data?.find((folder) => folder.id === view)?.name ?? "Folder"}</Text>
-        </Pressable>
       ) : null}
       {query.trim() ? (
         <FilterSummary
@@ -1661,13 +1670,28 @@ export function NotesStudio({ nav }: { nav: Nav }) {
       {view === "folders" && !query.trim() ? (
           <SectionCard label="Your folders">
             {(folders.data ?? []).map((folder) => (
-              <Row key={folder.id} last={false}>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <Icon name="folder" s={20} c={t.colors.ink2} />
-                  <Text style={{ color: t.colors.ink, fontSize: 16, flex: 1 }}>{folder.name}</Text>
-                  <Text style={{ color: t.colors.ink3 }}>{notes.filter((n) => n.folder_id === folder.id).length}</Text>
-                </Pressable>
-              </Row>
+              <SwipeRow
+                key={folder.id}
+                flat
+                onDelete={() => confirmDelete({
+                  title: `Delete “${folder.name}”?`,
+                  message: "Notes will stay in Studio without a folder. Shared context saved in this folder will be deleted.",
+                  onConfirm: () => void deleteNoteFolder(folder.id)
+                    .then(async () => {
+                      nav.invalidateSpeakingData();
+                      await Promise.all([state.refresh(), folders.refresh()]);
+                    })
+                    .catch((e) => showError(message(e))),
+                })}
+              >
+                <Row last={false}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <Icon name="folder" s={20} c={t.colors.ink2} />
+                    <Text style={{ color: t.colors.ink, fontSize: 16, flex: 1 }}>{folder.name}</Text>
+                    <Text style={{ color: t.colors.ink3 }}>{notes.filter((n) => n.folder_id === folder.id).length}</Text>
+                  </Pressable>
+                </Row>
+              </SwipeRow>
             ))}
             {creatingFolder ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}>
