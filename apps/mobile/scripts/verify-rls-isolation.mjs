@@ -211,6 +211,44 @@ try {
     },
     insertedLookup: { field: "transcript", value: `${marker} spoof transcript` },
   });
+
+  const chatTitle = `${marker} Ask history`;
+  const chatId = await insertOne(accountA, "ask_conversations", {
+    title: chatTitle,
+    initial_mode: "how_to_say",
+  });
+  cleanup.push({ table: "ask_conversations", id: chatId });
+  const turnContent = `${marker} question`;
+  const turnId = await insertOne(accountA, "ask_chat_turns", {
+    conversation_id: chatId,
+    client_turn_id: randomUUID(),
+    role: "user",
+    mode: "how_to_say",
+    content: turnContent,
+  });
+  cleanup.push({ table: "ask_chat_turns", id: turnId });
+
+  await checkSurface({
+    label: "Ask conversation",
+    table: "ask_conversations",
+    ownerId: chatId,
+    ownerField: "title",
+    ownerValue: chatTitle,
+    unauthorizedPatch: { title: `${marker} unauthorized chat update` },
+    unauthorizedInsert: { user_id: userA, title: `${marker} spoof chat`, initial_mode: "how_to_say" },
+    insertedLookup: { field: "title", value: `${marker} spoof chat` },
+  });
+
+  await checkSurface({
+    label: "Ask turn",
+    table: "ask_chat_turns",
+    ownerId: turnId,
+    ownerField: "content",
+    ownerValue: turnContent,
+    unauthorizedPatch: { content: `${marker} unauthorized turn update` },
+    unauthorizedInsert: { user_id: userA, conversation_id: chatId, client_turn_id: randomUUID(), role: "user", mode: "how_to_say", content: `${marker} spoof turn` },
+    insertedLookup: { field: "content", value: `${marker} spoof turn` },
+  });
 } catch (error) {
   console.error(error instanceof Error ? error.message : "RLS harness failed before completion");
   process.exitCode = 1;
@@ -226,8 +264,8 @@ try {
   await accountB.auth.signOut();
 }
 
-if (results.length === 14 && results.every((result) => result.passed)) {
-  console.log("PASS: RLS isolation harness (14/14)");
+if (results.length === 22 && results.every((result) => result.passed)) {
+  console.log("PASS: RLS isolation harness (22/22)");
 } else {
   console.error(`FAIL: RLS isolation harness (${results.filter((result) => result.passed).length}/${results.length})`);
   process.exitCode = 1;

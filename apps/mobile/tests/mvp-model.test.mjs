@@ -173,6 +173,16 @@ test("mirror cards: the phrase you came from, then today's picks, then Ready", (
   assert.deepEqual(hintPicks([], 5, now), []);
 });
 
+test("mirror cards lead with phrases not used today, but keep a forced or fallback card", () => {
+  const now = new Date(2026, 9, 11, 12);
+  const mk = (id, day) => ({ ...empty, id, createdAt: new Date(2026, 9, day, 9).toISOString() });
+  const phrases = [mk("used", 1), mk("fresh", 2), mk("later", 3)];
+  const ids = (count, used, first) => hintPicks(phrases, count, now, first, used).map((p) => p.id);
+  assert.deepEqual(ids(2, ["used"]), ["fresh", "later"]);
+  assert.deepEqual(ids(3, ["used"]), ["fresh", "later", "used"]);
+  assert.deepEqual(ids(2, ["used"], "used"), ["used", "fresh"]);
+});
+
 test("a note outline keeps its points, labelled by section", () => {
   assert.deepEqual(outlinePoints(NOTE_TEMPLATE.split("\n")), [], "the untouched template has no points");
   assert.deepEqual(

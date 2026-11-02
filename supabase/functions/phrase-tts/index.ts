@@ -2,6 +2,7 @@
 // The OpenAI key and private R2 credentials never reach the mobile bundle.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { AwsClient } from "npm:aws4fetch@1";
+import { estimatedTtsSeconds, recordMobileUsage } from "../_shared/mobile-usage.ts";
 
 const MODEL = "gpt-4o-mini-tts";
 const VOICE = "marin";
@@ -57,7 +58,7 @@ async function isCached(key: string): Promise<boolean> {
   throw new Error(`R2 cache check failed (${response.status})`);
 }
 
-async function generateAndCache(key: string, text: string, apiKey: string): Promise<void> {
+async function generateAndCache(key: string, text: string, apiKey: string, onGenerated: () => Promise<void>): Promise<void> {
   const openai = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -76,6 +77,8 @@ async function generateAndCache(key: string, text: string, apiKey: string): Prom
 
   const audio = await openai.arrayBuffer();
   if (!audio.byteLength) throw new Error("OpenAI speech returned empty audio");
+  // Generation has already been billed even if the cache write later fails.
+  await onGenerated();
   const stored = await awsClient().fetch(objectUrl(key), {
     method: "PUT",
     headers: {
@@ -131,7 +134,17 @@ Deno.serve(async (req: Request) => {
     const fingerprint = await hash(`${PROMPT_VERSION}\n${MODEL}\n${VOICE}\n${text}`);
     const key = `phrase-tts/${PROMPT_VERSION}/${user.id}/${fingerprint}.mp3`;
     const cached = await isCached(key);
-    if (!cached) await generateAndCache(key, text, apiKey);
+    if (!cached) await generateAndCache(key, text, apiKey, () => {
+      const seconds = estimatedTtsSeconds(text);
+      return recordMobileUsage(supabase, user.id, {
+        kind: "phrase_tts_estimate",
+        model: MODEL,
+        audioSeconds: seconds,
+        // Speech API has no per-request usage object. Estimate from spoken
+        // duration at about $0.015/min; actual billing remains authoritative.
+        estimatedCostUsd: seconds * 0.015 / 60,
+      });
+    });
     return json({ audio_url: await signKey(key), cached, voice: VOICE, model: MODEL });
   } catch (error) {
     console.error("Phrase TTS failed", error);

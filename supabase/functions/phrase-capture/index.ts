@@ -6,6 +6,7 @@
 // the client sends `first_language` — the server cannot look it up, because L1
 // lives on the device, not in a column.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { recordMobileUsage } from "../_shared/mobile-usage.ts";
 
 const MODEL = "gpt-4o-mini";
 const KINDS = new Set(["word", "phrasal_verb", "pattern", "idiom", "phrase"]);
@@ -55,11 +56,12 @@ Deno.serve(async (req: Request) => {
   } = await supabase.auth.getUser();
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  const body = (await req.json().catch(() => null)) as { image_base64?: unknown; mime_type?: unknown; context_text?: unknown; phrase_text?: unknown; first_language?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { image_base64?: unknown; mime_type?: unknown; context_text?: unknown; phrase_text?: unknown; first_language?: unknown; capture_intent?: unknown } | null;
   const lang = learnerLanguage(body?.first_language);
   const base64 = typeof body?.image_base64 === "string" ? body.image_base64 : "";
   const suppliedContext = clean(body?.context_text, 1600);
   const suppliedPhrase = clean(body?.phrase_text, 240);
+  const askResult = body?.capture_intent === "ask_result";
   if (!base64 && !suppliedContext && !suppliedPhrase) return json({ error: "Add a phrase, some text, or a photo first." }, 400);
   if (base64.length > 8_000_000) return json({ error: "Choose a smaller photo." }, 400);
   const mime = body?.mime_type === "image/png" ? "image/png" : "image/jpeg";
@@ -116,9 +118,10 @@ Deno.serve(async (req: Request) => {
             {
               role: "system",
               content:
-                "Help a learner capture useful English from text they supplied. Preserve their text exactly. " +
-                "Choose one short reusable expression or sentence pattern that appears EXACTLY in the supplied text. " +
-                "If the input is already a short expression, use the whole expression. Never rewrite or invent words. " +
+                (askResult
+                  ? "This is a complete English sentence shown by the Ask assistant. Extract its MAIN reusable expression: a short chunk the learner can use in other sentences. Prefer the meaningful verb phrase, idiom, or pattern over the whole sentence. Do not include the subject or an incidental clause unless they are essential to the expression. "
+                  : "Help a learner capture useful English from text they supplied. Choose one short reusable expression or sentence pattern. If the input is already a short expression, use the whole expression. ") +
+                "The expression must appear EXACTLY in the supplied text. Preserve the source sentence as context. Never rewrite or invent words. " +
                 `Give a short ${lang} meaning, a brief English usage note, and a natural ${lang} translation of the complete supplied text. Return JSON only.`,
             },
             {
@@ -131,6 +134,12 @@ Deno.serve(async (req: Request) => {
   });
   if (!openai.ok) return json({ error: `Couldn’t fill this phrase right now (OpenAI ${openai.status}).` }, 502);
   const payload = await openai.json();
+  await recordMobileUsage(supabase, user.id, {
+    kind: base64 ? "phrase_capture_image" : askResult ? "phrase_capture_ask" : "phrase_capture_text",
+    model: MODEL,
+    inputTokens: payload?.usage?.prompt_tokens,
+    outputTokens: payload?.usage?.completion_tokens,
+  });
   let parsed: Record<string, unknown> = {};
   try {
     parsed = JSON.parse(payload?.choices?.[0]?.message?.content ?? "{}");

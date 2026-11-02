@@ -95,13 +95,13 @@ function PhrasePage({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${card.text}. ${used ? "Used." : "Not used yet."}`}
+      accessibilityLabel={`${card.text}. ${used ? "Used in this talk." : card.usedToday ? "Used earlier today." : "Not used yet."}`}
       accessibilityHint={open ? "Hides the meaning" : "Shows the meaning and how it is used"}
       onPress={toggle}
       style={{ gap: 12 }}
     >
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={LABEL}>TRY USING</Text>
+        <Text style={LABEL}>{card.usedToday && !used ? "USED EARLIER TODAY" : "TRY USING"}</Text>
         <Text style={[LABEL, usedCount ? { color: USED } : null]}>
           {usedCount} OF {total} USED
         </Text>
@@ -138,7 +138,7 @@ function PhrasePage({
         </View>
       ) : (
         <Text style={{ color: used ? USED : "rgba(255,255,255,0.6)", fontSize: 13 }}>
-          {used ? "You used it. Nice." : "Say it or tap the circle to check it off · Tap for meaning"}
+          {used ? "You used it. Nice." : card.usedToday ? "You can use it again · Tap for meaning" : "Say it or tap the circle to check it off · Tap for meaning"}
         </Text>
       )}
     </Pressable>

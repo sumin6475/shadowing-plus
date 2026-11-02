@@ -5,6 +5,7 @@
 // runs under `node --test`: what a session sends back as history, how a draft
 // becomes note points, and what "Save to Phrase" writes.
 import type { OutlineSection } from "./mvp-model";
+import type { PhraseCaptureDraft } from "./phrase-capture";
 
 export type AskMode = "how_to_say" | "note";
 /** Turns kept as history, user and assistant together (server: MAX_TURNS). */
@@ -180,6 +181,48 @@ export interface AskPhraseInput {
   contextTranslation: string | null;
   source: "ask";
   sourceLabel: string;
+}
+
+/** A second-pass Ask result for the editable Phrase Bank capture screen. */
+export interface AskCaptureSeed {
+  contextText: string;
+  contextTranslation: string;
+  suggestedPhrase: string;
+  kind: PhraseCaptureDraft["kind"];
+  meaning: string;
+  usageNote: string;
+  learnerNote: string;
+  sourceLabel: string;
+  confidence: number;
+}
+
+/** Keep the sentence Ask showed as context; only the extracted chunk is a Phrase. */
+export function toAskCaptureSeed(sentence: string, question: string, draft: PhraseCaptureDraft): AskCaptureSeed {
+  const contextText = sentence.trim();
+  const suggestedPhrase = draft.suggestedPhrase.trim();
+  if (!contextText || !suggestedPhrase || !contextText.toLocaleLowerCase("en").includes(suggestedPhrase.toLocaleLowerCase("en"))) {
+    throw new Error("Couldn’t find a reusable expression in that sentence. Try again.");
+  }
+  const withoutStop = (value: string) => value.replace(/[.!?]+$/, "").trim().toLocaleLowerCase("en");
+  if (
+    /[.!?]$/.test(contextText) &&
+    contextText.split(/\s+/).length >= 3 &&
+    draft.kind !== "idiom" &&
+    withoutStop(suggestedPhrase) === withoutStop(contextText)
+  ) {
+    throw new Error("Couldn’t separate a reusable expression from that sentence. Try again.");
+  }
+  return {
+    contextText,
+    contextTranslation: draft.contextTranslation.trim(),
+    suggestedPhrase,
+    kind: draft.kind,
+    meaning: draft.meaning.trim(),
+    usageNote: draft.usageNote.trim(),
+    learnerNote: question.trim(),
+    sourceLabel: "Saved from Ask",
+    confidence: draft.confidence,
+  };
 }
 /** What "Save to Phrase" stores: the expression with its meaning, the nuance
  *  as the usage note (led by the situation label, when there is one), one

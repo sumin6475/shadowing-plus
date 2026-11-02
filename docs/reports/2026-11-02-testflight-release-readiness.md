@@ -1,0 +1,35 @@
+# TestFlight 배포 준비 상태 — 2026-11-02
+
+## 후보 범위
+
+브랜치 `codex/self-talk-used-today`의 한 묶음: 하루 표현 선정과 Self-talk 사용 표시, Ask How to say 결과의 2차 표현 추출 및 최종 편집 저장, Ask 대화 기록과 사이드바, 표현 추출·임베딩·발음 생성 비용 기록. [비용 추정 보고서](2026-11-02-ai-cost-and-chat-history.md)는 별도 보관한다.
+
+## 현재 판정
+
+**코드 검증 통과, TestFlight 배포 전 서버 적용·실기능 검증 필요.** 원격 Supabase에는 마이그레이션 034까지 적용되어 있고 035는 미적용이다. 따라서 현재 시뮬레이터에서 실제 Ask 기록 저장·재열기를 성공으로 확인할 수 없다. 화면 밀도 확인용 10건은 임시 모의 데이터였고 앱 코드에서는 제거했다.
+
+| 검사 | 결과 |
+| --- | --- |
+| `npm run test:mvp` | PASS, 62/62 |
+| `npm run validate` | PASS: 릴리스 설정, TypeScript, 린트 기준, iOS export (2,234 modules) |
+| `git diff --check` | PASS |
+| 린트 경고 | 기존 `src/screens/phrases.tsx:1025` 1개, 오류 0개 |
+| Ask 히스토리 DB/RLS | 미검증: 035 미적용, 2계정 테스트 환경 없음 |
+| Edge Function 실제 동작 | 미검증: 새 `phrase-capture`, `phrase-embed`, `phrase-tts` 코드 미배포 |
+| TestFlight 빌드 | 이번 후보 미생성. 최신 확인 빌드는 `1.0.1 (45)` |
+
+## DB 적용 주의
+
+일반 `supabase db push --linked --dry-run`은 저장소의 001–030 과거 파일 중 원격 이력에 없는 항목 때문에 `LegacyDbPushMissingRemoteError`로 중단된다. `--include-all`은 과거 SQL을 재적용하려 하므로 사용하면 안 된다. 035를 적용할 때는 원격에 이미 적용된 버전 `020, 024, 031, 032, 033, 034`의 빈 마커와 **실제** `035_ask_conversation_history.sql`만 포함한 일회성 임시 Supabase 작업 디렉터리를 사용한다. 원격과 연결된 프로젝트 메타데이터를 가리키고 먼저 `supabase db push --linked --dry-run --workdir <임시 디렉터리>`을 재실행한다. 이번 확인에서는 적용 대상으로 `035_ask_conversation_history.sql` 하나만 나왔다. 실제 적용 직전 원격 이력을 다시 확인해야 한다.
+
+035는 새 테이블과 RLS를 만들고 기존 Note 대화 턴을 이관한다. 예전 앱이 쓰는 `note_chat_turns`의 새 항목도 복제한다. 삭제한 대화의 오래된 Note 대화 사본은 함께 제거하지만 Note 자체는 보존한다. DB 롤백 시 035 테이블을 곧바로 삭제하면 새 대화 기록을 잃으므로, 앱을 이전 TestFlight 빌드로 되돌리더라도 테이블은 유지하는 것이 안전하다.
+
+## 실제 배포 순서와 확인 항목
+
+1. 변경 사항을 리뷰하고 릴리스 후보 커밋을 확정한다. 로컬 임시 의존성·환경 symlink는 커밋에 넣지 않는다.
+2. 035만 대상으로 하는 DB dry-run을 다시 확인한 뒤 적용한다. `npm run verify:rls`는 별도 테스트 계정 2개의 `RLS_TEST_A_EMAIL/PASSWORD`, `RLS_TEST_B_EMAIL/PASSWORD`가 준비되면 실행한다. Ask 대화·턴의 타 계정 읽기/수정/삭제/소유자 위조 삽입 차단을 확인한다.
+3. Edge Functions `phrase-capture`, `phrase-embed`, `phrase-tts`를 배포한다. 각 함수에서 인증 없는 요청은 JSON 401, 인증된 요청은 기존 결과를 반환하고 `usage_events`가 토큰 실측값 또는 발음 추정값으로 늘어나는지 확인한다.
+4. DB 적용 후 시뮬레이터에서 실제 계정으로 Ask 질문 → 앱 재시작 후 대화 재열기 → 새 대화 → 삭제, How to say 저장 → 핵심 표현과 예시 문장이 채워진 최종 편집 화면 → 최종 저장을 확인한다. Self-talk에서 같은 날 사용한 표현 표시와 새 날짜 전환도 확인한다.
+5. iOS `testflight` 프로필로 새 EAS 빌드를 만들고 TestFlight에 제출한다. EAS의 원격 버전 관리와 자동 증가 설정상 버전 `1.0.1`의 다음 빌드 번호가 예상되지만 빌드 생성 시 번호를 확인한다. 실제 TestFlight 설치본에서 4번을 다시 확인한다.
+
+원격 DB·Edge Function 적용과 TestFlight 제출은 아직 실행하지 않았다. 서버 적용 전 앱을 제출하면 Ask 기록 호출이 실패한다.

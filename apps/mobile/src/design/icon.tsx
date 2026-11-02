@@ -39,6 +39,9 @@ export type IconName =
   | "globe"
   | "translate"
   | "chat"
+  | "menu"
+  | "sidebar"
+  | "trash"
   | "contrast"
   | "clock"
   | "bulb"
@@ -307,6 +310,15 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
       break;
     case "chat":
       body = <Path {...common} d="M4.5 7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H10l-4 3.5V15H6.5a2 2 0 0 1-2-2z" />;
+      break;
+    case "menu":
+      body = <Path {...common} d="M4 6.5h16M4 12h16M4 17.5h16" />;
+      break;
+    case "sidebar":
+      body = <Path {...common} d="M5 6.5h10M4 12h16M5 17.5h7" />;
+      break;
+    case "trash":
+      body = <G {...common}><Path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 10.5v6M14 10.5v6" /></G>;
       break;
     case "contrast":
       body = (

@@ -31,6 +31,7 @@ import {
   type HintPhrase,
 } from "@/lib/mvp";
 import { phraseIndex, spokenWords } from "@/lib/phrase-use";
+import { markMirrorUsed, unmarkMirrorUsed } from "@/lib/mirror-used";
 import { recordTalkPhraseUses } from "@/lib/phrases";
 import { snapshotNoteVersion } from "@/lib/note-growth";
 import type { Nav, TalkCtx } from "./nav";
@@ -123,6 +124,18 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     () => new Set(cards.filter((card, i) => usage[i] >= 0 || ticked.has(card.id)).map((card) => card.id)),
     [cards, usage, ticked],
   );
+  // Live uses also count for this local day if the learner discards the Talk.
+  // Undo only affects a use first recorded by this attempt.
+  const [mirrorId] = useState(() => globalThis.expo.uuidv4());
+  const reported = useRef(new Set<string>());
+  useEffect(() => {
+    const added = [...usedIds].filter((id) => !reported.current.has(id));
+    const undone = [...reported.current].filter((id) => !usedIds.has(id));
+    for (const id of added) reported.current.add(id);
+    for (const id of undone) reported.current.delete(id);
+    if (added.length) void markMirrorUsed(added, mirrorId).catch(() => {});
+    if (undone.length) void unmarkMirrorUsed(undone, mirrorId).catch(() => {});
+  }, [usedIds, mirrorId]);
   // The most recently used card is the one said furthest into the talk.
   const latest = cards.reduce<HintPhrase | null>(
     (best, card, i) =>
@@ -182,6 +195,10 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     setSaveState("saving");
     setSaveErr(null);
     try {
+      // A late card load must use the pre-save day state. Once the session row
+      // exists, reading its transcript would rotate the fallback deck itself.
+      const phraseCards = cards.length ? cards : await loadHintPhrases(phrasesPerDay(), p0.phraseId);
+      if (!cards.length) setCards(phraseCards);
       if (!sessionId.current) sessionId.current = globalThis.expo.uuidv4();
       if (p0.noteId && p0.noteSnapshot && !noteVersionId.current) {
         noteVersionId.current = await snapshotNoteVersion(p0.noteId, p0.noteSnapshot.title, p0.noteSnapshot.body);
@@ -197,8 +214,6 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       });
       // Persist the same checks the result shows. The saved transcript wins
       // over a manual check when both identify the same phrase.
-      const phraseCards = cards.length ? cards : await loadHintPhrases(phrasesPerDay(), p0.phraseId);
-      if (!cards.length) setCards(phraseCards);
       const words = spokenWords(text);
       await recordTalkPhraseUses(id, phraseCards.flatMap((card) => {
         const heard = phraseIndex(words, card.text) >= 0;

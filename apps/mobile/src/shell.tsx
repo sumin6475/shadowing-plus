@@ -71,6 +71,7 @@ import { SearchScreen } from "@/screens/search";
 import { PracticeHubScreen, QuickRehearsalScreen } from "@/screens/practice";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
+import type { AskCaptureSeed } from "@/lib/ask-model";
 import type { Attempt } from "@/lib/studio-model";
 
 interface StackEntry {
@@ -498,6 +499,7 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
           nav={nav}
           imageAsset={p.imageAsset as CaptureImageAsset | undefined}
           clipSeed={p.clipSeed as ClipCaptureSeed | undefined}
+          askSeed={p.askSeed as AskCaptureSeed | undefined}
           editPhraseId={p.editPhraseId as string | undefined}
         />
       );

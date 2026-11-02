@@ -13,6 +13,7 @@ import {
   questionFor,
   sentences,
   toPhraseInput,
+  toAskCaptureSeed,
   trimHistory,
 } from "../src/lib/ask-model.ts";
 import { parseAskBody } from "../../../supabase/functions/ask-assist/core.ts";
@@ -123,6 +124,24 @@ test("Save to Phrase keeps the meaning, the nuance, an example and the learner's
   });
   const bare = toPhraseInput({ en: " Got it ", meaning: "", when: "" }, null, "", "");
   assert.deepEqual([bare.text, bare.meaning, bare.usageNote, bare.context, bare.learnerNote], ["Got it", null, null, null, null]);
+});
+
+test("Ask review keeps the shown sentence as context and extracts a shorter Phrase", () => {
+  const seed = toAskCaptureSeed("I feel down when I'm not feeling well.", "몸이 안 좋으면 속상해", {
+    contextText: "I feel down when I'm not feeling well.",
+    contextTranslation: "몸이 안 좋을 때 기분이 가라앉아요.",
+    suggestedPhrase: "feel down",
+    kind: "phrase",
+    meaning: "기분이 가라앉다",
+    usageNote: "Use for a low mood.",
+    confidence: 0.93,
+  });
+  assert.equal(seed.suggestedPhrase, "feel down");
+  assert.equal(seed.contextText, "I feel down when I'm not feeling well.");
+  assert.equal(seed.learnerNote, "몸이 안 좋으면 속상해");
+  assert.equal(seed.sourceLabel, "Saved from Ask");
+  assert.throws(() => toAskCaptureSeed("I feel down.", "", { ...seed, suggestedPhrase: "unrelated" }), /reusable expression/);
+  assert.throws(() => toAskCaptureSeed("I'm running late.", "", { ...seed, suggestedPhrase: "I'm running late." }), /separate a reusable expression/);
 });
 
 test("an expression is saved with the example that shows it", () => {

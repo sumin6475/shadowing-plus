@@ -4,15 +4,16 @@
 // own language, get natural English with a meaning, a nuance note and
 // examples. "Note": start from a question or topic, answer a focused prompt
 // when needed, then get a short Opening / Body / Closing draft. The mode is picked per question; the conversation is
-// shared across modes; Note turns are persisted with the Note.
+// shared across modes; every turn is persisted in Ask history.
 //
 // Every reply is structured (lib/ask-model), so it is drawn as a card with its
-// own actions — Save to Phrase on each expression, review a Note draft —
+// own actions — review a Phrase draft from How to say, save a Note draft —
 // not as a wall of text. Follow-up questions are one tap.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   Animated,
   Keyboard,
   KeyboardAvoidingView,
@@ -25,21 +26,32 @@ import {
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/design/text";
-import { hairline, useTheme } from "@/design/theme";
+import { hairline, SERIF, useTheme } from "@/design/theme";
 import { AnimatedPressable, Icon, Serif, usePressFx } from "@/design/ui";
 import { AskLimitError, askAssist } from "@/lib/ask";
+import {
+  createAskConversation,
+  deleteAskConversation,
+  latestAskConversation,
+  linkAskConversationToNote,
+  listAskConversations,
+  loadAskTurns,
+  saveAskTurn,
+  type AskConversation,
+} from "@/lib/ask-history";
 import {
   ASK_MAX_CHARS,
   draftAt,
   draftSections,
-  exampleFor,
   isHowToSayCard,
   isNoteCard,
   noteTitle,
   noteTopicFor,
   patchesDraft,
   questionFor,
+  toAskCaptureSeed,
   toPhraseInput,
+  type AskCaptureSeed,
   type AskAnswer,
   type AskMode,
   type AskTurn,
@@ -52,7 +64,8 @@ import {
 import { firstLanguage, type L1 } from "@/lib/first-language";
 import { createNote, parseOutline, serializeOutline } from "@/lib/mvp";
 import { createPhrase } from "@/lib/phrases";
-import { applyNoteVersion, loadNoteTurns, saveNoteTurn } from "@/lib/note-growth";
+import { extractPhraseFromAsk } from "@/lib/phrase-capture";
+import { applyNoteVersion } from "@/lib/note-growth";
 import { noteWordDiff } from "@/lib/note-diff";
 
 const MODE_LABEL: Record<AskMode, string> = { how_to_say: "How to say", note: "Note" };
@@ -110,10 +123,12 @@ export interface AskSheetProps {
   onSaved?: () => void;
   /** Open a note this sheet just created (the sheet closes first). */
   onOpenNote?: (id: string) => void;
+  /** Open the existing Phrase Bank editor with an extracted Ask draft. */
+  onOpenPhraseDraft: (seed: AskCaptureSeed) => void;
 }
 
 export function AskSheet(props: AskSheetProps) {
-  // The body mounts with the sheet. Note history reloads from its own record.
+  // The body mounts with the sheet. Ask history is scoped to the signed-in user.
   return (
     <Modal
       visible={props.open}
@@ -156,7 +171,7 @@ function ReplyReveal({ children, reducedMotion }: { children: ReactNode; reduced
   );
 }
 
-function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNote, practiceSessionId }: AskSheetProps) {
+function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNote, onOpenPhraseDraft, practiceSessionId }: AskSheetProps) {
   const t = useTheme();
   const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
@@ -169,31 +184,153 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const [saves, setSaves] = useState<Record<string, SaveState>>({});
   const [madeNotes, setMadeNotes] = useState<Record<string, string>>({});
   const [typing, setTyping] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(Boolean(note));
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [chats, setChats] = useState<AskConversation[]>([]);
+  const [moreChats, setMoreChats] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [olderBefore, setOlderBefore] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [draftReview, setDraftReview] = useState<{ key: string; title: string; body: string } | null>(null);
   const readable = (value: string) => parseOutline(value).flatMap((section) => section.points).join(" ");
   const comparison = draftReview ? noteWordDiff(readable(note?.body ?? ""), readable(draftReview.body)) : null;
   const activeNoteId = useRef<string | null>(note?.id ?? null);
+  const activeChatId = useRef<string | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(note?.id ?? null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const loadSerial = useRef(0);
   const noteId = note?.id;
   // A page sheet starts below the top of the screen, and the keyboard reports
   // its position in screen terms — so keyboard avoidance needs to know how far
   // down the sheet begins: the screen's height less the sheet's own.
   const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth } = useWindowDimensions();
+  const sidebarWidth = Math.min(326, Math.round(screenWidth * 0.86));
+  const sidebarProgress = useMemo(() => new Animated.Value(0), []);
   const [sheetTop, setSheetTop] = useState(0);
   const list = useRef<ScrollView>(null);
   const input = useRef<TextInput>(null);
   const turnTops = useRef(new Map<string, number>());
 
   useEffect(() => {
-    if (!noteId) return;
     let alive = true;
-    void loadNoteTurns(noteId).then((history) => {
-      if (alive) setTurns(history);
-    }).catch((error) => {
-      if (alive) setFailure(error instanceof Error ? error.message : "Couldn’t load this conversation.");
-    }).finally(() => { if (alive) setLoadingHistory(false); });
+    void Promise.all([latestAskConversation(noteId), listAskConversations(0, 50)])
+      .then(async ([recent, firstPage]) => {
+        const page = recent ? await loadAskTurns(recent.id) : { turns: [], before: null };
+        if (!alive) return;
+        setChats(firstPage);
+        setMoreChats(firstPage.length === 50);
+        activeChatId.current = recent?.id ?? null;
+        activeNoteId.current = recent?.noteId ?? noteId ?? null;
+        setSelectedChatId(recent?.id ?? null);
+        setSelectedNoteId(recent?.noteId ?? noteId ?? null);
+        setTurns(page.turns);
+        setOlderBefore(page.before);
+        setMode(page.turns.at(-1)?.mode ?? recent?.initialMode ?? initialMode);
+      })
+      .catch((error) => { if (alive) setFailure(error instanceof Error ? error.message : "Couldn’t load Ask history."); })
+      .finally(() => { if (alive) setLoadingHistory(false); });
     return () => { alive = false; };
-  }, [noteId]);
+  }, [noteId, initialMode]);
+
+  useEffect(() => {
+    const animation = Animated.timing(sidebarProgress, {
+      toValue: sidebarOpen ? 1 : 0,
+      duration: reducedMotion ? 0 : 230,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [sidebarOpen, sidebarProgress, reducedMotion]);
+
+  const refreshChats = async () => {
+    const firstPage = await listAskConversations(0, 50);
+    setChats(firstPage);
+    setMoreChats(firstPage.length === 50);
+  };
+
+  const openChat = async (chat: AskConversation) => {
+    if (pending || loadingHistory) return;
+    const serial = ++loadSerial.current;
+    setLoadingHistory(true);
+    setFailure(null);
+    try {
+      const page = await loadAskTurns(chat.id);
+      if (serial !== loadSerial.current) return;
+      activeChatId.current = chat.id;
+      activeNoteId.current = chat.noteId;
+      setSelectedChatId(chat.id);
+      setSelectedNoteId(chat.noteId);
+      setTurns(page.turns);
+      setOlderBefore(page.before);
+      setMode(page.turns.at(-1)?.mode ?? chat.initialMode);
+      setText("");
+      setSaves({});
+      setMadeNotes({});
+      turnTops.current.clear();
+      setSidebarOpen(false);
+      setTimeout(() => list.current?.scrollToEnd({ animated: false }), 80);
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "Couldn’t open this conversation.");
+    } finally {
+      if (serial === loadSerial.current) setLoadingHistory(false);
+    }
+  };
+
+  const newChat = () => {
+    if (pending || loadingHistory) return;
+    ++loadSerial.current;
+    activeChatId.current = null;
+    activeNoteId.current = note?.id ?? null;
+    setSelectedChatId(null);
+    setSelectedNoteId(note?.id ?? null);
+    setTurns([]);
+    setOlderBefore(null);
+    setMode(initialMode);
+    setText("");
+    setFailure(null);
+    setSaves({});
+    setMadeNotes({});
+    turnTops.current.clear();
+    setSidebarOpen(false);
+    setTimeout(() => input.current?.focus(), 260);
+  };
+
+  const removeChat = (chat: AskConversation) => {
+    Alert.alert("Delete conversation?", "This removes its Ask messages. Any saved Note or Phrase stays.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => {
+        void deleteAskConversation(chat.id).then(async () => {
+          if (activeChatId.current === chat.id) newChat();
+          await refreshChats();
+        }).catch((error) => setFailure(error instanceof Error ? error.message : "Couldn’t delete this conversation."));
+      } },
+    ]);
+  };
+
+  const loadMoreChats = async () => {
+    if (loadingMore || !moreChats) return;
+    setLoadingMore(true);
+    try {
+      const page = await listAskConversations(chats.length, 50);
+      setChats((current) => [...current, ...page.filter((item) => !current.some((old) => old.id === item.id))]);
+      setMoreChats(page.length === 50);
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "Couldn’t load more conversations.");
+    } finally { setLoadingMore(false); }
+  };
+
+  const loadOlder = async () => {
+    if (!olderBefore || !activeChatId.current || pending || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const page = await loadAskTurns(activeChatId.current, olderBefore);
+      setTurns((current) => [...page.turns, ...current]);
+      setOlderBefore(page.before);
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "Couldn’t load earlier messages.");
+    } finally { setLoadingOlder(false); }
+  };
 
   useEffect(() => {
     const show = Keyboard.addListener("keyboardWillShow", () => setTyping(true));
@@ -211,20 +348,37 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
     setPending(true);
     setFailure(null);
     try {
+      const lastUser = next[next.length - 1];
+      if (lastUser.role !== "user") throw new Error("Couldn’t send this question.");
       if (asked === "note") {
         if (!activeNoteId.current) {
           const first = next.find((turn) => turn.role === "user" && turn.mode === "note");
           const made = await createNote(noteTitle(first?.role === "user" ? first.text : "New thought"), "");
           activeNoteId.current = made.id;
+          setSelectedNoteId(made.id);
           onSaved?.();
         }
-        const lastUser = next[next.length - 1];
-        if (lastUser.role === "user") await saveNoteTurn(activeNoteId.current, lastUser);
       }
+      if (!activeChatId.current) {
+        const firstUser = next.find((turn) => turn.role === "user");
+        const created = await createAskConversation(firstUser?.role === "user" ? firstUser.text : lastUser.text,
+          asked, activeNoteId.current);
+        activeChatId.current = created.id;
+        setSelectedChatId(created.id);
+        setChats((current) => [created, ...current]);
+      } else if (asked === "note" && activeNoteId.current) {
+        await linkAskConversationToNote(activeChatId.current, activeNoteId.current);
+      }
+      await saveAskTurn(activeChatId.current, lastUser);
       const { reply } = await askAssist(asked, next, draftNow, activeNoteId.current, practiceSessionId);
       const answer: AskTurn = { id: turnId(), role: "assistant", reply, mode: asked };
-      if (asked === "note" && activeNoteId.current) await saveNoteTurn(activeNoteId.current, answer);
       setTurns([...next, answer]);
+      try {
+        await saveAskTurn(activeChatId.current, answer);
+        void refreshChats().catch(() => {});
+      } catch {
+        setFailure("Answer shown, but couldn’t save it to history. Keep this conversation open.");
+      }
       // Bring the question to the top, so the answer reads from its first line.
       const question = next[next.length - 1];
       const top = turnTops.current.get(question.id);
@@ -272,16 +426,29 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       mark(key, "failed");
     }
   };
+  const reviewAskPhrase = async (key: string, expression: Expression, question: string) => {
+    mark(key, "saving");
+    setFailure(null);
+    try {
+      const draft = await extractPhraseFromAsk(expression.en);
+      const seed = toAskCaptureSeed(expression.en, question, draft);
+      mark(key, null);
+      onOpenPhraseDraft(seed);
+    } catch (caught) {
+      mark(key, "failed");
+      setFailure(caught instanceof Error ? caught.message : "Couldn’t prepare this phrase. Try again.");
+    }
+  };
   const saveDraft = (key: string, draft: Draft, question: string) => {
     const sections = draftSections(draft);
-    setDraftReview({ key, title: note?.title || noteTitle(question), body: serializeOutline(sections) });
+    setDraftReview({ key, title: (note?.id === activeNoteId.current ? note.title : "") || noteTitle(question), body: serializeOutline(sections) });
   };
   const confirmDraft = async () => {
     if (!draftReview || !activeNoteId.current) return;
     const { key, title, body } = draftReview;
     mark(key, "saving");
     try {
-      if (note) await note.apply(body);
+      if (note?.id === activeNoteId.current) await note.apply(body);
       else await applyNoteVersion(activeNoteId.current, title, body, "ask");
       setMadeNotes((m) => ({ ...m, [key]: activeNoteId.current! }));
       mark(key, "saved");
@@ -316,8 +483,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       onLayout={(e) => setSheetTop(Math.max(0, screenHeight - e.nativeEvent.layout.height))}
       style={{ flex: 1, backgroundColor: t.colors.bg }}
     >
-      {/* Header: a grabber, the name, close. "New" appears once there is
-          something to clear. */}
+      {/* Header: history lives behind the left menu; New chat is inside it. */}
       <View style={{ alignItems: "center", paddingTop: 8 }}>
         <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: t.colors.soft }} />
       </View>
@@ -331,23 +497,20 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
         }}
       >
         <View style={{ flex: 1, alignItems: "flex-start" }}>
-          {turns.length && !note ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Start a new conversation"
-              hitSlop={10}
-              onPress={() => {
-                setTurns([]);
-                setFailure(null);
-                setSaves({});
-                setMadeNotes({});
-                activeNoteId.current = null;
-                turnTops.current.clear();
-              }}
-            >
-              <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.accD }}>New</Text>
-            </Pressable>
-          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open Ask chat history"
+            accessibilityState={{ expanded: sidebarOpen }}
+            hitSlop={10}
+            onPress={() => {
+              Keyboard.dismiss();
+              setSidebarOpen(true);
+              void refreshChats().catch(() => {});
+            }}
+            style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.6 : 1 })}
+          >
+            <Icon name="menu" s={21} w={2} c={t.colors.ink} />
+          </Pressable>
         </View>
         <Text accessibilityRole="header" style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>
           Ask
@@ -365,7 +528,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
               backgroundColor: t.colors.soft,
               alignItems: "center",
               justifyContent: "center",
-              opacity: pressed ? 0.7 : 1,
+              opacity: sidebarOpen ? 0 : pressed ? 0.7 : 1,
             })}
           >
             <Icon name="x" s={14} w={2.4} c={t.colors.ink2} />
@@ -378,10 +541,16 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
           ref={list}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 20, gap: 16, flexGrow: 1 }}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
+          {olderBefore ? (
+            <Pressable accessibilityRole="button" disabled={loadingOlder || pending} onPress={() => void loadOlder()} style={{ alignSelf: "center", paddingHorizontal: 18, paddingVertical: 10 }}>
+              {loadingOlder ? <ActivityIndicator size="small" color={t.colors.accD} /> : <Text style={{ fontSize: 13.5, fontWeight: "600", color: t.colors.accD }}>Earlier messages</Text>}
+            </Pressable>
+          ) : null}
           {turns.length === 0 ? (
             <View style={{ flex: 1, justifyContent: "center", gap: 26, paddingBottom: 24 }}>
               <View style={{ gap: 14 }}>
@@ -432,14 +601,14 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                 <HowToSay
                   card={turn.reply}
                   saveState={(n) => saves[`${turn.id}.${n}`]}
-                  onSave={(n, expression, example) =>
-                    void savePhrase(`${turn.id}.${n}`, expression, example, (turn.reply as HowToSayCard).nuance, questionFor(turns, i))
+                  onSave={(n, expression) =>
+                    void reviewAskPhrase(`${turn.id}.${n}`, expression, questionFor(turns, i))
                   }
                 />
               ) : isNoteCard(turn.reply) ? (
                 <NoteDraft
                   card={turn.reply}
-                  inNote={Boolean(note)}
+                  inNote={note?.id === selectedNoteId}
                   draftState={saves[`${turn.id}.draft`]}
                   madeNote={madeNotes[`${turn.id}.draft`]}
                   onSaveDraft={() => void saveDraft(`${turn.id}.draft`, (turn.reply as NoteCard).draft, noteTopicFor(turns, i))}
@@ -454,7 +623,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
               ) : (
                 <Answer
                   answer={turn.reply}
-                  inNote={Boolean(note)}
+                  inNote={note?.id === selectedNoteId}
                   draft={patchesDraft(turn.reply) ? draftAt(turns, i) : null}
                   draftState={saves[`${turn.id}.draft`]}
                   madeNote={madeNotes[`${turn.id}.draft`]}
@@ -464,7 +633,9 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   onOpenNote={onOpenNote}
                   saveState={(n) => saves[`${turn.id}.${n}`]}
                   onSave={(n, phrase) =>
-                    void savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i))
+                    void (turn.mode === "how_to_say"
+                      ? reviewAskPhrase(`${turn.id}.${n}`, phrase, questionFor(turns, i))
+                      : savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i)))
                   }
                 />
               )}
@@ -557,6 +728,82 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
           </View>
         </View>
       </KeyboardAvoidingView>
+      <View
+        pointerEvents={sidebarOpen ? "auto" : "none"}
+        accessibilityElementsHidden={!sidebarOpen}
+        importantForAccessibility={sidebarOpen ? "yes" : "no-hide-descendants"}
+        style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}
+      >
+        <Animated.View style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: "#111726", opacity: sidebarProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.34] }) }} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Close chat history" onPress={() => setSidebarOpen(false)} style={{ position: "absolute", top: 0, bottom: 0, left: sidebarWidth, right: 0 }} />
+        <Animated.View
+          accessibilityViewIsModal={sidebarOpen}
+          style={{ width: sidebarWidth, flex: 1, backgroundColor: t.colors.bg, borderTopRightRadius: 24, borderBottomRightRadius: 24, overflow: "hidden", transform: [{ translateX: sidebarProgress.interpolate({ inputRange: [0, 1], outputRange: [-sidebarWidth, 0] }) }] }}
+        >
+          <View style={{ paddingHorizontal: 20, paddingTop: 32, paddingBottom: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text accessibilityRole="header" style={{ fontFamily: SERIF, fontSize: 29, lineHeight: 34, letterSpacing: -0.4, color: t.colors.ink }}>Ask</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Collapse chat history"
+                hitSlop={8}
+                onPress={() => setSidebarOpen(false)}
+                style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 21, backgroundColor: t.colors.card, borderWidth: hairline, borderColor: t.colors.sep, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.65 : 1 })}
+              >
+                <Icon name="sidebar" s={21} w={1.9} c={t.colors.ink2} />
+              </Pressable>
+            </View>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
+            {chats.map((chat, index) => {
+              const bucket = historyBucket(chat.updatedAt);
+              const heading = index === 0 || bucket !== historyBucket(chats[index - 1].updatedAt);
+              const selected = selectedChatId === chat.id;
+              return (
+                <View key={chat.id}>
+                  {heading ? <Text style={{ marginTop: index ? 20 : 2, marginBottom: 9, marginHorizontal: 11, fontSize: 11, fontWeight: "700", letterSpacing: 0.8, color: t.colors.ink3 }}>{bucket.toUpperCase()}</Text> : null}
+                  <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 15, backgroundColor: selected ? t.colors.accS : "transparent" }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open conversation: ${chat.title}`}
+                      disabled={pending || loadingHistory}
+                      onPress={() => void openChat(chat)}
+                      style={({ pressed }) => ({ flex: 1, flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 13, paddingLeft: 12, opacity: pressed ? 0.65 : 1 })}
+                    >
+                      <Icon name="chat" s={16} c={selected ? t.colors.accD : t.colors.ink3} />
+                      <View style={{ flex: 1, gap: 3 }}>
+                        <Text numberOfLines={1} style={{ fontSize: 14.5, fontWeight: selected ? "700" : "500", color: selected ? t.colors.accD : t.colors.ink }}>{chat.title}</Text>
+                        <Text style={{ fontSize: 11.5, color: t.colors.ink3 }}>{chat.noteId ? "Speaking note" : MODE_LABEL[chat.initialMode]}</Text>
+                      </View>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Delete conversation: ${chat.title}`} hitSlop={6} onPress={() => removeChat(chat)} style={{ padding: 11 }}>
+                      <Icon name="trash" s={15} c={t.colors.ink3} />
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
+            {moreChats ? (
+              <Pressable accessibilityRole="button" disabled={loadingMore} onPress={() => void loadMoreChats()} style={{ alignItems: "center", paddingVertical: 18 }}>
+                {loadingMore ? <ActivityIndicator size="small" color={t.colors.accD} /> : <Text style={{ fontSize: 14, fontWeight: "600", color: t.colors.accD }}>More conversations</Text>}
+              </Pressable>
+            ) : null}
+          </ScrollView>
+          <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 20), alignItems: "center" }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start a new Ask conversation"
+              accessibilityState={{ disabled: pending || loadingHistory }}
+              disabled={pending || loadingHistory}
+              onPress={newChat}
+              style={({ pressed }) => ({ height: 46, borderRadius: 23, paddingHorizontal: 20, backgroundColor: t.colors.card, borderWidth: hairline, borderColor: t.colors.sep, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, opacity: pressed ? 0.65 : pending || loadingHistory ? 0.5 : 1 })}
+            >
+              <Icon name="plus" s={18} w={1.9} c={t.colors.ink} />
+              <Text style={{ fontSize: 14.5, fontWeight: "600", color: t.colors.ink }}>New chat</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </View>
       {draftReview ? (
         <View style={{ position: "absolute", inset: 0, backgroundColor: t.colors.bg, padding: 24, paddingTop: 56 }}>
           <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: "700", color: t.colors.ink }}>Review draft</Text>
@@ -584,6 +831,17 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       ) : null}
     </View>
   );
+}
+
+function historyBucket(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const localDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((localDay(now) - localDay(date)) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return "This week";
+  return "Earlier";
 }
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
@@ -807,7 +1065,7 @@ function HowToSay({
 }: {
   card: HowToSayCard;
   saveState: (n: number) => SaveState | undefined;
-  onSave: (n: number, expression: Expression, example: Example | null) => void;
+  onSave: (n: number, expression: Expression) => void;
 }) {
   const t = useTheme();
   return (
@@ -819,7 +1077,7 @@ function HowToSay({
             large
             expression={expression}
             state={saveState(n)}
-            onSave={() => onSave(n, expression, exampleFor(expression, n, card.examples))}
+            onSave={() => onSave(n, expression)}
           />
         </View>
       ))}

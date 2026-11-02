@@ -309,6 +309,10 @@ function AskEntry({ nav }: { nav: Nav }) {
           setOpen(false);
           nav.push("mvpNote", { id });
         }}
+        onOpenPhraseDraft={(askSeed) => {
+          setOpen(false);
+          nav.push("capture", { askSeed });
+        }}
       />
     </>
   );
@@ -2109,6 +2113,10 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           open={asking && Boolean(note)}
           onClose={() => setAsking(false)}
           initialMode="note"
+          onOpenPhraseDraft={(askSeed) => {
+            setAsking(false);
+            nav.push("capture", { askSeed });
+          }}
           practiceSessionId={practiceSessionId}
           note={{
             id,

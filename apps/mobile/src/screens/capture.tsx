@@ -13,6 +13,7 @@ import { useTheme } from "@/design/theme";
 import { AnimatedPressable, BackBar, Card, Chip, Icon, Pill, Screen, usePressFx } from "@/design/ui";
 import { BlurView } from "expo-blur";
 import { extractPhraseFromImage, extractPhraseFromText, fillPhraseDetails, type PhraseCaptureDraft } from "@/lib/phrase-capture";
+import type { AskCaptureSeed } from "@/lib/ask-model";
 import { createPhrase, fetchPhrasesForCaptureContext, loadEditablePhrase, updatePhrase, updatePhraseDetails, type EditablePhrase, type PhraseKind } from "@/lib/phrases";
 import type { Nav } from "./nav";
 
@@ -240,11 +241,14 @@ export function PhraseCaptureScreen({
   nav,
   imageAsset,
   clipSeed,
+  askSeed,
   editPhraseId,
 }: {
   nav: Nav;
   imageAsset?: CaptureImageAsset;
   clipSeed?: ClipCaptureSeed;
+  /** Already extracted from an Ask result; the learner reviews before saving. */
+  askSeed?: AskCaptureSeed;
   /** Edit an existing phrase: every field starts filled, Save updates it. */
   editPhraseId?: string;
 }) {
@@ -261,23 +265,23 @@ export function PhraseCaptureScreen({
   const [filling, setFilling] = useState(Boolean(clipSeed?.contextText) && !imageAsset);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(askSeed?.suggestedPhrase ?? "");
   const [detectedText, setDetectedText] = useState("");
   const [detectedTranslation, setDetectedTranslation] = useState("");
   const [detectedTranslatedFrom, setDetectedTranslatedFrom] = useState("");
-  const [context, setContext] = useState(clipSeed?.contextText ?? "");
-  const [contextTranslation, setContextTranslation] = useState(clipSeed?.contextTranslation ?? "");
-  const [contextTranslatedFrom, setContextTranslatedFrom] = useState(clipSeed?.contextTranslation ? (clipSeed.contextText ?? "") : "");
+  const [context, setContext] = useState(askSeed?.contextText ?? clipSeed?.contextText ?? "");
+  const [contextTranslation, setContextTranslation] = useState(askSeed?.contextTranslation ?? clipSeed?.contextTranslation ?? "");
+  const [contextTranslatedFrom, setContextTranslatedFrom] = useState(askSeed?.contextText ?? (clipSeed?.contextTranslation ? (clipSeed.contextText ?? "") : ""));
   const [textSource, setTextSource] = useState<"manual" | "paste">("manual");
-  const [meaning, setMeaning] = useState("");
-  const [usageNote, setUsageNote] = useState("");
-  const [learnerNote, setLearnerNote] = useState("");
-  const [sourceLabel, setSourceLabel] = useState(clipSeed?.sourceLabel ?? "");
-  const [kind, setKind] = useState<PhraseKind>("phrase");
+  const [meaning, setMeaning] = useState(askSeed?.meaning ?? "");
+  const [usageNote, setUsageNote] = useState(askSeed?.usageNote ?? "");
+  const [learnerNote, setLearnerNote] = useState(askSeed?.learnerNote ?? "");
+  const [sourceLabel, setSourceLabel] = useState(askSeed?.sourceLabel ?? clipSeed?.sourceLabel ?? "");
+  const [kind, setKind] = useState<PhraseKind>(askSeed?.kind ?? "phrase");
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [detectedSelection, setDetectedSelection] = useState({ start: 0, end: 0 });
-  const [confidence, setConfidence] = useState<number | null>(null);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [confidence, setConfidence] = useState<number | null>(askSeed?.confidence ?? null);
+  const [moreOpen, setMoreOpen] = useState(Boolean(askSeed));
   // Situations are not part of this app version, so there is no picker; an
   // existing link (older phrases, Speak seeds) is carried through on save.
   const [situationId, setSituationId] = useState<string | null>(clipSeed?.situationId ?? null);
@@ -715,7 +719,7 @@ export function PhraseCaptureScreen({
         kind,
         context,
         contextTranslation,
-        source: imageUri ? "image_ocr" : clipSeed?.source === "speak" ? "speak" : clipSeed ? "clip" : textSource,
+        source: askSeed ? "ask" : imageUri ? "image_ocr" : clipSeed?.source === "speak" ? "speak" : clipSeed ? "clip" : textSource,
         sourceLabel,
         ocrConfidence: imageUri ? confidence : null,
         videoId: clipSeed?.videoId,
@@ -725,6 +729,7 @@ export function PhraseCaptureScreen({
         storyId: situationId,
         said: clipSeed?.said,
       });
+      nav.invalidateSpeakingData();
       const captured: SavedCapturePhrase = {
         id: saved.id,
         text: text.replace(/\s+/g, " ").trim(),
@@ -735,7 +740,7 @@ export function PhraseCaptureScreen({
       };
       if (saved.result === "saved") {
         posthog?.capture("phrase_saved", {
-          source: imageUri ? "image_ocr" : clipSeed?.source === "speak" ? "speak" : clipSeed ? "clip" : textSource,
+          source: askSeed ? "ask" : imageUri ? "image_ocr" : clipSeed?.source === "speak" ? "speak" : clipSeed ? "clip" : textSource,
           phrase_kind: kind,
           linked_to_story: Boolean(situationId),
         });
@@ -761,7 +766,7 @@ export function PhraseCaptureScreen({
   return (
     <>
       <Screen bottomPad={54}>
-      <BackBar title={editing ? "Edit phrase" : clipSeed?.source === "speak" ? "From this talk" : clipSeed ? "From this clip" : imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
+      <BackBar title={editing ? "Edit phrase" : askSeed ? "From Ask" : clipSeed?.source === "speak" ? "From this talk" : clipSeed ? "From this clip" : imageUri ? "From photo" : "Add a phrase"} onBack={leaveEditor} />
 
       {imageUri ? (
         <>
@@ -825,7 +830,9 @@ export function PhraseCaptureScreen({
       <Card>
         <CaptureLabel label="CONTEXT" tag="Optional" />
         <Text style={{ fontSize: 12.5, lineHeight: 18, color: t.colors.ink3, marginTop: 5 }}>
-          {clipSeed?.source === "speak"
+          {askSeed
+            ? "Ask’s sentence is your example. Check the reusable phrase below, then save."
+            : clipSeed?.source === "speak"
             ? "We’ll pick one reusable expression from this suggestion. You can edit everything."
             : clipSeed
               ? "We’ll pick one reusable expression from this line. You can edit everything."
@@ -840,7 +847,7 @@ export function PhraseCaptureScreen({
           }}
           onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
           editable={!reading}
-          autoFocus={!imageAsset && !clipSeed && !editing}
+          autoFocus={!imageAsset && !clipSeed && !askSeed && !editing}
           multiline
           placeholder="e.g. Don’t let his mood rub off on you."
           placeholderTextColor={t.colors.ink3}

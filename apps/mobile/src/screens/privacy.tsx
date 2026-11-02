@@ -95,7 +95,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           title="What we store"
           lines={[
             "Your account email and profile (name, goal, and optional photo).",
-            "Your saved phrases, speaking notes, speaking session transcripts, and practice history.",
+            "Your saved phrases, Ask chat history, speaking notes, speaking session transcripts, and practice history.",
             "Learning content is protected by your account and is never public. Profile photos are stored with Supabase at a hard-to-guess link, so only someone with that exact link can view them.",
           ]}
         />

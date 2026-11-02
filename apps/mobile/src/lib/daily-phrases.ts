@@ -13,6 +13,19 @@ import {
   type LearningStatus,
   type PhraseItem,
 } from "./phrases";
+import {
+  balancedPhrasesForDay,
+  type DailyRankInput,
+} from "./daily-phrase-ranking";
+
+export {
+  balancedPhrasesForDay,
+  discoverySlotsForDay,
+  isDiscoveryPhrase,
+  isReinforcementPhrase,
+  phraseUrgencyScore,
+  rankPhrasesForDay,
+} from "./daily-phrase-ranking";
 
 export { nextReviewInterval };
 export const REVIEW_LADDER_DAYS = [1, 3, 7, 30] as const;
@@ -23,26 +36,17 @@ export const DEFAULT_PHRASES_PER_DAY = 5;
 
 const COUNT_KEY = "phrases_per_day";
 const QUEUE_KEY = "daily_phrase_queue";
-const DAY_MS = 86_400_000;
+const QUEUE_STRATEGY = 2;
 
 let countOverride: number | null = null;
 
-export type RankInput = {
-  id: string;
-  learningStatus: LearningStatus;
-  createdAt: string;
-  dueAt: string;
-  lastReviewedAt: string | null;
-  lastPracticedAt: string | null;
-  lastSelfTalkUsedAt: string | null;
-  lapses: number;
-  reviewPinUntil: string | null;
-};
+export type RankInput = DailyRankInput;
 
 type QueueCache = {
   date: string;
   ids: string[];
   count: number;
+  strategy: number;
 };
 
 export function localDateKey(date = new Date()): string {
@@ -96,44 +100,13 @@ export async function persistPhrasesPerDay(value: number): Promise<void> {
   }
 }
 
-export function phraseUrgencyScore(phrase: RankInput, today: string, now = Date.now()): number {
-  const overdueDays = Math.floor((now - new Date(phrase.dueAt).getTime()) / DAY_MS);
-  const dueBoost = overdueDays >= 0 ? 20 + Math.min(40, overdueDays * 8) : Math.max(-24, overdueDays * 4);
-  const stageBoost =
-    phrase.learningStatus === "ready" ? 0 : phrase.learningStatus === "practicing" ? 16 : 30;
-  const ageDays = Math.max(0, Math.floor((now - new Date(phrase.createdAt).getTime()) / DAY_MS));
-  const ageBoost = phrase.lastReviewedAt ? 0 : Math.min(20, 8 + ageDays * 2);
-  const lastTouch = phrase.lastReviewedAt ?? phrase.lastPracticedAt;
-  const staleDays = lastTouch ? Math.max(0, Math.floor((now - new Date(lastTouch).getTime()) / DAY_MS)) : ageDays;
-  const staleBoost = Math.min(25, staleDays * 1.5);
-  let usedBoost = 8;
-  if (phrase.lastSelfTalkUsedAt) {
-    const usedDays = Math.floor((now - new Date(phrase.lastSelfTalkUsedAt).getTime()) / DAY_MS);
-    usedBoost = usedDays <= 3 ? -10 : usedDays <= 14 ? 0 : 6;
-  }
-  const pinBoost = phrase.reviewPinUntil === today ? 1000 : 0;
-  const lapseBoost = Math.min(16, phrase.lapses * 4);
-  return dueBoost + stageBoost + ageBoost + staleBoost + usedBoost + pinBoost + lapseBoost;
-}
-
-export function rankPhrasesForDay(phrases: RankInput[], today: string, limit: number, now = Date.now()): RankInput[] {
-  return [...phrases]
-    .sort((a, b) => {
-      const score = phraseUrgencyScore(b, today, now) - phraseUrgencyScore(a, today, now);
-      if (score !== 0) return score;
-      const due = new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
-      if (due !== 0) return due;
-      return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
-    })
-    .slice(0, Math.max(0, limit));
-}
-
 export function toRankInput(phrase: PhraseItem, lastSelfTalkUsedAt: string | null): RankInput {
   return {
     id: phrase.id,
     learningStatus: phrase.learningStatus,
     createdAt: phrase.createdAt,
     dueAt: phrase.dueAt,
+    intervalDays: phrase.intervalDays,
     lastReviewedAt: phrase.lastReviewedAt,
     lastPracticedAt: phrase.lastPracticedAt,
     lastSelfTalkUsedAt,
@@ -146,7 +119,12 @@ function parseQueue(value: string | null): QueueCache | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as QueueCache;
-    if (!parsed?.date || !Array.isArray(parsed.ids) || !isPhrasesPerDay(parsed.count)) return null;
+    if (
+      !parsed?.date ||
+      !Array.isArray(parsed.ids) ||
+      !isPhrasesPerDay(parsed.count) ||
+      parsed.strategy !== QUEUE_STRATEGY
+    ) return null;
     return parsed;
   } catch {
     return null;
@@ -173,28 +151,28 @@ export async function todaysPhrases(): Promise<PhraseItem[]> {
     const kept = hydrate(cached.ids);
     if (kept.length >= n || kept.length === phrases.length) return kept.slice(0, n);
     const taken = new Set(kept.map((phrase) => phrase.id));
-    const extras = rankPhrasesForDay(
-      phrases.filter((phrase) => !taken.has(phrase.id)).map((phrase) => toRankInput(phrase, usedAt[phrase.id] ?? null)),
+    const extras = balancedPhrasesForDay(
+      phrases.map((phrase) => toRankInput(phrase, usedAt[phrase.id] ?? null)),
       today,
-      n - kept.length,
-    );
+      n,
+    ).filter((phrase) => !taken.has(phrase.id));
     const next = [...kept, ...hydrate(extras.map((item) => item.id))].slice(0, n);
     try {
-      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify({ date: today, ids: next.map((phrase) => phrase.id), count: n } satisfies QueueCache));
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify({ date: today, ids: next.map((phrase) => phrase.id), count: n, strategy: QUEUE_STRATEGY } satisfies QueueCache));
     } catch {
       // Frozen ids still work for this session.
     }
     return next;
   }
 
-  const ranked = rankPhrasesForDay(
+  const ranked = balancedPhrasesForDay(
     phrases.map((phrase) => toRankInput(phrase, usedAt[phrase.id] ?? null)),
     today,
     n,
   );
   const next = hydrate(ranked.map((item) => item.id));
   try {
-    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify({ date: today, ids: next.map((phrase) => phrase.id), count: n } satisfies QueueCache));
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify({ date: today, ids: next.map((phrase) => phrase.id), count: n, strategy: QUEUE_STRATEGY } satisfies QueueCache));
   } catch {
     // Ranking still returns a list for this session.
   }

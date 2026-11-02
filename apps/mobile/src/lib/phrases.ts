@@ -1142,6 +1142,7 @@ export async function fetchLastSelfTalkUsedAt(): Promise<Record<string, string>>
     .from("phrase_events")
     .select("phrase_item_id, created_at")
     .eq("event", "used")
+    .not("talk_session_id", "is", null)
     .order("created_at", { ascending: false })
     .limit(400);
   if (error) return {};

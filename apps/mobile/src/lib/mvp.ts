@@ -1,6 +1,9 @@
 import { supabase } from "./supabase";
 import { deleteTalkSessionAudio } from "./talk-audio";
-import { NOTE_TEMPLATE, hintPicks, type Progress, type Step } from "./mvp-model";
+import { NOTE_TEMPLATE, type Progress, type Step } from "./mvp-model";
+import { usedInMirrorToday } from "./mirror-used";
+import { todaysPhrases } from "./daily-phrases";
+import { fetchPhraseById, type PhraseItem } from "./phrases";
 export * from "./mvp-model";
 export interface MvpPhrase extends Progress {
   id: string;
@@ -70,15 +73,42 @@ export async function loadPhraseBank(): Promise<MvpPhrase[]> {
     if (data.length < 1000) return phrases;
   }
 }
-/** A mirror hint card uses the same How it's used guidance as Phrase Bank. */
-export type HintPhrase = MvpPhrase;
-/** The phrases to try while speaking (see `hintPicks`). */
+/** Prior use today is separate from a check in the current Talk attempt. */
+export interface HintPhrase {
+  id: string;
+  text: string;
+  translation: string | null;
+  usageNote: string | null;
+  source: string;
+  createdAt: string;
+  usedToday: boolean;
+}
+/** Keep the day's balanced queue; within it, show unused phrases first. */
 export async function loadHintPhrases(
   count: number,
   firstId?: string | null,
 ): Promise<HintPhrase[]> {
-  const picks = hintPicks(await loadPhraseBank(), count, new Date(), firstId);
-  return picks;
+  if (count <= 0) return [];
+  const today = await todaysPhrases();
+  let first: PhraseItem | null = null;
+  if (firstId && !today.some((phrase) => phrase.id === firstId)) {
+    first = await fetchPhraseById(firstId).catch(() => null);
+  }
+  const candidates = first ? [first, ...today] : today;
+  const usedToday = await usedInMirrorToday(candidates).catch(() => []);
+  const used = new Set(usedToday);
+  const lead = firstId ? candidates.find((phrase) => phrase.id === firstId) : null;
+  const rest = candidates.filter((phrase) => phrase.id !== lead?.id);
+  const ordered = [...(lead ? [lead] : []), ...rest.filter((phrase) => !used.has(phrase.id)), ...rest.filter((phrase) => used.has(phrase.id))];
+  return ordered.slice(0, count).map((phrase) => ({
+    id: phrase.id,
+    text: phrase.text,
+    translation: phrase.translation,
+    usageNote: phrase.usageNote,
+    source: phrase.source,
+    createdAt: phrase.createdAt,
+    usedToday: used.has(phrase.id),
+  }));
 }
 export async function setStep(id: string, step: Step, checked: boolean) {
   const { error } = await supabase

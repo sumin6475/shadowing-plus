@@ -44,6 +44,7 @@ async function invokePhraseCapture(
   body:
     | { image_base64: string; mime_type: "image/jpeg" }
     | { context_text: string }
+    | { context_text: string; capture_intent: "ask_result" }
     | { phrase_text: string; context_text?: string },
   unavailableCopy: string,
 ): Promise<PhraseCaptureDraft> {
@@ -79,6 +80,14 @@ export async function extractPhraseFromText(contextText: string): Promise<Phrase
   return invokePhraseCapture(
     { context_text: contextText },
     "Automatic filling isn’t available yet (server not deployed).",
+  );
+}
+
+/** Second pass over a How to say sentence: find the reusable chunk for review. */
+export async function extractPhraseFromAsk(sentence: string): Promise<PhraseCaptureDraft> {
+  return invokePhraseCapture(
+    { context_text: sentence, capture_intent: "ask_result" },
+    "Ask phrase extraction isn’t available yet (server not deployed).",
   );
 }
 

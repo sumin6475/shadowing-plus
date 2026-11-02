@@ -4,6 +4,7 @@
 // Reads phrase_items.meaning (was meaning_ko) — deploy only after migration
 // 030_phrase_meaning_rename_expand.sql is applied, or the select 42703s.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { recordMobileUsage } from "../_shared/mobile-usage.ts";
 
 const MODEL = "text-embedding-3-small";
 const EMBEDDING_DIMS = 1536;
@@ -105,7 +106,13 @@ Deno.serve(async (req: Request) => {
     );
   const payload = (await openaiRes.json()) as {
     data?: { embedding?: unknown; index?: number }[];
+    usage?: { prompt_tokens?: number; total_tokens?: number };
   };
+  await recordMobileUsage(supabase, user.id, {
+    kind: "phrase_embed",
+    model: MODEL,
+    inputTokens: payload.usage?.prompt_tokens ?? payload.usage?.total_tokens,
+  });
   const vectors = new Map<number, number[]>();
   for (const item of payload.data ?? []) {
     const embedding = Array.isArray(item.embedding) ? item.embedding : [];
