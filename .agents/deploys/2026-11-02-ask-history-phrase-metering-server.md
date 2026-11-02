@@ -3,7 +3,7 @@
 - Date: 2026-11-02 (America/Detroit)
 - Source commit: `fce99c0` on `codex/self-talk-used-today`
 - Target: repository-linked Supabase production project
-- Status: DB migration and three Edge Functions deployed; new TestFlight build not yet created
+- Status: DB migration and three Edge Functions deployed; iOS TestFlight candidate built, not submitted
 
 ## Preflight
 
@@ -28,9 +28,17 @@
 - Aggregate SQL after the smoke test: 3 conversations, 14 turns, 1 Phrase matching the chosen expression and example context, and one recent row each for `ask`, `phrase_capture_ask`, `phrase_embed`, and `phrase_tts_estimate`.
 - RLS read control, in read-only transactions with role `authenticated`: an unrelated synthetic user ID saw 0 conversations and 0 turns; the owner claim saw 3 conversations and 14 turns. The full two-account write-isolation script was not run because its test credentials were unavailable.
 
-## Remaining before TestFlight submission
+## iOS candidate build
 
-- Make the new iOS `testflight` build, submit it, then install it and verify the flows in that built app. The most recent pre-rollout EAS build was `1.0.1 (45)`.
+- The first `npx eas-cli build --platform ios --profile testflight --non-interactive --wait` attempt stopped locally before upload because the worktree lacked its temporary `node_modules` link. Re-linking the existing installed dependencies fixed plugin resolution; no source change was needed.
+- The retry used the `testflight` profile with EAS production environment variables and remote iOS signing credentials. It incremented the remote build number from 45 to 46 and completed successfully.
+- Build ID: `ce1c718e-366a-4f9b-b6a1-3cb6e9641b35`; version: `1.0.1 (46)`; source commit: `f38e465b09e8add44848f1b55cad03b0e1663dc9`; profile: `testflight`; distribution: `STORE`.
+- [EAS build](https://expo.dev/accounts/suminkiim/projects/shadowing-plus-mobile/builds/ce1c718e-366a-4f9b-b6a1-3cb6e9641b35) · [IPA](https://expo.dev/artifacts/eas/R6iFixINMmWskytqSJeA5XCmKKMUOKnY-zlVD2VXoRE.ipa)
+- Temporary `node_modules` symlink removed after the build. No App Store Connect submission was made.
+
+## Remaining before TestFlight completion
+
+- Submit build `ce1c718e-366a-4f9b-b6a1-3cb6e9641b35` to App Store Connect using `npx eas-cli submit --platform ios --profile testflight --id ce1c718e-366a-4f9b-b6a1-3cb6e9641b35 --non-interactive --wait` after explicit release confirmation. Then install `1.0.1 (46)` through TestFlight and verify the Ask and Self-talk flows on the built app.
 - Test same-day used-phrase behavior in Self-talk on device, including the day boundary.
 - If two dedicated test accounts become available, run `npm run verify:rls` for cross-account read, update, delete, and owner-spoofing checks.
 
@@ -38,4 +46,4 @@
 
 - The schema is additive. Leave migration 035 tables in place if rolling the mobile app back; dropping them would discard new conversations. Older clients continue writing legacy Note turns, which the new trigger mirrors.
 - Previous function versions were `phrase-capture` 8, `phrase-embed` 4, `phrase-tts` 2. If function behavior regresses, deploy their source from the parent of `fce99c0` using an isolated checkout, then verify the restored versions and JSON responses.
-- No new TestFlight build was submitted in this rollout. The last known build remains `1.0.1 (45)`.
+- The new `1.0.1 (46)` IPA is built but not submitted. If submission or built-app verification fails, keep testers on the previous TestFlight build `1.0.1 (45)` while fixing the candidate.
