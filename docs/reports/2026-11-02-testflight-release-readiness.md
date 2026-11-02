@@ -33,3 +33,9 @@
 5. iOS `testflight` 프로필로 새 EAS 빌드를 만들고 TestFlight에 제출한다. EAS의 원격 버전 관리와 자동 증가 설정상 버전 `1.0.1`의 다음 빌드 번호가 예상되지만 빌드 생성 시 번호를 확인한다. 실제 TestFlight 설치본에서 4번을 다시 확인한다.
 
 원격 DB·Edge Function 적용과 TestFlight 제출은 아직 실행하지 않았다. 서버 적용 전 앱을 제출하면 Ask 기록 호출이 실패한다.
+
+## 서버 반영 업데이트 — 2026-11-02
+
+위 표와 순서는 배포 전 시점의 기록이다. 사용자 승인 후 **035 마이그레이션과 세 Edge Function을 적용했다.** 시뮬레이터에서 기존 Note 대화 이관, 새 Ask 대화의 저장·재열기, How to say 표현의 2차 추출과 최종 Phrase 저장을 확인했다. 집계 조회에서 새 Ask 대화 1건·턴 2건, 예시 context를 가진 Phrase 1건, 네 종류의 AI 사용 기록을 확인했다. RLS 읽기 시험은 다른 사용자 0건·소유자 3건/14턴이었다. 두 계정의 쓰기 격리 검사는 전용 테스트 계정이 없어 남아 있다. 자세한 명령과 롤백은 `.agents/deploys/2026-11-02-ask-history-phrase-metering-server.md`에 기록했다.
+
+**남은 배포 단계:** 새 iOS TestFlight 빌드 생성, 제출 후 설치, 실제 빌드에서 Ask 및 Self-talk 동작 확인. 서버 반영만으로 TestFlight 사용자에게 새 UI가 전달되지는 않는다.
