@@ -3,7 +3,7 @@
 - Date: 2026-11-02 (America/Detroit)
 - Source commit: `fce99c0` on `codex/self-talk-used-today`
 - Target: repository-linked Supabase production project
-- Status: DB migration and three Edge Functions deployed; iOS TestFlight candidate built, not submitted
+- Status: DB migration and three Edge Functions deployed; iOS build 46 processed and in internal TestFlight testing
 
 ## Preflight
 
@@ -38,7 +38,7 @@
 
 ## Remaining before TestFlight completion
 
-- Submit build `ce1c718e-366a-4f9b-b6a1-3cb6e9641b35` to App Store Connect using `npx eas-cli submit --platform ios --profile testflight --id ce1c718e-366a-4f9b-b6a1-3cb6e9641b35 --non-interactive --wait` after explicit release confirmation. Then install `1.0.1 (46)` through TestFlight and verify the Ask and Self-talk flows on the built app.
+- Install `1.0.1 (46)` through TestFlight on a physical iPhone and verify the Ask and Self-talk flows on the built app.
 - The same-day manual-check path passed on the simulator: after checking one phrase and discarding the first session, a new session moved it behind unused cards and exposed `Used earlier today`. Verify automatic speech recognition and the day boundary on a physical device; the simulator's recognizer did not initialize during this check.
 - If two dedicated test accounts become available, run `npm run verify:rls` for cross-account read, update, delete, and owner-spoofing checks.
 
@@ -46,4 +46,11 @@
 
 - The schema is additive. Leave migration 035 tables in place if rolling the mobile app back; dropping them would discard new conversations. Older clients continue writing legacy Note turns, which the new trigger mirrors.
 - Previous function versions were `phrase-capture` 8, `phrase-embed` 4, `phrase-tts` 2. If function behavior regresses, deploy their source from the parent of `fce99c0` using an isolated checkout, then verify the restored versions and JSON responses.
-- The new `1.0.1 (46)` IPA is built but not submitted. If submission or built-app verification fails, keep testers on the previous TestFlight build `1.0.1 (45)` while fixing the candidate.
+- The new `1.0.1 (46)` IPA was uploaded to App Store Connect. If Apple processing or built-app verification fails, keep testers on the previous TestFlight build `1.0.1 (45)` while fixing the candidate.
+
+## TestFlight submission — 2026-11-02
+
+- After explicit user approval, rechecked build `ce1c718e-366a-4f9b-b6a1-3cb6e9641b35`: FINISHED, `testflight` / STORE, `1.0.1 (46)`, source commit `f38e465b09e8add44848f1b55cad03b0e1663dc9`.
+- Ran `npx eas-cli submit --platform ios --profile testflight --id ce1c718e-366a-4f9b-b6a1-3cb6e9641b35 --non-interactive --wait`. EAS reported a successful upload to App Store Connect. Submission ID `2775fed5-cf83-409d-a04b-f39ecfae3c14` is FINISHED.
+- [EAS submission](https://expo.dev/accounts/suminkiim/projects/shadowing-plus-mobile/submissions/2775fed5-cf83-409d-a04b-f39ecfae3c14) · [TestFlight build list](https://appstoreconnect.apple.com/apps/6799375053/testflight/ios)
+- The first App Store Connect status lookup still listed build 45 as the newest processed build. A later `eas submit:status --platform ios --profile testflight --json` lookup returned build 46 with `processingState: VALID`, `internalState: IN_BETA_TESTING`, and `externalState: READY_FOR_BETA_SUBMISSION`. Internal TestFlight availability is confirmed; no external beta submission was performed.

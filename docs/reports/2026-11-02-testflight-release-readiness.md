@@ -45,3 +45,9 @@
 EAS `testflight` 프로필의 **1.0.1 (46)** 빌드가 성공했다. [빌드 페이지](https://expo.dev/accounts/suminkiim/projects/shadowing-plus-mobile/builds/ce1c718e-366a-4f9b-b6a1-3cb6e9641b35)에서 `FINISHED`, `STORE`, 소스 커밋 `f38e465`를 확인했다. **App Store Connect에는 아직 제출하지 않았다.** 다음 명령은 `npx eas-cli submit --platform ios --profile testflight --id ce1c718e-366a-4f9b-b6a1-3cb6e9641b35 --non-interactive --wait`이며, 제출 뒤 Apple 처리와 실제 TestFlight 설치본 검증이 필요하다.
 
 시뮬레이터에서 Self-talk 표현을 수동 체크하고 세션을 버린 뒤 다시 시작하자, 해당 표현은 사용하지 않은 카드 뒤로 이동하고 `Used earlier today`로 표시됐다. 시뮬레이터 음성 인식기는 초기화되지 않아 자동 발화 판정과 날짜 전환은 실제 기기에서 확인해야 한다.
+
+## App Store Connect 제출 업데이트 — 2026-11-02
+
+사용자 승인 후 **1.0.1 (46)**을 App Store Connect에 제출했다. [EAS 제출 기록](https://expo.dev/accounts/suminkiim/projects/shadowing-plus-mobile/submissions/2775fed5-cf83-409d-a04b-f39ecfae3c14)은 `FINISHED`이며 Apple 업로드 성공을 보고했다. 직후 App Store Connect 상태 조회에는 처리 완료된 최신 빌드로 45번이 표시되어 **46번은 아직 Apple 처리 중**이다. 처리가 끝나면 TestFlight 설치본에서 Ask 기록·표현 저장과 Self-talk 자동 발화 판정을 확인해야 한다.
+
+추가 조회에서 **46번의 Apple 처리가 완료**됐다. 상태는 `VALID` / 내부 TestFlight `IN_BETA_TESTING`이며 외부 베타는 `READY_FOR_BETA_SUBMISSION`이다. 실제 iPhone의 TestFlight에서 46번을 설치해 기능을 확인하는 단계가 남아 있다.
