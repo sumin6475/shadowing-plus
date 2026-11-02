@@ -39,7 +39,7 @@
 ## Remaining before TestFlight completion
 
 - Submit build `ce1c718e-366a-4f9b-b6a1-3cb6e9641b35` to App Store Connect using `npx eas-cli submit --platform ios --profile testflight --id ce1c718e-366a-4f9b-b6a1-3cb6e9641b35 --non-interactive --wait` after explicit release confirmation. Then install `1.0.1 (46)` through TestFlight and verify the Ask and Self-talk flows on the built app.
-- Test same-day used-phrase behavior in Self-talk on device, including the day boundary.
+- The same-day manual-check path passed on the simulator: after checking one phrase and discarding the first session, a new session moved it behind unused cards and exposed `Used earlier today`. Verify automatic speech recognition and the day boundary on a physical device; the simulator's recognizer did not initialize during this check.
 - If two dedicated test accounts become available, run `npm run verify:rls` for cross-account read, update, delete, and owner-spoofing checks.
 
 ## Rollback

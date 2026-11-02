@@ -43,3 +43,5 @@
 ## iOS 후보 빌드 업데이트 — 2026-11-02
 
 EAS `testflight` 프로필의 **1.0.1 (46)** 빌드가 성공했다. [빌드 페이지](https://expo.dev/accounts/suminkiim/projects/shadowing-plus-mobile/builds/ce1c718e-366a-4f9b-b6a1-3cb6e9641b35)에서 `FINISHED`, `STORE`, 소스 커밋 `f38e465`를 확인했다. **App Store Connect에는 아직 제출하지 않았다.** 다음 명령은 `npx eas-cli submit --platform ios --profile testflight --id ce1c718e-366a-4f9b-b6a1-3cb6e9641b35 --non-interactive --wait`이며, 제출 뒤 Apple 처리와 실제 TestFlight 설치본 검증이 필요하다.
+
+시뮬레이터에서 Self-talk 표현을 수동 체크하고 세션을 버린 뒤 다시 시작하자, 해당 표현은 사용하지 않은 카드 뒤로 이동하고 `Used earlier today`로 표시됐다. 시뮬레이터 음성 인식기는 초기화되지 않아 자동 발화 판정과 날짜 전환은 실제 기기에서 확인해야 한다.
