@@ -14,6 +14,7 @@ import {
   sentences,
   toPhraseInput,
   toAskCaptureSeed,
+  prepareAskCaptureSeed,
   trimHistory,
 } from "../src/lib/ask-model.ts";
 import { parseAskBody } from "../../../supabase/functions/ask-assist/core.ts";
@@ -127,7 +128,8 @@ test("Save to Phrase keeps the meaning, the nuance, an example and the learner's
 });
 
 test("Ask review keeps the shown sentence as context and extracts a shorter Phrase", () => {
-  const seed = toAskCaptureSeed("I feel down when I'm not feeling well.", "몸이 안 좋으면 속상해", {
+  const expression = { en: "I feel down when I'm not feeling well.", meaning: "몸이 안 좋을 때 기분이 가라앉아요.", when: "기분을 설명할 때" };
+  const seed = toAskCaptureSeed(expression, "몸이 안 좋으면 속상해", "Use for a low mood.", {
     contextText: "I feel down when I'm not feeling well.",
     contextTranslation: "몸이 안 좋을 때 기분이 가라앉아요.",
     suggestedPhrase: "feel down",
@@ -140,8 +142,40 @@ test("Ask review keeps the shown sentence as context and extracts a shorter Phra
   assert.equal(seed.contextText, "I feel down when I'm not feeling well.");
   assert.equal(seed.learnerNote, "몸이 안 좋으면 속상해");
   assert.equal(seed.sourceLabel, "Saved from Ask");
-  assert.throws(() => toAskCaptureSeed("I feel down.", "", { ...seed, suggestedPhrase: "unrelated" }), /reusable expression/);
-  assert.throws(() => toAskCaptureSeed("I'm running late.", "", { ...seed, suggestedPhrase: "I'm running late." }), /separate a reusable expression/);
+  assert.equal(toAskCaptureSeed({ ...expression, en: "I feel down." }, "", "", { ...seed, suggestedPhrase: "unrelated" }).suggestedPhrase, "");
+  assert.equal(toAskCaptureSeed(expression, "", "", { ...seed, suggestedPhrase: "" }).suggestedPhrase, "");
+  assert.deepEqual(toAskCaptureSeed({ en: "I'm running late.", meaning: "조금 늦을 것 같아요.", when: "가는 중" }, "늦을 것 같아요", "일상적이고 간단한 상황", {
+    ...seed,
+    contextTranslation: "조금 늦을 것 같아요.",
+    suggestedPhrase: "I'm running late.",
+  }), {
+    ...seed,
+    contextText: "I'm running late.",
+    contextTranslation: "조금 늦을 것 같아요.",
+    suggestedPhrase: "",
+    confidence: 0,
+    learnerNote: "늦을 것 같아요",
+  });
+});
+
+test("Ask review opens an editable draft when extraction fails", async () => {
+  const seed = await prepareAskCaptureSeed(
+    { en: "I'll be a bit late.", meaning: "조금 늦을 거야", when: "일상적이고 간단한 상황" },
+    "좀 더 간단하게 말하려면?",
+    "짧고 자연스러운 표현",
+    async () => { throw new Error("The extraction service is unavailable"); },
+  );
+  assert.deepEqual(seed, {
+    contextText: "I'll be a bit late.",
+    contextTranslation: "조금 늦을 거야",
+    suggestedPhrase: "",
+    kind: "phrase",
+    meaning: "조금 늦을 거야",
+    usageNote: "짧고 자연스러운 표현",
+    learnerNote: "좀 더 간단하게 말하려면?",
+    sourceLabel: "Saved from Ask",
+    confidence: 0,
+  });
 });
 
 test("an expression is saved with the example that shows it", () => {

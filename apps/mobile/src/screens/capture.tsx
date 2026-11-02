@@ -994,7 +994,11 @@ export function PhraseCaptureScreen({
         </Card>
       ) : null}
 
-      {confidence != null && confidence < 0.7 ? <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18 }}>Check the suggested phrase before saving.</Text> : null}
+      {askSeed && !text.trim() ? (
+        <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18 }}>Choose the reusable words from the sentence above, or type a phrase to keep.</Text>
+      ) : confidence != null && confidence < 0.7 ? (
+        <Text style={{ fontSize: 12.5, color: t.colors.ink3, lineHeight: 18 }}>Check the suggested phrase before saving.</Text>
+      ) : null}
       {error ? <Text style={{ fontSize: 13, color: t.colors.warn, textAlign: "center" }}>{error}</Text> : null}
       <Pill full icon={editing ? "check" : "bank"} onPress={reading || filling || saving || editLoading ? undefined : save} style={{ opacity: reading || filling || saving || editLoading ? 0.6 : 1 }}>
         {saving ? <ActivityIndicator color={t.colors.onAcc} /> : editing ? "Save changes" : savedPhrases.length > 0 ? "Save this phrase" : "Save to Phrase Bank"}

@@ -196,33 +196,51 @@ export interface AskCaptureSeed {
   confidence: number;
 }
 
-/** Keep the sentence Ask showed as context; only the extracted chunk is a Phrase. */
-export function toAskCaptureSeed(sentence: string, question: string, draft: PhraseCaptureDraft): AskCaptureSeed {
-  const contextText = sentence.trim();
-  const suggestedPhrase = draft.suggestedPhrase.trim();
-  if (!contextText || !suggestedPhrase || !contextText.toLocaleLowerCase("en").includes(suggestedPhrase.toLocaleLowerCase("en"))) {
-    throw new Error("Couldn’t find a reusable expression in that sentence. Try again.");
-  }
+/** Keep the sentence Ask showed as context; leave Phrase blank when extraction is uncertain. */
+export function toAskCaptureSeed(
+  expression: Expression,
+  question: string,
+  usageNote: string,
+  draft?: PhraseCaptureDraft,
+): AskCaptureSeed {
+  const contextText = expression.en.trim();
+  const candidate = draft?.suggestedPhrase.trim() ?? "";
   const withoutStop = (value: string) => value.replace(/[.!?]+$/, "").trim().toLocaleLowerCase("en");
-  if (
+  const wholeSentence =
     /[.!?]$/.test(contextText) &&
     contextText.split(/\s+/).length >= 3 &&
-    draft.kind !== "idiom" &&
-    withoutStop(suggestedPhrase) === withoutStop(contextText)
-  ) {
-    throw new Error("Couldn’t separate a reusable expression from that sentence. Try again.");
-  }
+    draft?.kind !== "idiom" &&
+    withoutStop(candidate) === withoutStop(contextText);
+  const suggestedPhrase = candidate && contextText.toLocaleLowerCase("en").includes(candidate.toLocaleLowerCase("en")) && !wholeSentence
+    ? candidate
+    : "";
   return {
     contextText,
-    contextTranslation: draft.contextTranslation.trim(),
+    contextTranslation: draft?.contextTranslation.trim() || expression.meaning.trim(),
     suggestedPhrase,
-    kind: draft.kind,
-    meaning: draft.meaning.trim(),
-    usageNote: draft.usageNote.trim(),
+    kind: draft?.kind ?? "phrase",
+    meaning: draft?.meaning.trim() || expression.meaning.trim(),
+    usageNote: draft?.usageNote.trim() || usageNote.trim() || expression.when.trim(),
     learnerNote: question.trim(),
     sourceLabel: "Saved from Ask",
-    confidence: draft.confidence,
+    confidence: suggestedPhrase ? (draft?.confidence ?? 0) : 0,
   };
+}
+
+/** Extraction is optional for review; Ask's answer is enough to open the editor. */
+export async function prepareAskCaptureSeed(
+  expression: Expression,
+  question: string,
+  usageNote: string,
+  extract: (sentence: string) => Promise<PhraseCaptureDraft>,
+): Promise<AskCaptureSeed> {
+  let draft: PhraseCaptureDraft;
+  try {
+    draft = await extract(expression.en);
+  } catch {
+    return toAskCaptureSeed(expression, question, usageNote);
+  }
+  return toAskCaptureSeed(expression, question, usageNote, draft);
 }
 /** What "Save to Phrase" stores: the expression with its meaning, the nuance
  *  as the usage note (led by the situation label, when there is one), one

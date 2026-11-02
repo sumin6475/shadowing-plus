@@ -49,7 +49,7 @@ import {
   noteTopicFor,
   patchesDraft,
   questionFor,
-  toAskCaptureSeed,
+  prepareAskCaptureSeed,
   toPhraseInput,
   type AskCaptureSeed,
   type AskAnswer,
@@ -426,12 +426,11 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
       mark(key, "failed");
     }
   };
-  const reviewAskPhrase = async (key: string, expression: Expression, question: string) => {
+  const reviewAskPhrase = async (key: string, expression: Expression, question: string, usageNote: string) => {
     mark(key, "saving");
     setFailure(null);
     try {
-      const draft = await extractPhraseFromAsk(expression.en);
-      const seed = toAskCaptureSeed(expression.en, question, draft);
+      const seed = await prepareAskCaptureSeed(expression, question, usageNote, extractPhraseFromAsk);
       mark(key, null);
       onOpenPhraseDraft(seed);
     } catch (caught) {
@@ -602,7 +601,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   card={turn.reply}
                   saveState={(n) => saves[`${turn.id}.${n}`]}
                   onSave={(n, expression) =>
-                    void reviewAskPhrase(`${turn.id}.${n}`, expression, questionFor(turns, i))
+                    void reviewAskPhrase(`${turn.id}.${n}`, expression, questionFor(turns, i), (turn.reply as HowToSayCard).nuance)
                   }
                 />
               ) : isNoteCard(turn.reply) ? (
@@ -634,7 +633,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   saveState={(n) => saves[`${turn.id}.${n}`]}
                   onSave={(n, phrase) =>
                     void (turn.mode === "how_to_say"
-                      ? reviewAskPhrase(`${turn.id}.${n}`, phrase, questionFor(turns, i))
+                      ? reviewAskPhrase(`${turn.id}.${n}`, phrase, questionFor(turns, i), phrase.when)
                       : savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i)))
                   }
                 />
