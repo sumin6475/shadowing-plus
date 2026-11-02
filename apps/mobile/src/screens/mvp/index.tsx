@@ -61,6 +61,7 @@ import {
   addSentence,
   completedSteps,
   createNote,
+  dailyProgressLabel,
   deleteMirrorSession,
   deleteNote,
   deleteSentence,
@@ -628,7 +629,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               textAlign: "center",
             }}
           >
-            {state.data ? `${done}/${picks.length || phrasesPerDay()}` : "–"}
+            {state.data ? dailyProgressLabel(done, picks.length, phrasesPerDay()) : "–"}
           </Text>
           <Pressable
             accessibilityRole="button"

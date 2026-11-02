@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   completedSteps,
+  dailyProgressLabel,
   phraseStage,
   readyAt,
   durationLabel,
@@ -107,6 +108,10 @@ test("today's picks are the oldest unfinished phrases and stay put once practice
   assert.deepEqual(todaysPicks(phrases, 3, now).map((p) => p.id), ["old", "finished-today", "mid"]);
   assert.equal(practicedOn(phrases[4], now), true);
   assert.equal(practicedOn(phrases[2], now), false);
+});
+
+test("daily progress keeps the configured goal when the bank has fewer phrases", () => {
+  assert.equal(dailyProgressLabel(1, 1, 3), "1/3");
 });
 
 test("periods follow calendar days, not 24-hour windows", () => {
