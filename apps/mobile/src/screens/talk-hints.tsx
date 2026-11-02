@@ -133,7 +133,8 @@ function PhrasePage({
             numberOfLines={3}
             style={{ color: "rgba(255,255,255,0.72)", fontSize: 15, lineHeight: 21 }}
           >
-            How it’s used · {card.usageNote || "Add this in Phrase Bank"}
+            <Text style={{ color: "#fff", fontWeight: "700" }}>How it’s used: </Text>
+            {card.usageNote || "Add this in Phrase Bank"}
           </Text>
         </View>
       ) : (
