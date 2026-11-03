@@ -32,7 +32,6 @@ import { AskLimitError, askAssist } from "@/lib/ask";
 import {
   createAskConversation,
   deleteAskConversation,
-  latestAskConversation,
   linkAskConversationToNote,
   listAskConversations,
   loadAskTurns,
@@ -199,7 +198,6 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(note?.id ?? null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const loadSerial = useRef(0);
-  const noteId = note?.id;
   // A page sheet starts below the top of the screen, and the keyboard reports
   // its position in screen terms — so keyboard avoidance needs to know how far
   // down the sheet begins: the screen's height less the sheet's own.
@@ -214,24 +212,17 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([latestAskConversation(noteId), listAskConversations(0, 50)])
-      .then(async ([recent, firstPage]) => {
-        const page = recent ? await loadAskTurns(recent.id) : { turns: [], before: null };
+    // A new opening starts a new chat; old conversations remain in the sidebar.
+    void listAskConversations(0, 50)
+      .then((firstPage) => {
         if (!alive) return;
         setChats(firstPage);
         setMoreChats(firstPage.length === 50);
-        activeChatId.current = recent?.id ?? null;
-        activeNoteId.current = recent?.noteId ?? noteId ?? null;
-        setSelectedChatId(recent?.id ?? null);
-        setSelectedNoteId(recent?.noteId ?? noteId ?? null);
-        setTurns(page.turns);
-        setOlderBefore(page.before);
-        setMode(page.turns.at(-1)?.mode ?? recent?.initialMode ?? initialMode);
       })
       .catch((error) => { if (alive) setFailure(error instanceof Error ? error.message : "Couldn’t load Ask history."); })
       .finally(() => { if (alive) setLoadingHistory(false); });
     return () => { alive = false; };
-  }, [noteId, initialMode]);
+  }, []);
 
   useEffect(() => {
     const animation = Animated.timing(sidebarProgress, {
