@@ -7,6 +7,7 @@ import type { Status } from "@/design/data";
 import { aiProcessingAllowed } from "./ai-consent";
 import { prewarmPhraseSpeech } from "./phrase-speech";
 import { supabase } from "./supabase";
+import { comparablePhrase, rankSavedPhraseMatches, type SavedPhraseCandidate, type SavedPhraseMatch } from "./phrase-duplicates";
 
 function prewarmPhraseEmbedding(phraseId: string): void {
   void aiProcessingAllowed()
@@ -624,6 +625,56 @@ async function currentUserId(): Promise<string> {
   const userId = session?.user?.id;
   if (!userId) throw new Error("You’re signed out.");
   return userId;
+}
+
+/** Search the signed-in user's ready collection, across capture sources.
+ * Paging avoids silently missing older matches behind PostgREST's row cap. */
+export async function findSavedPhraseMatches(text: string): Promise<SavedPhraseMatch[]> {
+  if (!comparablePhrase(text)) return [];
+  const userId = await currentUserId();
+  const candidates: SavedPhraseCandidate[] = [];
+  let meaningColumn: MeaningColumn = "meaning";
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const load = () => supabase.from("phrase_items")
+      .select(`id, text, ${meaningColumn}, source_context`)
+      .eq("user_id", userId)
+      .eq("status", "ready")
+      .order("id")
+      .range(offset, offset + pageSize - 1);
+    let page = await load();
+    if (page.error && meaningColumn === "meaning" && isMissingMeaningColumn(page.error)) {
+      meaningColumn = "meaning_ko";
+      page = await load();
+    }
+    if (page.error) throw new Error("Couldn’t check saved phrases. Try saving again.");
+    const rows = page.data ?? [];
+    for (const row of rows) {
+      const context = sourceContext(row.source_context);
+      const meaning = "meaning" in row ? row.meaning : row.meaning_ko;
+      candidates.push({
+        id: String(row.id),
+        text: String(row.text),
+        meaning: typeof meaning === "string" ? meaning : null,
+        source: context.source_label || null,
+      });
+    }
+    if (rows.length < pageSize) break;
+  }
+  return rankSavedPhraseMatches(text, candidates);
+}
+
+/** An exact match keeps its existing notes/progress. Recheck ownership and
+ * text and ready status after confirmation rather than trusting a stale UI candidate. */
+export async function reuseSavedPhrase(id: string, input: CreatePhraseInput): Promise<{ result: "already"; id: string }> {
+  const userId = await currentUserId();
+  const { data, error } = await supabase.from("phrase_items").select("id, text")
+    .eq("id", id).eq("user_id", userId).eq("status", "ready").maybeSingle();
+  if (error || !data || comparablePhrase(data.text) !== comparablePhrase(input.text)) {
+    throw new Error("This saved phrase changed. Try saving again.");
+  }
+  if (input.storyId) await linkPhraseToSituation(id, input.storyId, "capture");
+  return { result: "already", id };
 }
 
 export async function createPhrase(

@@ -1,12 +1,8 @@
-// text.tsx — the app's Text and TextInput: Pretendard unless told otherwise.
+// text.tsx — the app's Text and TextInput share native system typography.
 //
-// RN has no global default font, so every screen imports these instead of the
-// react-native originals. A style with its own fontFamily (the serif, a
-// mono face) is left alone; everything else gets the Pretendard face that
-// matches its fontWeight. Each weight is a separate static family, so the
-// weight is resolved here rather than trusted to iOS family matching.
+// Keep fontWeight native so Korean, English and mixed-script copy have the
+// same hierarchy. Explicit per-use styles can still override the base style.
 import {
-  StyleSheet,
   Text as RNText,
   TextInput as RNTextInput,
   type StyleProp,
@@ -15,18 +11,11 @@ import {
   type TextStyle,
 } from "react-native";
 
-import { FONT } from "./mobile-tokens";
+import { FONT_UI } from "./mobile-tokens";
 
-function face(weight: TextStyle["fontWeight"]): string {
-  const w = weight === "bold" ? 700 : Number(weight) || 400;
-  return w >= 700 ? FONT.bold : w >= 600 ? FONT.semibold : w >= 500 ? FONT.medium : FONT.regular;
-}
-
-/** The style with a Pretendard face added when it names no family. */
+/** The native family is the default; explicit styles keep their precedence. */
 export function withUiFont(style: StyleProp<TextStyle>): StyleProp<TextStyle> {
-  const flat = StyleSheet.flatten(style) as TextStyle | undefined;
-  if (flat?.fontFamily) return style;
-  return [style, { fontFamily: face(flat?.fontWeight) }];
+  return [{ fontFamily: FONT_UI }, style];
 }
 
 export function Text({ style, ...rest }: TextProps) {

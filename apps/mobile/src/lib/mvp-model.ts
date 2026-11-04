@@ -86,23 +86,42 @@ export interface OutlineSection {
   /** "Opening", "Body" or "Closing"; null for points above the first heading. */
   heading: string | null;
   points: string[];
+  /** Optional per-point detail; indices stay aligned with points. */
+  notes?: string[];
 }
-const OUTLINE_HEADING = /^(Opening|Body|Closing)$/;
+const OUTLINE_HEADING = /^(Opening|Body|Closing|Others)$/;
 /** Reads a note body as sections of points. A heading is a line that is only
  *  the section name, so a point that happens to say "Body" stays a point.
  *  Bullet markers, blank lines and empty template bullets are dropped. */
 export function parseOutline(body: string): OutlineSection[] {
   const sections: OutlineSection[] = [];
+  let lastPoint: number | null = null;
   for (const line of body.split("\n")) {
+    const detail = /^  > ?(.*)$/.exec(line);
+    if (detail && sections.length && lastPoint !== null) {
+      const section = sections[sections.length - 1];
+      if (lastPoint === section.points.length) section.points.push("");
+      const notes = section.notes ?? (section.notes = section.points.map(() => ""));
+      while (notes.length < section.points.length) notes.push("");
+      notes[lastPoint] = notes[lastPoint] ? notes[lastPoint] + "\n" + detail[1] : detail[1];
+      continue;
+    }
     const heading = line.trim();
     if (OUTLINE_HEADING.test(heading)) {
       sections.push({ heading, points: [] });
+      lastPoint = null;
       continue;
     }
     const text = line.replace(/^\s*[-•]\s*/, "").trim();
-    if (!text) continue;
+    if (!text) {
+      if (/^\s*[-•]\s*$/.test(line) && sections.length) lastPoint = sections[sections.length - 1].points.length;
+      continue;
+    }
     if (!sections.length) sections.push({ heading: null, points: [] });
-    sections[sections.length - 1].points.push(text);
+    const section = sections[sections.length - 1];
+    lastPoint = section.points.length;
+    section.points.push(text);
+    if (section.notes) section.notes.push("");
   }
   return sections.length ? sections : [{ heading: null, points: [] }];
 }
@@ -111,10 +130,15 @@ export function parseOutline(body: string): OutlineSection[] {
 export const serializeOutline = (sections: OutlineSection[]) =>
   sections
     .map((s) => {
-      const points = s.points.map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+      const points = s.points.flatMap((p, index) => {
+        const title = p.replace(/\s*\n\s*/g, " ").trim();
+        const detail = s.notes?.[index]?.trim() ?? "";
+        if (!title && !detail) return [];
+        return [`- ${title}`, ...(detail ? detail.split("\n").map(line => `  > ${line}`) : [])];
+      });
       return [
         ...(s.heading ? [s.heading] : []),
-        ...(points.length ? points.map((p) => `- ${p}`) : ["- "]),
+        ...(points.length ? points : ["- "]),
       ].join("\n");
     })
     .join("\n\n");
@@ -142,7 +166,7 @@ export function periodOf(iso: string, now = new Date()): Period {
           ? "Last 30 days"
           : "Earlier";
 }
-export const NOTE_TEMPLATE = "Opening\n- \n\nBody\n- \n\nClosing\n- ";
+export const NOTE_TEMPLATE = "Opening\n- \n\nBody\n- \n\nClosing\n- \n\nOthers\n- ";
 /** A note's points on one line — headings and bullet markers dropped. */
 export const notePreview = (body: string) =>
   parseOutline(body)

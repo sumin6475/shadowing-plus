@@ -12,33 +12,29 @@
 //   • The mobile app renders the iOS SYSTEM palette by default (light
 //     #F2F2F7 / dark #000 base) with the BRAND navy ramp (#0D1A3B dark →
 //     #162555 main → #344E91 light — one OKLCH hue family, 265–267) and the
-//     Newsreader serif. It keeps its own numeric geometry (26pt card radius,
+//     platform system typography. It keeps its own numeric geometry (26pt card radius,
 //     13pt gaps) that intentionally differs from the web scale.
 //   • `PALETTES.warm` below is the legacy Cobalt Editorial port kept only for
 //     parity/reference with tokens.json. It is NOT used by the runtime app.
 //   • Do NOT copy web values here and do not copy mobile values into tokens.json.
 
-import type { ViewStyle } from "react-native";
+import { Platform, type TextStyle, type ViewStyle } from "react-native";
 
 // ── Fonts ─────────────────────────────────────────────────────────────────
-/** Brand serif (Figma, 2026-09-18) — replaced Newsreader app-wide. */
-export const SERIF = "InstrumentSerif";
-/** Default UI face; applied to every Text/TextInput by design/text.tsx. */
-export const FONT_UI = "Pretendard";
-/** Figma faces for the MVP screens (Phrases, Studio): Pretendard for UI,
- *  Instrument Serif for display lines. Set the family, never fontWeight —
- *  a weight on a static face makes iOS fall back to the system font. */
+/** Native system family, including the platform's fallback for Korean and CJK. */
+export const FONT_UI = Platform.select({ ios: "System", android: "sans-serif", default: "system-ui" });
+/** Legacy display-family export; all display copy now uses the same system face. */
+export const SERIF = FONT_UI;
+/** Font weight is independent of family so native UI, display copy and numbers
+ *  share one face without losing their hierarchy. Spread these into text styles. */
 export const FONT = {
-  regular: "Pretendard",
-  medium: "Pretendard-Medium",
-  semibold: "Pretendard-SemiBold",
-  bold: "Pretendard-Bold",
-  display: "InstrumentSerif",
-  /** Numbers set as display (stats, big counts). Instrument Serif draws "1"
-   *  exactly like "l", so figures use the iOS system serif (New York), whose
-   *  1 has a flag and a foot. */
-  figure: "ui-serif",
-} as const;
+  regular: { fontFamily: FONT_UI, fontWeight: "400" },
+  medium: { fontFamily: FONT_UI, fontWeight: "500" },
+  semibold: { fontFamily: FONT_UI, fontWeight: "600" },
+  bold: { fontFamily: FONT_UI, fontWeight: "700" },
+  display: { fontFamily: FONT_UI, fontWeight: "400" },
+  figure: { fontFamily: FONT_UI, fontWeight: "400" },
+} as const satisfies Record<string, TextStyle>;
 
 // ── oklch → sRGB ───────────────────────────────────────────────────────────
 // Standard OKLab → linear sRGB → gamma. Deterministic (no Date/Math.random).

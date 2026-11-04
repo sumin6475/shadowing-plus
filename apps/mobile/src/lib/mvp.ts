@@ -170,12 +170,11 @@ export async function createNote(
   return data;
 }
 export async function saveNote(id: string, title: string, body: string) {
-  const { data, error } = await supabase
-    .from("notes")
-    .update({ title, body, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
+  // The existing RPC stores an immutable history entry in the same
+  // transaction as the edit; a failed history write cannot lose the draft.
+  const { data, error } = await supabase.rpc("apply_note_version", {
+    p_note_id: id, p_title: title, p_body: body, p_origin: "manual", p_source_session_id: null,
+  });
   if (error || !data)
     throw new Error(error?.message ?? "This note is no longer available.");
 }

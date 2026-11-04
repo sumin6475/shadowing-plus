@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "@/design/text";
-import { SERIF } from "@/design/mobile-tokens";
+import { FONT_UI, SERIF } from "@/design/mobile-tokens";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -145,7 +145,7 @@ function BankChart({ points, max }: { points: number[]; max: number }) {
         {ticks.map((v) => (
           <Fragment key={v}>
             <Line x1={mx} x2={W - mx} y1={Y(v)} y2={Y(v)} stroke={t.colors.sep} strokeWidth={1} strokeDasharray="2 4" />
-            <SvgText x={W - mx} y={Y(v) - 4} textAnchor="end" fontSize={9} fontWeight="650" fill={t.colors.ink3}>
+            <SvgText fontFamily={FONT_UI} x={W - mx} y={Y(v) - 4} textAnchor="end" fontSize={9} fontWeight="650" fill={t.colors.ink3}>
               {v || ""}
             </SvgText>
           </Fragment>
@@ -162,10 +162,10 @@ function BankChart({ points, max }: { points: number[]; max: number }) {
           animatedProps={lineProps}
         />
         <AnimatedChartDot cx={X(n - 1)} cy={Y(pts[pts.length - 1])} r={4.5} fill={t.colors.acc} stroke={t.colors.bg} strokeWidth={2.5} animatedProps={dotProps} />
-        <SvgText x={mx} y={H + 10} textAnchor="start" fontSize={9.5} fontWeight="600" fill={t.colors.ink3}>
+        <SvgText fontFamily={FONT_UI} x={mx} y={H + 10} textAnchor="start" fontSize={9.5} fontWeight="600" fill={t.colors.ink3}>
           earlier
         </SvgText>
-        <SvgText x={W - mx} y={H + 10} textAnchor="end" fontSize={9.5} fontWeight="750" fill={t.colors.accD}>
+        <SvgText fontFamily={FONT_UI} x={W - mx} y={H + 10} textAnchor="end" fontSize={9.5} fontWeight="750" fill={t.colors.accD}>
           now
         </SvgText>
       </Svg>

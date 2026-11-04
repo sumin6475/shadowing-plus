@@ -422,6 +422,7 @@ const styles = StyleSheet.create({
   wordmark: {
     fontSize: TypeScale.largeTitle,
     fontFamily: SERIF,
+    fontWeight: "700",
   },
   subtitle: { fontSize: TypeScale.callout, lineHeight: 22 },
   socialBlock: { gap: 10 },

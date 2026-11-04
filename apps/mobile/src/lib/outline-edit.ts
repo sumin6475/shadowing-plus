@@ -8,6 +8,7 @@ import type { OutlineSection } from "./mvp-model";
 export interface EditPoint {
   id: string;
   text: string;
+  note?: string;
 }
 export interface EditSection {
   heading: string | null;
@@ -29,10 +30,13 @@ export interface Edit {
 export const toEditable = (sections: OutlineSection[], newId: () => string): EditSection[] =>
   sections.map((s) => ({
     heading: s.heading,
-    points: (s.points.length ? s.points : [""]).map((text) => ({ id: newId(), text })),
+    points: (s.points.length ? s.points : [""]).map((text, index) => ({ id: newId(), text, ...(s.notes?.[index] ? { note: s.notes[index] } : {}) })),
   }));
 export const fromEditable = (sections: EditSection[]): OutlineSection[] =>
-  sections.map((s) => ({ heading: s.heading, points: s.points.map((p) => p.text) }));
+  sections.map((s) => ({
+    heading: s.heading, points: s.points.map((p) => p.text),
+    ...(s.points.some(p => p.note?.trim()) ? { notes: s.points.map(p => p.note ?? "") } : {}),
+  }));
 
 const locate = (sections: EditSection[], id: string) => {
   for (let s = 0; s < sections.length; s++) {
@@ -69,7 +73,7 @@ export function setPointText(
     .map((line) => line.replace(/^\s*[-•]\s+/, "").trim())
     .filter(Boolean);
   if (!lines.length) return setPointText(sections, id, "", newId);
-  const pasted = lines.map((line, i) => ({ id: i ? newId() : id, text: line }));
+  const pasted = lines.map((line, i) => ({ ...(i ? {} : points[at.p]), id: i ? newId() : id, text: line }));
   const last = pasted[pasted.length - 1];
   return {
     sections: withPoints(sections, at.s, [
@@ -95,7 +99,7 @@ export function pressReturn(
   if (!at) return { sections };
   const points = sections[at.s].points;
   const point = points[at.p];
-  if (!point.text.trim()) {
+  if (!point.text.trim() && !point.note?.trim()) {
     const next = sections[at.s + 1];
     const kept = points.length > 1 ? points.filter((p) => p.id !== id) : points;
     const first = next?.points[0];
@@ -105,11 +109,13 @@ export function pressReturn(
     };
   }
   const cut = Math.max(0, Math.min(caretAt, point.text.length));
-  const below = { id: newId(), text: point.text.slice(cut) };
+  // Return before a title inserts a blank above it; its detail stays with the title.
+  const carryNote = cut === 0 && point.text.length > 0 && Boolean(point.note);
+  const below = { id: newId(), text: point.text.slice(cut), ...(carryNote ? { note: point.note } : {}) };
   return {
     sections: withPoints(sections, at.s, [
       ...points.slice(0, at.p),
-      { ...point, text: point.text.slice(0, cut) },
+      { ...point, text: point.text.slice(0, cut), ...(carryNote ? { note: undefined } : {}) },
       below,
       ...points.slice(at.p + 1),
     ]),
@@ -127,7 +133,7 @@ export function pressBackspaceAtStart(sections: EditSection[], id: string): Edit
   const points = sections[at.s].points;
   const point = points[at.p];
   if (at.p === 0) {
-    if (point.text || points.length === 1) return null;
+    if (point.text || point.note?.trim() || points.length === 1) return null;
     return {
       sections: withPoints(sections, at.s, points.slice(1)),
       caret: { id: points[1].id, at: 0 },
@@ -137,7 +143,7 @@ export function pressBackspaceAtStart(sections: EditSection[], id: string): Edit
   return {
     sections: withPoints(sections, at.s, [
       ...points.slice(0, at.p - 1),
-      { ...above, text: above.text + point.text },
+      { ...above, text: above.text + point.text, ...((above.note || point.note) ? { note: [above.note, point.note].filter(Boolean).join("\n") } : {}) },
       ...points.slice(at.p + 1),
     ]),
     caret: { id: above.id, at: above.text.length },
@@ -150,7 +156,7 @@ export function dropIfEmpty(sections: EditSection[], id: string): EditSection[] 
   const at = locate(sections, id);
   if (!at) return sections;
   const points = sections[at.s].points;
-  if (points.length === 1 || points[at.p].text.trim()) return sections;
+  if (points.length === 1 || points[at.p].text.trim() || points[at.p].note?.trim()) return sections;
   return withPoints(
     sections,
     at.s,
@@ -171,21 +177,65 @@ export function appendPoints(
   let next = sections;
   for (const addition of additions) {
     const at = next.findIndex((section) => section.heading === addition.heading);
-    const seen = new Set(at < 0 ? [] : next[at].points.map((point) => point.text.trim()));
+    const seen = new Set(at < 0 ? [] : next[at].points.map(point => point.text.trim() || `note:${point.note}`));
     const points = addition.points
-      .map((text) => text.trim())
-      .filter((text) => {
-        if (!text || seen.has(text)) return false;
-        seen.add(text);
+      .map((text, index) => ({ text: text.trim(), ...(addition.notes?.[index] ? { note: addition.notes[index] } : {}) }))
+      .filter((point) => {
+        if (!point.text && !point.note?.trim()) return false;
+        const key = point.text || `note:${point.note}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       })
-      .map((text) => ({ id: newId(), text }));
+      .map((point) => ({ id: newId(), ...point }));
     if (!points.length) continue;
     if (at < 0) {
       next = [...next, { heading: addition.heading, points }];
       continue;
     }
-    next = withPoints(next, at, [...next[at].points.filter((p) => p.text.trim()), ...points]);
+    next = withPoints(next, at, [...next[at].points.filter((p) => p.text.trim() || p.note?.trim()), ...points]);
   }
   return next;
+}
+
+export const OUTLINE_SECTIONS = ["Opening", "Body", "Closing", "Others"] as const;
+
+/** Keep the four speaking sections; old unheaded text belongs in Others. */
+export function speakingSections(sections: OutlineSection[]): OutlineSection[] {
+  return OUTLINE_SECTIONS.map(heading => {
+    const source = sections.filter(s => s.heading === heading || (heading === "Others" && !OUTLINE_SECTIONS.some(name => name === s.heading)));
+    const points = source.flatMap(s => s.points);
+    const notes = source.flatMap(s => s.points.map((_, index) => s.notes?.[index] ?? ""));
+    return { heading, points, ...(notes.some(Boolean) ? { notes } : {}) };
+  });
+}
+
+export function setPointNote(sections: EditSection[], id: string, note: string): EditSection[] {
+  return sections.map(section => ({ ...section, points: section.points.map(point => point.id === id ? { ...point, note } : point) }));
+}
+
+/** Destination index is measured after removing the dragged point. */
+export function movePoint(sections: EditSection[], id: string, sectionIndex: number, index: number, newId: () => string): EditSection[] {
+  const at = locate(sections, id);
+  if (!at || !sections[sectionIndex]) return sections;
+  const moving = sections[at.s].points[at.p];
+  if (!moving.text.trim() && !moving.note?.trim()) return sections;
+  const next = sections.map(section => ({ ...section, points: section.points.filter(p => p.id !== id) }));
+  const target = next[sectionIndex].points.filter(p => p.text.trim() || p.note?.trim());
+  target.splice(Math.max(0, Math.min(index, target.length)), 0, moving);
+  next[sectionIndex].points = target;
+  return next.map(section => section.points.length ? section : { ...section, points: [{ id: newId(), text: "" }] });
+}
+
+export interface OutlineDropSection {
+  section: number;
+  y: number;
+  height: number;
+  rows: { id: string; y: number; height: number }[];
+}
+export function outlineDropTarget(layout: OutlineDropSection[], y: number, draggedId: string) {
+  if (!layout.length) return null;
+  const section = layout.find(s => y < s.y + s.height) ?? layout[layout.length - 1];
+  const rows = section.rows.filter(row => row.id !== draggedId);
+  return { section: section.section, index: rows.filter(row => y > row.y + row.height / 2).length };
 }

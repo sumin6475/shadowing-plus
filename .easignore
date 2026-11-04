@@ -45,7 +45,7 @@ debug_*.json
 /test.ts
 
 # Repository areas that are not mobile build inputs
-/.git/
+/.git
 /.agents/
 /.claude/
 /.codex/

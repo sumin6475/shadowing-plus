@@ -14,7 +14,9 @@ import { AnimatedPressable, BackBar, Card, Chip, Icon, Pill, Screen, usePressFx 
 import { BlurView } from "expo-blur";
 import { extractPhraseFromImage, extractPhraseFromText, fillPhraseDetails, type PhraseCaptureDraft } from "@/lib/phrase-capture";
 import type { AskCaptureSeed } from "@/lib/ask-model";
-import { createPhrase, fetchPhrasesForCaptureContext, loadEditablePhrase, updatePhrase, updatePhraseDetails, type EditablePhrase, type PhraseKind } from "@/lib/phrases";
+import { fetchPhrasesForCaptureContext, loadEditablePhrase, updatePhrase, updatePhraseDetails, type EditablePhrase, type PhraseKind } from "@/lib/phrases";
+import { usePhraseSaveReview } from "@/hooks/use-phrase-save-review";
+import { PhraseSaveReviewSheet } from "@/components/phrase-save-review-sheet";
 import type { Nav } from "./nav";
 
 export interface CaptureImageAsset {
@@ -287,6 +289,7 @@ export function PhraseCaptureScreen({
   const [situationId, setSituationId] = useState<string | null>(clipSeed?.situationId ?? null);
   const [savedPhrases, setSavedPhrases] = useState<SavedCapturePhrase[]>([]);
   const [savePrompt, setSavePrompt] = useState<SavedCapturePhrase | null>(null);
+  const phraseSave = usePhraseSaveReview();
   const [selectedSaved, setSelectedSaved] = useState<SavedCapturePhrase | null>(null);
   const [editingSaved, setEditingSaved] = useState(false);
   const [savedEditText, setSavedEditText] = useState("");
@@ -711,7 +714,7 @@ export function PhraseCaptureScreen({
       return;
     }
     try {
-      const saved = await createPhrase({
+      const saved = await phraseSave.savePhrase({
         text,
         meaning,
         usageNote,
@@ -729,6 +732,7 @@ export function PhraseCaptureScreen({
         storyId: situationId,
         said: clipSeed?.said,
       });
+      if (!saved) return;
       nav.invalidateSpeakingData();
       const captured: SavedCapturePhrase = {
         id: saved.id,
@@ -750,8 +754,8 @@ export function PhraseCaptureScreen({
         });
       }
       setSavePrompt(captured);
-    } catch {
-      setError("Couldn’t save this phrase. Check your connection and try again.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Couldn’t save this phrase. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -1004,6 +1008,8 @@ export function PhraseCaptureScreen({
         {saving ? <ActivityIndicator color={t.colors.onAcc} /> : editing ? "Save changes" : savedPhrases.length > 0 ? "Save this phrase" : "Save to Phrase Bank"}
       </Pill>
       </Screen>
+
+    <PhraseSaveReviewSheet review={phraseSave.review} onConfirm={phraseSave.onConfirm} onEdit={phraseSave.onEdit} onDismiss={phraseSave.onDismiss} />
 
     <Modal
       visible={Boolean(savePrompt)}

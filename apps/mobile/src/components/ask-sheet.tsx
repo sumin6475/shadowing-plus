@@ -18,6 +18,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   useWindowDimensions,
@@ -62,7 +63,8 @@ import {
 } from "@/lib/ask-model";
 import { firstLanguage, type L1 } from "@/lib/first-language";
 import { createNote, parseOutline, serializeOutline } from "@/lib/mvp";
-import { createPhrase } from "@/lib/phrases";
+import { usePhraseSaveReview } from "@/hooks/use-phrase-save-review";
+import { PhraseSaveReviewSheet } from "./phrase-save-review-sheet";
 import { extractPhraseFromAsk } from "@/lib/phrase-capture";
 import { applyNoteVersion } from "@/lib/note-growth";
 import { noteWordDiff } from "@/lib/note-diff";
@@ -115,6 +117,7 @@ export interface AskSheetProps {
   open: boolean;
   onClose: () => void;
   initialMode?: AskMode;
+  initialQuestion?: string;
   practiceSessionId?: string | null;
   /** Set when opened from a Note: accepting a proposal creates a version. */
   note?: { id: string; title: string; body: string; apply: (body: string) => Promise<void> };
@@ -170,13 +173,13 @@ function ReplyReveal({ children, reducedMotion }: { children: ReactNode; reduced
   );
 }
 
-function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNote, onOpenPhraseDraft, practiceSessionId }: AskSheetProps) {
+function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, onSaved, onOpenNote, onOpenPhraseDraft, practiceSessionId }: AskSheetProps) {
   const t = useTheme();
   const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AskMode>(initialMode);
   const [turns, setTurns] = useState<AskTurn[]>([]);
-  const [text, setText] = useState(practiceSessionId ? "I want to develop this Note using what I said in practice. What should I clarify first?" : "");
+  const [text, setText] = useState(initialQuestion ?? (practiceSessionId ? "I want to develop this Note using what I said in practice. What should I clarify first?" : ""));
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [limited, setLimited] = useState(false);
@@ -190,6 +193,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const [olderBefore, setOlderBefore] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const phraseSave = usePhraseSaveReview();
   const [draftReview, setDraftReview] = useState<{ key: string; title: string; body: string } | null>(null);
   const readable = (value: string) => parseOutline(value).flatMap((section) => section.points).join(" ");
   const comparison = draftReview ? noteWordDiff(readable(note?.body ?? ""), readable(draftReview.body)) : null;
@@ -205,6 +209,26 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const { width: screenWidth } = useWindowDimensions();
   const sidebarWidth = Math.min(326, Math.round(screenWidth * 0.86));
   const sidebarProgress = useMemo(() => new Animated.Value(0), []);
+  const sidebarTouch = useRef<{ x: number; y: number } | null>(null);
+  const sidebarSwipe = useMemo(() => {
+    const restore = () => Animated.timing(sidebarProgress, {
+      toValue: 1, duration: reducedMotion ? 0 : 160, useNativeDriver: true,
+    }).start();
+    return PanResponder.create({
+      // Capture only a deliberate leftward movement, leaving taps and the
+      // conversation list's vertical scrolling to their existing responders.
+      onMoveShouldSetPanResponderCapture: (_, gesture) => sidebarOpen &&
+        gesture.dx < -18 && Math.abs(gesture.dy) < 16,
+      onPanResponderMove: (_, gesture) => {
+        sidebarProgress.setValue(Math.max(0, Math.min(1, 1 + gesture.dx / sidebarWidth)));
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx < -60 || (gesture.dx < -24 && gesture.vx < -0.5)) setSidebarOpen(false);
+        else restore();
+      },
+      onPanResponderTerminate: restore,
+    });
+  }, [sidebarOpen, sidebarProgress, sidebarWidth, reducedMotion]);
   const [sheetTop, setSheetTop] = useState(0);
   const list = useRef<ScrollView>(null);
   const input = useRef<TextInput>(null);
@@ -409,7 +433,8 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
   const savePhrase = async (key: string, expression: Expression, example: Example | null, nuance: string, question: string) => {
     mark(key, "saving");
     try {
-      await createPhrase(toPhraseInput(expression, example, nuance, question));
+      const saved = await phraseSave.savePhrase(toPhraseInput(expression, example, nuance, question));
+      if (!saved) { mark(key, null); return; }
       mark(key, "saved");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onSaved?.();
@@ -497,7 +522,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
               setSidebarOpen(true);
               void refreshChats().catch(() => {});
             }}
-            style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.6 : 1 })}
+            style={({ pressed }) => ({ ...t.shadowCard, width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.6 : 1 })}
           >
             <Icon name="menu" s={21} w={2} c={t.colors.ink} />
           </Pressable>
@@ -548,7 +573,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
                   <Icon name="sparkle" s={21} w={1.7} c={t.colors.accD} />
                 </View>
                 <View style={{ gap: 9 }}>
-                  <Serif style={{ fontSize: 34, lineHeight: 39, color: t.colors.ink }}>{intro.title}</Serif>
+                  <Serif style={{ fontSize: 34, lineHeight: 41, fontWeight: "600", color: t.colors.ink }}>{intro.title}</Serif>
                   <Text style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink2 }}>{intro.body}</Text>
                 </View>
               </View>
@@ -727,18 +752,36 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
         <Animated.View style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: "#111726", opacity: sidebarProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.34] }) }} />
         <Pressable accessibilityRole="button" accessibilityLabel="Close chat history" onPress={() => setSidebarOpen(false)} style={{ position: "absolute", top: 0, bottom: 0, left: sidebarWidth, right: 0 }} />
         <Animated.View
+          {...sidebarSwipe.panHandlers}
+          onTouchStart={event => {
+            sidebarTouch.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+          }}
+          onTouchEndCapture={event => {
+            const start = sidebarTouch.current;
+            sidebarTouch.current = null;
+            // Also recognize a completed swipe when intermediate move events
+            // did not reach this panel.
+            if (sidebarOpen && start && event.nativeEvent.pageX - start.x < -60 &&
+              Math.abs(event.nativeEvent.pageY - start.y) < 24) {
+              event.stopPropagation();
+              setSidebarOpen(false);
+            }
+          }}
+          onTouchCancel={() => { sidebarTouch.current = null; }}
           accessibilityViewIsModal={sidebarOpen}
+          accessibilityActions={[{ name: "escape", label: "Close chat history" }]}
+          onAccessibilityEscape={() => setSidebarOpen(false)}
           style={{ width: sidebarWidth, flex: 1, backgroundColor: t.colors.bg, borderTopRightRadius: 24, borderBottomRightRadius: 24, overflow: "hidden", transform: [{ translateX: sidebarProgress.interpolate({ inputRange: [0, 1], outputRange: [-sidebarWidth, 0] }) }] }}
         >
           <View style={{ paddingHorizontal: 20, paddingTop: 32, paddingBottom: 12 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text accessibilityRole="header" style={{ fontFamily: SERIF, fontSize: 29, lineHeight: 34, letterSpacing: -0.4, color: t.colors.ink }}>Ask</Text>
+              <Text accessibilityRole="header" style={{ fontFamily: SERIF, fontSize: 29, lineHeight: 35, fontWeight: "700", color: t.colors.ink }}>Ask</Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Collapse chat history"
                 hitSlop={8}
                 onPress={() => setSidebarOpen(false)}
-                style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 21, backgroundColor: t.colors.card, borderWidth: hairline, borderColor: t.colors.sep, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.65 : 1 })}
+                style={({ pressed }) => ({ ...t.shadowCard, width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.65 : 1 })}
               >
                 <Icon name="sidebar" s={21} w={1.9} c={t.colors.ink2} />
               </Pressable>
@@ -786,7 +829,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
               accessibilityState={{ disabled: pending || loadingHistory }}
               disabled={pending || loadingHistory}
               onPress={newChat}
-              style={({ pressed }) => ({ height: 46, borderRadius: 23, paddingHorizontal: 20, backgroundColor: t.colors.card, borderWidth: hairline, borderColor: t.colors.sep, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, opacity: pressed ? 0.65 : pending || loadingHistory ? 0.5 : 1 })}
+              style={({ pressed }) => ({ ...t.shadowCard, height: 46, borderRadius: 23, paddingHorizontal: 20, backgroundColor: t.colors.card, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, opacity: pressed ? 0.65 : pending || loadingHistory ? 0.5 : 1 })}
             >
               <Icon name="plus" s={18} w={1.9} c={t.colors.ink} />
               <Text style={{ fontSize: 14.5, fontWeight: "600", color: t.colors.ink }}>New chat</Text>
@@ -794,6 +837,7 @@ function AskBody({ onClose, initialMode = "how_to_say", note, onSaved, onOpenNot
           </View>
         </Animated.View>
       </View>
+      <PhraseSaveReviewSheet review={phraseSave.review} onConfirm={phraseSave.onConfirm} onEdit={phraseSave.onEdit} onDismiss={phraseSave.onDismiss} />
       {draftReview ? (
         <View style={{ position: "absolute", inset: 0, backgroundColor: t.colors.bg, padding: 24, paddingTop: 56 }}>
           <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: "700", color: t.colors.ink }}>Review draft</Text>
@@ -917,8 +961,6 @@ function QuestionChip({ children, onPress, variant = "followup", reducedMotion }
           maxWidth: "100%",
           alignSelf: variant === "starter" ? "stretch" : "flex-start",
           borderRadius: variant === "starter" ? 16 : 22,
-          borderWidth: hairline,
-          borderColor: t.ring,
           backgroundColor: t.colors.card,
           paddingVertical: 11,
           paddingHorizontal: 15,
@@ -926,6 +968,7 @@ function QuestionChip({ children, onPress, variant = "followup", reducedMotion }
           alignItems: "center",
           gap: 10,
         },
+        t.shadowCard,
         { transform: [{ scale: fx.scale }] },
       ]}
     >

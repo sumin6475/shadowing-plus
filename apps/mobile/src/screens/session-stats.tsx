@@ -57,7 +57,7 @@ export function SessionStatsCard({
         >
           <Text
             style={{
-              fontFamily: FONT.figure,
+              ...FONT.figure,
               fontSize: 64,
               lineHeight: 72,
               letterSpacing: -1.5,
@@ -94,7 +94,7 @@ export function SessionStatsCard({
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 style={{
-                  fontFamily: FONT.figure,
+                  ...FONT.figure,
                   fontSize: 28,
                   lineHeight: 33,
                   letterSpacing: -0.4,

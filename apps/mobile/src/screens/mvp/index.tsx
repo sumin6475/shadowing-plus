@@ -16,6 +16,7 @@ import {
   Keyboard,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,10 +38,11 @@ import {
 import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
 import { AskSheet } from "@/components/ask-sheet";
+import { NoteToolsSheet, type NoteTool } from "@/components/note-tools-sheet";
 import { askDefaultMode } from "@/lib/ask-pref";
-import { addConfirmedFact, applyNoteVersion, createNoteFolder, deleteNoteFolder, loadNoteFacts, loadNoteFolders, loadNotePracticeHistory, loadNoteVersions, moveNoteToFolder } from "@/lib/note-growth";
+import { addConfirmedFact, applyNoteVersion, createNoteFolder, deleteNoteFolder, loadNoteFacts, loadNoteFolders, moveNoteToFolder } from "@/lib/note-growth";
 import type { AskMode } from "@/lib/ask-model";
-import { FONT, Motif } from "@/design/mobile-tokens";
+import { FONT, FONT_UI, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
 import {
   Avatar,
@@ -70,7 +72,6 @@ import {
   durationLabel,
   isBlankNote,
   loadMirrorSessions,
-  notePreview,
   loadNote,
   loadNotes,
   loadPhraseBank,
@@ -90,7 +91,7 @@ import {
 } from "@/lib/mvp";
 import { useAuth } from "@/lib/auth";
 import type { Nav } from "../nav";
-import { NoteOutline, type NoteOutlineHandle } from "../note-outline";
+import { NoteOutline, type NoteOutlineHandle, type NotePointContext, type PointAction } from "../note-outline";
 import { SessionStatsCard, TranscriptCard } from "../session-stats";
 
 const message = (e: unknown) =>
@@ -194,7 +195,7 @@ function Header({
     >
       <Text
         accessibilityRole="header"
-        style={{ flex: 1, fontFamily: FONT.bold, fontSize: 32, color: t.colors.ink }}
+        style={{ flex: 1, ...FONT.bold, fontSize: 32, color: t.colors.ink }}
       >
         {title}
       </Text>
@@ -358,12 +359,12 @@ function FilterSummary({ text, clear }: { text: string; clear: () => void }) {
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
       <Text
         numberOfLines={1}
-        style={{ flex: 1, fontFamily: FONT.medium, fontSize: 14, color: t.colors.ink2 }}
+        style={{ flex: 1, ...FONT.medium, fontSize: 14, color: t.colors.ink2 }}
       >
         {text}
       </Text>
       <Pressable accessibilityRole="button" hitSlop={10} onPress={clear}>
-        <Text style={{ fontFamily: FONT.semibold, fontSize: 14, color: t.colors.acc }}>
+        <Text style={{ ...FONT.semibold, fontSize: 14, color: t.colors.acc }}>
           Clear
         </Text>
       </Pressable>
@@ -404,14 +405,14 @@ const loadHome = async () => {
   return { phrases, notes };
 };
 /** One period's rows, as one rounded card (Figma). */
-export function SectionCard({ label, children }: { label: string; children: ReactNode }) {
+export function SectionCard({ label, children, rows = false }: { label: string; children: ReactNode; rows?: boolean }) {
   const t = useTheme();
   return (
     <View style={{ gap: 8 }}>
       <Text
         accessibilityRole="header"
         style={{
-          fontFamily: FONT.bold,
+          ...FONT.bold,
           fontSize: 14,
           color: t.colors.ink,
           paddingHorizontal: 2,
@@ -425,7 +426,7 @@ export function SectionCard({ label, children }: { label: string; children: Reac
           backgroundColor: t.colors.card,
           borderRadius: 24,
           paddingHorizontal: 20,
-          paddingVertical: 12,
+          paddingVertical: rows ? 0 : 12,
         }}
       >
         {children}
@@ -433,15 +434,17 @@ export function SectionCard({ label, children }: { label: string; children: Reac
     </View>
   );
 }
-/** A row inside a SectionCard: 16pt padding, hairline between rows. */
-export function Row({ last, children }: { last: boolean; children: ReactNode }) {
+/** List rows reserve the same one/two-line space, including at larger text sizes. */
+export function Row({ last, children, lines }: { last: boolean; children: ReactNode; lines?: 1 | 2 }) {
   const t = useTheme();
+  const { fontScale } = useWindowDimensions();
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 16,
+        minHeight: lines ? Math.max(lines === 2 ? 72 : 64, 22 * fontScale * lines + 25) : undefined,
+        paddingVertical: lines ? 12 : 16,
         borderBottomWidth: last ? 0 : 1,
         // Figma's divider is a whisper (#EAEAEA at 50%); the theme's sep reads
         // as a rule. Dark mode keeps sep so it stays visible.
@@ -578,13 +581,13 @@ export function PhraseBank({ nav }: { nav: Nav }) {
           style={HERO_CARD}
         >
           <View style={{ gap: 4 }}>
-            <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: "#FFFFFF" }}>
+            <Text style={{ ...FONT.medium, fontSize: 12, color: "#FFFFFF" }}>
               Start the day with practice.
             </Text>
             <Text
               numberOfLines={3}
               style={{
-                fontFamily: FONT.display,
+                ...FONT.display,
                 fontSize: 24,
                 lineHeight: 28,
                 color: "#FFFFFF",
@@ -613,13 +616,13 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               alignItems: "center",
             }}
           >
-            <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: "#0A0A0A" }}>
+            <Text style={{ ...FONT.bold, fontSize: 16, color: "#0A0A0A" }}>
               Speaking
             </Text>
           </Pressable>
         </LinearGradient>
         <View style={[HERO_CARD, { backgroundColor: t.colors.card }]}>
-          <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: t.colors.ink }}>
+          <Text style={{ ...FONT.medium, fontSize: 12, color: t.colors.ink }}>
             Today’s phrases for you.
           </Text>
           <Text
@@ -627,7 +630,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               state.data ? `${done} of ${picks.length} practiced today` : "Loading"
             }
             style={{
-              fontFamily: FONT.bold,
+              ...FONT.bold,
               fontSize: 28,
               color: t.colors.ink,
               textAlign: "center",
@@ -647,7 +650,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               alignItems: "center",
             }}
           >
-            <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: t.colors.onAcc }}>
+            <Text style={{ ...FONT.bold, fontSize: 16, color: t.colors.onAcc }}>
               {!picks.length
                 ? "ADD A PHRASE"
                 : done === picks.length
@@ -686,11 +689,11 @@ export function PhraseBank({ nav }: { nav: Nav }) {
         )
       ) : null}
       {[...groups].map(([label, items]) => (
-        <SectionCard key={label} label={label}>
+        <SectionCard key={label} label={label} rows>
           {items.map((p, i) => {
             const playing = voice.speakingId === p.id;
             return (
-              <Row key={p.id} last={i === items.length - 1}>
+              <Row key={p.id} last={i === items.length - 1} lines={2}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${playing ? "Stop" : "Play"} ${p.text}`}
@@ -723,8 +726,9 @@ export function PhraseBank({ nav }: { nav: Nav }) {
                     numberOfLines={2}
                     style={{
                       flex: 1,
-                      fontFamily: FONT.semibold,
+                      ...FONT.semibold,
                       fontSize: 16,
+                      lineHeight: 22,
                       color: t.colors.ink,
                     }}
                   >
@@ -851,8 +855,6 @@ function MoreMenu({ children }: { children: ReactNode }) {
           backgroundColor: t.colors.card,
           alignItems: "center",
           justifyContent: "center",
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: t.ring,
         },
         t.shadowCard,
       ]}
@@ -1219,7 +1221,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                     >
                       <Text
                         style={{
-                          fontFamily: FONT.semibold,
+                          ...FONT.semibold,
                           fontSize: 17,
                           color: rate !== 1 ? t.colors.acc : t.colors.ink2,
                         }}
@@ -1273,7 +1275,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                           >
                             <Text
                               style={{
-                                fontFamily: FONT.bold,
+                                ...FONT.bold,
                                 fontSize: 10,
                                 color: t.colors.onAcc,
                               }}
@@ -1596,11 +1598,11 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         <EmptyState compact title="No notes in this folder yet." body="Create a note here or move one from Notes." />
       ) : null}
       {[...groups].map(([label, items]) => (
-        <SectionCard key={label} label={label}>
+        <SectionCard key={label} label={label} rows>
           {items.map((n, i) => {
             const title = n.title || "Untitled note";
             return (
-              <Row key={n.id} last={i === items.length - 1}>
+              <Row key={n.id} last={i === items.length - 1} lines={1}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Speak with ${title}`}
@@ -1635,24 +1637,12 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                     gap: 12,
                   }}
                 >
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      numberOfLines={1}
-                      style={{
-                        fontFamily: FONT.semibold,
-                        fontSize: 16,
-                        color: t.colors.ink,
-                      }}
-                    >
-                      {title}
-                    </Text>
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontFamily: FONT.regular, fontSize: 14, color: t.colors.ink3 }}
-                    >
-                      {notePreview(n.body)}
-                    </Text>
-                  </View>
+                  <Text
+                    numberOfLines={1}
+                    style={{ flex: 1, ...FONT.semibold, fontSize: 16, lineHeight: 22, color: t.colors.ink }}
+                  >
+                    {title}
+                  </Text>
                   <Icon name="chev" s={14} c={t.colors.ink2} />
                 </Pressable>
               </Row>
@@ -1720,12 +1710,14 @@ const NOTE_HEADER = Motif.tapTarget + 8;
 const NOTE_FOOTER = 78;
 export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: string; practiceSessionId?: string }) {
   const { session } = useAuth();
-  const folderState = useRefresh(loadNoteFolders, nav.speakingDataRevision);
-  const loadGrowth = useCallback(async () => {
-    const [versions, practices] = await Promise.all([loadNoteVersions(id), loadNotePracticeHistory(id)]);
-    return { versions, practices };
-  }, [id]);
-  const growth = useRefresh(loadGrowth, nav.speakingDataRevision);
+  const [tool, setTool] = useState<NoteTool | null>(null);
+  const [askContext, setAskContext] = useState<{ mode: AskMode; question?: string }>({ mode: "note" });
+  const phrasePoint = useRef<string | null>(null);
+  const pageRoot = useRef<View>(null);
+  const pageScroll = useRef<ScrollView>(null);
+  const scrollOffset = useRef(0);
+  const pageFrame = useRef({ top: 0, height: 0, content: 0 });
+  const [dragging, setDragging] = useState(false);
   const draftKey = `saylo.note-draft.${session?.user.id}.${id}`;
   const t = useTheme(),
     insets = useSafeAreaInsets(),
@@ -1739,8 +1731,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
     [outlineRevision, setOutlineRevision] = useState(0);
   const outline = useRef<NoteOutlineHandle>(null),
     titleInput = useRef<TextInput>(null);
-  // While the keyboard is up, "…" turns into Done and the Speak button gives
-  // its place to the keyboard.
+  // Editing adds Done in the header; the keyboard replaces the Speak footer.
   useEffect(() => {
     const show = Keyboard.addListener("keyboardWillShow", () => setTyping(true));
     const hide = Keyboard.addListener("keyboardWillHide", () => setTyping(false));
@@ -1909,156 +1900,64 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           .catch((e) => setError(message(e)));
       },
     });
+  const openTool = async (next: NoteTool) => {
+    Keyboard.dismiss();
+    try { await flush(); setTool(next); } catch (error) { setError(message(error)); }
+  };
+  const pointAction = (action: PointAction, point: NotePointContext) => {
+    Keyboard.dismiss();
+    if (action === "phrases") { phrasePoint.current = point.id; setTool("phrases"); return; }
+    const context = `${point.section}\n${point.text}${point.note ? `\n\nNotes\n${point.note}` : ""}`;
+    setAskContext({ mode: action === "refine" ? "note" : "how_to_say", question: action === "refine" ? `Help me refine this point in my speaking note:\n${context}` : `How can I say this naturally in English?\n${context}` });
+    setAsking(true);
+  };
+  const dragScroll = useCallback((pageY: number) => {
+    const frame = pageFrame.current;
+    const upper = frame.top + insets.top + NOTE_HEADER + 48;
+    const lower = frame.top + frame.height - insets.bottom - NOTE_FOOTER - 44;
+    const step = pageY < upper ? -8 : pageY > lower ? 8 : 0;
+    if (!step) return;
+    const y = Math.max(0, Math.min(Math.max(0, frame.content - frame.height), scrollOffset.current + step));
+    if (y === scrollOffset.current) return;
+    scrollOffset.current = y;
+    pageScroll.current?.scrollTo({ y, animated: false });
+  }, [insets.top, insets.bottom]);
+  const accent = t.dark ? "#0A84FF" : "#3478F6";
   return (
-    <View style={{ flex: 1 }}>
-      {/* The page leaves room for the bars fixed over it: the back bar at the
-          top, the Speak button at the bottom. */}
-      <Screen bottomPad={note ? NOTE_FOOTER + 32 : 32}>
-        <View style={{ height: NOTE_HEADER }} />
-        {error ? (
-          <ErrorCard
-            error={error}
-            retry={() =>
-              note ? void flush().catch((e) => setError(message(e))) : void load()
-            }
-          />
-        ) : null}
-        {note ? (
-          <>
-            <View style={{ gap: 6 }}>
-              <TextInput
-                ref={titleInput}
-                accessibilityLabel="Note title"
-                maxLength={120}
-                placeholder="Give this moment a title"
-                placeholderTextColor={t.colors.ink3}
-                value={title}
-                returnKeyType="next"
-                submitBehavior="submit"
-                onSubmitEditing={() => outline.current?.focusStart()}
-                onChangeText={(value) => {
-                  setTitle(value);
-                  edited({ title: value });
-                }}
-                style={{
-                  fontFamily: FONT.display,
-                  fontSize: 36,
-                  lineHeight: 42,
-                  color: t.colors.ink,
-                }}
-              />
-              <Label>{status}</Label>
-            </View>
-            <NoteOutline
-              key={outlineRevision}
-              ref={outline}
-              body={body}
-              onChangeBody={(value) => {
-                setBody(value);
-                edited({ body: value });
-              }}
-            />
-            {growth.data && (growth.data.versions.length || growth.data.practices.length) ? (
-              <SectionCard label="How this Note grew">
-                {growth.data.versions.filter((version) => version.origin !== "manual").slice(0, 3).map((version) => (
-                  <Text key={version.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
-                    {version.origin === "practice" ? "Practice ideas applied" : "Draft accepted"} · {dateLabel(version.created_at)}
-                  </Text>
-                ))}
-                {growth.data.practices.slice(0, 3).map((practice) => (
-                  <Text key={practice.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
-                    Spoke from this Note · {dateLabel(practice.created_at)}
-                  </Text>
-                ))}
-              </SectionCard>
-            ) : null}
-          </>
-        ) : !error ? (
-          <ActivityIndicator />
-        ) : null}
+    <View ref={pageRoot} style={{ flex: 1 }} onLayout={() => pageRoot.current?.measureInWindow((_, top, __, height) => { pageFrame.current = { ...pageFrame.current, top, height }; })}>
+      <Screen bottomPad={note ? NOTE_FOOTER + 32 : 32} style={{ paddingHorizontal: 20, gap: 0 }}
+        scrollRef={pageScroll} scrollEnabled={!dragging} scrollEventThrottle={16}
+        onScroll={event => { scrollOffset.current = event.nativeEvent.contentOffset.y; }}
+        onContentSizeChange={(_, content) => { pageFrame.current.content = content; }}>
+        <View style={{ height: NOTE_HEADER + 8 }} />
+        {error ? <ErrorCard error={error} retry={() => note ? void flush().catch(error => setError(message(error))) : void load()} /> : null}
+        {note ? <>
+          <TextInput ref={titleInput} accessibilityLabel="Note title" accessibilityHint={status} maxLength={120} placeholder="Title" placeholderTextColor={t.colors.ink3}
+            value={title} returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => outline.current?.focusStart()}
+            onChangeText={value => { setTitle(value); edited({ title: value }); }}
+            style={{ fontFamily: FONT_UI, fontSize: 34, fontWeight: "700", lineHeight: 41, color: accent, paddingVertical: 0 }} />
+          <NoteOutline key={outlineRevision} ref={outline} body={body} scrollOffset={scrollOffset} onDragChanged={setDragging} onDragScroll={dragScroll}
+            onPointAction={pointAction} onChangeBody={value => { setBody(value); edited({ body: value }); }} />
+        </> : !error ? <ActivityIndicator /> : null}
       </Screen>
-      {/* Fixed, so Done is in reach however far the note has scrolled. The
-          page fades out under it instead of running through the title. */}
-      <View
-        pointerEvents="box-none"
-        style={{ position: "absolute", top: 0, left: 0, right: 0 }}
-      >
-        <LinearGradient
-          pointerEvents="none"
-          colors={[t.colors.bg, t.colors.bg, `${t.colors.bg}00`]}
-          locations={[0, 0.8, 1]}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: (insets.top + 8 + NOTE_HEADER) / 0.8,
-          }}
-        />
-        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 18 }}>
-          <BackBar
-            title="Studio"
-            onBack={() => void leave()}
-            right={
-              typing ? (
-                // As wide as the back button in the layout, so the title stays
-                // centred; the capsule itself reaches leftwards out of that box.
-                <View style={{ width: Motif.tapTarget, alignItems: "flex-end" }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Done, hide keyboard"
-                    onPress={() => Keyboard.dismiss()}
-                    style={[
-                      {
-                        width: 74,
-                        height: Motif.tapTarget,
-                        borderRadius: Motif.tapTarget / 2,
-                        backgroundColor: t.colors.card,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: StyleSheet.hairlineWidth,
-                        borderColor: t.ring,
-                      },
-                      t.shadowCard,
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontSize: 16, fontWeight: "600", color: t.colors.accD }}
-                    >
-                      Done
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : note ? (
-                <MoreMenu>
-                  {(folderState.data ?? []).map((folder) => (
-                    <Button
-                      key={folder.id}
-                      label={`${note.folder_id === folder.id ? "✓ " : ""}Move to ${folder.name}`}
-                      systemImage="folder"
-                      onPress={() => void moveNoteToFolder(id, folder.id).then(() => {
-                        setNote({ ...note, folder_id: folder.id });
-                        nav.invalidateSpeakingData();
-                      }).catch((e) => setError(message(e)))}
-                    />
-                  ))}
-                  {note.folder_id ? (
-                    <Button label="Remove from folder" systemImage="tray" onPress={() => void moveNoteToFolder(id, null).then(() => {
-                      setNote({ ...note, folder_id: null });
-                      nav.invalidateSpeakingData();
-                    }).catch((e) => setError(message(e)))} />
-                  ) : null}
-                  <Button
-                    label="Delete note"
-                    systemImage="trash"
-                    role="destructive"
-                    onPress={remove}
-                  />
-                </MoreMenu>
-              ) : null
-            }
-          />
+      <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+        <LinearGradient pointerEvents="none" colors={[t.colors.bg, t.colors.bg, `${t.colors.bg}00`]} locations={[0, 0.7, 1]}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: insets.top + 8 + NOTE_HEADER }} />
+        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to Studio" onPress={() => void leave()}
+            style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center" }, t.shadowCard]}>
+            <SymbolView name="chevron.left" size={23} weight="medium" tintColor={t.colors.ink} />
+          </Pressable>
+          <Text numberOfLines={1} style={{ flex: 1, fontFamily: FONT_UI, fontSize: 17, fontWeight: "600", color: t.colors.ink }}>{typing ? title : ""}</Text>
+          {note ? <MoreMenu>
+            <Button label="Move" systemImage="folder" onPress={() => void openTool("move")} />
+            <Button label="Update History" systemImage="clock.arrow.circlepath" onPress={() => void openTool("history")} />
+            <Button label="Delete note" systemImage="trash" role="destructive" onPress={remove} />
+          </MoreMenu> : null}
+          {typing ? <Pressable accessibilityRole="button" accessibilityLabel="Done, hide keyboard" onPress={() => Keyboard.dismiss()}
+            style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: accent, alignItems: "center", justifyContent: "center" }, t.shadowCard]}>
+            <SymbolView name="checkmark" size={23} weight="medium" tintColor="#FFFFFF" />
+          </Pressable> : null}
         </View>
       </View>
       {note && !typing ? (
@@ -2084,7 +1983,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Ask for help with this note"
-                onPress={() => setAsking(true)}
+                onPress={() => { setAskContext({ mode: "note" }); setAsking(true); }}
                 style={[
                   {
                     width: Motif.buttonHeight.large,
@@ -2093,8 +1992,6 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
                     backgroundColor: t.colors.card,
                     alignItems: "center",
                     justifyContent: "center",
-                    borderWidth: StyleSheet.hairlineWidth,
-                    borderColor: t.ring,
                   },
                   t.shadowCard,
                 ]}
@@ -2108,11 +2005,15 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           </View>
         </View>
       ) : null}
+      <NoteToolsSheet tool={tool} noteId={id} folderId={note?.folder_id ?? null} onClose={() => setTool(null)}
+        onMove={async folderId => { await flush(); await moveNoteToFolder(id, folderId); setNote(current => current ? { ...current, folder_id: folderId } : current); nav.invalidateSpeakingData(); }}
+        onInsert={phrase => { if (phrasePoint.current) outline.current?.insertPhrase(phrasePoint.current, phrase); }} />
       {ASK_ENABLED ? (
         <AskSheet
           open={asking && Boolean(note)}
           onClose={() => setAsking(false)}
-          initialMode="note"
+          initialMode={askContext.mode}
+          initialQuestion={askContext.question}
           onOpenPhraseDraft={(askSeed) => {
             setAsking(false);
             nav.push("capture", { askSeed });

@@ -6,7 +6,6 @@ import { Text } from "@/design/text";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
-import { useFonts } from "expo-font";
 import { SERIF } from "@/design/mobile-tokens";
 import { usePostHog } from "posthog-react-native";
 
@@ -54,18 +53,6 @@ function RootNavigator() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importAttempt, setImportAttempt] = useState(0);
 
-  // Myne design-system fonts, loaded at runtime (expo-font is already in the
-  // dev client, so no native rebuild). Pretendard, one family per static
-  // weight, is the UI face (design/text.tsx applies it); Instrument Serif is
-  // the display serif.
-  const [fontsLoaded] = useFonts({
-    Pretendard: require("../../assets/fonts/Pretendard-Regular.otf"),
-    "Pretendard-Medium": require("../../assets/fonts/Pretendard-Medium.otf"),
-    "Pretendard-SemiBold": require("../../assets/fonts/Pretendard-SemiBold.otf"),
-    "Pretendard-Bold": require("../../assets/fonts/Pretendard-Bold.otf"),
-    InstrumentSerif: require("../../assets/fonts/InstrumentSerif-Regular.ttf"),
-  });
-
   // Load saved first language + talk-focus before first render so greetings
   // and Speak diagnosis use them.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
@@ -97,7 +84,7 @@ function RootNavigator() {
     });
   }, [draft, session]);
 
-  const ready = !loading && fontsLoaded && prefsLoaded && draft !== null;
+  const ready = !loading && prefsLoaded && draft !== null;
 
   const effectiveShowSignIn = Boolean(
     showSignIn && !(session && draft?.status === "awaiting_sign_in"),
