@@ -1,3 +1,5 @@
+import { SessionResultPager } from '@/components/session-result-pager';
+import { AdvancedFeedbackReport } from '@/components/advanced-feedback-report';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   useCallback,
@@ -2234,8 +2236,9 @@ export function MirrorRecord({
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [reviewPage, setReviewPage] = useState(0);
   return (
-    <Screen>
+    <SessionResultPager onPageChange={setReviewPage} first={<Screen>
       <BackBar title="My records" onBack={nav.pop} />
       <Label>{dateTimeLabel(session.created_at)}</Label>
       <SessionStatsCard transcript={session.transcript ?? ""} seconds={session.seconds} />
@@ -2273,6 +2276,6 @@ export function MirrorRecord({
         {busy ? "Deleting…" : "Delete session"}
       </Pill>
       <ErrorCard error={error} retry={() => setError(null)} />
-    </Screen>
+    </Screen>} second={<Screen><BackBar title="Speaking review" onBack={nav.pop}/><AdvancedFeedbackReport sessionId={session.id} active={reviewPage === 1} onRetry={retry => nav.startTalk({feedbackRetry:retry, noteId:session.note_id, returnTo:{tab:'speak',stack:[{name:'mirrorRecord',props:{id:session.id}}]}})}/></Screen>} />
   );
 }

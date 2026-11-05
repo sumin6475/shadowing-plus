@@ -41,6 +41,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.0",
+    "react-native-enriched-html": "1.1.1",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.0",
     "react-native-safe-area-context": "~5.7.0",
@@ -70,7 +71,14 @@
     "verify:release-config": "node ./scripts/verify-release-config.mjs",
     "verify:rls": "node ./scripts/verify-rls-isolation.mjs",
     "validate": "npm run verify:release-config && npm run typecheck && npm run lint:baseline && npm run export:ios",
-    "test:mvp": "node --test tests/mvp-model.test.mjs tests/search-model.test.mjs tests/phrase-use.test.mjs tests/daily-phrase-ranking.test.mjs tests/daily-queue.test.mjs tests/mirror-hints.test.mjs tests/mirror-used.test.mjs tests/auth-errors.test.mjs tests/ask-model.test.mjs tests/ask-history.test.mjs tests/ask-capture.test.mjs tests/ask-capture-server.test.mjs tests/mobile-usage.test.mjs tests/ask-release-visibility.test.mjs tests/phrase-duplicates.test.mjs tests/phrase-save-review.test.mjs tests/phrase-duplicate-search.test.mjs tests/studio-outline.test.mjs tests/studio-save.test.mjs"
+    "test:mvp": "node --test tests/mvp-model.test.mjs tests/search-model.test.mjs tests/phrase-use.test.mjs tests/daily-phrase-ranking.test.mjs tests/daily-queue.test.mjs tests/mirror-hints.test.mjs tests/mirror-used.test.mjs tests/auth-errors.test.mjs tests/ask-model.test.mjs tests/ask-history.test.mjs tests/ask-capture.test.mjs tests/ask-capture-server.test.mjs tests/mobile-usage.test.mjs tests/ask-release-visibility.test.mjs tests/phrase-duplicates.test.mjs tests/phrase-save-review.test.mjs tests/phrase-duplicate-search.test.mjs tests/studio-outline.test.mjs tests/studio-save.test.mjs tests/speaking-focus.test.mjs ../../supabase/tests/coaching-profile/core.test.mjs ../../supabase/tests/talk-advanced-feedback/core.test.mjs tests/coaching-preferences.test.mjs",
+    "test:feedback": "node --test tests/speaking-focus.test.mjs ../../supabase/tests/coaching-profile/core.test.mjs ../../supabase/tests/talk-advanced-feedback/core.test.mjs tests/coaching-preferences.test.mjs",
+    "test:feedback:db": "node --test ../../supabase/tests/talk-advanced-feedback/database.test.mjs",
+    "verify:feedback-rls": "node ./scripts/verify-feedback-rls.mjs"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@tiptap/extension-bubble-menu": "3.27.1",
+    "@tiptap/extension-floating-menu": "3.27.1"
+  }
 }

@@ -2,6 +2,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 const TEXT_PRICES: Record<string, { input: number; output: number }> = {
+  "gpt-4.1-mini": { input: 0.40, output: 1.60 },
   "gpt-4o-mini": { input: 0.15, output: 0.60 },
   "text-embedding-3-small": { input: 0.02, output: 0 },
 };

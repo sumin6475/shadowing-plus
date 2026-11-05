@@ -336,6 +336,7 @@ const PILL_LIGHT_FG = BRAND.dark;
 export function Pill({
   children,
   onPress,
+  disabled = false,
   tone = "acc",
   full,
   small,
@@ -345,6 +346,7 @@ export function Pill({
 }: {
   children?: ReactNode;
   onPress?: () => void;
+  disabled?: boolean;
   tone?: PillTone;
   full?: boolean;
   small?: boolean;
@@ -386,6 +388,9 @@ export function Pill({
     );
   return (
     <AnimatedPressable
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
       onPress={onPress}
       onPressIn={fx.pressIn}
       onPressOut={fx.pressOut}
@@ -399,6 +404,7 @@ export function Pill({
           justifyContent: "center",
           gap: 7,
           backgroundColor: tv.bg,
+          opacity: disabled ? 0.5 : 1,
           flex: full ? 1 : undefined,
           alignSelf: full ? "stretch" : "flex-start",
         },
@@ -641,6 +647,7 @@ export function Screen({
   style,
   refreshControl,
   scrollEnabled = true,
+  keyboardInsets = true,
   onScroll,
   scrollRef,
   onContentSizeChange,
@@ -655,6 +662,7 @@ export function Screen({
   refreshControl?: ReactElement<RefreshControlProps>;
   /** Set false while a nested drag-reorder is active so the page doesn't scroll. */
   scrollEnabled?: boolean;
+  keyboardInsets?: boolean;
   /** Scroll events (throttled) — e.g. incremental list loading near the end. */
   onScroll?: ScrollViewProps["onScroll"];
   /** Handle on the underlying ScrollView — e.g. the product tour scrolling a
@@ -692,7 +700,7 @@ export function Screen({
         keyboardShouldPersistTaps="handled"
         // Focused inputs sit above the keyboard: iOS insets the scroll view for
         // the keyboard and scrolls the focused field into view automatically.
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustKeyboardInsets={keyboardInsets}
         keyboardDismissMode="interactive"
         refreshControl={refreshControl}
         onScroll={pull ? pull.onScroll : onScroll}

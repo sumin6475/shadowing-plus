@@ -1,3 +1,6 @@
+import {initialCoachingLevel} from '@/lib/coaching-level-migration';
+import { CoachingPreferencesForm } from '@/components/coaching-preferences-form';
+import { loadCoachingPreferences, saveCoachingPreferences } from '@/lib/advanced-feedback';
 // edit-profile.tsx — Profile subpages. Edit profile is name + goal (Supabase
 // user_metadata). First language and Feedback focus are their own screens and
 // persist locally, like Reminders.
@@ -13,13 +16,6 @@ import { authErrorMessage } from "@/lib/auth-errors";
 import { supabase } from "@/lib/supabase";
 import { MAX_PHRASES_PER_DAY, MIN_PHRASES_PER_DAY, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
 import { DAILY_SPEAKING_GOAL_OPTIONS, dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
-import {
-  ENGLISH_LEVEL_DETAIL,
-  ENGLISH_LEVEL_OPTIONS,
-  englishLevel,
-  persistEnglishLevel,
-  type EnglishLevel,
-} from "@/lib/english-level";
 import { persistThemePref, themePref, THEME_PREF_OPTIONS, type ThemePref } from "@/lib/theme-pref";
 import { firstLanguage, persistFirstLanguage, L1_OPTIONS, type L1 } from "@/lib/first-language";
 import {
@@ -268,11 +264,20 @@ export function ChangePasswordScreen({ nav }: { nav: Nav }) {
 
 export function FirstLanguageScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const { session } = useAuth();
   const [l1, setL1] = useState<L1>(firstLanguage());
 
-  const choose = (value: L1) => {
-    setL1(value);
-    void persistFirstLanguage(value);
+  const [languageBusy, setLanguageBusy] = useState(false);
+  const choose = async (value: L1) => {
+    if (languageBusy || !session?.user.id) return;
+    setLanguageBusy(true);
+    try {
+      const p = await loadCoachingPreferences();
+      await saveCoachingPreferences({ revision: p?.source_revision ?? 0, richText: p?.rich_text ?? '', level: p?.english_level ?? await initialCoachingLevel(session.user.id), language: value }, session.user.id);
+      await persistFirstLanguage(value);
+      setL1(value);
+    } catch { Alert.alert('Couldn’t update language', 'Your speaking focus is unchanged. Please try again.'); }
+    finally { setLanguageBusy(false); }
   };
 
   return (
@@ -285,7 +290,7 @@ export function FirstLanguageScreen({ nav }: { nav: Nav }) {
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 12 }}>
           {L1_OPTIONS.map((option) => (
-            <Chip key={option.value} active={l1 === option.value} onPress={() => choose(option.value)}>
+            <Chip key={option.value} active={l1 === option.value} onPress={() => void choose(option.value)}>
               {option.label}
             </Chip>
           ))}
@@ -429,62 +434,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
 }
 
 export function EnglishLevelScreen({ nav }: { nav: Nav }) {
-  const t = useTheme();
-  const [level, setLevel] = useState<EnglishLevel>(englishLevel());
-
-  const choose = (value: EnglishLevel) => {
-    setLevel(value);
-    void persistEnglishLevel(value);
-  };
-
-  return (
-    <Screen bottomPad={40}>
-      <BackBar title="English level" onBack={nav.pop} />
-      <Card style={{ paddingVertical: 6, paddingHorizontal: 16 }}>
-        <Text style={[fieldLabel(t.colors.accD), { paddingTop: 10, paddingBottom: 4 }]}>ENGLISH LEVEL</Text>
-        <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, paddingBottom: 8 }}>
-          Speaking feedback pitches its suggestions at this level.
-        </Text>
-        {ENGLISH_LEVEL_OPTIONS.map((option, index) => {
-          const selected = level === option.value;
-          const last = index === ENGLISH_LEVEL_OPTIONS.length - 1;
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              onPress={() => choose(option.value)}
-              style={{
-                minHeight: 60,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-                paddingVertical: 10,
-                borderBottomWidth: last ? 0 : hairline,
-                borderBottomColor: t.colors.sep,
-              }}
-            >
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={{ fontSize: 16.5, fontWeight: selected ? "700" : "500", color: t.colors.ink }}>
-                  {option.label}
-                </Text>
-                <Text style={{ fontSize: 12.5, lineHeight: 17, color: t.colors.ink3 }}>
-                  {ENGLISH_LEVEL_DETAIL[option.value]}
-                </Text>
-              </View>
-              {selected ? (
-                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
-                </View>
-              ) : (
-                <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
-              )}
-            </Pressable>
-          );
-        })}
-      </Card>
-    </Screen>
-  );
+  return <CoachingPreferencesForm onBack={nav.pop} />;
 }
 
 export function ThemeScreen({ nav }: { nav: Nav }) {

@@ -48,6 +48,7 @@ export interface ReturnTarget {
 }
 
 export interface TalkCtx {
+  feedbackRetry?: import("@/lib/advanced-feedback").FeedbackRetry;
   ctx?: string;
   sub?: string | null;
   prompt?: string | null;

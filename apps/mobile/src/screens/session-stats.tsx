@@ -92,7 +92,8 @@ export function SessionStatsCard({
             <View style={{ flex: 1, gap: 2 }}>
               <Text
                 numberOfLines={1}
-                adjustsFontSizeToFit
+                adjustsFontSizeToFit={cell.value.length > 6}
+                minimumFontScale={0.85}
                 style={{
                   ...FONT.figure,
                   fontSize: 28,

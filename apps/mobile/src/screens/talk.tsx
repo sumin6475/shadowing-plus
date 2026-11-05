@@ -1,3 +1,6 @@
+import { linkFeedbackRetry } from '@/lib/advanced-feedback';
+import { SessionResultPager } from '@/components/session-result-pager';
+import { AdvancedFeedbackReport } from '@/components/advanced-feedback-report';
 // MVP mirror: preserve the camera and controls; save transcript + time, without coaching.
 // Hint cards (./talk-hints) check a phrase off when the live transcript says it.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -69,6 +72,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       "idle",
     ),
     [saveErr, setSaveErr] = useState<string | null>(null);
+  const [resultPage, setResultPage] = useState(0);
   const started = useRef(false),
     sessionId = useRef<string | null>(null),
     noteVersionId = useRef<string | null>(null),
@@ -221,6 +225,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           ? [{ phraseItemId: card.id, source: heard ? "transcript" as const : "manual" as const }]
           : [];
       }));
+      if (p0.feedbackRetry) await linkFeedbackRetry(id, p0.feedbackRetry);
       setSavedId(id);
       setSaveState("saved");
       nav.invalidateSpeakingData();
@@ -291,6 +296,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
     const showPhrases = !empty && cards.length > 0 && (usedIds.size > 0 || hintSeen);
     return (
       <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+        <SessionResultPager onPageChange={setResultPage} first={(
         <Screen bottomPad={12}>
           <BackBar
             title="Mirror"
@@ -369,6 +375,10 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </>
           )}
         </Screen>
+        )} second={<Screen bottomPad={16}>
+          <BackBar title="Speaking review" onBack={() => { if (saveState === 'saved' || empty) exit(); }} />
+          <AdvancedFeedbackReport sessionId={savedId} active={resultPage === 1} retry={p0.feedbackRetry} onRetry={retry => nav.startTalk({ ...p0, feedbackRetry: retry })} />
+        </Screen>} />
         {/* Pinned, so the actions sit in the same place however long the
             transcript is. Listen back is its own full-width row and only
             exists when there are words to listen for; below it, Speak again

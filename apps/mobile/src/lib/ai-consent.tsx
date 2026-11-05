@@ -6,7 +6,7 @@ import { AiConsentScreen } from "@/screens/ai-consent";
 import { useAuth } from "./auth";
 import { supabase } from "./supabase";
 
-export const AI_CONSENT_VERSION = "2026-09-01";
+export const AI_CONSENT_VERSION = "2026-11-04";
 
 type AiConsentMetadata = {
   ai_processing_consent?: boolean;
