@@ -202,7 +202,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
             <Avatar onPress={() => nav.push("settings")} />
           </TourTarget>
         </View>
-        <Serif style={{ fontSize: 36, lineHeight: 40, color: t.colors.ink, marginTop: 10 }}>
+        <Serif style={{ fontSize: 34, lineHeight: 41, color: t.colors.ink, marginTop: 10 }}>
           {greeting()}{displayName ? `, ${displayName}` : "."}
         </Serif>
       </View>
@@ -250,7 +250,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
               <View>
                 <Text style={{ fontSize: 17, fontWeight: "700", color: t.colors.ink }}>This week</Text>
                 {weekDelta !== null ? (
-                  <Text style={{ fontSize: 12.5, fontWeight: "600", color: t.colors.ink3, marginTop: 3 }}>
+                  <Text style={{ fontSize: 13, lineHeight: 18, fontWeight: "500", color: t.colors.ink3, marginTop: 3 }}>
                     {weekDelta >= 200
                       ? `${Math.round(thisWeek / lastWeek)}× last week`
                       : `${Math.abs(weekDelta)}% ${weekDelta > 0 ? "more" : "less"} than last week`}
@@ -273,7 +273,7 @@ export function TodayScreen({ nav }: { nav: Nav }) {
                       backgroundColor: b.count > 0 ? t.colors.acc : t.colors.soft,
                     }}
                   />
-                  <Text style={{ fontSize: 11, color: t.colors.ink3, fontWeight: "600" }}>{b.label}</Text>
+                  <Text style={{ fontSize: 12, lineHeight: 16, color: t.colors.ink3, fontWeight: "600" }}>{b.label}</Text>
                 </View>
               ))}
             </View>

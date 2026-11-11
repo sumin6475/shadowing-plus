@@ -224,3 +224,10 @@ test("clarification carries the exact parent question and evidence as user data"
   );
   assert.ok(request.messages[1].content.includes("Which design?"));
 });
+
+test("feedback output language is validated and part of cache identity", async () => {
+  assert.equal(parseRequest({ sessionId: uuid, requestId: uuid, responseLanguage: "en" }).responseLanguage, "en");
+  assert.throws(() => parseRequest({ sessionId: uuid, requestId: uuid, responseLanguage: "invalid" }), /feedback_bad_request/);
+  const base = { operation: "analyze", sessionId: uuid, transcriptHash: "abc", profileId: uuid, model: "test", clarifications: [] };
+  assert.notEqual(await requestFingerprint({ ...base, responseLanguage: "en" }), await requestFingerprint({ ...base, responseLanguage: "ko" }));
+});

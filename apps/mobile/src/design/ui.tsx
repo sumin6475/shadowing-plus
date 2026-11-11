@@ -16,7 +16,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Text } from "./text";
-import Reanimated, { FadeInDown } from "react-native-reanimated";
+import Reanimated, { FadeInDown, useReducedMotion } from "react-native-reanimated";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -94,13 +94,14 @@ export function Serif({
 export const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function usePressFx(depth = 0.975) {
+  const reduceMotion = useReducedMotion();
   // useMemo (not a ref) keeps the Animated.Value off the render-time ref-read
   // path, same as Wave below.
   const scale = useMemo(() => new Animated.Value(1), []);
   const pressIn = () =>
-    Animated.spring(scale, { toValue: depth, speed: 40, bounciness: 0, useNativeDriver: true }).start();
+    Animated.spring(scale, { toValue: reduceMotion ? 1 : depth, speed: 40, bounciness: 0, useNativeDriver: true }).start();
   const pressOut = () =>
-    Animated.spring(scale, { toValue: 1, speed: 22, bounciness: 7, useNativeDriver: true }).start();
+    Animated.spring(scale, { toValue: 1, speed: 30, bounciness: 2, useNativeDriver: true }).start();
   return { scale, pressIn, pressOut };
 }
 
@@ -120,7 +121,7 @@ export function EnterStagger({
   // Cap the delay so long lists don't keep trickling in forever.
   return (
     <Reanimated.View
-      entering={FadeInDown.delay(70 * Math.min(i, 8)).springify().damping(17).stiffness(160)}
+      entering={FadeInDown.delay(35 * Math.min(i, 4)).springify().damping(17).stiffness(160)}
       style={style}
     >
       {children}
@@ -396,7 +397,8 @@ export function Pill({
       onPressOut={fx.pressOut}
       style={[
         {
-          height: h,
+          minHeight: h,
+          paddingVertical: small ? 6 : 10,
           borderRadius: Motif.radius.pill,
           paddingHorizontal: small ? 16 : 24,
           flexDirection: "row",
@@ -419,7 +421,7 @@ export function Pill({
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
         {icon ? <Icon name={icon} s={small ? 15 : 17} w={2} c={tv.fg} /> : null}
         {isLabel ? (
-          <Text style={[{ color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
+          <Text style={[{ flexShrink: 1, textAlign: "center", color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
             {children}
           </Text>
         ) : (
@@ -456,7 +458,8 @@ export function Chip({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          height: Motif.buttonHeight.medium,
+          minHeight: Motif.buttonHeight.medium,
+          paddingVertical: 6,
           borderRadius: Motif.radius.pill,
           paddingHorizontal: icon && !children ? 10 : 15,
           flexDirection: "row",
@@ -690,7 +693,7 @@ export function Screen({
           {
             paddingTop: insets.top + 8,
             paddingBottom: bottomPad + insets.bottom,
-            paddingHorizontal: noPad ? 0 : 18,
+            paddingHorizontal: noPad ? 0 : 20,
             gap: t.gap,
           },
           style,

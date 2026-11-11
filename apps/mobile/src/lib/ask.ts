@@ -6,6 +6,7 @@
 import { requireAiProcessingConsent } from "./ai-consent";
 import { mockReply } from "./ask-fixtures";
 import { buildAskRequest, type AskMode, type AskReply, type AskTurn } from "./ask-model";
+import { surfaceLanguage } from "./language-preferences";
 import { firstLanguage } from "./first-language";
 import { ASK_MOCK } from "./release-flags";
 import { supabase } from "./supabase";
@@ -42,7 +43,7 @@ export async function askAssist(mode: AskMode, turns: AskTurn[], draftNow = fals
   await requireAiProcessingConsent();
   const { data, error } = await supabase.functions.invoke<{ reply: AskReply; remaining: number }>(
     "ask-assist",
-    { body: buildAskRequest(mode, turns, firstLanguage(), draftNow, noteId, practiceSessionId) },
+    { body: { ...buildAskRequest(mode, turns, firstLanguage(), draftNow, noteId, practiceSessionId), response_language: surfaceLanguage("assistant") } },
   );
   if (error) {
     // A non-2xx reply carries `{ error, code }`; the daily limit is a 429.

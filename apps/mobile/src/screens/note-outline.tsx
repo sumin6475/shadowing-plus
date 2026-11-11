@@ -319,7 +319,7 @@ export function NoteOutline({
             }}
             style={({ pressed }) => ({ flex: 1, minHeight: 46, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.5 : 1 })}>
             <SymbolView name={tool.symbol} size={19} tintColor={t.colors.ink} />
-            <Text style={{ fontFamily: SYSTEM, fontSize: 13, color: t.colors.ink }}>{tool.label}</Text>
+            <Text style={{ flexShrink: 1, textAlign: "center", fontFamily: SYSTEM, fontSize: 14, lineHeight: 19, fontWeight: "500", color: t.colors.ink }}>{tool.label}</Text>
           </Pressable>
         ))}
       </View>

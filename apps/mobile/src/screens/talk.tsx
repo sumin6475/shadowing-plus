@@ -327,7 +327,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
           </Text>
           {empty ? (
             <>
-              <Serif style={{ fontSize: 44, lineHeight: 50 }}>No words caught.</Serif>
+              <Serif style={{ fontSize: 34, lineHeight: 41 }}>No words caught.</Serif>
               <Text style={{ color: t.colors.ink2, fontSize: 15, lineHeight: 23 }}>
                 The mic didn’t pick up any speech, so this session wasn’t saved.
                 Check that you aren’t muted, then try again.
@@ -386,7 +386,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         <View
           style={{
             gap: 10,
-            paddingHorizontal: 18,
+            paddingHorizontal: 20,
             paddingTop: 10,
             paddingBottom: insets.bottom + 10,
             backgroundColor: t.colors.bg,

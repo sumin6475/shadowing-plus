@@ -107,8 +107,8 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       soft: "rgba(118,118,128,0.12)",
       sep: "#C6C6C8",
       ink: "#111114",
-      ink2: "rgba(60,60,67,0.6)",
-      ink3: "rgba(60,60,67,0.3)",
+      ink2: "#51515B",
+      ink3: "#686872",
       acc: "#162555",
       accD: "#344E91",
       accS: "rgba(22,37,85,0.11)",
@@ -128,8 +128,8 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       soft: "rgba(118,118,128,0.24)",
       sep: "rgba(84,84,88,0.6)",
       ink: "#ffffff",
-      ink2: "rgba(235,235,245,0.6)",
-      ink3: "rgba(235,235,245,0.3)",
+      ink2: "#C4C4CE",
+      ink3: "#A3A3AD",
       acc: "#6E8DD5",
       accD: "#8FACEF",
       accS: "rgba(110,141,213,0.28)",
@@ -243,13 +243,13 @@ export const TypeScale = {
 } as const;
 
 // ── Runtime geometry (what the current app renders) ──────────────────────
-export const MOBILE_R = 26; // card radius (concentric container radius)
+export const MOBILE_R = Motif.radius.cardLg; // card radius (concentric container radius)
 export const MOBILE_RING: Record<"light" | "dark", string> = {
   light: "#ECECEC",
   dark: "rgba(255,255,255,0.07)",
 };
-export const MOBILE_PADC: Record<Density, number> = { regular: 19, compact: 14 };
-export const MOBILE_GAP: Record<Density, number> = { regular: 13, compact: 9 };
+export const MOBILE_PADC: Record<Density, number> = { regular: 20, compact: 16 };
+export const MOBILE_GAP: Record<Density, number> = { regular: 16, compact: 12 };
 
 export function mobileRing(dark: boolean): string {
   return MOBILE_RING[dark ? "dark" : "light"];
@@ -264,10 +264,10 @@ export function mobileSpacing(density: Density): { padc: number; gap: number } {
 function shadowCard(dark: boolean): ViewStyle {
   return {
     shadowColor: "#000",
-    shadowOpacity: dark ? 0.3 : 0.09,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    shadowOpacity: dark ? 0.24 : 0.055,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   };
 }
 

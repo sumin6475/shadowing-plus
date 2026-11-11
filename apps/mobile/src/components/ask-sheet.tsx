@@ -159,9 +159,10 @@ function useReducedMotion() {
 }
 
 function ReplyReveal({ children, reducedMotion }: { children: ReactNode; reducedMotion: boolean }) {
-  const progress = useMemo(() => new Animated.Value(0), []);
+  const progress = useMemo(() => new Animated.Value(1), []);
   useEffect(() => {
     if (reducedMotion) { progress.setValue(1); return; }
+    progress.setValue(0);
     const animation = Animated.timing(progress, { toValue: 1, duration: 230, useNativeDriver: true });
     animation.start();
     return () => animation.stop();
@@ -229,9 +230,28 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       onPanResponderTerminate: restore,
     });
   }, [sidebarOpen, sidebarProgress, sidebarWidth, reducedMotion]);
+  const openHistorySwipe = useMemo(() => {
+    const cancel = () => Animated.timing(sidebarProgress, {
+      toValue: 0, duration: reducedMotion ? 0 : 150, useNativeDriver: true,
+    }).start();
+    return PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, g) => !sidebarOpen && g.numberActiveTouches === 1 &&
+        g.x0 <= 28 && g.dx > 12 && g.dx > 2 * Math.abs(g.dy),
+      onPanResponderMove: (_, g) => {
+        sidebarProgress.setValue(Math.max(0, Math.min(1, g.dx / sidebarWidth)));
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dx > sidebarWidth / 3 || (g.dx > 24 && g.vx > 0.5)) setSidebarOpen(true);
+        else cancel();
+      },
+      onPanResponderTerminate: cancel,
+    });
+  }, [sidebarOpen, sidebarProgress, sidebarWidth, reducedMotion]);
   const [sheetTop, setSheetTop] = useState(0);
   const list = useRef<ScrollView>(null);
   const input = useRef<TextInput>(null);
+  const followQuestion = useRef<string | null>(null);
+  const [liveIds, setLiveIds] = useState<Set<string>>(() => new Set());
   const turnTops = useRef(new Map<string, number>());
 
   useEffect(() => {
@@ -283,6 +303,8 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       setSaves({});
       setMadeNotes({});
       turnTops.current.clear();
+      setLiveIds(new Set());
+      followQuestion.current = null;
       setSidebarOpen(false);
       setTimeout(() => list.current?.scrollToEnd({ animated: false }), 80);
     } catch (error) {
@@ -307,6 +329,8 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
     setSaves({});
     setMadeNotes({});
     turnTops.current.clear();
+    setLiveIds(new Set());
+    followQuestion.current = null;
     setSidebarOpen(false);
     setTimeout(() => input.current?.focus(), 260);
   };
@@ -387,6 +411,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       await saveAskTurn(activeChatId.current, lastUser);
       const { reply } = await askAssist(asked, next, draftNow, activeNoteId.current, practiceSessionId);
       const answer: AskTurn = { id: turnId(), role: "assistant", reply, mode: asked };
+      setLiveIds(ids => new Set(ids).add(answer.id));
       setTurns([...next, answer]);
       try {
         await saveAskTurn(activeChatId.current, answer);
@@ -394,11 +419,6 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       } catch {
         setFailure("Answer shown, but couldn’t save it to history. Keep this conversation open.");
       }
-      // Bring the question to the top, so the answer reads from its first line.
-      const question = next[next.length - 1];
-      const top = turnTops.current.get(question.id);
-      if (top !== undefined)
-        setTimeout(() => list.current?.scrollTo({ y: Math.max(0, top - 6), animated: !reducedMotion }), 60);
     } catch (e) {
       if (e instanceof AskLimitError) setLimited(true);
       setFailure(e instanceof Error ? e.message : "Couldn’t answer right now. Try again.");
@@ -410,12 +430,15 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
     const asked = question.replace(/\s+/g, " ").trim().slice(0, ASK_MAX_CHARS);
     if (!asked || pending || limited || loadingHistory || turns[turns.length - 1]?.role === "user") return;
     const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode: requestedMode, draftNow }];
+    const questionId = next[next.length - 1].id;
+    setLiveIds(ids => new Set(ids).add(questionId));
+    followQuestion.current = questionId;
     setTurns(next);
     setText("");
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     // The answer is a card or two, not a line: give it the whole sheet.
     Keyboard.dismiss();
-    setTimeout(() => list.current?.scrollToEnd({ animated: !reducedMotion }), 60);
+
     void request(next, requestedMode, draftNow);
   };
   const retry = () => {
@@ -456,7 +479,9 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
   };
   const saveDraft = (key: string, draft: Draft, question: string) => {
     const sections = draftSections(draft);
-    setDraftReview({ key, title: (note?.id === activeNoteId.current ? note.title : "") || noteTitle(question), body: serializeOutline(sections) });
+    const generatedTitle = [...turns].reverse().find(turn => turn.role === "assistant" && isNoteCard(turn.reply) && turn.reply.title);
+    const title = generatedTitle?.role === "assistant" && isNoteCard(generatedTitle.reply) ? generatedTitle.reply.title : undefined;
+    setDraftReview({ key, title: (note?.id === activeNoteId.current ? note.title : "") || title || noteTitle(question), body: serializeOutline(sections) });
   };
   const confirmDraft = async () => {
     if (!draftReview || !activeNoteId.current) return;
@@ -506,7 +531,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 18,
+          paddingHorizontal: 20,
           paddingTop: 10,
           paddingBottom: 8,
         }}
@@ -537,9 +562,9 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
             hitSlop={8}
             onPress={onClose}
             style={({ pressed }) => ({
-              width: 34,
-              height: 34,
-              borderRadius: 17,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
               backgroundColor: t.colors.soft,
               alignItems: "center",
               justifyContent: "center",
@@ -551,29 +576,30 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
         </View>
       </View>
 
-      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={sheetTop} style={{ flex: 1 }}>
+      <KeyboardAvoidingView {...openHistorySwipe.panHandlers} behavior="padding" keyboardVerticalOffset={sheetTop} style={{ flex: 1 }}>
         <ScrollView
           ref={list}
+          onScrollBeginDrag={() => { followQuestion.current = null; }}
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 20, gap: 16, flexGrow: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20, gap: 16, flexGrow: 1 }}
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           {olderBefore ? (
-            <Pressable accessibilityRole="button" disabled={loadingOlder || pending} onPress={() => void loadOlder()} style={{ alignSelf: "center", paddingHorizontal: 18, paddingVertical: 10 }}>
+            <Pressable accessibilityRole="button" disabled={loadingOlder || pending} onPress={() => void loadOlder()} style={{ alignSelf: "center", paddingHorizontal: 20, paddingVertical: 10 }}>
               {loadingOlder ? <ActivityIndicator size="small" color={t.colors.accD} /> : <Text style={{ fontSize: 13.5, fontWeight: "600", color: t.colors.accD }}>Earlier messages</Text>}
             </Pressable>
           ) : null}
           {turns.length === 0 ? (
-            <View style={{ flex: 1, justifyContent: "center", gap: 26, paddingBottom: 24 }}>
+            <View style={{ flex: 1, justifyContent: "center", gap: 20, paddingBottom: 20 }}>
               <View style={{ gap: 14 }}>
                 <View style={{ width: 42, height: 42, borderRadius: 15, backgroundColor: t.colors.accS, alignItems: "center", justifyContent: "center" }}>
                   <Icon name="sparkle" s={21} w={1.7} c={t.colors.accD} />
                 </View>
                 <View style={{ gap: 9 }}>
-                  <Serif style={{ fontSize: 34, lineHeight: 41, fontWeight: "600", color: t.colors.ink }}>{intro.title}</Serif>
+                  <Serif style={{ fontSize: 28, lineHeight: 35, fontWeight: "600", color: t.colors.ink }}>{intro.title}</Serif>
                   <Text style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink2 }}>{intro.body}</Text>
                 </View>
               </View>
@@ -591,9 +617,19 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
           {turns.map((turn, i) => (
             <View
               key={turn.id}
-              onLayout={(e) => turnTops.current.set(turn.id, e.nativeEvent.layout.y)}
+              onLayout={(e) => {
+                turnTops.current.set(turn.id, e.nativeEvent.layout.y);
+                const target = followQuestion.current;
+                if (!target) return;
+                if (turn.id === target) list.current?.scrollToEnd({ animated: !reducedMotion });
+                if (turn.role === "assistant" && turns[i - 1]?.id === target) {
+                  followQuestion.current = null;
+                  const y = turnTops.current.get(target) ?? e.nativeEvent.layout.y;
+                  list.current?.scrollTo({ y: Math.max(0, y - 6), animated: !reducedMotion });
+                }
+              }}
             >
-              <ReplyReveal reducedMotion={reducedMotion}>
+              <ReplyReveal reducedMotion={reducedMotion || !liveIds.has(turn.id)}>
               {turn.role === "user" ? (
                 <View
                   style={{
@@ -606,7 +642,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
                     paddingHorizontal: 15,
                   }}
                 >
-                  <Text style={{ fontSize: 16, lineHeight: 22, color: t.colors.onAcc }}>{turn.text}</Text>
+                  <Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.onAcc }}>{turn.text}</Text>
                 </View>
               ) : turn.reply.type === "off_topic" ? (
                 <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, paddingHorizontal: 2 }}>
@@ -683,7 +719,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
         </ScrollView>
 
         {/* Composer: the question, with the mode and send under it. */}
-        <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: composerBottomInset }}>
+        <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: composerBottomInset }}>
           {mode === "note" && turns.some((turn) => turn.role === "user" && turn.mode === "note") ? (
             <Pressable
               accessibilityRole="button"
@@ -704,13 +740,13 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
             style={[
               {
                 backgroundColor: t.colors.card,
-                borderRadius: 26,
+                borderRadius: t.r,
                 borderWidth: hairline,
                 borderColor: t.ring,
-                paddingHorizontal: 8,
-                paddingTop: 6,
-                paddingBottom: 8,
-                gap: 6,
+                paddingHorizontal: 12,
+                paddingTop: 8,
+                paddingBottom: 10,
+                gap: 8,
                 opacity: limited ? 0.5 : 1,
               },
               t.shadowCard,
@@ -926,7 +962,8 @@ function ModeSwitch({ mode, onChange }: { mode: AskMode; onChange: (mode: AskMod
             onPress={() => onChange(m)}
             style={[
               {
-                height: 36,
+                minHeight: 38,
+                paddingVertical: 7,
                 paddingHorizontal: 14,
                 borderRadius: 18,
                 justifyContent: "center",
@@ -935,7 +972,7 @@ function ModeSwitch({ mode, onChange }: { mode: AskMode; onChange: (mode: AskMod
               on ? t.shadowCard : null,
             ]}
           >
-            <Text style={{ fontSize: 13.5, fontWeight: on ? "700" : "500", color: on ? t.colors.ink : t.colors.ink2 }}>
+            <Text style={{ fontSize: 15, lineHeight: 20, fontWeight: on ? "600" : "500", color: on ? t.colors.ink : t.colors.ink2 }}>
               {MODE_LABEL[m]}
             </Text>
           </Pressable>
@@ -981,7 +1018,7 @@ function QuestionChip({ children, onPress, variant = "followup", reducedMotion }
 function Sheet({ children }: { children: ReactNode }) {
   const t = useTheme();
   return (
-    <View style={{ backgroundColor: t.colors.card, borderRadius: 24, borderWidth: hairline, borderColor: t.ring, paddingHorizontal: 18, paddingVertical: 17, gap: 16 }}>
+    <View style={{ backgroundColor: t.colors.card, borderRadius: 24, borderWidth: hairline, borderColor: t.ring, paddingHorizontal: 20, paddingVertical: 17, gap: 16 }}>
       {children}
     </View>
   );
@@ -993,8 +1030,8 @@ function Rule() {
 function Caption({ children }: { children: string }) {
   const t = useTheme();
   return (
-    <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.9, color: t.colors.ink2 }}>
-      {children.toUpperCase()}
+    <Text style={{ fontSize: 13, lineHeight: 18, fontWeight: "600", color: t.colors.ink2 }}>
+      {children}
     </Text>
   );
 }
@@ -1352,7 +1389,7 @@ function Answer({
 /** Three dots while the answer is on its way. */
 function TypingDots({ reducedMotion }: { reducedMotion: boolean }) {
   const t = useTheme();
-  const phase = useMemo(() => new Animated.Value(0), []);
+  const phase = useMemo(() => new Animated.Value(1), []);
   useEffect(() => {
     if (reducedMotion) { phase.setValue(0); return; }
     const loop = Animated.loop(

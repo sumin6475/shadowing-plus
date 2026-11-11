@@ -12,7 +12,8 @@
 // keeps the N:1 promise (see first-language.ts) without guessing from a locale.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { firstLanguage, firstLanguageIsExplicit, type L1 } from "./first-language";
+import { surfaceLanguage } from "./language-preferences";
+import { firstLanguageIsExplicit, type L1 } from "./first-language";
 
 /** Bump the version suffix to re-show the tour after the Today layout changes. */
 export const PRODUCT_TOUR_STORAGE_KEY = "saylo.tour.today.v1";
@@ -185,7 +186,7 @@ const COPY: Record<L1, TourCopy> = {
 
 /** Coach-mark copy: English unless the learner has chosen a first language. */
 export function productTourCopy(): TourCopy {
-  return COPY[firstLanguageIsExplicit() ? firstLanguage() : "en"];
+  return COPY[firstLanguageIsExplicit() ? surfaceLanguage("app") : "en"];
 }
 
 /** True once the learner has finished or skipped the tour on this device. */

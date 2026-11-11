@@ -1,3 +1,4 @@
+import Reanimated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import { SessionResultPager } from '@/components/session-result-pager';
 import { AdvancedFeedbackReport } from '@/components/advanced-feedback-report';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -103,9 +104,10 @@ function Label({ children }: { children: ReactNode }) {
   return (
     <Text
       style={{
-        fontSize: 11,
-        fontWeight: "700",
-        letterSpacing: 1.1,
+        fontSize: 13,
+        lineHeight: 18,
+        fontWeight: "600",
+        letterSpacing: 0.2,
         color: t.colors.ink3,
       }}
     >
@@ -116,7 +118,7 @@ function Label({ children }: { children: ReactNode }) {
 function Copy({ children }: { children: ReactNode }) {
   const t = useTheme();
   return (
-    <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink2 }}>
+    <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>
       {children}
     </Text>
   );
@@ -197,7 +199,7 @@ function Header({
     >
       <Text
         accessibilityRole="header"
-        style={{ flex: 1, ...FONT.bold, fontSize: 32, color: t.colors.ink }}
+        style={{ flex: 1, ...FONT.bold, fontSize: 34, lineHeight: 41, letterSpacing: -0.7, color: t.colors.ink }}
       >
         {title}
       </Text>
@@ -206,8 +208,8 @@ function Header({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 20,
-          height: 48,
+          gap: 12,
+          minHeight: 44,
           paddingHorizontal: 12,
           borderRadius: 100,
           backgroundColor: t.colors.card,
@@ -414,20 +416,21 @@ export function SectionCard({ label, children, rows = false }: { label: string; 
       <Text
         accessibilityRole="header"
         style={{
-          ...FONT.bold,
-          fontSize: 14,
-          color: t.colors.ink,
-          paddingHorizontal: 2,
+          ...FONT.semibold,
+          fontSize: 15,
+          lineHeight: 20,
+          color: t.colors.ink2,
+          paddingHorizontal: 0,
           paddingTop: 12,
         }}
       >
-        {label.toUpperCase()}
+        {label}
       </Text>
       <View
         style={{
           backgroundColor: t.colors.card,
-          borderRadius: 24,
-          paddingHorizontal: 20,
+          borderRadius: t.r,
+          paddingHorizontal: 16,
           paddingVertical: rows ? 0 : 12,
         }}
       >
@@ -446,7 +449,7 @@ export function Row({ last, children, lines }: { last: boolean; children: ReactN
         flexDirection: "row",
         alignItems: "center",
         minHeight: lines ? Math.max(lines === 2 ? 72 : 64, 22 * fontScale * lines + 25) : undefined,
-        paddingVertical: lines ? 12 : 16,
+        paddingVertical: lines ? 8 : 14,
         borderBottomWidth: last ? 0 : 1,
         // Figma's divider is a whisper (#EAEAEA at 50%); the theme's sep reads
         // as a rule. Dark mode keeps sep so it stays visible.
@@ -720,7 +723,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
                     flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
-                    marginLeft: 6,
+                    marginLeft: 12,
                     gap: 12,
                   }}
                 >
@@ -1584,6 +1587,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         error={state.error || (view !== "notes" ? folders.error : null)}
         retry={() => { void state.refresh(); void folders.refresh(); }}
       />
+      <Reanimated.View key={view} entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)} style={{ gap: t.gap }}>
       {!state.loading && view === "notes" && !visibleNotes.length && !state.error ? (
         query ? (
           <EmptyState compact title="No matching notes." body="Try a different word." />
@@ -1607,6 +1611,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
               <Row key={n.id} last={i === items.length - 1} lines={1}>
                 <Pressable
                   accessibilityRole="button"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.55 : 1 })}
                   accessibilityLabel={`Speak with ${title}`}
                   hitSlop={10}
                   onPress={() =>
@@ -1631,13 +1636,15 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                   accessibilityRole="button"
                   accessibilityLabel={`${title}, open note`}
                   onPress={() => nav.push("mvpNote", { id: n.id })}
-                  style={{
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.65 : 1,
+                    minHeight: 44,
                     flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
-                    marginLeft: 6,
+                    marginLeft: 12,
                     gap: 12,
-                  }}
+                  })}
                 >
                   <Text
                     numberOfLines={1}
@@ -1682,7 +1689,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                 })}
               >
                 <Row last={false}>
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={({ pressed }) => ({ flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.65 : 1 })}>
                     <Icon name="folder" s={20} c={t.colors.ink2} />
                     <Text style={{ color: t.colors.ink, fontSize: 16, flex: 1 }}>{folder.name}</Text>
                     <Text style={{ color: t.colors.ink3 }}>{notes.filter((n) => n.folder_id === folder.id).length}</Text>
@@ -1702,6 +1709,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
             )}
           </SectionCard>
       ) : null}
+      </Reanimated.View>
     </Screen>
   );
 }

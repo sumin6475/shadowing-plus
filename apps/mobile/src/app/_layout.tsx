@@ -14,6 +14,7 @@ import { AiProcessingConsentPrompt } from "@/lib/ai-consent";
 import { PostHogAuthBridge, PostHogGate, PostHogScreenTracker } from "@/lib/posthog";
 import { ThemeProvider, useTheme } from "@/design/theme";
 import { CaptureProvider } from "@/design-capture/provider";
+import { loadLanguagePreferences } from "@/lib/language-preferences";
 import { loadFirstLanguage } from "@/lib/first-language";
 import { loadEnglishLevel } from "@/lib/english-level";
 import { loadReminders } from "@/lib/reminders";
@@ -57,7 +58,7 @@ function RootNavigator() {
   // and Speak diagnosis use them.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
-    Promise.all([loadFirstLanguage(), loadTalkFocus(), loadTalkHintSource(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref(), loadAskDefaultMode()]).finally(() => setPrefsLoaded(true));
+    Promise.all([loadFirstLanguage(), loadLanguagePreferences(), loadTalkFocus(), loadTalkHintSource(), loadReminders(), loadPhrasesPerDay(), loadEnglishLevel(), loadThemePref(), loadAskDefaultMode()]).finally(() => setPrefsLoaded(true));
   }, []);
 
   useEffect(() => {

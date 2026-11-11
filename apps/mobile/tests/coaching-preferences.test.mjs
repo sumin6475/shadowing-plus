@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
 function moduleFrom(path,dependencies){
+ dependencies = {'./language-preferences': {surfaceLanguage: () => 'en'}, ...dependencies};
  const api={};const code=ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
  runInNewContext(code,{exports:api,expo:{uuidv4:()=>"11111111-1111-4111-8111-111111111111"},require:name=>{if(!(name in dependencies))throw new Error(`Unexpected dependency ${name}`);return dependencies[name];}});return api;
 }
@@ -36,4 +37,5 @@ test('profile compilation and analysis use separate authenticated requests',asyn
  await api.analyzeFeedback('session',{ownerId:'owner'});
  assert.deepEqual(calls.map(c=>c.name),['coaching-profile','talk-advanced-feedback']);assert.equal(calls[0].body.operation,'compile');
  assert.ok(calls.every(c=>c.headers.Authorization==='Bearer owner-token'));
+ assert.equal(calls[1].body.responseLanguage, 'en');
 });

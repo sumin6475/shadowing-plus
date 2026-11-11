@@ -15,6 +15,7 @@ import { usePostHog } from "posthog-react-native";
 import { useTheme, type Theme } from "@/design/theme";
 import { deleteAccount } from "@/lib/account";
 import { useAuth } from "@/lib/auth";
+import { useAppCopy } from "@/lib/app-copy";
 import { firstLanguage, L1_LABEL } from "@/lib/first-language";
 import { englishLevel, ENGLISH_LEVEL_LABEL } from "@/lib/english-level";
 import { phrasesPerDay } from "@/lib/daily-phrases";
@@ -50,12 +51,13 @@ function SettingsRow({
   // The 21px icon below stays on the raw red: at that size it is a
   // non-text glyph, already past the 3:1 floor, so converting it would
   // only shift the design. No danger row passes an icon today anyway.
+  const copy = useAppCopy();
   const fg = danger ? t.colors.warn : t.colors.ink;
   const row = (
     <>
       {icon ? <Icon name={icon} s={21} w={1.8} c={danger ? "#E5484D" : t.colors.ink2} /> : null}
-      <Text style={{ flex: 1, fontSize: 16.5, fontWeight: "500", color: fg }}>{label}</Text>
-      {detail ? <Text style={{ fontSize: 15, color: t.colors.ink3 }}>{detail}</Text> : null}
+      <Text style={{ flex: 1, fontSize: 17, lineHeight: 23, fontWeight: "500", color: fg }}>{copy(label)}</Text>
+      {detail ? <Text style={{ flexShrink: 1, maxWidth: "45%", textAlign: "right", fontSize: 15, lineHeight: 20, color: t.colors.ink3 }}>{detail}</Text> : null}
       {danger ? null : <Icon name="chev" s={14} c={t.colors.ink3} w={2.2} />}
     </>
   );
@@ -63,7 +65,8 @@ function SettingsRow({
     flexDirection: "row" as const,
     alignItems: "center" as const,
     minHeight: 52,
-    gap: 13,
+    paddingVertical: 8,
+    gap: 12,
     borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
     borderBottomColor: t.colors.sep,
   };
@@ -78,10 +81,11 @@ function SettingsRow({
 }
 
 function SettingsGroup({ t, title, children }: { t: Theme; title: string; children: ReactNode }) {
+  const copy = useAppCopy();
   return (
     <View style={{ gap: 8 }}>
-      <Text style={{ fontSize: 12.5, fontWeight: "700", letterSpacing: 0.6, color: t.colors.ink3, paddingHorizontal: 14 }}>
-        {title.toUpperCase()}
+      <Text style={{ fontSize: 15, lineHeight: 20, fontWeight: "600", color: t.colors.ink2 }}>
+        {copy(title)}
       </Text>
       <Card style={{ paddingVertical: 2, paddingHorizontal: 16 }}>{children}</Card>
     </View>
@@ -90,6 +94,7 @@ function SettingsGroup({ t, title, children }: { t: Theme; title: string; childr
 
 export function SettingsScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const copy = useAppCopy();
   const { session, signOut } = useAuth();
   const meta = (session?.user?.user_metadata ?? {}) as { display_name?: string; goal?: string };
   const name = meta.display_name?.trim() || session?.user?.email?.split("@")[0] || "You";
@@ -195,7 +200,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         >
           <Icon name="back" s={18} w={2.2} c={t.colors.ink} />
         </Pressable>
-        <Text style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: t.colors.ink, marginRight: 44 }}>Settings</Text>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: t.colors.ink, marginRight: 44 }}>{copy("Settings")}</Text>
       </View>
 
       {/* Identity */}
@@ -205,7 +210,7 @@ export function SettingsScreen({ nav }: { nav: Nav }) {
         <Text style={{ fontSize: 24, fontWeight: "800", color: t.colors.ink, marginTop: 14 }}>{name}</Text>
         <Text style={{ fontSize: 15, color: t.colors.ink3, marginTop: 4 }}>{goal}</Text>
         <Pressable style={{ marginTop: 12 }} onPress={() => nav.push("editProfile")}>
-          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>Edit profile</Text>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>{copy("Edit profile")}</Text>
         </Pressable>
       </View>
 

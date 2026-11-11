@@ -82,6 +82,7 @@ export interface FeedbackRequest {
   operation: "analyze" | "clarify" | "compare";
   sessionId: string;
   requestId: string;
+  responseLanguage?: FeedbackLanguage;
   parentReportId?: string;
   findingId?: string;
   answer?: string;
@@ -98,6 +99,7 @@ export function parseRequest(value: unknown): FeedbackRequest {
     "operation",
     "sessionId",
     "requestId",
+    "responseLanguage",
     ...(operation === "clarify"
       ? ["parentReportId", "findingId", "answer"]
       : operation === "compare"
@@ -124,6 +126,7 @@ export function parseRequest(value: unknown): FeedbackRequest {
         typeof id !== "string" || !bounded(id, 80)
       ) || new Set(body.targetFindingIds).size !== body.targetFindingIds.length)
   ) throw new Error("feedback_bad_request");
+  if (body.responseLanguage !== undefined && !["en", "ko", "zh-Hant", "ja", "es", "ru"].includes(String(body.responseLanguage))) throw new Error("feedback_bad_request");
   return { ...body, operation } as unknown as FeedbackRequest;
 }
 export function validateTranscript(transcript: string) {
@@ -345,6 +348,7 @@ export function requestFingerprint(
     operation: string;
     sessionId: string;
     transcriptHash: string;
+    responseLanguage?: FeedbackLanguage;
     profileId: string;
     model: string;
     clarifications: unknown[];

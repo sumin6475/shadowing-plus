@@ -5,7 +5,7 @@ import { loadCoachingPreferences, saveCoachingPreferences } from '@/lib/advanced
 // user_metadata). First language and Feedback focus are their own screens and
 // persist locally, like Reminders.
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Switch, View } from "react-native";
 import { Text, TextInput } from "@/design/text";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -17,6 +17,9 @@ import { supabase } from "@/lib/supabase";
 import { MAX_PHRASES_PER_DAY, MIN_PHRASES_PER_DAY, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
 import { DAILY_SPEAKING_GOAL_OPTIONS, dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
 import { persistThemePref, themePref, THEME_PREF_OPTIONS, type ThemePref } from "@/lib/theme-pref";
+import { useAppCopy } from "@/lib/app-copy";
+import { languagePreferences, persistLanguagePreferences, useLanguagePreferences } from "@/lib/language-preferences";
+import type { LanguagePreferences } from "@/lib/language-policy";
 import { firstLanguage, persistFirstLanguage, L1_OPTIONS, type L1 } from "@/lib/first-language";
 import {
   persistTalkFocus,
@@ -266,6 +269,28 @@ export function FirstLanguageScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
   const { session } = useAuth();
   const [l1, setL1] = useState<L1>(firstLanguage());
+  const copy = useAppCopy();
+  const preferences = useLanguagePreferences();
+  const [saveError, setSaveError] = useState(false);
+  const update = (next: LanguagePreferences) => {
+    setSaveError(false);
+    void persistLanguagePreferences(next).catch(() => setSaveError(true));
+  };
+  const rows = [
+    { key: "app", label: "App settings & guidance", detail: "Use your first language for available settings and app explanations." },
+    { key: "assistant", label: "AI replies & note titles", detail: "Default language for How can I say, note conversations, and generated note titles." },
+    { key: "feedback", label: "Self-talk feedback", detail: "Explain feedback in your first language. English examples stay in English." },
+  ] as const;
+  const toggleRow = (label: string, detail: string, value: boolean, onChange: (value: boolean) => void) => (
+    <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 14 }}>
+      <View style={{ flex: 1, gap: 5 }}>
+        <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }}>{copy(label)}</Text>
+        <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>{copy(detail)}</Text>
+      </View>
+      <Switch accessibilityLabel={copy(label)} value={value} onValueChange={onChange} trackColor={{ true: t.colors.acc }} />
+    </View>
+  );
+
 
   const [languageBusy, setLanguageBusy] = useState(false);
   const choose = async (value: L1) => {
@@ -282,11 +307,11 @@ export function FirstLanguageScreen({ nav }: { nav: Nav }) {
 
   return (
     <Screen bottomPad={40}>
-      <BackBar title="First language" onBack={nav.pop} />
+      <BackBar title={copy("First language")} onBack={nav.pop} />
       <Card>
-        <Text style={fieldLabel(t.colors.accD)}>FIRST LANGUAGE</Text>
+        <Text style={fieldLabel(t.colors.accD)}>{copy("FIRST LANGUAGE")}</Text>
         <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3, marginTop: 6 }}>
-          We greet you in this language while you learn English.
+          {copy("Choose the language you use to understand English meanings.")}
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 12 }}>
           {L1_OPTIONS.map((option) => (
@@ -296,6 +321,23 @@ export function FirstLanguageScreen({ nav }: { nav: Nav }) {
           ))}
         </View>
       </Card>
+      <Card>
+        <Text style={fieldLabel(t.colors.accD)}>{copy("WHERE TO USE IT")}</Text>
+        {toggleRow("Use first language everywhere", "Turn all three options on or off. Off uses English.", Object.values(preferences).every(Boolean), (enabled) => update({ app: enabled, assistant: enabled, feedback: enabled }))}
+        {rows.map(({ key, label, detail }) => (
+          <View key={key} style={{ borderTopWidth: hairline, borderTopColor: t.colors.sep }}>
+            {toggleRow(label, detail, preferences[key], (enabled) => update({ ...languagePreferences(), [key]: enabled }))}
+          </View>
+        ))}
+      </Card>
+      <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <Icon name="check" s={18} c={t.colors.accD} />
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>{copy("Meanings · Always on")}</Text>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>{copy("Meanings always use your first language. These switches do not change them.")}</Text>
+        </View>
+      </Card>
+      {saveError ? <Text style={{ color: t.colors.warn, fontSize: 13 }}>Couldn’t save to this device. Your choice applies for this session; toggle again to retry.</Text> : null}
     </Screen>
   );
 }

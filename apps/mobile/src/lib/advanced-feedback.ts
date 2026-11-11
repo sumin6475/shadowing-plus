@@ -1,3 +1,4 @@
+import { surfaceLanguage } from "./language-preferences";
 import { initialCoachingLevel } from "./coaching-level-migration";
 import { supabase } from "./supabase";
 import { requireAiProcessingConsent } from "./ai-consent";
@@ -142,6 +143,7 @@ export async function analyzeFeedback(
   await invoke("coaching-profile", { operation: "compile" }, options.ownerId);
   const body = {
     sessionId,
+    responseLanguage: surfaceLanguage("feedback"),
     requestId: globalThis.expo.uuidv4(),
     ...(options?.clarification
       ? { operation: "clarify", ...options.clarification }
