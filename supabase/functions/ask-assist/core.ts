@@ -79,7 +79,8 @@ export function parseAskBody(body: unknown): { ok: true; request: AskRequest } |
   for (const item of raw.messages as unknown[]) {
     const m = (item ?? {}) as { role?: unknown; content?: unknown };
     if (m.role !== "user" && m.role !== "assistant") continue;
-    const content = text(m.content, m.role === "user" ? MAX_USER_CHARS : MAX_ASSISTANT_CHARS);
+    const review = mode === "note" && raw.draft_now === true && item === raw.messages.at(-1) && typeof m.content === "string" && m.content.startsWith("Revise this draft: ");
+    const content = text(m.content, m.role === "user" ? (review ? 10000 : MAX_USER_CHARS) : MAX_ASSISTANT_CHARS);
     if (content) messages.push({ role: m.role, content });
   }
   const last = messages[messages.length - 1];
@@ -161,14 +162,14 @@ For a "clarify":
 When Draft now is chosen, return a "card". Use the learner's actual words and priorities, not a generic speech about the topic. The draft should make one coherent point and be easy to say out loud. Do not imply the learner said something they did not say. In a research draft, do not invent the study's contribution, significance, future impact, or the learner's hopes. If the learner has not supplied a conclusion, leave "closing" empty. An honest, incomplete draft is better than a polished invented ending.
 
 For a "card":
-- "title": a concise descriptive note title in the requested output language, maximum 80 characters.
+- "title": a short topic phrase in the requested output language that names the central subject of the complete draft. Use a few keywords that will help the learner find it later. For example, a discussion about taking next Friday off could be titled “Requesting time off” (Korean: “휴가 요청”). Never copy the opening message, a full sentence, or the revision instruction. Maximum 80 characters.
 - "situation": one line in the learner's language — who they are talking to and the setting.
 - "draft": "opening", "body", "closing" in natural SPOKEN English at a register that fits the listener. For a message to someone, use Opening / Body / Closing when they help: normally an opening sentence, 1–3 body sentences grounded in supplied facts, and a short closing. Omit a section if it would add filler. For an answer to a direct question (e.g. an interview question), answer directly in "body"; do not force a greeting, self-introduction or sign-off. Never add a reason, result, metric, tool, user adoption, or next step that the learner did not provide. Sound like a person talking: no email greetings ("Hi [name],"), no letter sign-offs. Placeholders, if any, are short English in square brackets, e.g. [your name].
 - Obey the learner's requested length even when it conflicts with the normal Opening/Body/Closing template. If the learner asks for ONE sentence (e.g. "한 문장으로", "one sentence"), the entire draft MUST contain exactly one English sentence: put that sentence in "body" and return "opening":"" and "closing":"". Do not write an introduction, a second sentence, or a sign-off in another section. Key phrases may be fewer than three when one sentence cannot supply three useful chunks.
 - "key_phrases": usually 3 to 5 reusable chunks taken from the draft that the learner can reuse in other situations (e.g. "I was wondering if…", "take next Friday off"); use fewer if the requested short draft has fewer useful chunks. Cut each down to the reusable part — never a whole content-specific sentence, never a trivial word.
 - "terms": 3 to 6 field-specific words people in this setting actually say and a learner may not know (standup: "repro", "hotfix", "roll back"; clinic: "symptoms", "prescription", "swollen") — whenever the setting has its own vocabulary: any workplace function (engineering, sales, design, HR…), medical, legal, finance, travel/airport, housing, school, customer service. Never list everyday words ("team", "project", "delay"). Use an empty array for social talk, self-introductions and anything without real jargon.
 
-If the learner wants to revise an earlier draft, ask what should change until they choose Draft now again. The new card is a proposal, never a silent edit.`;
+When a Draft now request includes a draft and a revision comment, revise that specific draft. Preserve manual edits and the rest of the draft unless the comment asks for a broader change. Otherwise, if the learner wants to revise an earlier draft, ask what should change until they choose Draft now again. The new card is a proposal, never a silent edit.`;
 
 const PROMPTS: Record<AskMode, string> = { how_to_say: HOW_TO_SAY_PROMPT, note: NOTE_PROMPT };
 

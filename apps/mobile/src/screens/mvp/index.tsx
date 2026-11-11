@@ -2033,10 +2033,11 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
             id,
             title,
             body,
-            apply: async (value) => {
+            apply: async (value, reviewedTitle) => {
               await flush();
-              await applyNoteVersion(id, current.current.title, value, practiceSessionId ? "practice" : "ask", practiceSessionId);
-              current.current.body = value;
+              await applyNoteVersion(id, reviewedTitle, value, practiceSessionId ? "practice" : "ask", practiceSessionId);
+              current.current = { title: reviewedTitle, body: value };
+              setTitle(reviewedTitle);
               saved.current = JSON.stringify(current.current);
               await AsyncStorage.removeItem(draftKey);
               setBody(value);

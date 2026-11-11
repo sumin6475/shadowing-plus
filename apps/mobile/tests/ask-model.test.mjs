@@ -236,3 +236,14 @@ test("generated note titles survive normalization and older history still loads"
   delete card.title;
   assert.ok(normalizeReply("note", JSON.stringify({ reply: card })));
 });
+
+test("review feedback preserves the edited draft past the normal question limit in the same chat", () => {
+  const body = "This is an edited paragraph. ".repeat(50);
+  const message = "Revise this draft: Make the closing warmer.\nSelected passage: Thanks.\n\nDraft: Time off\n" + body.trim();
+  const turns = [user("1", "Friday", "note"), bot("2", noteCard, "note"), user("3", message, "note")];
+  const result = parseAskBody({ ...buildAskRequest("note", turns, "ko", true), response_language: "en" });
+  assert.equal(result.request.messages.at(-1).content, message);
+  assert.equal(result.request.messages[1].content, assistantContent(noteCard));
+  assert.equal(result.request.responseLanguage, "English");
+  assert.equal(result.request.draftNow, true);
+});

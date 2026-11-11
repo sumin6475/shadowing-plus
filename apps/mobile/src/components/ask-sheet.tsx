@@ -46,7 +46,6 @@ import {
   isHowToSayCard,
   isNoteCard,
   noteTitle,
-  noteTopicFor,
   patchesDraft,
   questionFor,
   prepareAskCaptureSeed,
@@ -67,7 +66,7 @@ import { usePhraseSaveReview } from "@/hooks/use-phrase-save-review";
 import { PhraseSaveReviewSheet } from "./phrase-save-review-sheet";
 import { extractPhraseFromAsk } from "@/lib/phrase-capture";
 import { applyNoteVersion } from "@/lib/note-growth";
-import { noteWordDiff } from "@/lib/note-diff";
+import { NoteDraftEditor } from "./note-draft-editor";
 
 const MODE_LABEL: Record<AskMode, string> = { how_to_say: "How to say", note: "Note" };
 const INTRO: Record<AskMode, { title: string; body: string; placeholder: string }> = {
@@ -120,7 +119,7 @@ export interface AskSheetProps {
   initialQuestion?: string;
   practiceSessionId?: string | null;
   /** Set when opened from a Note: accepting a proposal creates a version. */
-  note?: { id: string; title: string; body: string; apply: (body: string) => Promise<void> };
+  note?: { id: string; title: string; body: string; apply: (body: string, title: string) => Promise<void> };
   /** A phrase or a note was written — lists elsewhere should reload. */
   onSaved?: () => void;
   /** Open a note this sheet just created (the sheet closes first). */
@@ -195,9 +194,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const phraseSave = usePhraseSaveReview();
-  const [draftReview, setDraftReview] = useState<{ key: string; title: string; body: string } | null>(null);
-  const readable = (value: string) => parseOutline(value).flatMap((section) => section.points).join(" ");
-  const comparison = draftReview ? noteWordDiff(readable(note?.body ?? ""), readable(draftReview.body)) : null;
+  const [draftReview, setDraftReview] = useState<{ key: string; title: string; draft: Draft } | null>(null);
   const activeNoteId = useRef<string | null>(note?.id ?? null);
   const activeChatId = useRef<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(note?.id ?? null);
@@ -391,7 +388,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       if (lastUser.role !== "user") throw new Error("Couldn’t send this question.");
       if (asked === "note") {
         if (!activeNoteId.current) {
-          const first = next.find((turn) => turn.role === "user" && turn.mode === "note");
+          const first = next.find(turn => turn.role === "user" && turn.mode === "note");
           const made = await createNote(noteTitle(first?.role === "user" ? first.text : "New thought"), "");
           activeNoteId.current = made.id;
           setSelectedNoteId(made.id);
@@ -427,7 +424,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
     }
   };
   const send = (question: string, draftNow = false, requestedMode: AskMode = mode) => {
-    const asked = question.replace(/\s+/g, " ").trim().slice(0, ASK_MAX_CHARS);
+    const asked = draftNow && requestedMode === "note" ? question.trim() : question.replace(/\s+/g, " ").trim().slice(0, ASK_MAX_CHARS);
     if (!asked || pending || limited || loadingHistory || turns[turns.length - 1]?.role === "user") return;
     const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode: requestedMode, draftNow }];
     const questionId = next[next.length - 1].id;
@@ -477,18 +474,21 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       setFailure(caught instanceof Error ? caught.message : "Couldn’t prepare this phrase. Try again.");
     }
   };
-  const saveDraft = (key: string, draft: Draft, question: string) => {
-    const sections = draftSections(draft);
-    const generatedTitle = [...turns].reverse().find(turn => turn.role === "assistant" && isNoteCard(turn.reply) && turn.reply.title);
-    const title = generatedTitle?.role === "assistant" && isNoteCard(generatedTitle.reply) ? generatedTitle.reply.title : undefined;
-    setDraftReview({ key, title: (note?.id === activeNoteId.current ? note.title : "") || title || noteTitle(question), body: serializeOutline(sections) });
+  const saveDraft = (index: number, draft: Draft) => {
+    const card = turns.slice(0, index + 1).reverse().find(turn => turn.role === "assistant" && isNoteCard(turn.reply));
+    const source = card?.role === "assistant" && isNoteCard(card.reply) ? card.reply : null;
+    const existingTitle = note && note.id === activeNoteId.current && parseOutline(note.body).some(section => section.points.some(Boolean)) ? note.title : "";
+    const title = existingTitle || source?.title || source?.situation.slice(0, 80) || "";
+    Keyboard.dismiss();
+    setDraftReview({ key: turns[index].id + ".draft", title, draft });
   };
-  const confirmDraft = async () => {
+  const confirmDraft = async (title: string, draft: Draft) => {
     if (!draftReview || !activeNoteId.current) return;
-    const { key, title, body } = draftReview;
+    const { key } = draftReview;
+    const body = serializeOutline(draftSections(draft));
     mark(key, "saving");
     try {
-      if (note?.id === activeNoteId.current) await note.apply(body);
+      if (note?.id === activeNoteId.current) await note.apply(body, title);
       else await applyNoteVersion(activeNoteId.current, title, body, "ask");
       setMadeNotes((m) => ({ ...m, [key]: activeNoteId.current! }));
       mark(key, "saved");
@@ -642,7 +642,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
                     paddingHorizontal: 15,
                   }}
                 >
-                  <Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.onAcc }}>{turn.text}</Text>
+                  <Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.onAcc }}>{turn.draftNow && turn.text.startsWith("Revise this draft: ") ? turn.text.split("\n\nDraft: ")[0] : turn.text}</Text>
                 </View>
               ) : turn.reply.type === "off_topic" ? (
                 <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, paddingHorizontal: 2 }}>
@@ -662,7 +662,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
                   inNote={note?.id === selectedNoteId}
                   draftState={saves[`${turn.id}.draft`]}
                   madeNote={madeNotes[`${turn.id}.draft`]}
-                  onSaveDraft={() => void saveDraft(`${turn.id}.draft`, (turn.reply as NoteCard).draft, noteTopicFor(turns, i))}
+                  onSaveDraft={() => void saveDraft(i, (turn.reply as NoteCard).draft)}
                   onOpenNote={onOpenNote}
                   saveState={(n) => saves[`${turn.id}.${n}`]}
                   onSave={(n, phrase) =>
@@ -679,7 +679,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
                   draftState={saves[`${turn.id}.draft`]}
                   madeNote={madeNotes[`${turn.id}.draft`]}
                   onSaveDraft={(draft) =>
-                    saveDraft(`${turn.id}.draft`, draft, questionFor(turns, i))
+                    saveDraft(i, draft)
                   }
                   onOpenNote={onOpenNote}
                   saveState={(n) => saves[`${turn.id}.${n}`]}
@@ -875,29 +875,11 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       </View>
       <PhraseSaveReviewSheet review={phraseSave.review} onConfirm={phraseSave.onConfirm} onEdit={phraseSave.onEdit} onDismiss={phraseSave.onDismiss} />
       {draftReview ? (
-        <View style={{ position: "absolute", inset: 0, backgroundColor: t.colors.bg, padding: 24, paddingTop: 56 }}>
-          <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: "700", color: t.colors.ink }}>Review draft</Text>
-          <Text style={{ marginTop: 12, color: t.colors.ink2 }}>Your Note changes only when you apply this draft.</Text>
-          <ScrollView style={{ flex: 1, marginTop: 24 }}>
-            {note?.body ? (
-              <View style={{ marginBottom: 22 }}>
-                <Text style={{ color: t.colors.ink3, marginBottom: 8 }}>Current Note</Text>
-                <Text style={{ color: t.colors.ink2, lineHeight: 24 }}>
-                  {comparison?.before.map((part, i) => <Text key={i} style={part.changed ? { textDecorationLine: "line-through", color: t.colors.warn } : undefined}>{part.text}</Text>)}
-                </Text>
-              </View>
-            ) : null}
-            <Text style={{ color: t.colors.ink3, marginBottom: 8 }}>Proposed draft</Text>
-            <Text style={{ color: t.colors.ink, lineHeight: 24 }}>
-              {comparison?.after.map((part, i) => <Text key={i} style={part.changed ? { fontWeight: "700", textDecorationLine: "underline", color: t.colors.accD } : undefined}>{part.text}</Text>)}
-            </Text>
-          </ScrollView>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingBottom: composerBottomInset }}>
-            <Pressable accessibilityRole="button" onPress={() => setDraftReview(null)}><Text style={{ color: t.colors.ink2, fontSize: 16 }}>Keep current</Text></Pressable>
-            <Pressable accessibilityRole="button" disabled={saves[draftReview.key] === "saving"} onPress={() => void confirmDraft()}><Text style={{ color: t.colors.accD, fontSize: 16, fontWeight: "700" }}>Apply draft</Text></Pressable>
-          </View>
-          {saves[draftReview.key] === "failed" ? <Text style={{ color: t.colors.warn }}>Couldn’t save the revision. Your Note is unchanged; try Apply draft again.</Text> : null}
-        </View>
+        <NoteDraftEditor key={draftReview.key} initialTitle={draftReview.title} initialDraft={draftReview.draft}
+          saving={saves[draftReview.key] === "saving"} failed={saves[draftReview.key] === "failed"}
+          canRevise={!pending && !limited && !loadingHistory && last?.role !== "user"}
+          onClose={() => setDraftReview(null)} onSave={confirmDraft}
+          onRevise={message => { setMode("note"); setDraftReview(null); send(message, true, "note"); }} />
       ) : null}
     </View>
   );
