@@ -5,20 +5,21 @@ import { Text, TextInput } from "@/design/text";
 import { useTheme } from "@/design/theme";
 import { FONT_UI as SYSTEM } from "@/design/mobile-tokens";
 import { loadNoteFolders, loadNoteVersions, type NoteFolder, type NoteVersion } from "@/lib/note-growth";
-import { dateTimeLabel, loadPhraseBank, type MvpPhrase } from "@/lib/mvp";
+import { dateTimeLabel, durationLabel, loadMirrorSessions, loadPhraseBank, type MirrorSession, type MvpPhrase } from "@/lib/mvp";
 import { parseOutline } from "@/lib/mvp-model";
 import { rank, scoreMatch } from "@/lib/search-model";
 
-export type NoteTool = "move" | "history" | "phrases";
+export type NoteTool = "move" | "history" | "practice" | "phrases";
 const failure = (error: unknown) => error instanceof Error ? error.message : "Please try again.";
 
-export function NoteToolsSheet({ tool, noteId, folderId, onClose, onMove, onInsert }: {
+export function NoteToolsSheet({ tool, noteId, folderId, onClose, onMove, onInsert, onOpenSession }: {
   tool: NoteTool | null;
   noteId: string;
   folderId: string | null;
   onClose: () => void;
   onMove: (folderId: string | null) => Promise<void>;
   onInsert: (phrase: string) => void;
+  onOpenSession: (session: MirrorSession) => void;
 }) {
   const t = useTheme();
   return (
@@ -27,7 +28,7 @@ export function NoteToolsSheet({ tool, noteId, folderId, onClose, onMove, onInse
         <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center" }}>
           <View style={{ width: 44 }} />
           <Text accessibilityRole="header" style={{ flex: 1, textAlign: "center", fontFamily: SYSTEM, fontSize: 17, fontWeight: "600", color: t.colors.ink }}>
-            {tool === "move" ? "Move Note" : tool === "history" ? "Update History" : "Phrases"}
+            {tool === "move" ? "Move Note" : tool === "history" ? "Update History" : tool === "practice" ? "Practice History" : "Phrases"}
           </Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose}
             style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center" }, t.shadowCard]}>
@@ -35,7 +36,7 @@ export function NoteToolsSheet({ tool, noteId, folderId, onClose, onMove, onInse
           </Pressable>
         </View>
         {tool === "move" ? <Folders folderId={folderId} onMove={onMove} onClose={onClose} /> :
-          tool === "history" ? <History noteId={noteId} /> : <Phrases onInsert={onInsert} onClose={onClose} />}
+          tool === "history" ? <History noteId={noteId} /> : tool === "practice" ? <PracticeHistory noteId={noteId} onOpenSession={onOpenSession} /> : <Phrases onInsert={onInsert} onClose={onClose} />}
       </View> : null}
     </Modal>
   );
@@ -144,5 +145,40 @@ function History({ noteId }: { noteId: string }) {
         {busy ? <ActivityIndicator /> : <Text style={{ fontFamily: SYSTEM, fontSize: 16, color: t.colors.accD }}>Earlier updates</Text>}
       </Pressable> : null}
     </>}
+  </ScrollView>;
+}
+
+function PracticeHistory({ noteId, onOpenSession }: { noteId: string; onOpenSession: (session: MirrorSession) => void }) {
+  const t = useTheme();
+  const [sessions, setSessions] = useState<MirrorSession[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    setBusy(true);
+    setError(null);
+    try { setSessions(await loadMirrorSessions(noteId)); }
+    catch (error) { setError(failure(error)); }
+    finally { setBusy(false); }
+  };
+  useEffect(() => {
+    let alive = true;
+    void loadMirrorSessions(noteId).then(rows => { if (alive) setSessions(rows); })
+      .catch(error => { if (alive) setError(failure(error)); });
+    return () => { alive = false; };
+  }, [noteId]);
+  return <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 48 }}>
+    <ErrorLine error={error} retry={busy ? undefined : () => void load()} />
+    {(sessions === null && !error) || busy ? <ActivityIndicator style={{ marginTop: 40 }} /> : null}
+    {sessions?.length === 0 && !busy ? <View style={{ paddingVertical: 40, gap: 8 }}>
+      <Text style={{ color: t.colors.ink, fontSize: 17, fontWeight: "600", textAlign: "center" }}>No practice sessions yet</Text>
+      <Text style={{ color: t.colors.ink2, fontSize: 15, lineHeight: 22, textAlign: "center" }}>Use “Speak with this note” to start collecting your practice here.</Text>
+    </View> : null}
+    {!busy && sessions?.map(session => <Row key={session.id}
+      label={`Open practice from ${dateTimeLabel(session.created_at)}`} onPress={() => onOpenSession(session)}
+      trailing={<SymbolView name="chevron.right" size={14} tintColor={t.colors.ink2} />}>
+      <Text style={{ fontSize: 17, fontWeight: "600", color: t.colors.ink }}>{durationLabel(session.seconds)} of speaking</Text>
+      <Text style={{ fontSize: 13, color: t.colors.ink2, marginTop: 5 }}>{dateTimeLabel(session.created_at)}</Text>
+      <Text numberOfLines={2} style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, marginTop: 8 }}>{session.transcript || "No transcript captured."}</Text>
+    </Row>)}
   </ScrollView>;
 }

@@ -182,15 +182,17 @@ export async function deleteNote(id: string) {
   const { error } = await supabase.from("notes").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
-export async function loadMirrorSessions(): Promise<MirrorSession[]> {
+export async function loadMirrorSessions(noteId?: string): Promise<MirrorSession[]> {
   const rows: MirrorSession[] = [];
   for (let start = 0; ; start += 1000) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("talk_sessions")
       .select("id,note_id,note_version_id,transcript,seconds,duration_seconds,audio_key,created_at")
       .order("created_at", { ascending: false })
       .order("id")
       .range(start, start + 999);
+    if (noteId) query = query.eq("note_id", noteId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     rows.push(
       ...data.map((row) => ({

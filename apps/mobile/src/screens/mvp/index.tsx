@@ -1962,6 +1962,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           {note ? <MoreMenu>
             <Button label="Move" systemImage="folder" onPress={() => void openTool("move")} />
             <Button label="Update History" systemImage="clock.arrow.circlepath" onPress={() => void openTool("history")} />
+            <Button label="Practice History" systemImage="mic" onPress={() => void openTool("practice")} />
             <Button label="Delete note" systemImage="trash" role="destructive" onPress={remove} />
           </MoreMenu> : null}
           {typing ? <Pressable accessibilityRole="button" accessibilityLabel="Done, hide keyboard" onPress={() => Keyboard.dismiss()}
@@ -2015,7 +2016,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           </View>
         </View>
       ) : null}
-      <NoteToolsSheet tool={tool} noteId={id} folderId={note?.folder_id ?? null} onClose={() => setTool(null)}
+      <NoteToolsSheet onOpenSession={session => { setTool(null); nav.push("mirrorRecord", { session }); }} tool={tool} noteId={id} folderId={note?.folder_id ?? null} onClose={() => setTool(null)}
         onMove={async folderId => { await flush(); await moveNoteToFolder(id, folderId); setNote(current => current ? { ...current, folder_id: folderId } : current); nav.invalidateSpeakingData(); }}
         onInsert={phrase => { if (phrasePoint.current) outline.current?.insertPhrase(phrasePoint.current, phrase); }} />
       {ASK_ENABLED ? (

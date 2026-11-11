@@ -51,3 +51,29 @@ test("history pages are scoped to the note and keep a stable newest-first order"
   await api.loadNoteVersions("note", 50);
   assert.deepEqual(calls, [["eq", "note_id", "note"], ["order", "created_at", false], ["order", "id", false], ["range", 50, 99]]);
 });
+test("note practice history keeps its filter across pages and includes older duration fields", async () => {
+  const filters = [];
+  const ranges = [];
+  let page = 0;
+  const query = {
+    select() { return query; },
+    eq(...args) { filters.push(args); return query; },
+    order() { return query; },
+    range(...args) { ranges.push(args); return query; },
+    then(resolve) {
+      const data = page++ === 0
+        ? Array.from({ length: 1000 }, (_, i) => ({ id: String(i), seconds: 12 }))
+        : [{ id: "older", seconds: null, duration_seconds: 34 }];
+      return Promise.resolve({ data, error: null }).then(resolve);
+    },
+  };
+  const api = load("mvp", {
+    "./supabase": { supabase: { from(table) { assert.equal(table, "talk_sessions"); return query; } } },
+    "./mvp-model": model, "./talk-audio": {}, "./mirror-used": {}, "./daily-phrases": {}, "./phrases": {},
+  });
+  const sessions = await api.loadMirrorSessions("my-note");
+  assert.deepEqual(filters, [["note_id", "my-note"], ["note_id", "my-note"]]);
+  assert.deepEqual(ranges, [[0, 999], [1000, 1999]]);
+  assert.equal(sessions.length, 1001);
+  assert.equal(sessions.at(-1).seconds, 34);
+});
