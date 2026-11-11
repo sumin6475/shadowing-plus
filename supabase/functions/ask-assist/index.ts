@@ -6,7 +6,7 @@
 // also what the daily limit counts.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-import { buildOpenAIRequest, costUsd, DAILY_LIMIT, MODEL, normalizeReply, parseAskBody } from "./core.ts";
+import { buildOpenAIRequest, costUsd, DAILY_LIMIT, MODEL, normalizeReply, parseAskBody, noteHistoryContext } from "./core.ts";
 
 /** Optional secret to switch models without a code change (e.g. after a golden
  *  A/B). Unset → the default in core.ts. */
@@ -40,9 +40,16 @@ Deno.serve(async (req: Request) => {
   // name a Note, but cannot supply or impersonate its confirmed facts.
   if (request.mode === "note" && request.noteId) {
     const { data: note, error: noteError } = await supabase.from("notes")
-      .select("folder_id").eq("id", request.noteId).maybeSingle();
+      .select("folder_id,title,body").eq("user_id", user.id).eq("id", request.noteId).maybeSingle();
     if (noteError) return json({ error: "Couldn’t read Note context.", code: "ask_note_context" }, 503);
     if (!note) return json({ error: "This Note is no longer available.", code: "ask_note_missing" }, 404);
+    request.noteContext = request.noteSnapshot ?? { title: note.title.slice(0, 80), body: note.body.slice(0, 20000) };
+    const { data: history, error: historyError } = await supabase.from("ask_chat_turns")
+      .select("role,content,ask_conversations!inner(note_id)")
+      .eq("user_id", user.id).eq("ask_conversations.note_id", request.noteId)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(80);
+    if (historyError) return json({ error: "Couldn’t read this Note’s conversation history. Try again.", code: "ask_note_history" }, 503);
+    request.noteHistory = noteHistoryContext((history ?? []) as { role: "user" | "assistant"; content: string }[], request.messages);
     if (note.folder_id) {
       const { data: facts, error: factsError } = await supabase.from("note_facts")
         .select("text").eq("folder_id", note.folder_id).order("confirmed_at").limit(20);

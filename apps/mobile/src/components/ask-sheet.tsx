@@ -406,7 +406,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
         await linkAskConversationToNote(activeChatId.current, activeNoteId.current);
       }
       await saveAskTurn(activeChatId.current, lastUser);
-      const { reply } = await askAssist(asked, next, draftNow, activeNoteId.current, practiceSessionId);
+      const { reply } = await askAssist(asked, next, draftNow, activeNoteId.current, practiceSessionId, note?.id === activeNoteId.current ? { title: note.title, body: note.body } : undefined);
       const answer: AskTurn = { id: turnId(), role: "assistant", reply, mode: asked };
       setLiveIds(ids => new Set(ids).add(answer.id));
       setTurns([...next, answer]);

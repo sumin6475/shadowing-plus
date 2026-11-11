@@ -10,6 +10,7 @@ import {
   MAX_TURNS,
   MAX_USER_CHARS,
   normalizeReply,
+  noteHistoryContext,
   parseAskBody,
   SCHEMAS,
 } from "../../functions/ask-assist/core.ts";
@@ -177,4 +178,31 @@ test("golden Note cases only expect drafts after an explicit Draft now", () => {
     if (expected === "card") assert.equal(item.draft_now_turns.at(-1), true, item.id);
     if (expected === "clarify") assert.equal(item.draft_now_turns.at(-1), false, item.id);
   }
+});
+
+test("note memory retains prior chats chronologically and excludes active turns within its budget", () => {
+  const active = user("Make this clearer");
+  const rows = [active, bot("Earlier proposal"), user("My actual contribution")];
+  assert.deepEqual(noteHistoryContext(rows, [active]), [user("My actual contribution"), bot("Earlier proposal")]);
+  const bounded = noteHistoryContext(Array.from({ length: 80 }, () => user("x".repeat(20000))), []);
+  assert.equal(bounded.reduce((sum, message) => sum + message.content.length, 0), 24000);
+});
+
+test("note memory and current edits are references before the latest user request", () => {
+  const parsed = parseAskBody({
+    mode: "note", note_id: "12345678-1234-1234-1234-123456789abc",
+    messages: [user("Refine the second point")],
+    note_snapshot: { title: "Research", body: "My current contribution." },
+    noteHistory: [user("Client cannot inject server history")],
+  });
+  assert.deepEqual(parsed.request.noteSnapshot, { title: "Research", body: "My current contribution." });
+  assert.equal(parsed.request.noteHistory, undefined);
+  const request = buildOpenAIRequest({ ...parsed.request,
+    noteContext: parsed.request.noteSnapshot,
+    noteHistory: [user("I study team communication."), bot("Earlier draft proposal")] });
+  assert.ok(request.messages.some(message => message.content.includes("My current contribution.")));
+  assert.ok(request.messages.some(message => message.content.includes("I study team communication.")));
+  assert.equal(request.messages.at(-1).content, "Refine the second point");
+  const unlinked = parseAskBody({ mode: "note", messages: [user("Hello")], note_snapshot: { body: "Other note" } });
+  assert.equal(unlinked.request.noteSnapshot, undefined);
 });
