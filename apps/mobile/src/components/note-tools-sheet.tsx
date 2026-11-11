@@ -28,7 +28,7 @@ export function NoteToolsSheet({ tool, noteId, folderId, onClose, onMove, onInse
         <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center" }}>
           <View style={{ width: 44 }} />
           <Text accessibilityRole="header" style={{ flex: 1, textAlign: "center", fontFamily: SYSTEM, fontSize: 17, fontWeight: "600", color: t.colors.ink }}>
-            {tool === "move" ? "Move Note" : tool === "history" ? "Update History" : tool === "practice" ? "Practice History" : "Phrases"}
+            {tool === "move" ? "Move Note" : tool === "history" ? "Update History" : tool === "practice" ? "Talk History" : "Phrases"}
           </Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose}
             style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center" }, t.shadowCard]}>

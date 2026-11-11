@@ -1962,7 +1962,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           {note ? <MoreMenu>
             <Button label="Move" systemImage="folder" onPress={() => void openTool("move")} />
             <Button label="Update History" systemImage="clock.arrow.circlepath" onPress={() => void openTool("history")} />
-            <Button label="Practice History" systemImage="mic" onPress={() => void openTool("practice")} />
+            <Button label="Talk History" systemImage="mic" onPress={() => void openTool("practice")} />
             <Button label="Delete note" systemImage="trash" role="destructive" onPress={remove} />
           </MoreMenu> : null}
           {typing ? <Pressable accessibilityRole="button" accessibilityLabel="Done, hide keyboard" onPress={() => Keyboard.dismiss()}
