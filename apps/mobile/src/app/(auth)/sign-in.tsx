@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +32,8 @@ export default function SignInScreen() {
   const [mode, setMode] = useState<AuthMode>("sign_in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const passwordInput = useRef<TextInput>(null);
+  const [focused, setFocused] = useState<"email" | "password" | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [socialBusy, setSocialBusy] = useState<"apple" | "google" | null>(null);
@@ -227,8 +229,8 @@ export default function SignInScreen() {
                     styles.input,
                     {
                       backgroundColor: c.surface,
-                      borderColor: showEmailIssue ? c.danger : c.hairline,
-                      borderWidth: showEmailIssue ? 1 : StyleSheet.hairlineWidth,
+                      borderColor: showEmailIssue ? c.danger : focused === "email" ? c.accent : c.hairline,
+                      borderWidth: showEmailIssue || focused === "email" ? 1 : StyleSheet.hairlineWidth,
                       color: c.text,
                     },
                   ]}
@@ -245,7 +247,11 @@ export default function SignInScreen() {
                     // A stale submit error shouldn't outlive the correction.
                     if (error) setError(null);
                   }}
-                  onBlur={() => setEmailTouched(true)}
+                  onFocus={() => setFocused("email")}
+                  onBlur={() => { setEmailTouched(true); setFocused(null); }}
+                  returnKeyType="next"
+                  submitBehavior="submit"
+                  onSubmitEditing={() => passwordInput.current?.focus()}
                   editable={!anyBusy}
                 />
                 {showEmailIssue ? (
@@ -257,8 +263,11 @@ export default function SignInScreen() {
                 <TextInput
                   style={[
                     styles.input,
-                    { backgroundColor: c.surface, borderColor: c.hairline, color: c.text, paddingRight: 52 },
+                    { backgroundColor: c.surface, borderColor: focused === "password" ? c.accent : c.hairline, borderWidth: focused === "password" ? 1 : StyleSheet.hairlineWidth, color: c.text, paddingRight: 52 },
                   ]}
+                  ref={passwordInput}
+                  onFocus={() => setFocused("password")}
+                  onBlur={() => setFocused(null)}
                   accessibilityLabel="Password"
                   placeholder="Password"
                   placeholderTextColor={c.text4}
@@ -281,7 +290,7 @@ export default function SignInScreen() {
                 </View>
 
                 {mode === "sign_in" ? (
-                  <Pressable onPress={() => void onForgotPassword()} disabled={anyBusy} style={styles.forgot} hitSlop={8}>
+                  <Pressable onPress={() => void onForgotPassword()} disabled={anyBusy} style={styles.forgot}>
                     <Text style={[styles.forgotLabel, { color: c.accent }]}>Forgot password?</Text>
                   </Pressable>
                 ) : null}
@@ -384,6 +393,7 @@ function SocialButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled, busy }}
       accessibilityLabel={`Continue with ${apple ? "Apple" : "Google"}`}
       disabled={disabled}
       onPress={onPress}
@@ -396,6 +406,7 @@ function SocialButton({
         },
       ]}
     >
+      <View style={styles.providerMark}>
       {busy ? (
         <ActivityIndicator color={apple ? "#fff" : c.text} />
       ) : apple ? (
@@ -403,6 +414,7 @@ function SocialButton({
       ) : (
         <GoogleMark />
       )}
+      </View>
       <Text style={{ fontSize: 15.5, fontWeight: "700", color: apple ? "#fff" : c.text }}>
         Continue with {apple ? "Apple" : "Google"}
       </Text>
@@ -453,6 +465,7 @@ const styles = StyleSheet.create({
     gap: 11,
     paddingHorizontal: 18,
   },
+  providerMark: { width: 24, height: 24, alignItems: "center", justifyContent: "center" },
   appleMark: { width: 20, textAlign: "center", fontSize: 21, fontWeight: "800" },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 6 },
   dividerLine: { flex: 1, height: StyleSheet.hairlineWidth },
@@ -466,7 +479,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     fontSize: TypeScale.body,
   },
-  forgot: { alignSelf: "flex-end", paddingHorizontal: 4, paddingVertical: 2 },
+  forgot: { alignSelf: "flex-end", paddingHorizontal: 4, minHeight: 44, justifyContent: "center" },
   forgotLabel: { fontSize: TypeScale.footnote, fontWeight: "700" },
   fieldHint: { fontSize: TypeScale.footnote, lineHeight: 18, paddingHorizontal: 20, marginTop: -4 },
   errorBox: {
