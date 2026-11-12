@@ -47,12 +47,22 @@ interface AuthState {
   signOut: () => Promise<void>;
 }
 
+function callbackMatches(url: string, redirectTo: string) {
+  try {
+    const actual = new URL(url);
+    const expected = new URL(redirectTo);
+    return actual.protocol === expected.protocol && actual.host === expected.host && actual.pathname === expected.pathname;
+  } catch {
+    return false;
+  }
+}
+
 async function createSessionFromUrl(url: string): Promise<Session | null> {
   const [base, hash = ""] = url.split("#", 2);
   const query = new URL(base).searchParams;
   const fragment = new URLSearchParams(hash);
   const errorDescription = fragment.get("error_description") ?? query.get("error_description");
-  if (errorDescription) throw new Error(decodeURIComponent(errorDescription.replace(/\+/g, " ")));
+  if (errorDescription) throw new Error(errorDescription);
 
   const accessToken = fragment.get("access_token") ?? query.get("access_token");
   const refreshToken = fragment.get("refresh_token") ?? query.get("refresh_token");
@@ -93,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     const handleUrl = (url: string | null) => {
-      if (!url || !url.includes("auth/callback")) return;
+      if (!url || !callbackMatches(url, Linking.createURL("auth/callback"))) return;
       const isRecovery = url.includes("type=recovery");
       createSessionFromUrl(url)
         .then((linkSession) => {
@@ -182,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           preferEphemeralSession: false,
         });
         if (result.type !== "success") return "cancelled";
+        if (!callbackMatches(result.url, redirectTo)) throw new Error("Sign in returned to an unexpected address. Please try again.");
         const socialSession = await createSessionFromUrl(result.url);
         if (!socialSession) throw new Error("Sign in returned without a session. Please try again.");
         return "signed_in";

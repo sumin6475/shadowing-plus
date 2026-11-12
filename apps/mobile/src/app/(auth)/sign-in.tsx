@@ -15,7 +15,7 @@ import { usePostHog } from "posthog-react-native";
 
 import { Motif, TypeScale } from "@/constants/cobalt";
 import { useAuthPalette } from "@/design/auth-palette";
-import { SERIF } from "@/design/theme";
+import { SymbolView } from "expo-symbols";
 import { useAuth } from "@/lib/auth";
 import { authErrorMessage } from "@/lib/auth-errors";
 import { emailProblem, passwordChecks, submitProblem } from "@/lib/auth-form";
@@ -32,6 +32,7 @@ export default function SignInScreen() {
   const [mode, setMode] = useState<AuthMode>("sign_in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [socialBusy, setSocialBusy] = useState<"apple" | "google" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +121,7 @@ export default function SignInScreen() {
 
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
+    setShowPassword(false);
     setEmail("");
     setPassword("");
     setError(null);
@@ -176,7 +178,7 @@ export default function SignInScreen() {
           {notice ? (
             <View style={styles.confirmation}>
               <Text style={[styles.wordmark, { color: c.text }]}>{notice.title}</Text>
-              <Text style={[styles.subtitle, { color: c.text3 }]}>{notice.body}</Text>
+              <Text style={[styles.subtitle, { color: c.text3, textAlign: "left" }]}>{notice.body}</Text>
               <Pressable onPress={() => switchMode("sign_in")} disabled={busy} style={styles.textButton}>
                 <Text style={[styles.textButtonLabel, { color: c.accent }]}>Back to sign in</Text>
               </Pressable>
@@ -184,7 +186,8 @@ export default function SignInScreen() {
           ) : (
             <>
               <View style={styles.header}>
-                <Text style={[styles.wordmark, { color: c.text }]}>Myne</Text>
+                <SymbolView name="waveform" size={36} tintColor={c.accent} />
+                <Text style={[styles.wordmark, { color: c.accent }]}>Myne</Text>
                 <Text style={[styles.subtitle, { color: c.text3 }]}>
                   {mode === "sign_up"
                     ? "Keep your phrases, notes, and speaking moments together."
@@ -229,7 +232,8 @@ export default function SignInScreen() {
                       color: c.text,
                     },
                   ]}
-                  placeholder="Email"
+                  accessibilityLabel="Email address"
+                  placeholder="Email address"
                   placeholderTextColor={c.text4}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -249,15 +253,17 @@ export default function SignInScreen() {
                     {emailIssue}
                   </Text>
                 ) : null}
+                <View style={{ justifyContent: "center" }}>
                 <TextInput
                   style={[
                     styles.input,
-                    { backgroundColor: c.surface, borderColor: c.hairline, color: c.text },
+                    { backgroundColor: c.surface, borderColor: c.hairline, color: c.text, paddingRight: 52 },
                   ]}
+                  accessibilityLabel="Password"
                   placeholder="Password"
                   placeholderTextColor={c.text4}
                   autoCapitalize="none"
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   textContentType={mode === "sign_up" ? "newPassword" : "password"}
                   value={password}
                   onChangeText={(next) => {
@@ -268,6 +274,11 @@ export default function SignInScreen() {
                   onSubmitEditing={onSubmit}
                   returnKeyType="go"
                 />
+                  <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+                    style={styles.visibilityButton} onPress={() => setShowPassword(value => !value)}>
+                    <SymbolView name={showPassword ? "eye.slash" : "eye"} size={19} tintColor={c.text3} />
+                  </Pressable>
+                </View>
 
                 {mode === "sign_in" ? (
                   <Pressable onPress={() => void onForgotPassword()} disabled={anyBusy} style={styles.forgot} hitSlop={8}>
@@ -415,21 +426,26 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: 24,
-    paddingVertical: 40,
-    gap: 28,
+    paddingTop: 48,
+    paddingBottom: 24,
+    width: "100%",
+    maxWidth: 484,
+    alignSelf: "center",
+    gap: 24,
   },
-  header: { gap: 8 },
+  header: { gap: 10, alignItems: "center" },
   wordmark: {
-    fontSize: TypeScale.largeTitle,
-    fontFamily: SERIF,
+    fontSize: 44,
+    letterSpacing: -1.5,
     fontWeight: "700",
   },
-  subtitle: { fontSize: TypeScale.callout, lineHeight: 22 },
+  subtitle: { fontSize: TypeScale.callout, lineHeight: 22, textAlign: "center" },
+  visibilityButton: { position: "absolute", right: 4, width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   socialBlock: { gap: 10 },
   socialButton: {
     width: "100%",
     minHeight: 52,
-    borderRadius: Motif.radius.pill,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     alignItems: "center",
@@ -444,8 +460,8 @@ const styles = StyleSheet.create({
   form: { gap: 12 },
   confirmation: { gap: 16 },
   input: {
-    height: Motif.buttonHeight.large,
-    borderRadius: Motif.radius.pill,
+    minHeight: 52,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 20,
     fontSize: TypeScale.body,
@@ -464,7 +480,7 @@ const styles = StyleSheet.create({
   requirement: { fontSize: TypeScale.footnote },
   button: {
     height: Motif.buttonHeight.large,
-    borderRadius: Motif.radius.pill,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 4,
@@ -485,6 +501,6 @@ const styles = StyleSheet.create({
   legalNotice: { fontSize: 11.5, lineHeight: 17, textAlign: "center", paddingHorizontal: 12 },
   textButton: { alignSelf: "flex-start", paddingVertical: 8 },
   textButtonLabel: { fontSize: TypeScale.body, fontWeight: "700" },
-  onboardingLink: { alignSelf: "center", padding: 8, marginTop: 12 },
+  onboardingLink: { alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
   onboardingLinkLabel: { fontSize: TypeScale.footnote, fontWeight: "600" },
 });
