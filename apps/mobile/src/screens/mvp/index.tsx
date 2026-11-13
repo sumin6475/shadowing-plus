@@ -29,7 +29,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import { SymbolView } from "expo-symbols";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path, Rect } from "react-native-svg";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 import {
   Button,
   Host,
@@ -61,7 +61,7 @@ import {
 import { useTheme } from "@/design/theme";
 import { EmptyState } from "@/design/empty-state";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
-import { deletePhrase } from "@/lib/phrases";
+import { deletePhrase, loadEditablePhrase } from "@/lib/phrases";
 import {
   addSentence,
   completedSteps,
@@ -750,101 +750,6 @@ export function PhraseBank({ nav }: { nav: Nav }) {
   );
 }
 
-/** The play control: one accent circle that never moves or resizes — only the
- *  glyph inside it changes (play → spinner while the voice loads → pause).
- *  56pt, comfortably over the 44pt minimum target. Pressed feedback is a dim,
- *  not a scale, so the circle stays put. */
-const PLAY_SIZE = 56;
-function PlayCircle({
-  state,
-  onPress,
-  label,
-}: {
-  state: "idle" | "loading" | "playing";
-  onPress: () => void;
-  label: string;
-}) {
-  const t = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={state === "loading" ? "Loading voice" : label}
-      accessibilityState={{ busy: state === "loading" }}
-      onPress={state === "loading" ? undefined : onPress}
-      style={({ pressed }) => ({
-        width: PLAY_SIZE,
-        height: PLAY_SIZE,
-        borderRadius: PLAY_SIZE / 2,
-        backgroundColor: t.colors.acc,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: pressed ? 0.85 : 1,
-      })}
-    >
-      {state === "loading" ? (
-        <ActivityIndicator color={t.colors.onAcc} />
-      ) : (
-        <SymbolView
-          name={state === "playing" ? "pause.fill" : "play.fill"}
-          size={22}
-          tintColor={t.colors.onAcc}
-          // The play triangle's visual centre sits left of its box.
-          style={state === "playing" ? undefined : { marginLeft: 3 }}
-        />
-      )}
-    </Pressable>
-  );
-}
-/** Marks a step done. Same proportions as the Add-a-phrase kind chips
- *  (medium height, capsule, 15pt semibold); white until pressed, then the
- *  play circle's accent with a check. */
-function ClearChip({
-  done,
-  disabled,
-  attention,
-  onPress,
-}: {
-  done: boolean;
-  disabled?: boolean;
-  attention?: boolean;
-  onPress: () => void;
-}) {
-  const t = useTheme();
-  const fg = done ? t.colors.onAcc : t.colors.ink2;
-  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={done ? "Cleared. Tap to undo" : "Mark this step clear"}
-      accessibilityState={{ selected: done, disabled: Boolean(disabled) }}
-      disabled={disabled}
-      hitSlop={4}
-      onPress={() => {
-        void Haptics.selectionAsync();
-        onPress();
-      }}
-      style={({ pressed }) => [
-        {
-          height: Motif.buttonHeight.medium,
-          borderRadius: Motif.radius.pill,
-          paddingHorizontal: 15,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          backgroundColor: done ? t.colors.acc : t.colors.card,
-          borderWidth: done ? 0 : attention ? 2 : StyleSheet.hairlineWidth,
-          borderColor: attention && !done ? feedbackRed : t.ring,
-          opacity: pressed ? 0.8 : 1,
-        },
-        done ? null : t.shadowCard,
-        attention && !done ? { shadowColor: feedbackRed, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } } : null,
-      ]}
-    >
-      <Text style={{ fontSize: 15, fontWeight: "600", color: fg }}>Clear</Text>
-      {done ? <Icon name="check" s={14} w={2.4} c={fg} /> : null}
-    </Pressable>
-  );
-}
 /** A detail screen's "…" — a native iOS menu, drawn in the same round card
  *  button as the back arrow opposite it. Children are the menu's buttons. */
 function MoreMenu({ children }: { children: ReactNode }) {
@@ -889,11 +794,59 @@ function PhraseMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
     </MoreMenu>
   );
 }
-/** A player-style toggle beside the play circle: no words, each tap moves to
- *  the next state, and a non-default state is drawn in the accent — the way
- *  Music and Podcasts mark shuffle, repeat and speed. 64pt wide on both sides
- *  so the play circle stays centred whatever the glyph's width. */
-function TransportToggle({
+/** The phrase page's primary action, set in the hero as Music and Podcasts set
+ *  Play under a title: one accent capsule that says what a tap will do. Only
+ *  the glyph and word inside change (play → spinner while the voice loads →
+ *  stop); the capsule never moves or resizes. Pressed feedback is a dim. */
+function ListenCapsule({
+  state,
+  onPress,
+}: {
+  state: "idle" | "loading" | "playing";
+  onPress: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        state === "loading" ? "Loading voice" : state === "playing" ? "Stop" : "Play pronunciation"
+      }
+      accessibilityState={{ busy: state === "loading" }}
+      onPress={state === "loading" ? undefined : onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        height: Motif.buttonHeight.large,
+        borderRadius: Motif.radius.pill,
+        backgroundColor: t.colors.acc,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      <View style={{ width: 20, height: 20, alignItems: "center", justifyContent: "center" }}>
+        {state === "loading" ? (
+          <ActivityIndicator size="small" color={t.colors.onAcc} />
+        ) : (
+          <SymbolView
+            name={state === "playing" ? "stop.fill" : "play.fill"}
+            size={15}
+            tintColor={t.colors.onAcc}
+          />
+        )}
+      </View>
+      <Text style={{ ...FONT.semibold, fontSize: 17, color: t.colors.onAcc }}>
+        {state === "playing" ? "Stop" : "Listen"}
+      </Text>
+    </Pressable>
+  );
+}
+/** A setting beside Listen (speed, repeat): a capsule that shows its value.
+ *  At its default it is a raised card; set to anything else it takes the
+ *  accent tint, the way iOS marks a control that is switched on. */
+function ListenSetting({
   label,
   value,
   active,
@@ -906,109 +859,141 @@ function TransportToggle({
   onPress: () => void;
   children: ReactNode;
 }) {
+  const t = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityValue={{ text: value }}
       accessibilityState={{ selected: active }}
-      hitSlop={6}
       onPress={() => {
         void Haptics.selectionAsync();
         onPress();
       }}
-      style={({ pressed }) => ({
-        width: 64,
-        height: 44,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: pressed ? 0.45 : 1,
-      })}
+      style={({ pressed }) => [
+        {
+          width: 60,
+          height: Motif.buttonHeight.large,
+          borderRadius: Motif.radius.pill,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 3,
+          backgroundColor: active ? t.colors.accS : t.colors.card,
+          borderWidth: active ? 0 : StyleSheet.hairlineWidth,
+          borderColor: t.ring,
+          opacity: pressed ? 0.7 : 1,
+        },
+        active ? null : t.shadowCard,
+      ]}
     >
       {children}
     </Pressable>
   );
 }
-/** Reminders' row circle: 22pt, 1.5pt hairline stroke; filled with a check
- *  once the sentence is saved. */
-const ROW_RADIO = 22;
-function RowRadio({ done }: { done: boolean }) {
+/** A step's Reminders circle: tap to mark the step clear, tap again to undo.
+ *  Drawn at 24pt, touched at 44pt. Empty it is a hairline ring; clear it fills
+ *  with the accent and a check. `attention` rings it in the feedback red when
+ *  the learner reaches for the mirror before every step is clear. */
+const STEP_CHECK = 24;
+function StepCheck({
+  done,
+  label,
+  disabled,
+  attention,
+  onPress,
+}: {
+  done: boolean;
+  label: string;
+  disabled?: boolean;
+  attention?: boolean;
+  onPress: () => void;
+}) {
   const t = useTheme();
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   return (
-    <View
-      style={{
-        width: ROW_RADIO,
-        height: ROW_RADIO,
-        borderRadius: ROW_RADIO / 2,
-        borderWidth: done ? 0 : 1.5,
-        borderColor: t.colors.ink3,
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityLabel={label}
+      accessibilityHint={done ? "Clear. Double-tap to undo" : "Marks this step clear"}
+      accessibilityState={{ checked: done, disabled: Boolean(disabled) }}
+      disabled={disabled}
+      hitSlop={10}
+      onPress={() => {
+        void Haptics.selectionAsync();
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        width: STEP_CHECK,
+        height: STEP_CHECK,
+        borderRadius: STEP_CHECK / 2,
+        borderWidth: done ? 0 : attention ? 2 : 1.5,
+        borderColor: attention && !done ? feedbackRed : t.dark ? t.colors.ink3 : "#C7C7CC",
         backgroundColor: done ? t.colors.acc : "transparent",
         alignItems: "center",
         justifyContent: "center",
-      }}
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
-      {done ? <Icon name="check" s={13} w={2.4} c={t.colors.onAcc} /> : null}
-    </View>
+      {done ? <Icon name="check" s={14} w={2.6} c={t.colors.onAcc} /> : null}
+    </Pressable>
   );
 }
-/** One Reminders-style row: radio, 17pt text, hairline inset to the text. */
-function ReminderRow({
-  done,
-  last,
-  children,
-}: {
-  done: boolean;
-  last: boolean;
-  children: ReactNode;
-}) {
+/** Steps cleared, said once beside the Practice title: a track and one
+ *  round-capped arc. */
+function ProgressRing({ value }: { value: number }) {
   const t = useTheme();
+  const r = 7.5;
+  const length = 2 * Math.PI * r;
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-      <View style={{ paddingTop: 12 }}>
-        <RowRadio done={done} />
-      </View>
-      <View
-        style={{
-          flex: 1,
-          minHeight: 44,
-          justifyContent: "center",
-          paddingVertical: 10,
-          borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
-          borderBottomColor: t.colors.sep,
-        }}
-      >
-        {children}
-      </View>
-    </View>
+    <Svg width={18} height={18} viewBox="0 0 18 18" style={{ transform: [{ rotate: "-90deg" }] }}>
+      <Circle cx={9} cy={9} r={r} stroke={t.colors.sep} strokeWidth={2.2} fill="none" />
+      {value > 0 ? (
+        <Circle
+          cx={9}
+          cy={9}
+          r={r}
+          stroke={t.colors.acc}
+          strokeWidth={2.2}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${length * Math.min(value, 1)} ${length}`}
+        />
+      ) : null}
+    </Svg>
   );
 }
-/** Helper line under a step's controls — one level below body copy. */
-function Hint({ children }: { children: ReactNode }) {
-  const t = useTheme();
-  return (
-    <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>
-      {children}
-    </Text>
-  );
-}
+const STEP_TITLES = [
+  "Say it until it feels natural",
+  "Hear it in real sentences",
+  "Make your own sentence",
+] as const;
+const STEP_HINTS = [
+  "Listen, repeat, then check",
+  "Find a voice and a context",
+  "At least one saved sentence",
+] as const;
 export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
   const [rate, setRate] = useState(1),
     [repeat, setRepeat] = useState(1);
   const t = useTheme(),
     voice = usePhraseSpeech({ rate, repeat });
   const fetcher = useCallback(async () => {
-    const [all, sentences] = await Promise.all([
+    const [all, sentences, details] = await Promise.all([
       loadPhraseBank(),
       loadSentences(id),
+      loadEditablePhrase(id),
     ]);
     const phrase = all.find((p) => p.id === id);
     if (!phrase) throw new Error("This phrase is no longer available.");
-    return { phrase, sentences };
+    return { phrase, sentences, details };
   }, [id]);
   const state = useRefresh(fetcher, nav.speakingDataRevision),
     [draft, setDraft] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const details = state.data?.details;
   const p = state.data?.phrase;
   const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   const insets = useSafeAreaInsets();
@@ -1091,7 +1076,6 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
     <View style={{ flex: 1 }}>
     <Screen scrollRef={scrollRef}>
       <BackBar
-        title="Phrases"
         onBack={nav.pop}
         right={
           p ? (
@@ -1109,299 +1093,374 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
         ) : null
       ) : (
         <>
-          <View style={{ alignItems: "center", gap: 10, paddingTop: 6 }}>
-            <Label>
-              {phraseStage(p).toUpperCase()} · {completedSteps(p)} OF 3
-            </Label>
-            <Serif style={{ fontSize: 43, lineHeight: 50, textAlign: "center" }}>
-              {p.text}
-            </Serif>
-            <Text
+          {/* The hero, left-aligned as an iOS detail page: the stage, the
+              phrase, what it means. */}
+          <View style={{ gap: 8, paddingHorizontal: 2 }}>
+            <View
               style={{
-                fontSize: 17,
-                lineHeight: 24,
-                color: t.colors.ink2,
-                textAlign: "center",
+                alignSelf: "flex-start",
+                height: 26,
+                paddingHorizontal: 11,
+                borderRadius: 13,
+                justifyContent: "center",
+                backgroundColor: t.colors.accS,
+                marginBottom: 4,
               }}
             >
-              {p.translation || "An expression to make your own."}
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 5, marginVertical: 8 }}>
-            {STEPS.map((step) => (
-              <View
-                key={step}
+              <Text
                 style={{
-                  flex: 1,
-                  height: 5,
-                  borderRadius: 3,
-                  backgroundColor: p[step] ? t.colors.acc : t.colors.sep,
-                }}
-              />
-            ))}
-          </View>
-          {STEPS.map((step, index) => (
-            <Card key={step} style={{ gap: 14 }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  minHeight: 44,
+                  ...FONT.semibold,
+                  fontSize: 13,
+                  color: t.dark ? t.colors.accD : t.colors.acc,
                 }}
               >
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: t.colors.ink,
-                    }}
-                  >
-                    {index + 1} ·{" "}
-                    {
-                      [
-                        "Say it until it feels natural",
-                        "Hear it in real sentences",
-                        "Make your own sentence",
-                      ][index]
-                    }
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 13.5,
-                      color: p[step] ? t.colors.acc : t.colors.ink3,
-                      fontWeight: p[step] ? "600" : "400",
-                    }}
-                  >
-                    {p[step]
-                      ? `Done · ${dateLabel(p[step]!)}`
-                      : [
-                          "Listen, repeat, then check",
-                          "Find a voice and a context",
-                          "At least one saved sentence",
-                        ][index]}
-                  </Text>
-                </View>
-                <ClearChip
-                  done={!!p[step]}
-                  disabled={busy}
-                  attention={gateAttention && !p[step]}
-                  onPress={() => {
-                    if (
-                      index === 2 &&
-                      !p[step] &&
-                      !state.data?.sentences.length
-                    ) {
-                      explainMissing("Save at least one sentence before clearing this step.");
-                      return;
-                    }
-                    void mutate(() => setStep(id, step, !p[step]));
+                {phraseStage(p)}
+              </Text>
+            </View>
+            <Serif
+              style={{
+                fontSize: 40,
+                lineHeight: 46,
+                fontWeight: "700",
+                letterSpacing: -0.6,
+                color: t.colors.ink,
+              }}
+            >
+              {p.text}
+            </Serif>
+            <Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.ink2 }}>
+              {details?.meaning || p.translation || "An expression to make your own."}
+            </Text>
+          </View>
+          {/* Listening is the page's first move, so it leads the page: the
+              voice, then its two settings beside it. */}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
+            <ListenCapsule
+              state={
+                voice.loadingId === id
+                  ? "loading"
+                  : voice.speakingId === id
+                    ? "playing"
+                    : "idle"
+              }
+              onPress={() => void voice.toggle(id, p.text)}
+            />
+            <ListenSetting
+              label="Playback speed"
+              value={`${rate}×`}
+              active={rate !== 1}
+              onPress={() => {
+                void voice.stop();
+                setRate(rate === 1 ? 0.75 : 1);
+              }}
+            >
+              <Text
+                style={{
+                  ...FONT.semibold,
+                  fontSize: 16,
+                  color: rate !== 1 ? t.colors.acc : t.colors.ink,
+                }}
+              >
+                {`${rate}×`}
+              </Text>
+            </ListenSetting>
+            <ListenSetting
+              label="Repeat"
+              value={repeat === 1 ? "Off" : "5 times"}
+              active={repeat !== 1}
+              onPress={() => {
+                void voice.stop();
+                setRepeat(repeat === 1 ? 5 : 1);
+              }}
+            >
+              <SymbolView
+                name="repeat"
+                size={19}
+                weight="semibold"
+                tintColor={repeat !== 1 ? t.colors.acc : t.colors.ink}
+              />
+              {repeat !== 1 ? (
+                <Text style={{ ...FONT.bold, fontSize: 14, color: t.colors.acc }}>5</Text>
+              ) : null}
+            </ListenSetting>
+          </View>
+          {/* The three steps as one grouped list. Progress is said once, in
+              the header; each step is cleared from its own circle. */}
+          <View style={{ gap: 10, marginTop: 12 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: 4,
+              }}
+            >
+              <Text
+                accessibilityRole="header"
+                style={{
+                  ...FONT.bold,
+                  fontSize: 22,
+                  lineHeight: 28,
+                  letterSpacing: -0.4,
+                  color: t.colors.ink,
+                }}
+              >
+                Practice
+              </Text>
+              <View
+                accessible
+                accessibilityLabel={`${completedSteps(p)} of 3 steps clear`}
+                style={{ flexDirection: "row", alignItems: "center", gap: 7 }}
+              >
+                <ProgressRing value={completedSteps(p) / 3} />
+                <Text
+                  style={{
+                    ...FONT.medium,
+                    fontSize: 15,
+                    color: t.colors.ink2,
+                    fontVariant: ["tabular-nums"],
                   }}
-                />
+                >
+                  {completedSteps(p)} of 3
+                </Text>
               </View>
-              <View style={{ gap: 10 }}>
-              {index === 0 ? (
-                <>
-                  {/* A transport row, as in Music: the play circle centred, its
-                      two settings flanking it as bare glyphs that change state
-                      on tap. The line under it says the state in words. */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 18,
-                      paddingVertical: 4,
-                    }}
-                  >
-                    <TransportToggle
-                      label="Playback speed"
-                      value={`${rate}×`}
-                      active={rate !== 1}
-                      onPress={() => {
-                        void voice.stop();
-                        setRate(rate === 1 ? 0.75 : 1);
+            </View>
+            <Card style={{ padding: 0 }}>
+              {STEPS.map((step, index) => (
+                <View
+                  key={step}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: 14,
+                    paddingHorizontal: 16,
+                    paddingTop: 14,
+                    paddingBottom: 15,
+                  }}
+                >
+                  {index > 0 ? (
+                    // Hairline inset to the text column, as iOS lists draw it.
+                    <View
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 16 + STEP_CHECK + 14,
+                        right: 0,
+                        height: StyleSheet.hairlineWidth,
+                        backgroundColor: t.colors.sep,
                       }}
-                    >
-                      <Text
-                        style={{
-                          ...FONT.semibold,
-                          fontSize: 17,
-                          color: rate !== 1 ? t.colors.acc : t.colors.ink2,
-                        }}
-                      >
-                        {`${rate}×`}
-                      </Text>
-                    </TransportToggle>
-                    <PlayCircle
-                      state={
-                        voice.loadingId === id
-                          ? "loading"
-                          : voice.speakingId === id
-                            ? "playing"
-                            : "idle"
-                      }
-                      label={
-                        voice.speakingId === id ? "Stop" : "Play pronunciation"
-                      }
-                      onPress={() => void voice.toggle(id, p.text)}
                     />
-                    <TransportToggle
-                      label="Repeat"
-                      value={repeat === 1 ? "Off" : "5 times"}
-                      active={repeat !== 1}
-                      onPress={() => {
-                        void voice.stop();
-                        setRepeat(repeat === 1 ? 5 : 1);
+                  ) : null}
+                  <StepCheck
+                    done={!!p[step]}
+                    label={STEP_TITLES[index]}
+                    disabled={busy}
+                    attention={gateAttention && !p[step]}
+                    onPress={() => {
+                      if (
+                        index === 2 &&
+                        !p[step] &&
+                        !state.data?.sentences.length
+                      ) {
+                        explainMissing("Save at least one sentence before clearing this step.");
+                        return;
+                      }
+                      void mutate(() => setStep(id, step, !p[step]));
+                    }}
+                  />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      style={{
+                        ...FONT.semibold,
+                        fontSize: 17,
+                        lineHeight: 22,
+                        color: t.colors.ink,
                       }}
                     >
-                      <View>
-                        <SymbolView
-                          name="repeat"
-                          size={22}
-                          weight="semibold"
-                          tintColor={repeat !== 1 ? t.colors.acc : t.colors.ink2}
-                        />
-                        {repeat !== 1 ? (
-                          <View
-                            style={{
-                              position: "absolute",
-                              top: -7,
-                              right: -10,
-                              minWidth: 15,
-                              height: 15,
-                              paddingHorizontal: 3,
-                              borderRadius: 8,
-                              backgroundColor: t.colors.acc,
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                ...FONT.bold,
-                                fontSize: 10,
-                                color: t.colors.onAcc,
-                              }}
-                            >
-                              5
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </TransportToggle>
-                  </View>
-                </>
-              ) : index === 1 ? (
-                <>
-                  {/* A browser sheet inside the app, not a jump to Safari: the
-                      learner comes back with Done, still on this phrase. The
-                      site itself stays outside the app — embedding YouGlish's
-                      widget in a mobile app needs their written permission. */}
-                  <Pill
-                    tone="tint"
-                    icon="link"
-                    style={{ alignSelf: "stretch" }}
-                    onPress={() =>
-                      void WebBrowser.openBrowserAsync(
-                        `https://youglish.com/pronounce/${encodeURIComponent(p.text)}/english`,
-                        { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET },
-                      ).catch((e) => setError(message(e)))
-                    }
-                  >
-                    Open YouGlish
-                  </Pill>
-                  <Hint>
-                    Real videos from youglish.com, opened in a browser inside Myne.
-                  </Hint>
-                </>
-              ) : (
-                <>
-                  {/* Reminders: saved rows with a filled check circle, then an
-                      always-present blank row that is the new-entry field.
-                      Return saves; swipe a row left to delete it. */}
-                  <View>
-                    {(state.data?.sentences ?? []).map((sentence: Sentence) => (
-                      <SwipeRow
-                        key={sentence.id}
-                        flat
-                        onDelete={() =>
-                          confirmDelete({
-                            title: "Delete this sentence?",
-                            message: "Removing the last sentence resets this step.",
-                            onConfirm: () =>
-                              void mutate(() => deleteSentence(sentence.id)),
-                          })
+                      {STEP_TITLES[index]}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 15,
+                        lineHeight: 20,
+                        marginTop: 2,
+                        color: p[step] ? t.colors.acc : t.colors.ink2,
+                      }}
+                    >
+                      {p[step] ? `Done · ${dateLabel(p[step]!)}` : STEP_HINTS[index]}
+                    </Text>
+                    {index === 1 ? (
+                      // A browser sheet inside the app, not a jump to Safari:
+                      // the learner comes back with Done, still on this phrase.
+                      // The site itself stays outside the app — embedding
+                      // YouGlish's widget in a mobile app needs their written
+                      // permission.
+                      <Pill
+                        small
+                        tone="soft"
+                        icon="link"
+                        style={{ marginTop: 10 }}
+                        onPress={() =>
+                          void WebBrowser.openBrowserAsync(
+                            `https://youglish.com/pronounce/${encodeURIComponent(p.text)}/english`,
+                            { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET },
+                          ).catch((e) => setError(message(e)))
                         }
                       >
-                        <ReminderRow done last={false}>
-                          <Text
-                            style={{ fontSize: 17, lineHeight: 24, color: t.colors.ink }}
+                        Open YouGlish
+                      </Pill>
+                    ) : null}
+                    {index === 2 ? (
+                      <>
+                        {/* The learner's sentences, then an always-present
+                            blank line that is the new-entry field. Return
+                            saves; swipe a sentence left to delete it. */}
+                        <View
+                          style={{
+                            marginTop: 10,
+                            borderRadius: 14,
+                            backgroundColor: t.colors.bg,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {(state.data?.sentences ?? []).map((sentence: Sentence) => (
+                            <SwipeRow
+                              key={sentence.id}
+                              flat
+                              onDelete={() =>
+                                confirmDelete({
+                                  title: "Delete this sentence?",
+                                  message: "Removing the last sentence resets this step.",
+                                  onConfirm: () =>
+                                    void mutate(() => deleteSentence(sentence.id)),
+                                })
+                              }
+                            >
+                              <View
+                                style={{
+                                  backgroundColor: t.colors.bg,
+                                  paddingHorizontal: 14,
+                                  paddingVertical: 11,
+                                  borderBottomWidth: StyleSheet.hairlineWidth,
+                                  borderBottomColor: t.colors.sep,
+                                }}
+                              >
+                                <Text style={{ fontSize: 16, lineHeight: 22, color: t.colors.ink }}>
+                                  {sentence.text}
+                                </Text>
+                              </View>
+                            </SwipeRow>
+                          ))}
+                          <TextInput
+                            accessibilityLabel="Your sentence"
+                            multiline
+                            submitBehavior="blurAndSubmit"
+                            returnKeyType="done"
+                            placeholder={`Use “${p.text}” in a sentence`}
+                            placeholderTextColor={t.colors.ink3}
+                            value={draft}
+                            onChangeText={(value) => {
+                              // The Save button appears below the field on the first character.
+                              if (!draft.trim() && value.trim()) revealSentence();
+                              setDraft(value);
+                            }}
+                            onFocus={() => {
+                              sentenceFocused.current = true;
+                              revealSentence();
+                            }}
+                            onBlur={() => {
+                              sentenceFocused.current = false;
+                            }}
+                            onContentSizeChange={revealSentence}
+                            onSubmitEditing={() => {
+                              if (!draft.trim() || busy) return;
+                              void mutate(async () => {
+                                await addSentence(id, draft);
+                                setDraft("");
+                              });
+                            }}
+                            style={{
+                              fontSize: 16,
+                              lineHeight: 22,
+                              color: t.colors.ink,
+                              paddingHorizontal: 14,
+                              paddingTop: 11,
+                              paddingBottom: 11,
+                              minHeight: 44,
+                            }}
+                          />
+                        </View>
+                        {draft.trim() ? (
+                          <Pill
+                            tone="soft"
+                            style={{ alignSelf: "stretch", marginTop: 10 }}
+                            onPress={() =>
+                              void mutate(async () => {
+                                await addSentence(id, draft);
+                                setDraft("");
+                              })
+                            }
                           >
-                            {sentence.text}
-                          </Text>
-                        </ReminderRow>
-                      </SwipeRow>
-                    ))}
-                    <ReminderRow done={false} last>
-                      <TextInput
-                        accessibilityLabel="Your sentence"
-                        multiline
-                        submitBehavior="blurAndSubmit"
-                        returnKeyType="done"
-                        placeholder={`Use “${p.text}” in a sentence`}
-                        placeholderTextColor={t.colors.ink3}
-                        value={draft}
-                        onChangeText={(value) => {
-                          // The Save button appears below the field on the first character.
-                          if (!draft.trim() && value.trim()) revealSentence();
-                          setDraft(value);
-                        }}
-                        onFocus={() => {
-                          sentenceFocused.current = true;
-                          revealSentence();
-                        }}
-                        onBlur={() => {
-                          sentenceFocused.current = false;
-                        }}
-                        onContentSizeChange={revealSentence}
-                        onSubmitEditing={() => {
-                          if (!draft.trim() || busy) return;
-                          void mutate(async () => {
-                            await addSentence(id, draft);
-                            setDraft("");
-                          });
-                        }}
-                        style={{
-                          fontSize: 17,
-                          lineHeight: 24,
-                          color: t.colors.ink,
-                          padding: 0,
-                          minHeight: 48,
-                        }}
-                      />
-                    </ReminderRow>
+                            {busy ? "Saving…" : "Save sentence"}
+                          </Pill>
+                        ) : null}
+                      </>
+                    ) : null}
                   </View>
-                  {draft.trim() ? (
-                    <Pill
-                      tone="soft"
-                      style={{ alignSelf: "stretch" }}
-                      onPress={() =>
-                        void mutate(async () => {
-                          await addSentence(id, draft);
-                          setDraft("");
-                        })
-                      }
-                    >
-                      {busy ? "Saving…" : "Save sentence"}
-                    </Pill>
-                  ) : null}
-                </>
-              )}
-              </View>
+                </View>
+              ))}
             </Card>
-          ))}
+          </View>
+          {details ? (
+            <Card style={{ padding: 0 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: detailsOpen }}
+                onPress={() => setDetailsOpen((open) => !open)}
+                style={({ pressed }) => ({
+                  minHeight: Motif.row,
+                  paddingHorizontal: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <Text style={{ ...FONT.medium, fontSize: 17, color: t.colors.ink }}>
+                  Phrase details
+                </Text>
+                <View style={{ transform: [{ rotate: detailsOpen ? "90deg" : "0deg" }] }}>
+                  <Icon name="chev" s={15} c={t.colors.ink3} />
+                </View>
+              </Pressable>
+              {detailsOpen ? (
+                <View
+                  style={{
+                    gap: 16,
+                    paddingHorizontal: 16,
+                    paddingTop: 14,
+                    paddingBottom: 18,
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: t.colors.sep,
+                  }}
+                >
+                  {[
+                    ["Type", details.kind === "phrase" ? "Expression" : details.kind.replace("_", " ").replace(/^./, c => c.toUpperCase())],
+                    ["How it’s used", details.usageNote],
+                    ["Context", details.context],
+                    ["Context translation", details.contextTranslation],
+                    ["Source", details.sourceLabel],
+                    ["Your note", details.learnerNote],
+                  ].filter(([, value]) => value.trim()).map(([label, value]) => (
+                    <View key={label} style={{ gap: 4 }}>
+                      <Label>{label}</Label>
+                      <Copy>{value}</Copy>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </Card>
+          ) : null}
           {error ? <Card><Copy>{error}</Copy></Card> : null}
             <Pill
               tone={phraseStage(p) === "Ready" ? "acc" : "soft"}
