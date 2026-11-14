@@ -1,0 +1,525 @@
+/* Myne's home routine. Tokens are the app's own (mobile-tokens.ts, iOS light
+   palette): #F2F2F7 page, white cards, navy #162555 accent, system face. */
+.mr {
+  & .ss-stage {
+    --mr-bg: #f2f2f7;
+    --mr-card: #ffffff;
+    --mr-ink: #111114;
+    --mr-ink2: #51515b;
+    --mr-ink3: #686872;
+    --mr-sep: #dcdce1;
+    --mr-acc: #162555;
+    --mr-ui: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+    --mr-ios: cubic-bezier(0.3, 0.75, 0.1, 1);
+    --ss-accent: #162555;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #ebecf1;
+  }
+
+  .mr-wash {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(60% 45% at 50% 0%, rgba(140, 160, 215, 0.22), transparent 70%),
+      radial-gradient(70% 50% at 50% 100%, rgba(255, 255, 255, 0.5), transparent 70%);
+  }
+
+  .mr-phone {
+    position: absolute;
+    top: 40px;
+    left: 40px;
+  }
+
+  .ss-stage[data-layout='compact'] .mr-phone {
+    top: 16px;
+    left: 16px;
+  }
+
+  .mr-home {
+    font-family: var(--mr-ui);
+    color: var(--mr-ink);
+  }
+
+  /* ---- Home header ---- */
+
+  .mr-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    padding: 0 20px;
+  }
+
+  .mr-title {
+    flex: 1;
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 41px;
+  }
+
+  .mr-tools {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 18px;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 22px;
+    background: var(--mr-card);
+    color: var(--mr-ink);
+  }
+
+  /* ---- The carousel: cards at one size, the add tile after them ---- */
+
+  .mr-deck {
+    position: relative;
+    height: 200px;
+    margin-top: 20px;
+  }
+
+  .mr-track {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.7s var(--mr-ios);
+    will-change: transform;
+  }
+
+  .mr-track[data-added] {
+    transform: translateX(-287px);
+  }
+
+  .mr-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-sizing: border-box;
+    width: 271px;
+    height: 200px;
+    padding: 20px;
+    overflow: hidden;
+    border-radius: 20px;
+    background: var(--mr-card);
+    color: var(--mr-ink);
+    font-family: var(--mr-ui);
+    transition: color 0.25s ease;
+  }
+
+  /* The midnight color is the Studio card's own gradient, faded in over paper */
+  .mr-card__wash {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #010101 0%, #2e395a 50%, #e1dfdc 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .mr-card[data-tone='midnight'] {
+    color: #fff;
+  }
+
+  .mr-card[data-tone='midnight'] .mr-card__wash {
+    opacity: 1;
+  }
+
+  .mr-card__text {
+    position: relative;
+    display: grid;
+    gap: 5px;
+  }
+
+  .mr-card__eyebrow {
+    position: relative;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+
+  /* The phone column draws the screen smaller: keep the eyebrow readable there */
+  .ss-stage[data-layout='compact'] .mr-card__eyebrow {
+    font-size: 13.5px;
+  }
+
+  .mr-card__title {
+    font-size: 24px;
+    line-height: 28px;
+    letter-spacing: -0.01em;
+  }
+
+  .mr-card__count {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 34px;
+    text-align: center;
+  }
+
+  .mr-card__pill {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 48px;
+    border-radius: 24px;
+    background: var(--mr-acc);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  .mr-card[data-tone='midnight'] .mr-card__pill {
+    background: #fafafa;
+    color: #0a0a0a;
+  }
+
+  .mr-slot-1,
+  .mr-slot-2 {
+    position: absolute;
+    top: 0;
+  }
+
+  .mr-slot-1 {
+    left: 20px;
+    transition: opacity 0.35s ease 0.25s;
+  }
+
+  .mr-slot-1[data-gone] {
+    opacity: 0;
+  }
+
+  /* The new card arrives whole where the add tile stood */
+  .mr-slot-2 {
+    left: 307px;
+    opacity: 0;
+    transform: scale(0.94);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    will-change: transform;
+  }
+
+  .mr-slot-2.is-in {
+    opacity: 1;
+    transform: scale(1);
+    transition: opacity 0.35s ease 0.2s, transform 0.6s var(--mr-ios) 0.2s;
+  }
+
+  .mr-add {
+    position: absolute;
+    top: 0;
+    left: 594px;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 120px;
+    height: 200px;
+    border-radius: 20px;
+    background: rgba(118, 118, 128, 0.1);
+    transition: transform 0.7s var(--mr-ios), background-color 0.15s ease;
+    will-change: transform;
+  }
+
+  .mr-add[data-home] {
+    transform: translateX(-287px);
+  }
+
+  .mr-add[data-pressed] {
+    background: rgba(118, 118, 128, 0.18);
+  }
+
+  .mr-add__plus {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--mr-card);
+    color: var(--mr-acc);
+  }
+
+  .mr-add__label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mr-ink2);
+  }
+
+  /* ---- The phrase list under it ---- */
+
+  .mr-list {
+    display: grid;
+    gap: 22px;
+    margin-top: 28px;
+    padding: 0 20px;
+  }
+
+  .mr-group {
+    display: grid;
+    gap: 8px;
+  }
+
+  .mr-group__label {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    color: var(--mr-ink2);
+  }
+
+  .mr-rows {
+    padding: 0 16px;
+    border-radius: 20px;
+    background: var(--mr-card);
+  }
+
+  .mr-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 60px;
+  }
+
+  .mr-row + .mr-row {
+    box-shadow: inset 0 0.5px 0 var(--mr-sep);
+  }
+
+  .mr-row__listen {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #f2f2f7;
+    color: #a6a7a3;
+  }
+
+  .mr-row__text {
+    flex: 1;
+    font-size: 17px;
+    font-weight: 500;
+  }
+
+  .mr-row__chev {
+    flex: none;
+    color: #b3b3ba;
+  }
+
+  /* ---- The sheet: below the status bar, as iOS presents a page sheet ---- */
+
+  .mr-dim {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+
+  .mr-dim[data-on] {
+    opacity: 0.28;
+  }
+
+  .mr-sheet {
+    position: absolute;
+    top: 62px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: 30px 30px 0 0;
+    background: var(--mr-bg);
+    color: var(--mr-ink);
+    font-family: var(--mr-ui);
+    transform: translateY(104%);
+    visibility: hidden;
+    transition: transform 0.55s var(--mr-ios), visibility 0s linear 0.55s;
+    will-change: transform;
+  }
+
+  .mr-sheet[data-open] {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.55s var(--mr-ios), visibility 0s;
+  }
+
+  .mr-sheet__bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    height: 56px;
+    padding: 0 20px;
+    font-size: 17px;
+  }
+
+  .mr-sheet__cancel {
+    color: var(--mr-acc);
+  }
+
+  .mr-sheet__title {
+    font-weight: 600;
+  }
+
+  .mr-sheet__add {
+    justify-self: end;
+    padding: 8px 0 8px 16px;
+    color: var(--mr-acc);
+    font-weight: 600;
+  }
+
+  .mr-preview {
+    display: grid;
+    justify-content: center;
+    margin-top: 8px;
+  }
+
+  .mr-preview .mr-card {
+    box-shadow: 0 10px 30px rgba(17, 17, 20, 0.1);
+  }
+
+  .mr-field {
+    display: grid;
+    gap: 5px;
+    margin-top: 22px;
+    padding: 0 20px;
+  }
+
+  .mr-field__label {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 16px;
+    color: var(--mr-ink2);
+  }
+
+  .mr-swatches {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .mr-swatch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    height: 50px;
+    padding: 0 14px;
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+
+  .mr-swatch[data-tone='midnight'] {
+    background: linear-gradient(180deg, #010101 0%, #2e395a 62%, #a7a9b4 100%);
+    color: #fff;
+  }
+
+  .mr-swatch[data-tone='paper'] {
+    background: var(--mr-card);
+    color: var(--mr-ink);
+  }
+
+  /* Selected: a check badge inside the swatch, in the swatch's own contrast */
+  .mr-swatch__check {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.18s ease, transform 0.3s var(--mr-ios);
+  }
+
+  .mr-swatch[data-tone='midnight'] .mr-swatch__check {
+    background: #fff;
+    color: #0a0a0a;
+  }
+
+  .mr-swatch[data-tone='paper'] .mr-swatch__check {
+    background: var(--mr-acc);
+    color: #fff;
+  }
+
+  .mr-swatch[data-on] .mr-swatch__check {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .mr-seg {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.25fr;
+    height: 36px;
+    padding: 2px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    background: rgba(118, 118, 128, 0.12);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .mr-seg span {
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+  }
+
+  .mr-seg span[data-on] {
+    background: var(--mr-card);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(17, 17, 20, 0.12);
+  }
+
+  .mr-settings {
+    margin: 22px 20px 0;
+    padding: 14px 16px;
+    border-radius: 20px;
+    background: var(--mr-card);
+  }
+
+  .mr-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 17px;
+    line-height: 22px;
+  }
+
+  .mr-setting + .mr-setting {
+    margin-top: 13px;
+    padding-top: 13px;
+    box-shadow: inset 0 0.5px 0 var(--mr-sep);
+  }
+
+  .mr-setting__value {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--mr-ink2);
+
+    & svg {
+      color: #b3b3ba;
+    }
+  }
+
+  .mr-stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    height: 28px;
+    margin: -3px 0;
+    padding: 0 11px;
+    border-radius: 14px;
+    background: rgba(118, 118, 128, 0.12);
+
+    & b {
+      min-width: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}

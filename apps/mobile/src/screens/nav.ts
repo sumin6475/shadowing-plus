@@ -4,6 +4,8 @@
 import type { TabId } from "@/design/ui";
 
 export type ViewName =
+  | "personalSentences"
+  | "routinePractice"
   | "profile"
   | "mvpPhrase"
   | "mvpNote"

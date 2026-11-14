@@ -69,6 +69,8 @@ import {
 } from "@/screens/capture";
 import { SearchScreen } from "@/screens/search";
 import { PracticeHubScreen, QuickRehearsalScreen } from "@/screens/practice";
+import { MySentences, RoutinePractice } from "@/screens/routines";
+import type { Routine, PracticeItem } from "@/lib/review-routines";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
 import type { PhraseItem } from "@/lib/phrases";
 import type { AskCaptureSeed } from "@/lib/ask-model";
@@ -433,6 +435,8 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
   switch (entry.name) {
     case "profile":
       return <MvpProfile nav={nav} />;
+    case "personalSentences": return <MySentences nav={nav} />;
+    case "routinePractice": return <RoutinePractice nav={nav} card={p.card as Routine} restored={p.restored as PracticeItem[] | undefined} index={p.index as number | undefined} />;
     case "mvpPhrase":
       return <PhraseChecklist nav={nav} id={p.id as string} />;
     case "mvpNote":

@@ -1,3 +1,4 @@
+import { RoutineDeck, PhraseNoteLinks } from "../routines";
 import Reanimated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import { SessionResultPager } from '@/components/session-result-pager';
 import { AdvancedFeedbackReport } from '@/components/advanced-feedback-report';
@@ -574,12 +575,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
           }}
         />
       ) : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ marginHorizontal: -18 }}
-        contentContainerStyle={{ gap: 16, paddingHorizontal: 18, paddingVertical: 4 }}
-      >
+      <RoutineDeck nav={nav} studio={
         <LinearGradient
           colors={["#010101", "#2E395A", "#E1DFDC"]}
           locations={[0, 0.5, 1]}
@@ -626,6 +622,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
             </Text>
           </Pressable>
         </LinearGradient>
+      } phrases={
         <View style={[HERO_CARD, { backgroundColor: t.colors.card }]}>
           <Text style={{ ...FONT.medium, fontSize: 12, color: t.colors.ink }}>
             Today’s phrases for you.
@@ -666,7 +663,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
             </Text>
           </Pressable>
         </View>
-      </ScrollView>
+      } />
       {filtering ? (
         <FilterSummary
           text={`${filtered.length} ${filter === "All" ? "" : `${filter} `}phrase${filtered.length === 1 ? "" : "s"}${query.trim() ? ` matching “${query.trim()}”` : ""}`}
@@ -1457,6 +1454,7 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
                       <Copy>{value}</Copy>
                     </View>
                   ))}
+                  <PhraseNoteLinks id={id} />
                 </View>
               ) : null}
             </Card>
@@ -2167,6 +2165,9 @@ export function MvpProfile({ nav }: { nav: Nav }) {
       <ErrorCard error={state.error} retry={() => void state.refresh()} />
       <Pill tone="card" icon="gear" full onPress={() => nav.push("settings")}>
         Settings & account
+      </Pill>
+      <Pill tone="card" icon="text" full onPress={() => nav.push("personalSentences")}>
+        My Sentences
       </Pill>
       {state.loading ? <ActivityIndicator /> : null}
       {state.data ? (
