@@ -673,7 +673,6 @@ export async function reuseSavedPhrase(id: string, input: CreatePhraseInput): Pr
   if (error || !data || comparablePhrase(data.text) !== comparablePhrase(input.text)) {
     throw new Error("This saved phrase changed. Try saving again.");
   }
-  if (input.storyId) await linkPhraseToSituation(id, input.storyId, "capture");
   return { result: "already", id };
 }
 
@@ -717,8 +716,6 @@ export async function createPhrase(
         .eq("id", existingId);
       if (fingerprintError) throw new Error(fingerprintError.message);
     }
-    if (input.storyId)
-      await linkPhraseToSituation(existingId, input.storyId, "capture");
     return { result: "already", id: existingId };
   }
 
@@ -786,7 +783,6 @@ export async function createPhrase(
     throw new Error(error?.message ?? "Couldn’t save this phrase.");
 
   const id = data.id as string;
-  if (input.storyId) await linkPhraseToSituation(id, input.storyId, "capture");
   // Saving stays instant. The cloud pronunciation is generated in the
   // background and first-tap generation remains the fallback if this fails.
   void prewarmPhraseSpeech(id).catch(() => {});
@@ -903,7 +899,6 @@ export async function loadEditablePhrase(id: string): Promise<EditablePhrase> {
   if (error || !data) throw new Error(error?.message ?? "This phrase is no longer available.");
   const row = data as Record<string, unknown>;
   const ctx = sourceContext(row.source_context);
-  const linked = await fetchPhraseSituations(id).catch(() => [] as PhraseSituationRef[]);
   const str = (value: unknown) => (typeof value === "string" ? value : "");
   return {
     text: str(row.text),
@@ -914,19 +909,14 @@ export async function loadEditablePhrase(id: string): Promise<EditablePhrase> {
     context: ctx.context_text ?? "",
     contextTranslation: ctx.context_translation ?? "",
     sourceLabel: ctx.source_label ?? "",
-    storyId: linked[0]?.id ?? ctx.story_id ?? null,
+    storyId: ctx.story_id ?? null,
   };
 }
 
-/**
- * Save an edit made on the Add-a-phrase screen. `previousStoryId` is the
- * Situation the phrase was shown as linked to when editing began: changing it
- * moves that one direct link (a Note-based link to the old Situation stays).
- */
+/** Save an edit made on the Add-a-phrase screen. */
 export async function updatePhrase(
   id: string,
   input: EditablePhrase,
-  previousStoryId: string | null,
 ): Promise<void> {
   const text = input.text.replace(/\s+/g, " ").trim().slice(0, 240);
   if (!text) throw new Error("Enter a phrase to save.");
@@ -963,92 +953,11 @@ export async function updatePhrase(
   }
   if (error) throw new Error(error.message);
 
-  if (input.storyId !== previousStoryId) {
-    if (previousStoryId) {
-      const { error: unlinkError } = await supabase
-        .from("phrase_story_links")
-        .delete()
-        .eq("phrase_item_id", id)
-        .eq("story_id", previousStoryId);
-      if (unlinkError) throw new Error(unlinkError.message);
-    }
-    if (input.storyId) await linkPhraseToSituation(id, input.storyId, "learner");
-  }
   // New wording needs a new pronunciation and search vector.
   if (current.data?.text !== text) {
     void prewarmPhraseSpeech(id).catch(() => {});
     void prewarmPhraseEmbedding(id);
   }
-}
-
-/** Situations a Phrase is linked to in the Practice hub. */
-export interface PhraseSituationRef {
-  id: string;
-  title: string;
-  noteCount: number;
-}
-
-export async function fetchPhraseSituations(phraseItemId: string): Promise<PhraseSituationRef[]> {
-  const { data, error } = await supabase
-    .from("phrase_story_links")
-    .select("stories(id, title, status, messages(count))")
-    .eq("phrase_item_id", phraseItemId);
-  if (error) throw new Error(error.message);
-  type StoryRow = { id: string; title: string | null; status: string | null; messages: { count: number }[] | { count: number } | null };
-  return (data ?? [])
-    .map((row) => one(row.stories as StoryRow[] | StoryRow | null) as StoryRow | null)
-    .filter((story): story is StoryRow => Boolean(story) && story?.status !== "archived")
-    .map((story) => ({
-      id: story.id,
-      title: story.title || "Untitled story",
-      noteCount: (one(story.messages as { count: number }[] | { count: number } | null) as { count: number } | null)?.count ?? 0,
-    }));
-}
-
-/** Phrases captured into a story — the “useful language” strip on the folio. */
-export async function fetchPhrasesForSituation(
-  storyId: string,
-): Promise<Pick<PhraseItem, "id" | "text" | "translation">[]> {
-  type StoryPhraseRow = {
-    id: string;
-    text: string;
-    // Only one of these is on the row — see the 030 note above PhraseRow.
-    meaning?: string | null;
-    meaning_ko?: string | null;
-    status: string;
-  };
-  const load = (meaning: MeaningColumn) =>
-    supabase
-      .from("phrase_story_links")
-      .select(`phrase_items(id, text, ${meaning}, status)`)
-      .eq("story_id", storyId);
-  let result = await load("meaning");
-  if (result.error && isMissingMeaningColumn(result.error)) result = await load("meaning_ko");
-  if (result.error) throw new Error(result.error.message);
-  const rows = (result.data as unknown as Record<string, unknown>[] | null) ?? [];
-  return rows
-    .map((row) => one(row.phrase_items as StoryPhraseRow[] | StoryPhraseRow | null))
-    .filter((item): item is StoryPhraseRow => Boolean(item) && item?.status === "ready")
-    .map((item) => ({ id: item.id, text: item.text, translation: item.meaning ?? item.meaning_ko ?? null }));
-}
-
-export async function linkPhraseToSituation(
-  phraseItemId: string,
-  storyId: string,
-  source: "learner" | "capture" | "suggested" | "used" = "learner",
-): Promise<void> {
-  const userId = await currentUserId();
-  const { error } = await supabase.from("phrase_story_links").upsert(
-    {
-      phrase_item_id: phraseItemId,
-      story_id: storyId,
-      user_id: userId,
-      source,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "phrase_item_id,story_id" },
-  );
-  if (error) throw new Error(error.message);
 }
 
 export async function recordPhraseEvent(input: {

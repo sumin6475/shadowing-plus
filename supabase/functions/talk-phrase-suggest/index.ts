@@ -339,8 +339,11 @@ Deno.serve(async (req: Request) => {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) return json({ error: "OpenAI is not configured." }, 500);
 
+  // phrase_story_links (old Studio Situations) is no longer read: the app stopped
+  // writing it, and the table is being retired. Rows without it rank on
+  // similarity and recent rejections alone.
   const phraseSelect =
-    "id, text, meaning, usage_note, source_context, phrase_story_links(story_id, source, used_count, last_used_at), phrase_events(event, story_id, created_at)";
+    "id, text, meaning, usage_note, source_context, phrase_events(event, story_id, created_at)";
 
   const loadByIds = async (ids: string[]): Promise<PhraseRow[]> => {
     if (!ids.length) return [];

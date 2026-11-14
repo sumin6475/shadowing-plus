@@ -11,12 +11,6 @@ export type ViewName =
   | "mvpNote"
   | "search"
   | "mirrorRecord"
-  | "phrase"
-  | "review"
-  | "practiceHub"
-  | "rehearsal"
-  | "attempt"
-  | "coachingFeedback"
   | "library"
   | "libItem"
   | "capture"
@@ -30,16 +24,7 @@ export type ViewName =
   | "phrasesPerDay"
   | "dailySpeakingGoal"
   | "reminders"
-  | "privacy"
-  | "studio"
-  | "studioTopic"
-  | "situation"
-  | "situationPhrases"
-  | "situationAttempts"
-  | "speakingNote"
-  | "topicsList"
-  | "attemptsList"
-  | "situationsList";
+  | "privacy";
 
 /** Where a pushed screen should be restored to. `stack` is the detail stack to
  *  rebuild on `tab`, bottom-first — an empty stack lands on the tab's base

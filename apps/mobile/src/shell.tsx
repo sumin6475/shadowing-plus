@@ -31,25 +31,9 @@ import {
   MirrorRecord,
 } from "@/screens/mvp";
 import type { MirrorSession } from "@/lib/mvp";
-import { PhraseRoute, ReviewFlow } from "@/screens/phrases";
 import { TalkScreen } from "@/screens/talk";
-import {
-  AttemptDetailScreen,
-  AttemptsScreen,
-  CoachingFeedbackScreen,
-} from "@/screens/attempts";
 import { LibraryScreen, LibItem } from "@/screens/library";
 import { SettingsScreen } from "@/screens/settings";
-import { SpeakingStudioScreen } from "@/screens/studio";
-import {
-  AllSituationsScreen,
-  SituationAttemptsScreen,
-  SituationPhrasesScreen,
-  SpeakingNoteScreen,
-  StudioSituationScreen,
-  StudioTopicScreen,
-  TopicsListScreen,
-} from "@/screens/studio-information";
 import {
   ChangePasswordScreen,
   EditProfileScreen,
@@ -68,13 +52,10 @@ import {
   type ClipCaptureSeed,
 } from "@/screens/capture";
 import { SearchScreen } from "@/screens/search";
-import { PracticeHubScreen, QuickRehearsalScreen } from "@/screens/practice";
 import { MySentences, RoutinePractice } from "@/screens/routines";
 import type { Routine, PracticeItem } from "@/lib/review-routines";
 import type { Nav, TalkCtx, ViewName } from "@/screens/nav";
-import type { PhraseItem } from "@/lib/phrases";
 import type { AskCaptureSeed } from "@/lib/ask-model";
-import type { Attempt } from "@/lib/studio-model";
 
 interface StackEntry {
   name: ViewName;
@@ -275,13 +256,12 @@ export function TabHost({ tab }: { tab: TabId }) {
       ? top
       : undefined;
   // Enable edge-swipe-back only when a pushed view is on top and it uses the
-  // standard nav.pop back (capture runs its own unsaved-draft guard; review is
-  // a native sheet with its own leave-confirm).
+  // standard nav.pop back (capture and the note editor run their own
+  // unsaved-draft guards).
   const swipeBackEnabled =
     focused &&
     !!top &&
     top.name !== "capture" &&
-    top.name !== "review" &&
     top.name !== "mvpNote";
 
   // iOS-style left-edge swipe = back. The in-app stack isn't a native
@@ -341,16 +321,6 @@ export function TabHost({ tab }: { tab: TabId }) {
         {captureOverLibItem && top ? (
           <View style={styles.captureOverlay}>{renderView(top, nav)}</View>
         ) : null}
-      </View>
-    );
-  } else if (top?.name === "review") {
-    // The review flow presents itself as a native pageSheet Modal; keep the
-    // tab's base screen mounted underneath so the sheet slides over real
-    // content instead of an empty background.
-    content = (
-      <View style={{ flex: 1 }}>
-        {renderTab(tab, nav)}
-        {renderView(top, nav)}
       </View>
     );
   } else if (top) {
@@ -445,47 +415,6 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <SearchScreen nav={nav} visit={p.visit as number} />;
     case "mirrorRecord":
       return <MirrorRecord nav={nav} session={p.session as MirrorSession} />;
-    case "phrase":
-      return (
-        <PhraseRoute
-          nav={nav}
-          item={p.item as PhraseItem | undefined}
-          id={p.id as string | undefined}
-        />
-      );
-    case "review":
-      return (
-        <ReviewFlow
-          nav={nav}
-          item={p.item as PhraseItem | undefined}
-          queue={p.queue as PhraseItem[] | undefined}
-        />
-      );
-    case "practiceHub":
-      return (
-        <PracticeHubScreen nav={nav} item={p.item as PhraseItem | undefined} />
-      );
-    case "rehearsal":
-      return (
-        <QuickRehearsalScreen
-          nav={nav}
-          item={p.item as PhraseItem | undefined}
-        />
-      );
-    case "attempt":
-      return (
-        <AttemptDetailScreen
-          nav={nav}
-          attempt={p.attempt as Attempt | undefined}
-        />
-      );
-    case "coachingFeedback":
-      return (
-        <CoachingFeedbackScreen
-          nav={nav}
-          feedbackId={p.id as string | undefined}
-        />
-      );
     case "library":
       return <LibraryScreen nav={nav} />;
     case "libItem":
@@ -529,60 +458,6 @@ function renderView(entry: StackEntry, nav: Nav): React.ReactNode {
       return <RemindersScreen nav={nav} />;
     case "privacy":
       return <PrivacyScreen nav={nav} />;
-    case "studio":
-      return <SpeakingStudioScreen nav={nav} />;
-    case "studioTopic":
-      return (
-        <StudioTopicScreen
-          nav={nav}
-          id={p.id as string}
-          name={p.name as string | undefined}
-        />
-      );
-    case "situation":
-      return (
-        <StudioSituationScreen
-          nav={nav}
-          id={p.id as string}
-          topicId={p.topicId as string}
-          title={p.title as string | undefined}
-        />
-      );
-    case "situationPhrases":
-      return (
-        <SituationPhrasesScreen
-          nav={nav}
-          id={p.id as string}
-          title={p.title as string | undefined}
-        />
-      );
-    case "situationAttempts":
-      return (
-        <SituationAttemptsScreen
-          nav={nav}
-          id={p.id as string}
-          title={p.title as string | undefined}
-        />
-      );
-    case "speakingNote":
-      return (
-        <SpeakingNoteScreen
-          nav={nav}
-          id={p.id as string}
-          justPracticed={p.justPracticed === true}
-        />
-      );
-    case "topicsList":
-      return <TopicsListScreen nav={nav} />;
-    case "attemptsList":
-      return <AttemptsScreen nav={nav} />;
-    case "situationsList":
-      return (
-        <AllSituationsScreen
-          nav={nav}
-          initialFilter={p.filter as string | undefined}
-        />
-      );
   }
 }
 
