@@ -1,0 +1,173 @@
+import { ArrowRight, Check, ChevronDown, ChevronLeft, Ear, Mic, Quote, Users } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Stage, Phone, Collapse, type Act } from '../../kit'
+import './review.css'
+
+// Myne's Speaking review, redesigned as a report you can scan.
+//
+// The old page was one column of same-weight paragraphs, with internal names
+// showing ("reference_clarity", "B2 · ko"). Here the same data is laid out as
+// an analysis: the headline in the brand serif, what a listener hears, three
+// counts, a strip of the talk with a mark where each moment happened, then
+// each focus area as a card that opens to "you said → try → pattern to keep".
+// The page is white; two colors are added to the navy: amber marks what was
+// said, green marks the clearer way.
+//
+// Left phone: the top of the report. The focus card is tapped and opens.
+// Right phone: the end of the report, further down the same page.
+//
+// Real strings: the review's own words, from a real session.
+
+type S = { open: boolean }
+const START: S = { open: false }
+const REST = { x: 300, y: 640 }
+
+const script = async (a: Act<S>) => {
+  await a.wait(1600)
+  a.mark('open')
+  await a.click('focus')
+  a.put({ open: true })
+  await a.wait(4200)
+  a.mark('close')
+  await a.click('focus')
+  a.put({ open: false })
+  await a.move(REST)
+  await a.wait(400)
+}
+
+const FACES = ['30px "Myne Serif"', '400 16px "Myne UI"', '500 16px "Myne UI"', '600 16px "Myne UI"', '700 16px "Myne UI"']
+
+function Top({ open }: { open: boolean }) {
+  return (
+    <div className="mv-page">
+      <nav className="mv-nav">
+        <span className="mv-round"><ChevronLeft size={22} strokeWidth={2.4} /></span>
+        <span className="mv-nav__title">Speaking review</span>
+        <span className="mv-level">B2</span>
+      </nav>
+
+      <div className="mv-eyebrow">The big picture</div>
+      <h1 className="mv-title">Say who “he” is, and the story lands.</h1>
+
+      <div className="mv-listener">
+        <span className="mv-listener__icon"><Ear size={16} strokeWidth={2.2} /></span>
+        <p>You talk about stress from your boss, then switch to “he” without saying who. A listener has to guess.</p>
+      </div>
+
+      <div className="mv-stats">
+        <div className="mv-stat"><b data-c="navy">1</b><span>Focus area</span></div>
+        <div className="mv-stat"><b data-c="amber">2</b><span>Moments</span></div>
+        <div className="mv-stat"><b data-c="green">1</b><span>Pattern to keep</span></div>
+      </div>
+
+      <div className="mv-map">
+        <div className="mv-map__head"><span>Where it showed up</span><span className="mv-map__len">11 min talk</span></div>
+        <div className="mv-map__track">
+          <i style={{ left: '18%' }}>1</i>
+          <i style={{ left: '41%' }}>1</i>
+        </div>
+        <div className="mv-map__ends"><span>Start</span><span>End</span></div>
+      </div>
+
+      <div className="mv-section">Focus areas</div>
+      <div className="mv-focus" data-open={open || undefined}>
+        <div className="mv-focus__head" data-target="focus">
+          <span className="mv-num">1</span>
+          <div className="mv-focus__text">
+            <span className="mv-cat"><Users size={12} strokeWidth={2.6} /> Clear references</span>
+            <span className="mv-focus__title">“He” without a name</span>
+          </div>
+          <ChevronDown className="mv-chev" size={20} strokeWidth={2.2} />
+        </div>
+        <Collapse open={open}>
+          <div className="mv-focus__body">
+            <div className="mv-said">
+              <span className="mv-tag" data-c="amber"><Quote size={11} strokeWidth={2.8} /> You said</span>
+              <p>Is because of my boss he’s so biased and so rude</p>
+            </div>
+            <div className="mv-try">
+              <span className="mv-tag" data-c="green"><Check size={12} strokeWidth={3} /> Try</span>
+              <p>It’s because of my boss. <b>My boss</b> is so biased and so rude.</p>
+            </div>
+            <div className="mv-keep">
+              <span className="mv-keep__label">Pattern to keep</span>
+              <p>Name the person first, then use “he” or “she”.</p>
+            </div>
+          </div>
+        </Collapse>
+      </div>
+    </div>
+  )
+}
+
+function End() {
+  return (
+    <div className="mv-page mv-page--end">
+      <div className="mv-turn">
+        <span className="mv-turn__eyebrow">Your turn</span>
+        <p className="mv-turn__q">Say one sentence about your boss using “my boss” instead of “he”.</p>
+        <div className="mv-steps">
+          <span data-on>Hint 1</span><span>Hint 2</span><span>Answer</span>
+        </div>
+        <p className="mv-turn__hint">Start with “My boss…” and say what he did.</p>
+        <span className="mv-turn__cta"><Mic size={17} strokeWidth={2.4} /> Try it aloud</span>
+      </div>
+
+      <div className="mv-section">Take with you</div>
+      <div className="mv-takes">
+        <div className="mv-take"><span><Check size={13} strokeWidth={3} /></span><p>Naming people clearly helps your listener follow the story.</p></div>
+        <div className="mv-take"><span><Check size={13} strokeWidth={3} /></span><p>“My boss” instead of “he” removes the guessing.</p></div>
+      </div>
+
+      <div className="mv-section">Your second try</div>
+      <div className="mv-again">
+        <span className="mv-badge">Clearer</span>
+        <div className="mv-again__row"><span data-c="amber">Before</span><p>…because of my boss he’s so biased</p></div>
+        <div className="mv-again__row"><span data-c="green">Now</span><p>My boss is biased, and my boss is rude.</p></div>
+      </div>
+
+      <div className="mv-next">
+        <span className="mv-next__label">Next step</span>
+        <p>In your next talk, name each person the first time they appear.</p>
+        <ArrowRight size={18} strokeWidth={2.4} />
+      </div>
+    </div>
+  )
+}
+
+export default function MyneReview() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let live = true
+    Promise.all(FACES.map(f => document.fonts.load(f, 'Say who he is'))).catch(() => undefined).then(() => live && setReady(true))
+    return () => { live = false }
+  }, [])
+  if (!ready) return null
+  return (
+    <Stage<S>
+      width={840}
+      height={724}
+      compact={{ below: 600, width: 358, height: 660 }}
+      initial={START}
+      poster={{ open: true }}
+      script={script}
+      cursor={{ at: REST, style: 'touch' }}
+      fidelity="realistic"
+      className="mv"
+    >
+      {(s, _rect, layout) => (
+        <>
+          <div className="mv-wash" />
+          <Phone width={layout === 'compact' ? 326 : 360} wallpaper="#FFFFFF" className="mv-phone mv-phone--a">
+            <Top open={s.open} />
+          </Phone>
+          {layout === 'compact' ? null : (
+            <Phone width={360} wallpaper="#FFFFFF" className="mv-phone mv-phone--b">
+              <End />
+            </Phone>
+          )}
+        </>
+      )}
+    </Stage>
+  )
+}

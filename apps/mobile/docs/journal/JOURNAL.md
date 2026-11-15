@@ -1552,3 +1552,15 @@ Sheet가 쓰던 구조로 통일.
 **결정 근거(조사).** Apple 5.1.2(i)(2025-11 개정)는 "third-party AI에 공유할 곳을 명확히 밝히고 명시적 허락"을 요구. 2026-02 실제 반려 문구는 "does not clearly explain what data is sent, identify who the data is sent to"이고, 개인정보처리방침에만 업체명을 쓴 앱이 다시 반려된 사례가 있음(Apple Developer Forums 815842, 816140). 그래서 업체명을 완전히 빼지 않고 동의 지점의 작은 글씨로만 남김 — 사용자 요청(화면에서 빼기)과의 절충, 최종 판단은 사용자.
 
 **검증.** `tsc`·eslint·`test:mvp` 통과. 시뮬레이터(:8084, AI 꺼짐 임시 강제 후 제거): 시트의 새 문구와 작은 글씨 확인, 설정은 바꾸지 않고 Not now로 닫음. 사이트는 로컬 서버로 AI 절 렌더 확인. **미확인**: 첫 실행 동의 화면·Settings → Privacy 실제 화면, 다크 모드.
+
+**배포(2026-11-15).** `apps/myne-site`를 기존 Vercel 프로젝트 `myne`(git 미연결, CLI 배포)에 `vercel --prod`로 재배포 → https://getmyne.vercel.app. 배포 전 라이브와 파일 단위 비교: privacy 외 홈·support·terms·css·js·assets 동일. 배포 후 라이브 `/privacy`가 커밋 파일과 바이트 단위로 같음("Last updated: 15 November 2026"), 나머지 페이지 변화 없음. 처음 시도는 CLI 미로그인으로 멈춤 → 사용자가 `vercel login` 후 진행.
+
+## 2026-11-15 — Speaking review를 "읽는 리포트"로 재디자인
+
+**만든 것.** `src/components/feedback-review.tsx`(신설)로 리포트 본문을 다시 짰다. 흰 페이지 위에: 헤드라인 + 듣는 사람 관점 → 숫자 3개(Focus area · Moments · Pattern to keep) → 말한 전체를 한 줄로 그린 띠에 문제 지점 표시(증거의 start 오프셋 ÷ 전사문 길이, 탭하면 해당 카드 열림) → 포커스 카드(접고 펼침: You said 호박색 → 설명 → A clearer way 초록 → Pattern to keep → Ask yourself + Show hint) → Your turn(남색 그라디언트, 힌트를 하나씩 열기, Try it aloud) → Take with you(초록 체크) → Next step. 색은 남색에 호박·초록 두 가지만 추가하고 역할을 고정. `Screen`에 `background` prop을 추가해 두 화면(직후 결과, 세션 기록)의 Feedback 페이지와 하단 바를 흰색으로. 목업: `docs/design/speaking-review-report/`(stageshow).
+
+**내부 이름 제거.** 카테고리 코드(`reference_clarity` 등)와 비교 결과 코드는 라벨 표를 거친다. 모델이 본문(권장 순서)에 코드를 그대로 써도 `humanize()`가 라벨로 바꾼다. "Saved review · B2 · ko"는 B2 칩만 남김. 권장 순서는 항목이 2개 이상일 때만 표시.
+
+**원칙.** 색에 일을 준다(말한 것 = 호박, 더 분명한 것 = 초록). 지어낸 점수는 넣지 않고, 리포트가 실제로 가진 수와 위치만 그린다.
+
+**검증.** `tsc --noEmit`·eslint·`test:mvp` 통과(아래). 시뮬레이터(:8084)에서 실제 저장 리뷰(2026-11-11 세션)를 임시 값으로 띄워 확인 후 제거: 상단 요약·숫자·띠, 포커스 카드 본문, Your turn 힌트 열기, Take with you, Next step, 흰 배경과 하단 바. **미확인**: 띠의 위치 정확도(임시 전사문 길이로 봄), 포커스가 여러 개인 리뷰, 되묻기(needs clarification) 카드, 두 번째 시도 비교 카드, 다크 모드, 실기기. stageshow 게이트는 2줄 남음(REHEARSAL.md에 사유).

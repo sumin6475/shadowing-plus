@@ -1,6 +1,7 @@
 import { linkFeedbackRetry } from '@/lib/advanced-feedback';
 import { SessionResultPager } from '@/components/session-result-pager';
 import { AdvancedFeedbackReport } from '@/components/advanced-feedback-report';
+import { reviewPalette } from '@/components/feedback-review';
 // MVP mirror: preserve the camera and controls; save transcript + time, without coaching.
 // Hint cards (./talk-hints) check a phrase off when the live transcript says it.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -298,9 +299,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
   };
   if (phase === "done") {
     const empty = !transcript.trim();
+    const paper = reviewPalette(t).paper;
     const showPhrases = !empty && cards.length > 0 && (usedIds.size > 0 || hintSeen);
     return (
-      <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+      // The Feedback page is a white report; its footer and page dots follow it.
+      <View style={{ flex: 1, backgroundColor: resultPage === 1 ? paper : t.colors.bg }}>
         <SessionResultPager onPageChange={setResultPage} first={(
         <Screen bottomPad={12}>
           <BackBar
@@ -382,12 +385,13 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
         </Screen>
         )} second={
           // flexGrow lets the loading / off / failed states center in the page.
-          <Screen bottomPad={16} style={{ flexGrow: 1 }}>
+          <Screen bottomPad={16} style={{ flexGrow: 1 }} background={paper}>
             <BackBar title="Speaking review" onBack={() => { if (saveState === 'saved' || empty) exit(); }} />
             <AdvancedFeedbackReport
               sessionId={savedId}
               saving={!empty && saveState !== "saved" && saveState !== "error"}
               active={resultPage === 1}
+              transcriptLength={transcript.length}
               retry={p0.feedbackRetry}
               onRetry={retry => nav.startTalk({ ...p0, feedbackRetry: retry })}
             />
@@ -404,7 +408,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             paddingHorizontal: 20,
             paddingTop: 10,
             paddingBottom: insets.bottom + 10,
-            backgroundColor: t.colors.bg,
+            backgroundColor: resultPage === 1 ? paper : t.colors.bg,
           }}
         >
           {resultPage === 0 && !empty && (movedUri || speech.audioUri) ? (
