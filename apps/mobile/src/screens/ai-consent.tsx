@@ -17,7 +17,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/design/text";
 import { hairline, ThemeProvider, useTheme } from "@/design/theme";
 import { Card, Icon, Pill, Serif } from "@/design/ui";
-import { openLegalUrl, PRIVACY_POLICY_URL } from "@/lib/legal";
+import { AI_PROVIDER_NOTE, openLegalUrl, PRIVACY_POLICY_URL } from "@/lib/legal";
 
 export function AiConsentScreen({
   visible,
@@ -38,6 +38,23 @@ export function AiConsentScreen({
         </ThemeProvider>
       </SafeAreaProvider>
     </Modal>
+  );
+}
+
+/** Who receives the data, in the small print under the card, with the policy. */
+function ProviderNote() {
+  const t = useTheme();
+  return (
+    <Text style={{ fontSize: 13.5, lineHeight: 19, color: t.colors.ink3, marginTop: 12, paddingHorizontal: 4 }}>
+      {AI_PROVIDER_NOTE}{" "}
+      <Text
+        accessibilityRole="link"
+        onPress={() => void openLegalUrl(PRIVACY_POLICY_URL)}
+        style={{ color: t.colors.accD, fontWeight: "600" }}
+      >
+        Full Privacy Policy
+      </Text>
+    </Text>
   );
 }
 
@@ -67,23 +84,16 @@ function ConsentBody({ onDecide }: { onDecide: (allowed: boolean) => Promise<voi
         <Card style={{ marginTop: 28, paddingVertical: 4, paddingHorizontal: 0 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 18, paddingVertical: 16 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }}>Send what you choose to OpenAI</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }}>Allow AI processing</Text>
               <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 4 }}>
-                When you request AI help, selected text, photos, or a saved speaking transcript and your speaking focus are sent to OpenAI. OpenAI doesn’t train on it by default.{" "}
-                <Text
-                  accessibilityRole="link"
-                  onPress={() => void openLegalUrl(PRIVACY_POLICY_URL)}
-                  style={{ color: t.colors.accD, fontWeight: "600" }}
-                >
-                  Learn more
-                </Text>
+                When you ask for AI help, what you chose is sent to our AI provider: a saved speaking transcript with your speaking focus and level, a note or Ask message, or the text or photo you picked.
               </Text>
             </View>
             <Switch
               value={allowed}
               onValueChange={setAllowed}
               disabled={saving}
-              accessibilityLabel="Allow sending selected text and photos to OpenAI"
+              accessibilityLabel="Allow AI processing of the content you choose"
               trackColor={{ false: t.colors.soft, true: t.colors.acc }}
             />
           </View>
@@ -105,6 +115,7 @@ function ConsentBody({ onDecide }: { onDecide: (allowed: boolean) => Promise<voi
             </View>
           </View>
         </Card>
+        <ProviderNote />
       </ScrollView>
 
       <View style={{ paddingHorizontal: 24, paddingTop: 14, paddingBottom: 10, borderTopWidth: hairline, borderTopColor: t.colors.sep }}>

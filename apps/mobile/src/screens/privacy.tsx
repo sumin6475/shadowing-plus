@@ -12,7 +12,7 @@ import { useTheme } from "@/design/theme";
 import { BackBar, Card, Icon, Screen, Stagger } from "@/design/ui";
 import { aiProcessingConsentFromMetadata, setAiProcessingConsent } from "@/lib/ai-consent";
 import { useAuth } from "@/lib/auth";
-import { openLegalUrl, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "@/lib/legal";
+import { AI_PROVIDER_NOTE, openLegalUrl, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "@/lib/legal";
 import type { IconName } from "@/design/icon";
 import type { Nav } from "./nav";
 
@@ -114,17 +114,17 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           icon="sparkle"
           title="AI features"
           lines={[
-            "Only with your permission, the text or photo you choose is sent to OpenAI to fill in a phrase’s meaning and usage, read text from a photo, index your phrases (embeddings), generate an AI voice, or analyze a saved speaking transcript using your speaking focus and English level.",
-            "Speaking recordings are not sent. OpenAI processes the selected content under its API data policy and does not use API data to train models by default.",
+            "Only with your permission, the content you choose is sent to our AI provider to answer Ask, fill in a phrase’s meaning and usage, read text from a photo, index your phrases for search, generate an AI voice, or review a saved speaking transcript using your speaking focus and English level.",
+            "Speaking recordings are never sent. How the provider handles your content is in the Full Privacy Policy below.",
             "You can turn this processing off below at any time. AI features stay off until you allow it again.",
           ]}
         />
 
         <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }}>Allow OpenAI processing</Text>
+            <Text style={{ fontSize: 15.5, fontWeight: "700", color: t.colors.ink }}>Allow AI processing</Text>
             <Text style={{ fontSize: 13, lineHeight: 18, color: t.colors.ink3, marginTop: 3 }}>
-              {aiConsent === "allowed" ? "On · selected text and photos can be processed" : "Off · no content is sent to OpenAI"}
+              {aiConsent === "allowed" ? "On · selected text and photos can be processed" : "Off · nothing is sent for AI processing"}
             </Text>
           </View>
           <Switch
@@ -135,6 +135,9 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
             thumbColor={aiConsent === "allowed" ? t.colors.acc : undefined}
           />
         </Card>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: t.colors.ink3, marginTop: -4, paddingHorizontal: 4 }}>
+          {AI_PROVIDER_NOTE}
+        </Text>
 
         <Section
           icon="link"

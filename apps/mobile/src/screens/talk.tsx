@@ -193,6 +193,11 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
       active = false;
     };
   }, [savedId, speech.audioUri]);
+  // Listen back lives on the Session page only, so leaving that page must not
+  // leave audio playing with no visible way to pause it.
+  useEffect(() => {
+    if (resultPage !== 0 && playStatus.playing) player.pause();
+  }, [resultPage, playStatus.playing, player]);
   const persist = async (text: string) => {
     if (saving.current) return;
     saving.current = true;
@@ -375,14 +380,24 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             </>
           )}
         </Screen>
-        )} second={<Screen bottomPad={16}>
-          <BackBar title="Speaking review" onBack={() => { if (saveState === 'saved' || empty) exit(); }} />
-          <AdvancedFeedbackReport sessionId={savedId} active={resultPage === 1} retry={p0.feedbackRetry} onRetry={retry => nav.startTalk({ ...p0, feedbackRetry: retry })} />
-        </Screen>} />
+        )} second={
+          // flexGrow lets the loading / off / failed states center in the page.
+          <Screen bottomPad={16} style={{ flexGrow: 1 }}>
+            <BackBar title="Speaking review" onBack={() => { if (saveState === 'saved' || empty) exit(); }} />
+            <AdvancedFeedbackReport
+              sessionId={savedId}
+              saving={!empty && saveState !== "saved" && saveState !== "error"}
+              active={resultPage === 1}
+              retry={p0.feedbackRetry}
+              onRetry={retry => nav.startTalk({ ...p0, feedbackRetry: retry })}
+            />
+          </Screen>
+        } />
         {/* Pinned, so the actions sit in the same place however long the
-            transcript is. Listen back is its own full-width row and only
-            exists when there are words to listen for; below it, Speak again
-            on the left and Done — which leaves the mirror — on the right. */}
+            transcript is. Listen back is its own full-width row on the Session
+            page only, and only when there are words to listen for; below it,
+            Speak again on the left and Done — which leaves the mirror — on the
+            right. The Feedback page keeps just that pair. */}
         <View
           style={{
             gap: 10,
@@ -392,7 +407,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             backgroundColor: t.colors.bg,
           }}
         >
-          {!empty && (movedUri || speech.audioUri) ? (
+          {resultPage === 0 && !empty && (movedUri || speech.audioUri) ? (
             // Not `full`: that sets flex 1, which collapses in this
             // auto-height column.
             <Pill

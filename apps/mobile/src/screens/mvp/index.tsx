@@ -2346,6 +2346,6 @@ export function MirrorRecord({
         {busy ? "Deleting…" : "Delete session"}
       </Pill>
       <ErrorCard error={error} retry={() => setError(null)} />
-    </Screen>} second={<Screen><BackBar title="Speaking review" onBack={nav.pop}/><AdvancedFeedbackReport sessionId={session.id} active={reviewPage === 1} onRetry={retry => nav.startTalk({feedbackRetry:retry, noteId:session.note_id, returnTo:{tab:'speak',stack:[{name:'mirrorRecord',props:{id:session.id}}]}})}/></Screen>} />
+    </Screen>} second={<Screen style={{ flexGrow: 1 }}><BackBar title="Speaking review" onBack={nav.pop}/><AdvancedFeedbackReport sessionId={session.id} active={reviewPage === 1} onRetry={retry => nav.startTalk({feedbackRetry:retry, noteId:session.note_id, returnTo:{tab:'speak',stack:[{name:'mirrorRecord',props:{id:session.id}}]}})}/></Screen>} />
   );
 }

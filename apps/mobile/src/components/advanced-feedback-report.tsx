@@ -1,5 +1,6 @@
-import { RecoveryState } from "./recovery-state";
-import { useEffect, useRef, useState } from "react";
+import { AiConsentSheet } from "./ai-consent-sheet";
+import { ReviewState } from "./review-state";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { Text, TextInput } from "@/design/text";
 import { hairline, useTheme } from "@/design/theme";
@@ -11,15 +12,23 @@ import {
   loadCoachingPreferences,
   loadFeedbackState,
 } from "@/lib/advanced-feedback";
+import { aiProcessingConsentFromMetadata } from "@/lib/ai-consent";
 import { useAuth } from "@/lib/auth";
-export function AdvancedFeedbackReport(
-  props: {
-    sessionId: string | null;
-    active?: boolean;
-    retry?: FeedbackRetry;
-    onRetry: (retry: FeedbackRetry) => void;
-  },
-) {
+type ReportProps = {
+  sessionId: string | null;
+  /** The session is still being saved, so there is no id to review yet. */
+  saving?: boolean;
+  active?: boolean;
+  retry?: FeedbackRetry;
+  onRetry: (retry: FeedbackRetry) => void;
+};
+/**
+ * The Feedback page of a finished session. The review starts on its own the
+ * first time the page is shown; the page then holds exactly one of: loading,
+ * AI-processing-off (the switch opens in a sheet right here, so turning it on
+ * never loses the page), failed (a round ↻), or the review itself.
+ */
+export function AdvancedFeedbackReport(props: ReportProps) {
   const { session } = useAuth();
   return (
     <FeedbackReportContent
@@ -29,19 +38,19 @@ export function AdvancedFeedbackReport(
   );
 }
 function FeedbackReportContent(
-  { sessionId, active = true, retry, onRetry }: {
-    sessionId: string | null;
-    active?: boolean;
-    retry?: FeedbackRetry;
-    onRetry: (retry: FeedbackRetry) => void;
-  },
+  { sessionId, saving = false, active = true, retry, onRetry }: ReportProps,
 ) {
   const t = useTheme(), { session } = useAuth(), userId = session?.user.id;
+  const aiAllowed =
+    aiProcessingConsentFromMetadata(session?.user.user_metadata) === "allowed";
   const [report, setReport] = useState<FeedbackReport | null>(null),
     [busy, setBusy] = useState(false),
     [loaded, setLoaded] = useState(false),
     [error, setError] = useState<string | null>(null),
-    [stale, setStale] = useState(false);
+    // The server is still writing the review: "check again", not "it failed".
+    [pending, setPending] = useState(false),
+    [stale, setStale] = useState(false),
+    [consentOpen, setConsentOpen] = useState(false);
   const [lastClarification, setLastClarification] = useState<
     { parentReportId: string; findingId: string; answer: string } | undefined
   >(undefined);
@@ -57,13 +66,16 @@ function FeedbackReportContent(
         const r = state.report;
         if (alive) {
           setReport(r);
-          if (state.attempt?.status === "failed") {
+          // A failed attempt with nothing saved is simply retried by the
+          // automatic run below, so it only needs words when a review exists.
+          if (state.attempt?.status === "failed" && r?.status === "ready") {
             setError(
               "The last update couldn’t be completed. Your saved review is still available.",
             );
           }
           if (state.attempt?.status === "generating") {
-            setError("Your update is still in progress. Check again shortly.");
+            setPending(true);
+            setError("Your review is still being written.");
           }
           setStale(
             !!r && p?.current_profile_version_id !== r.profile_version_id,
@@ -92,6 +104,7 @@ function FeedbackReportContent(
     const current = epoch.current;
     setBusy(true);
     setError(null);
+    setPending(false);
     try {
       const result = await analyzeFeedback(sessionId, {
         retry,
@@ -107,7 +120,12 @@ function FeedbackReportContent(
         setStale(false);
       }
       if (result.pending) {
-        setError("Analysis is in progress. Check again shortly.");
+        setPending(true);
+        setError("Your review is still being written.");
+      } else if (result.report?.status !== "ready") {
+        // Nothing usable came back and nothing is in flight: say so instead
+        // of leaving the page on its spinner.
+        setError("Couldn’t complete the analysis. Your session is safe.");
       }
     } catch (e) {
       if (current === epoch.current) {
@@ -124,15 +142,17 @@ function FeedbackReportContent(
     const current = epoch.current;
     setBusy(true);
     setError(null);
+    setPending(false);
     try {
       const state = await loadFeedbackState(sessionId);
       if (current !== epoch.current) return;
       setReport(state.report);
+      setPending(state.attempt?.status === "generating");
       setError(
         state.attempt?.status === "ready"
           ? null
           : state.attempt?.status === "generating"
-          ? "Your update is still in progress. Check again shortly."
+          ? "Your update is still being written."
           : "The last update couldn’t be completed. Your saved review is still available.",
       );
     } catch {
@@ -144,31 +164,77 @@ function FeedbackReportContent(
     }
   };
   const data = report?.status === "ready" ? report.result : null;
-  const heading = (label: string) => (
-    <Text
-      style={{
-        fontSize: 11.5,
-        fontWeight: "700",
-        letterSpacing: 1,
-        color: t.colors.ink3,
-      }}
-    >
-      {label}
-    </Text>
-  );
+  // The review writes itself: the first time this page is shown for a session
+  // with nothing saved (and nothing already in flight), start it. It also
+  // starts when AI processing is switched on and the learner comes back.
+  const autoStarted = useRef(false);
+  const autoStart = useEffectEvent(() => void run());
+  useEffect(() => {
+    if (
+      !active || !loaded || !aiAllowed || !userId || data || error ||
+      autoStarted.current
+    ) return;
+    autoStarted.current = true;
+    autoStart();
+  }, [active, loaded, aiAllowed, userId, data, error]);
   const body = (text: string) => (
     <Text style={{ fontSize: 16, lineHeight: 25, color: t.colors.ink }}>
       {text}
     </Text>
   );
   if (!sessionId) {
-    return <Card>{body("Save your session to review it here.")}</Card>;
+    return saving
+      ? <ReviewState mark="spinner" title="Saving your session…" />
+      : (
+        <ReviewState
+          mark="sessions"
+          title="Nothing to review yet"
+          body="A saved session with speech gets a review here."
+        />
+      );
   }
-  if (!loaded) {
+  if (!loaded) return <ReviewState mark="spinner" title="Loading your review…" />;
+  if (!data) {
+    if (!aiAllowed) {
+      return (
+        <>
+          <ReviewState
+            mark="aiOff"
+            title="AI processing is off"
+            body="Speaking review is written by AI, and it stays off until you allow it."
+            action={{
+              kind: "link",
+              label: "Turn on AI processing",
+              onPress: () => setConsentOpen(true),
+            }}
+          />
+          <AiConsentSheet
+            open={consentOpen}
+            onClose={() => setConsentOpen(false)}
+            reason="Speaking review is written by AI."
+          />
+        </>
+      );
+    }
+    if (error && !busy) {
+      return (
+        <ReviewState
+          mark="retry"
+          title={pending ? "Almost there" : "Something went wrong"}
+          body={error}
+          action={{
+            kind: "retry",
+            label: pending ? "Check again" : "Try again",
+            onPress: () => void run(lastClarification),
+          }}
+        />
+      );
+    }
     return (
-      <ActivityIndicator
-        accessibilityLabel="Loading feedback"
-        color={t.colors.accD}
+      <ReviewState
+        mark="spinner"
+        title="Reviewing your session…"
+        body="This can take a moment."
       />
     );
   }
@@ -199,45 +265,13 @@ function FeedbackReportContent(
           </View>
         )
         : null}
-      {!data
-        ? (
-          <Card style={{ gap: 16 }}>
-            {heading("SPEAKING REVIEW")}
-            <Text
-              style={{
-                fontSize: 26,
-                lineHeight: 32,
-                fontWeight: "600",
-                color: t.colors.ink,
-              }}
-            >
-              Make your meaning clearer.
-            </Text>
-            {body("Review this session with your speaking focus.")}
-            <Pill
-              disabled={busy}
-              style={{ alignSelf: "stretch" }}
-              onPress={() => void run()}
-            >
-              {busy
-                ? "Analyzing…"
-                : report?.status === "generating"
-                ? "Check analysis"
-                : "Analyze this session"}
-            </Pill>
-          </Card>
-        )
-        : (
-          <>
-            <FeedbackReview
-              key={report!.id}
-              report={report!}
-              busy={busy}
-              onClarify={(value) => void run(value)}
-              onRetry={onRetry}
-            />
-          </>
-        )}
+      <FeedbackReview
+        key={report!.id}
+        report={report!}
+        busy={busy}
+        onClarify={(value) => void run(value)}
+        onRetry={onRetry}
+      />
       {busy
         ? (
           <ActivityIndicator
@@ -248,16 +282,18 @@ function FeedbackReportContent(
         : null}
       {error
         ? (
-          <RecoveryState
-            message={error}
-            disabled={busy}
-            onRetry={() =>
-              void (data && !lastClarification
-                ? refreshSaved()
-                : run(lastClarification))}
-            label={data && !lastClarification
-              ? "Check saved review"
-              : "Try again"}
+          <ReviewState
+            compact
+            mark="retry"
+            title={pending ? "Almost there" : "Something went wrong"}
+            body={error}
+            action={{
+              kind: "retry",
+              disabled: busy,
+              label: lastClarification ? "Try again" : "Check saved review",
+              onPress: () =>
+                void (lastClarification ? run(lastClarification) : refreshSaved()),
+            }}
           />
         )
         : null}
