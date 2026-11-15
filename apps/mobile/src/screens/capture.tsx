@@ -704,7 +704,7 @@ export function PhraseCaptureScreen({
     setError(null);
     if (editPhraseId) {
       try {
-        await updatePhrase(editPhraseId, editedPhrase(), original?.storyId ?? null);
+        await updatePhrase(editPhraseId, editedPhrase());
         nav.invalidateSpeakingData();
         nav.pop();
       } catch (caught) {

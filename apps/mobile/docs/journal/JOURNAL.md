@@ -1516,3 +1516,13 @@ Sheet가 쓰던 구조로 통일.
 **진단하고 고친 것.** 글래스가 드리우는 그림자가 가로 ScrollView 경계에서 네모나게 잘렸다 → 덱 ScrollView를 `overflow: "visible"`로. 비활성 화살표는 바깥 opacity 대신 글리프만 흐리게(글래스는 부모 opacity로 흐려지지 않는다). 저장해 둔 목업 소스(`docs/design/*/index.tsx`)가 앱 `tsc`에 걸려 `.tsx.txt`로 바꿈.
 
 **검증.** `tsc --noEmit` 통과, eslint 오류 0(경고 3 기존), `test:mvp` 119/119. 시뮬레이터(iOS 26.5): 라이트·다크, Midnight·Paper 카드, 글래스 버튼 탭(이동·Settings·Edit·Done) 동작. **미확인**: iOS 26 미만 폴백, 투명도 줄이기 설정, 실기기.
+
+## 2026-11-14 — 옛 Studio 테이블 은퇴 1단계: 앱이 더는 읽지 않게
+
+**만든 것.** 브랜치 `chore/remove-legacy-studio-reads`(main `ecfba7d` 위로 리베이스). 탭 어디에서도 들어갈 수 없던 옛 Studio 화면과 데이터 모듈 10개 파일(7,446줄)을 지우고 `shell.tsx`·`nav.ts`의 라우트를 정리했다. `lib/phrases.ts`는 `phrase_story_links`를 더는 읽거나 쓰지 않고, 엣지 함수 `talk-phrase-suggest`는 그 테이블을 임베드하지 않는다. 2~5단계는 `.agents/plans/2026-11-14-retire-legacy-studio-tables.md`, 예약 점검 2회(2026-11-28, 2027-02-01).
+
+**원칙.** 테이블 삭제는 되돌릴 수 없으니 코드 → 옛 빌드 만료 → 백업 → 권한 잠금 → 삭제 순. 진입점 확인은 App Store 빌드 41(`e8753b4`)까지 거슬러 봤다: 옛 화면은 거기서도 진입점이 없었다. 삭제 때 걸릴 의존성(외래 키 4개, `phrase_events` 트리거)도 미리 DB에서 뽑아 계획에 적었다.
+
+**검증.** `tsc --noEmit` 통과, eslint(변경 파일) 오류 0, `test:mvp` 63/63, `expo export --platform ios` 번들 성공, 앱 코드에 옛 6개 테이블 `.from()` 호출 0. 시뮬레이터(iOS 26.5, 이 워크트리 Metro :8084): Phrases 홈, Studio 노트 목록·노트 편집, Talk(Hint 카드 포함), 구문 상세 → Edit(불러오기) → 그대로 Save changes(오류 없이 상세로 복귀). Talk의 "Failed to initialize recognizer"와 Talk을 Discard한 뒤 빈 화면은 기존 코드(:8083)에서도 똑같이 나와 이번 변경과 무관. **미확인**: 엣지 함수 Deno 타입 검사(Deno 미설치), 엣지 함수 재배포 안 함, 실기기.
+
+**리베이스(#38 머지 후).** 충돌 5곳: #38이 손본 `phrases.tsx`·`studio-information.tsx`·`today.tsx`(글꼴·크기 조정뿐)는 삭제 유지, `shell.tsx`는 routines import만 남김, 이 저널은 두 쪽 항목 모두 유지. 충돌 밖에서 하나 더: #38이 새로 넣은 `reuseSavedPhrase`가 `linkPhraseToSituation`을 불러 `tsc`가 깨짐(`TS2304: Cannot find name 'linkPhraseToSituation'`) → 그 호출 삭제. 이후 `tsc` 통과, eslint(변경 파일) 통과, `test:mvp` 119/119, `expo export --platform ios` 성공. 리베이스 후 시뮬레이터 재확인은 안 함.
