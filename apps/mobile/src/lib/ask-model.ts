@@ -41,6 +41,7 @@ export interface HowToSayCard {
   follow_ups: string[];
 }
 export interface NoteCard {
+  title?: string;
   type: "card";
   situation: string;
   draft: Draft;

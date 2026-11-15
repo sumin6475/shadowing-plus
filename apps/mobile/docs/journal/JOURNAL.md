@@ -1480,3 +1480,39 @@ Sheet가 쓰던 구조로 통일.
 **검증.** tsc 통과, `expo lint` 기준선(기존 경고 1), `test:mvp` 23/23, `auth-form` 4/4. 일러스트는 같은 path를 브라우저(Chromium)에서 라이트/다크로 렌더해 확인. **실기기 미확인**: Newsreader 세리프의 실제 줄바꿈, Pill 아이콘 정렬.
 
 **스킬.** 순수 모듈 + node --test 회귀, SVG를 브라우저로 미리 보기.
+
+## 2026-11-13 — Phrase 페이지를 iOS 상세 페이지 구성으로
+
+**만든 것.** `PhraseChecklist`(`src/screens/mvp/index.tsx`)를 stageshow 목업대로 재배치했다. 정보는 그대로: 왼쪽 정렬 히어로(단계 칩 → 표현 → 뜻), 재생을 1단계 카드에서 꺼내 히어로 아래 액션 행(Listen 캡슐 + 속도 + 반복, 기본값이 아니면 액센트 틴트)으로, 카드 3장+Clear 칩 3개를 하나의 grouped list + Reminders 체크 원으로, 진행은 "Practice" 헤더의 링 + "0 of 3"에서 한 번만, Phrase details는 카드 안 디스클로저로. 게이트(빨간 링 + 배너), 문장 저장·스와이프 삭제, 미러 버튼 동작은 유지. 뺀 문구: 상단 "Phrases" 제목, YouGlish 설명 문장.
+
+**원칙.** 같은 무게의 카드가 반복되면 눈이 앉을 곳이 없다 — 주 행동은 위로, 반복되는 행동은 목록의 관례(체크 원)로 흡수한다.
+
+**검증.** `tsc --noEmit` 통과, eslint(변경 파일) 통과, `test:mvp` 119/119. 시뮬레이터(Metro :8083, 앱 재시작 후)에서 확인: 1단계 체크 → Learning·1 of 3·링·"Done · Nov 13" → 다시 탭해 원상복구, 3단계 문장 없이 체크 → 배너 + 빨간 링, 미러 버튼 게이트, 0.75×·반복 5 틴트, Listen → Stop, 디테일 펼침, 다크 모드. **미확인**: 저장된 문장이 있을 때의 행/스와이프, Ready 상태, 긴 표현 줄바꿈, 실기기.
+
+**스킬.** stageshow(목업) → RN 이식, iOS 시뮬레이터 검증.
+
+## 2026-11-13 — My Sentences·홈 루틴을 iOS 관례로 재디자인 (+ 카드 색상)
+
+**만든 것.** 브랜치 `feat/routines-native-redesign`. 기능은 그대로 두고 `src/screens/routines.tsx`의 화면을 다시 짰다.
+- **홈 덱**: 마지막 타일을 `+ New card` / `Edit`로 정리. 루틴 카드는 기존 두 카드와 같은 규격(271×200)에 **색상 2종**(Midnight = Studio 카드 그라디언트, Paper = 흰 카드). 편집 모드는 홈 화면 관례 — 길게 눌러 진입, 카드 모서리 − 배지로 삭제(확인 알림), 캡슐이 Settings + 좌우 이동 버튼으로, 타일은 Done으로.
+- **New card / Card settings 시트**: Cancel · 제목 · Add 바, 실시간 카드 미리보기, 색상 스와치, 세그먼트(연습 소스·기간·순서), 스테퍼(개수), 폴더·노트는 체크 목록. 칩 더미와 숫자 입력칸을 대체.
+- **My Sentences**: 큰 제목 + 검색, 문장/뜻 두 줄 행(연결 노트 표시), 밀어서 삭제, 빈 상태, 추가·수정은 시트.
+- **연습 화면**: 진행 막대 + "1 of 5", 큰 카드, 버튼은 같은 폭 한 쌍, 완료·빈 상태.
+- **Phrase details**: Linked Studio notes를 카드 안 체크 목록으로 연결(이전엔 화면에 붙어 있지 않았음).
+- 모델: `Routine.tone?` + `toneOf()` (`src/lib/review-routines.ts`) — 예전에 저장된 카드는 그대로 열린다.
+
+**진단하고 고친 것.** 편집 모드에서 카드 위 가로 스와이프가 전부 "순서 바꾸기"로 잡혀 덱이 스크롤되지 않았고, 화면 밖의 Done에 닿을 수 없었다. → 길게 눌러 들어 올린 뒤에만 드래그(280ms), 빠른 스와이프는 스크롤. 시뮬레이터에서 좌·우 이동과 스크롤 확인.
+
+**원칙.** 값이 몇 개뿐이면 칩 더미가 아니라 세그먼트·스테퍼·체크 목록이다 — 컨트롤의 종류가 "고를 수 있는 것"을 말해 준다. 실패는 알림이 아니라 그 자리에(재시도와 함께).
+
+**검증.** `tsc --noEmit` 통과, eslint 오류 0(경고 3 = 기존 effect 패턴), `test:mvp` 119/119. 시뮬레이터: 카드 추가(Midnight) → 덱 반영 → 편집 모드 → 이동 → 삭제, 시트 두 종, 연습 화면(Phrases), My Sentences 빈 상태·로드 실패 상태. **미확인**: 마이그레이션 037이 DB에 없어(`Could not find the table 'public.personal_sentences'`) 문장 저장·목록·밀어서 삭제·My Sentences 연습·노트 연결 저장은 실데이터로 보지 못함. Studio 카드의 셀프톡 복귀, 다크 모드, 실기기도 미확인.
+
+**스킬.** stageshow(목업, `docs/design/routines-redesign/REHEARSAL.md`) → RN 이식, iOS 시뮬레이터 검증.
+
+## 2026-11-13 — 홈 덱의 편집 컨트롤·끝 타일을 리퀴드 글래스로
+
+**만든 것.** `src/screens/routines.tsx`에 `Glass`(expo-glass-effect `GlassView`, iOS 26 미만은 blur material 폴백)를 두고, 회색 반투명이던 세 곳을 바꿨다: 카드의 ‹ › 이동 버튼(글래스 원), Settings 캡슐(틴트 글래스 — Midnight는 흰색, Paper는 액센트), 덱 끝 타일(`New card`/`Edit`/`Done` 글래스 패널). 타일의 + 원은 글래스 위에서 흰색이 묻혀 `accS` 틴트로.
+
+**진단하고 고친 것.** 글래스가 드리우는 그림자가 가로 ScrollView 경계에서 네모나게 잘렸다 → 덱 ScrollView를 `overflow: "visible"`로. 비활성 화살표는 바깥 opacity 대신 글리프만 흐리게(글래스는 부모 opacity로 흐려지지 않는다). 저장해 둔 목업 소스(`docs/design/*/index.tsx`)가 앱 `tsc`에 걸려 `.tsx.txt`로 바꿈.
+
+**검증.** `tsc --noEmit` 통과, eslint 오류 0(경고 3 기존), `test:mvp` 119/119. 시뮬레이터(iOS 26.5): 라이트·다크, Midnight·Paper 카드, 글래스 버튼 탭(이동·Settings·Edit·Done) 동작. **미확인**: iOS 26 미만 폴백, 투명도 줄이기 설정, 실기기.

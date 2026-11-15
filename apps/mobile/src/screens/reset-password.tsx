@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   container: { flex: 1, justifyContent: "center", paddingHorizontal: 24, gap: 40 },
   header: { gap: 8 },
-  title: { fontSize: TypeScale.largeTitle, fontFamily: SERIF },
+  title: { fontSize: TypeScale.largeTitle, fontFamily: SERIF, fontWeight: "700" },
   subtitle: { fontSize: TypeScale.callout, lineHeight: 22 },
   form: { gap: 12 },
   input: {

@@ -2,7 +2,7 @@
 //
 // The single source of truth for every rendered token is
 // `design/mobile-tokens.ts` (iOS palette at runtime, brand navy accent
-// — #162555 light / #6E8DD5 dark — Newsreader serif). This file only assembles
+// — #162555 light / #6E8DD5 dark — native system typography). This file only assembles
 // the Theme object and exposes the context; it defines no token values itself.
 //
 // iOS motif: capsule controls · concentric container radius · single brand

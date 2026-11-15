@@ -12,33 +12,29 @@
 //   • The mobile app renders the iOS SYSTEM palette by default (light
 //     #F2F2F7 / dark #000 base) with the BRAND navy ramp (#0D1A3B dark →
 //     #162555 main → #344E91 light — one OKLCH hue family, 265–267) and the
-//     Newsreader serif. It keeps its own numeric geometry (26pt card radius,
+//     platform system typography. It keeps its own numeric geometry (26pt card radius,
 //     13pt gaps) that intentionally differs from the web scale.
 //   • `PALETTES.warm` below is the legacy Cobalt Editorial port kept only for
 //     parity/reference with tokens.json. It is NOT used by the runtime app.
 //   • Do NOT copy web values here and do not copy mobile values into tokens.json.
 
-import type { ViewStyle } from "react-native";
+import { Platform, type TextStyle, type ViewStyle } from "react-native";
 
 // ── Fonts ─────────────────────────────────────────────────────────────────
-/** Brand serif (Figma, 2026-09-18) — replaced Newsreader app-wide. */
-export const SERIF = "InstrumentSerif";
-/** Default UI face; applied to every Text/TextInput by design/text.tsx. */
-export const FONT_UI = "Pretendard";
-/** Figma faces for the MVP screens (Phrases, Studio): Pretendard for UI,
- *  Instrument Serif for display lines. Set the family, never fontWeight —
- *  a weight on a static face makes iOS fall back to the system font. */
+/** Native system family, including the platform's fallback for Korean and CJK. */
+export const FONT_UI = Platform.select({ ios: "System", android: "sans-serif", default: "system-ui" });
+/** Legacy display-family export; all display copy now uses the same system face. */
+export const SERIF = FONT_UI;
+/** Font weight is independent of family so native UI, display copy and numbers
+ *  share one face without losing their hierarchy. Spread these into text styles. */
 export const FONT = {
-  regular: "Pretendard",
-  medium: "Pretendard-Medium",
-  semibold: "Pretendard-SemiBold",
-  bold: "Pretendard-Bold",
-  display: "InstrumentSerif",
-  /** Numbers set as display (stats, big counts). Instrument Serif draws "1"
-   *  exactly like "l", so figures use the iOS system serif (New York), whose
-   *  1 has a flag and a foot. */
-  figure: "ui-serif",
-} as const;
+  regular: { fontFamily: FONT_UI, fontWeight: "400" },
+  medium: { fontFamily: FONT_UI, fontWeight: "500" },
+  semibold: { fontFamily: FONT_UI, fontWeight: "600" },
+  bold: { fontFamily: FONT_UI, fontWeight: "700" },
+  display: { fontFamily: FONT_UI, fontWeight: "400" },
+  figure: { fontFamily: FONT_UI, fontWeight: "400" },
+} as const satisfies Record<string, TextStyle>;
 
 // ── oklch → sRGB ───────────────────────────────────────────────────────────
 // Standard OKLab → linear sRGB → gamma. Deterministic (no Date/Math.random).
@@ -111,8 +107,8 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       soft: "rgba(118,118,128,0.12)",
       sep: "#C6C6C8",
       ink: "#111114",
-      ink2: "rgba(60,60,67,0.6)",
-      ink3: "rgba(60,60,67,0.3)",
+      ink2: "#51515B",
+      ink3: "#686872",
       acc: "#162555",
       accD: "#344E91",
       accS: "rgba(22,37,85,0.11)",
@@ -132,8 +128,8 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       soft: "rgba(118,118,128,0.24)",
       sep: "rgba(84,84,88,0.6)",
       ink: "#ffffff",
-      ink2: "rgba(235,235,245,0.6)",
-      ink3: "rgba(235,235,245,0.3)",
+      ink2: "#C4C4CE",
+      ink3: "#A3A3AD",
       acc: "#6E8DD5",
       accD: "#8FACEF",
       accS: "rgba(110,141,213,0.28)",
@@ -247,13 +243,13 @@ export const TypeScale = {
 } as const;
 
 // ── Runtime geometry (what the current app renders) ──────────────────────
-export const MOBILE_R = 26; // card radius (concentric container radius)
+export const MOBILE_R = Motif.radius.cardLg; // card radius (concentric container radius)
 export const MOBILE_RING: Record<"light" | "dark", string> = {
   light: "#ECECEC",
   dark: "rgba(255,255,255,0.07)",
 };
-export const MOBILE_PADC: Record<Density, number> = { regular: 19, compact: 14 };
-export const MOBILE_GAP: Record<Density, number> = { regular: 13, compact: 9 };
+export const MOBILE_PADC: Record<Density, number> = { regular: 20, compact: 16 };
+export const MOBILE_GAP: Record<Density, number> = { regular: 16, compact: 12 };
 
 export function mobileRing(dark: boolean): string {
   return MOBILE_RING[dark ? "dark" : "light"];
@@ -268,10 +264,10 @@ export function mobileSpacing(density: Density): { padc: number; gap: number } {
 function shadowCard(dark: boolean): ViewStyle {
   return {
     shadowColor: "#000",
-    shadowOpacity: dark ? 0.3 : 0.09,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    shadowOpacity: dark ? 0.24 : 0.055,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   };
 }
 

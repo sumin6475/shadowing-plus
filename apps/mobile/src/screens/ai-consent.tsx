@@ -69,8 +69,7 @@ function ConsentBody({ onDecide }: { onDecide: (allowed: boolean) => Promise<voi
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }}>Send what you choose to OpenAI</Text>
               <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 4 }}>
-                When you ask Myne to fill in a phrase, read text from a photo or play an AI voice, only that text or photo
-                is sent. OpenAI doesn’t train on it by default.{" "}
+                When you request AI help, selected text, photos, or a saved speaking transcript and your speaking focus are sent to OpenAI. OpenAI doesn’t train on it by default.{" "}
                 <Text
                   accessibilityRole="link"
                   onPress={() => void openLegalUrl(PRIVACY_POLICY_URL)}

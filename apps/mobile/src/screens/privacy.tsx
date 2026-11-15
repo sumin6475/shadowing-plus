@@ -114,7 +114,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
           icon="sparkle"
           title="AI features"
           lines={[
-            "Only with your permission, the text or photo you choose is sent to OpenAI to fill in a phrase’s meaning and usage, read text from a photo, index your phrases (embeddings), or generate an AI voice.",
+            "Only with your permission, the text or photo you choose is sent to OpenAI to fill in a phrase’s meaning and usage, read text from a photo, index your phrases (embeddings), generate an AI voice, or analyze a saved speaking transcript using your speaking focus and English level.",
             "Speaking recordings are not sent. OpenAI processes the selected content under its API data policy and does not use API data to train models by default.",
             "You can turn this processing off below at any time. AI features stay off until you allow it again.",
           ]}

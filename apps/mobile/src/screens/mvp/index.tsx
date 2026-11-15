@@ -1,3 +1,7 @@
+import { RoutineDeck, PhraseNoteLinks } from "../routines";
+import Reanimated, { FadeIn, ReduceMotion } from "react-native-reanimated";
+import { SessionResultPager } from '@/components/session-result-pager';
+import { AdvancedFeedbackReport } from '@/components/advanced-feedback-report';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   useCallback,
@@ -16,6 +20,7 @@ import {
   Keyboard,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,7 +30,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import { SymbolView } from "expo-symbols";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path, Rect } from "react-native-svg";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 import {
   Button,
   Host,
@@ -37,10 +42,11 @@ import {
 import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
 import { AskSheet } from "@/components/ask-sheet";
+import { NoteToolsSheet, type NoteTool } from "@/components/note-tools-sheet";
 import { askDefaultMode } from "@/lib/ask-pref";
-import { addConfirmedFact, applyNoteVersion, createNoteFolder, deleteNoteFolder, loadNoteFacts, loadNoteFolders, loadNotePracticeHistory, loadNoteVersions, moveNoteToFolder } from "@/lib/note-growth";
+import { addConfirmedFact, applyNoteVersion, createNoteFolder, deleteNoteFolder, loadNoteFacts, loadNoteFolders, moveNoteToFolder } from "@/lib/note-growth";
 import type { AskMode } from "@/lib/ask-model";
-import { FONT, Motif } from "@/design/mobile-tokens";
+import { FONT, FONT_UI, Motif } from "@/design/mobile-tokens";
 import { phrasesPerDay } from "@/lib/daily-phrases";
 import {
   Avatar,
@@ -56,7 +62,7 @@ import {
 import { useTheme } from "@/design/theme";
 import { EmptyState } from "@/design/empty-state";
 import { usePhraseSpeech } from "@/hooks/use-phrase-speech";
-import { deletePhrase } from "@/lib/phrases";
+import { deletePhrase, loadEditablePhrase } from "@/lib/phrases";
 import {
   addSentence,
   completedSteps,
@@ -70,7 +76,6 @@ import {
   durationLabel,
   isBlankNote,
   loadMirrorSessions,
-  notePreview,
   loadNote,
   loadNotes,
   loadPhraseBank,
@@ -90,7 +95,7 @@ import {
 } from "@/lib/mvp";
 import { useAuth } from "@/lib/auth";
 import type { Nav } from "../nav";
-import { NoteOutline, type NoteOutlineHandle } from "../note-outline";
+import { NoteOutline, type NoteOutlineHandle, type NotePointContext, type PointAction } from "../note-outline";
 import { SessionStatsCard, TranscriptCard } from "../session-stats";
 
 const message = (e: unknown) =>
@@ -100,9 +105,10 @@ function Label({ children }: { children: ReactNode }) {
   return (
     <Text
       style={{
-        fontSize: 11,
-        fontWeight: "700",
-        letterSpacing: 1.1,
+        fontSize: 13,
+        lineHeight: 18,
+        fontWeight: "600",
+        letterSpacing: 0.2,
         color: t.colors.ink3,
       }}
     >
@@ -113,7 +119,7 @@ function Label({ children }: { children: ReactNode }) {
 function Copy({ children }: { children: ReactNode }) {
   const t = useTheme();
   return (
-    <Text style={{ fontSize: 14, lineHeight: 21, color: t.colors.ink2 }}>
+    <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>
       {children}
     </Text>
   );
@@ -194,7 +200,7 @@ function Header({
     >
       <Text
         accessibilityRole="header"
-        style={{ flex: 1, fontFamily: FONT.bold, fontSize: 32, color: t.colors.ink }}
+        style={{ flex: 1, ...FONT.bold, fontSize: 34, lineHeight: 41, letterSpacing: -0.7, color: t.colors.ink }}
       >
         {title}
       </Text>
@@ -203,8 +209,8 @@ function Header({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 20,
-          height: 48,
+          gap: 12,
+          minHeight: 44,
           paddingHorizontal: 12,
           borderRadius: 100,
           backgroundColor: t.colors.card,
@@ -358,12 +364,12 @@ function FilterSummary({ text, clear }: { text: string; clear: () => void }) {
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
       <Text
         numberOfLines={1}
-        style={{ flex: 1, fontFamily: FONT.medium, fontSize: 14, color: t.colors.ink2 }}
+        style={{ flex: 1, ...FONT.medium, fontSize: 14, color: t.colors.ink2 }}
       >
         {text}
       </Text>
       <Pressable accessibilityRole="button" hitSlop={10} onPress={clear}>
-        <Text style={{ fontFamily: FONT.semibold, fontSize: 14, color: t.colors.acc }}>
+        <Text style={{ ...FONT.semibold, fontSize: 14, color: t.colors.acc }}>
           Clear
         </Text>
       </Pressable>
@@ -404,28 +410,29 @@ const loadHome = async () => {
   return { phrases, notes };
 };
 /** One period's rows, as one rounded card (Figma). */
-export function SectionCard({ label, children }: { label: string; children: ReactNode }) {
+export function SectionCard({ label, children, rows = false }: { label: string; children: ReactNode; rows?: boolean }) {
   const t = useTheme();
   return (
     <View style={{ gap: 8 }}>
       <Text
         accessibilityRole="header"
         style={{
-          fontFamily: FONT.bold,
-          fontSize: 14,
-          color: t.colors.ink,
-          paddingHorizontal: 2,
+          ...FONT.semibold,
+          fontSize: 15,
+          lineHeight: 20,
+          color: t.colors.ink2,
+          paddingHorizontal: 0,
           paddingTop: 12,
         }}
       >
-        {label.toUpperCase()}
+        {label}
       </Text>
       <View
         style={{
           backgroundColor: t.colors.card,
-          borderRadius: 24,
-          paddingHorizontal: 20,
-          paddingVertical: 12,
+          borderRadius: t.r,
+          paddingHorizontal: 16,
+          paddingVertical: rows ? 0 : 12,
         }}
       >
         {children}
@@ -433,15 +440,17 @@ export function SectionCard({ label, children }: { label: string; children: Reac
     </View>
   );
 }
-/** A row inside a SectionCard: 16pt padding, hairline between rows. */
-export function Row({ last, children }: { last: boolean; children: ReactNode }) {
+/** List rows reserve the same one/two-line space, including at larger text sizes. */
+export function Row({ last, children, lines }: { last: boolean; children: ReactNode; lines?: 1 | 2 }) {
   const t = useTheme();
+  const { fontScale } = useWindowDimensions();
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 16,
+        minHeight: lines ? Math.max(lines === 2 ? 72 : 64, 22 * fontScale * lines + 25) : undefined,
+        paddingVertical: lines ? 8 : 14,
         borderBottomWidth: last ? 0 : 1,
         // Figma's divider is a whisper (#EAEAEA at 50%); the theme's sep reads
         // as a rule. Dark mode keeps sep so it stays visible.
@@ -566,25 +575,20 @@ export function PhraseBank({ nav }: { nav: Nav }) {
           }}
         />
       ) : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ marginHorizontal: -18 }}
-        contentContainerStyle={{ gap: 16, paddingHorizontal: 18, paddingVertical: 4 }}
-      >
+      <RoutineDeck nav={nav} studio={
         <LinearGradient
           colors={["#010101", "#2E395A", "#E1DFDC"]}
           locations={[0, 0.5, 1]}
           style={HERO_CARD}
         >
           <View style={{ gap: 4 }}>
-            <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: "#FFFFFF" }}>
+            <Text style={{ ...FONT.medium, fontSize: 12, color: "#FFFFFF" }}>
               Start the day with practice.
             </Text>
             <Text
               numberOfLines={3}
               style={{
-                fontFamily: FONT.display,
+                ...FONT.display,
                 fontSize: 24,
                 lineHeight: 28,
                 color: "#FFFFFF",
@@ -613,13 +617,14 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               alignItems: "center",
             }}
           >
-            <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: "#0A0A0A" }}>
+            <Text style={{ ...FONT.bold, fontSize: 16, color: "#0A0A0A" }}>
               Speaking
             </Text>
           </Pressable>
         </LinearGradient>
+      } phrases={
         <View style={[HERO_CARD, { backgroundColor: t.colors.card }]}>
-          <Text style={{ fontFamily: FONT.medium, fontSize: 12, color: t.colors.ink }}>
+          <Text style={{ ...FONT.medium, fontSize: 12, color: t.colors.ink }}>
             Today’s phrases for you.
           </Text>
           <Text
@@ -627,7 +632,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               state.data ? `${done} of ${picks.length} practiced today` : "Loading"
             }
             style={{
-              fontFamily: FONT.bold,
+              ...FONT.bold,
               fontSize: 28,
               color: t.colors.ink,
               textAlign: "center",
@@ -647,7 +652,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
               alignItems: "center",
             }}
           >
-            <Text style={{ fontFamily: FONT.bold, fontSize: 16, color: t.colors.onAcc }}>
+            <Text style={{ ...FONT.bold, fontSize: 16, color: t.colors.onAcc }}>
               {!picks.length
                 ? "ADD A PHRASE"
                 : done === picks.length
@@ -658,7 +663,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
             </Text>
           </Pressable>
         </View>
-      </ScrollView>
+      } />
       {filtering ? (
         <FilterSummary
           text={`${filtered.length} ${filter === "All" ? "" : `${filter} `}phrase${filtered.length === 1 ? "" : "s"}${query.trim() ? ` matching “${query.trim()}”` : ""}`}
@@ -686,11 +691,11 @@ export function PhraseBank({ nav }: { nav: Nav }) {
         )
       ) : null}
       {[...groups].map(([label, items]) => (
-        <SectionCard key={label} label={label}>
+        <SectionCard key={label} label={label} rows>
           {items.map((p, i) => {
             const playing = voice.speakingId === p.id;
             return (
-              <Row key={p.id} last={i === items.length - 1}>
+              <Row key={p.id} last={i === items.length - 1} lines={2}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${playing ? "Stop" : "Play"} ${p.text}`}
@@ -715,7 +720,7 @@ export function PhraseBank({ nav }: { nav: Nav }) {
                     flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
-                    marginLeft: 6,
+                    marginLeft: 12,
                     gap: 12,
                   }}
                 >
@@ -723,8 +728,9 @@ export function PhraseBank({ nav }: { nav: Nav }) {
                     numberOfLines={2}
                     style={{
                       flex: 1,
-                      fontFamily: FONT.semibold,
+                      ...FONT.semibold,
                       fontSize: 16,
+                      lineHeight: 22,
                       color: t.colors.ink,
                     }}
                   >
@@ -741,101 +747,6 @@ export function PhraseBank({ nav }: { nav: Nav }) {
   );
 }
 
-/** The play control: one accent circle that never moves or resizes — only the
- *  glyph inside it changes (play → spinner while the voice loads → pause).
- *  56pt, comfortably over the 44pt minimum target. Pressed feedback is a dim,
- *  not a scale, so the circle stays put. */
-const PLAY_SIZE = 56;
-function PlayCircle({
-  state,
-  onPress,
-  label,
-}: {
-  state: "idle" | "loading" | "playing";
-  onPress: () => void;
-  label: string;
-}) {
-  const t = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={state === "loading" ? "Loading voice" : label}
-      accessibilityState={{ busy: state === "loading" }}
-      onPress={state === "loading" ? undefined : onPress}
-      style={({ pressed }) => ({
-        width: PLAY_SIZE,
-        height: PLAY_SIZE,
-        borderRadius: PLAY_SIZE / 2,
-        backgroundColor: t.colors.acc,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: pressed ? 0.85 : 1,
-      })}
-    >
-      {state === "loading" ? (
-        <ActivityIndicator color={t.colors.onAcc} />
-      ) : (
-        <SymbolView
-          name={state === "playing" ? "pause.fill" : "play.fill"}
-          size={22}
-          tintColor={t.colors.onAcc}
-          // The play triangle's visual centre sits left of its box.
-          style={state === "playing" ? undefined : { marginLeft: 3 }}
-        />
-      )}
-    </Pressable>
-  );
-}
-/** Marks a step done. Same proportions as the Add-a-phrase kind chips
- *  (medium height, capsule, 15pt semibold); white until pressed, then the
- *  play circle's accent with a check. */
-function ClearChip({
-  done,
-  disabled,
-  attention,
-  onPress,
-}: {
-  done: boolean;
-  disabled?: boolean;
-  attention?: boolean;
-  onPress: () => void;
-}) {
-  const t = useTheme();
-  const fg = done ? t.colors.onAcc : t.colors.ink2;
-  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={done ? "Cleared. Tap to undo" : "Mark this step clear"}
-      accessibilityState={{ selected: done, disabled: Boolean(disabled) }}
-      disabled={disabled}
-      hitSlop={4}
-      onPress={() => {
-        void Haptics.selectionAsync();
-        onPress();
-      }}
-      style={({ pressed }) => [
-        {
-          height: Motif.buttonHeight.medium,
-          borderRadius: Motif.radius.pill,
-          paddingHorizontal: 15,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          backgroundColor: done ? t.colors.acc : t.colors.card,
-          borderWidth: done ? 0 : attention ? 2 : StyleSheet.hairlineWidth,
-          borderColor: attention && !done ? feedbackRed : t.ring,
-          opacity: pressed ? 0.8 : 1,
-        },
-        done ? null : t.shadowCard,
-        attention && !done ? { shadowColor: feedbackRed, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } } : null,
-      ]}
-    >
-      <Text style={{ fontSize: 15, fontWeight: "600", color: fg }}>Clear</Text>
-      {done ? <Icon name="check" s={14} w={2.4} c={fg} /> : null}
-    </Pressable>
-  );
-}
 /** A detail screen's "…" — a native iOS menu, drawn in the same round card
  *  button as the back arrow opposite it. Children are the menu's buttons. */
 function MoreMenu({ children }: { children: ReactNode }) {
@@ -851,8 +762,6 @@ function MoreMenu({ children }: { children: ReactNode }) {
           backgroundColor: t.colors.card,
           alignItems: "center",
           justifyContent: "center",
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: t.ring,
         },
         t.shadowCard,
       ]}
@@ -882,11 +791,59 @@ function PhraseMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
     </MoreMenu>
   );
 }
-/** A player-style toggle beside the play circle: no words, each tap moves to
- *  the next state, and a non-default state is drawn in the accent — the way
- *  Music and Podcasts mark shuffle, repeat and speed. 64pt wide on both sides
- *  so the play circle stays centred whatever the glyph's width. */
-function TransportToggle({
+/** The phrase page's primary action, set in the hero as Music and Podcasts set
+ *  Play under a title: one accent capsule that says what a tap will do. Only
+ *  the glyph and word inside change (play → spinner while the voice loads →
+ *  stop); the capsule never moves or resizes. Pressed feedback is a dim. */
+function ListenCapsule({
+  state,
+  onPress,
+}: {
+  state: "idle" | "loading" | "playing";
+  onPress: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        state === "loading" ? "Loading voice" : state === "playing" ? "Stop" : "Play pronunciation"
+      }
+      accessibilityState={{ busy: state === "loading" }}
+      onPress={state === "loading" ? undefined : onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        height: Motif.buttonHeight.large,
+        borderRadius: Motif.radius.pill,
+        backgroundColor: t.colors.acc,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      <View style={{ width: 20, height: 20, alignItems: "center", justifyContent: "center" }}>
+        {state === "loading" ? (
+          <ActivityIndicator size="small" color={t.colors.onAcc} />
+        ) : (
+          <SymbolView
+            name={state === "playing" ? "stop.fill" : "play.fill"}
+            size={15}
+            tintColor={t.colors.onAcc}
+          />
+        )}
+      </View>
+      <Text style={{ ...FONT.semibold, fontSize: 17, color: t.colors.onAcc }}>
+        {state === "playing" ? "Stop" : "Listen"}
+      </Text>
+    </Pressable>
+  );
+}
+/** A setting beside Listen (speed, repeat): a capsule that shows its value.
+ *  At its default it is a raised card; set to anything else it takes the
+ *  accent tint, the way iOS marks a control that is switched on. */
+function ListenSetting({
   label,
   value,
   active,
@@ -899,109 +856,141 @@ function TransportToggle({
   onPress: () => void;
   children: ReactNode;
 }) {
+  const t = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityValue={{ text: value }}
       accessibilityState={{ selected: active }}
-      hitSlop={6}
       onPress={() => {
         void Haptics.selectionAsync();
         onPress();
       }}
-      style={({ pressed }) => ({
-        width: 64,
-        height: 44,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: pressed ? 0.45 : 1,
-      })}
+      style={({ pressed }) => [
+        {
+          width: 60,
+          height: Motif.buttonHeight.large,
+          borderRadius: Motif.radius.pill,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 3,
+          backgroundColor: active ? t.colors.accS : t.colors.card,
+          borderWidth: active ? 0 : StyleSheet.hairlineWidth,
+          borderColor: t.ring,
+          opacity: pressed ? 0.7 : 1,
+        },
+        active ? null : t.shadowCard,
+      ]}
     >
       {children}
     </Pressable>
   );
 }
-/** Reminders' row circle: 22pt, 1.5pt hairline stroke; filled with a check
- *  once the sentence is saved. */
-const ROW_RADIO = 22;
-function RowRadio({ done }: { done: boolean }) {
+/** A step's Reminders circle: tap to mark the step clear, tap again to undo.
+ *  Drawn at 24pt, touched at 44pt. Empty it is a hairline ring; clear it fills
+ *  with the accent and a check. `attention` rings it in the feedback red when
+ *  the learner reaches for the mirror before every step is clear. */
+const STEP_CHECK = 24;
+function StepCheck({
+  done,
+  label,
+  disabled,
+  attention,
+  onPress,
+}: {
+  done: boolean;
+  label: string;
+  disabled?: boolean;
+  attention?: boolean;
+  onPress: () => void;
+}) {
   const t = useTheme();
+  const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   return (
-    <View
-      style={{
-        width: ROW_RADIO,
-        height: ROW_RADIO,
-        borderRadius: ROW_RADIO / 2,
-        borderWidth: done ? 0 : 1.5,
-        borderColor: t.colors.ink3,
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityLabel={label}
+      accessibilityHint={done ? "Clear. Double-tap to undo" : "Marks this step clear"}
+      accessibilityState={{ checked: done, disabled: Boolean(disabled) }}
+      disabled={disabled}
+      hitSlop={10}
+      onPress={() => {
+        void Haptics.selectionAsync();
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        width: STEP_CHECK,
+        height: STEP_CHECK,
+        borderRadius: STEP_CHECK / 2,
+        borderWidth: done ? 0 : attention ? 2 : 1.5,
+        borderColor: attention && !done ? feedbackRed : t.dark ? t.colors.ink3 : "#C7C7CC",
         backgroundColor: done ? t.colors.acc : "transparent",
         alignItems: "center",
         justifyContent: "center",
-      }}
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
-      {done ? <Icon name="check" s={13} w={2.4} c={t.colors.onAcc} /> : null}
-    </View>
+      {done ? <Icon name="check" s={14} w={2.6} c={t.colors.onAcc} /> : null}
+    </Pressable>
   );
 }
-/** One Reminders-style row: radio, 17pt text, hairline inset to the text. */
-function ReminderRow({
-  done,
-  last,
-  children,
-}: {
-  done: boolean;
-  last: boolean;
-  children: ReactNode;
-}) {
+/** Steps cleared, said once beside the Practice title: a track and one
+ *  round-capped arc. */
+function ProgressRing({ value }: { value: number }) {
   const t = useTheme();
+  const r = 7.5;
+  const length = 2 * Math.PI * r;
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-      <View style={{ paddingTop: 12 }}>
-        <RowRadio done={done} />
-      </View>
-      <View
-        style={{
-          flex: 1,
-          minHeight: 44,
-          justifyContent: "center",
-          paddingVertical: 10,
-          borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
-          borderBottomColor: t.colors.sep,
-        }}
-      >
-        {children}
-      </View>
-    </View>
+    <Svg width={18} height={18} viewBox="0 0 18 18" style={{ transform: [{ rotate: "-90deg" }] }}>
+      <Circle cx={9} cy={9} r={r} stroke={t.colors.sep} strokeWidth={2.2} fill="none" />
+      {value > 0 ? (
+        <Circle
+          cx={9}
+          cy={9}
+          r={r}
+          stroke={t.colors.acc}
+          strokeWidth={2.2}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${length * Math.min(value, 1)} ${length}`}
+        />
+      ) : null}
+    </Svg>
   );
 }
-/** Helper line under a step's controls — one level below body copy. */
-function Hint({ children }: { children: ReactNode }) {
-  const t = useTheme();
-  return (
-    <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>
-      {children}
-    </Text>
-  );
-}
+const STEP_TITLES = [
+  "Say it until it feels natural",
+  "Hear it in real sentences",
+  "Make your own sentence",
+] as const;
+const STEP_HINTS = [
+  "Listen, repeat, then check",
+  "Find a voice and a context",
+  "At least one saved sentence",
+] as const;
 export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
   const [rate, setRate] = useState(1),
     [repeat, setRepeat] = useState(1);
   const t = useTheme(),
     voice = usePhraseSpeech({ rate, repeat });
   const fetcher = useCallback(async () => {
-    const [all, sentences] = await Promise.all([
+    const [all, sentences, details] = await Promise.all([
       loadPhraseBank(),
       loadSentences(id),
+      loadEditablePhrase(id),
     ]);
     const phrase = all.find((p) => p.id === id);
     if (!phrase) throw new Error("This phrase is no longer available.");
-    return { phrase, sentences };
+    return { phrase, sentences, details };
   }, [id]);
   const state = useRefresh(fetcher, nav.speakingDataRevision),
     [draft, setDraft] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const details = state.data?.details;
   const p = state.data?.phrase;
   const feedbackRed = t.dark ? "#D79797" : "#A75C64";
   const insets = useSafeAreaInsets();
@@ -1084,7 +1073,6 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
     <View style={{ flex: 1 }}>
     <Screen scrollRef={scrollRef}>
       <BackBar
-        title="Phrases"
         onBack={nav.pop}
         right={
           p ? (
@@ -1102,299 +1090,375 @@ export function PhraseChecklist({ nav, id }: { nav: Nav; id: string }) {
         ) : null
       ) : (
         <>
-          <View style={{ alignItems: "center", gap: 10, paddingTop: 6 }}>
-            <Label>
-              {phraseStage(p).toUpperCase()} · {completedSteps(p)} OF 3
-            </Label>
-            <Serif style={{ fontSize: 43, lineHeight: 50, textAlign: "center" }}>
-              {p.text}
-            </Serif>
-            <Text
+          {/* The hero, left-aligned as an iOS detail page: the stage, the
+              phrase, what it means. */}
+          <View style={{ gap: 8, paddingHorizontal: 2 }}>
+            <View
               style={{
-                fontSize: 17,
-                lineHeight: 24,
-                color: t.colors.ink2,
-                textAlign: "center",
+                alignSelf: "flex-start",
+                height: 26,
+                paddingHorizontal: 11,
+                borderRadius: 13,
+                justifyContent: "center",
+                backgroundColor: t.colors.accS,
+                marginBottom: 4,
               }}
             >
-              {p.translation || "An expression to make your own."}
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 5, marginVertical: 8 }}>
-            {STEPS.map((step) => (
-              <View
-                key={step}
+              <Text
                 style={{
-                  flex: 1,
-                  height: 5,
-                  borderRadius: 3,
-                  backgroundColor: p[step] ? t.colors.acc : t.colors.sep,
-                }}
-              />
-            ))}
-          </View>
-          {STEPS.map((step, index) => (
-            <Card key={step} style={{ gap: 14 }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  minHeight: 44,
+                  ...FONT.semibold,
+                  fontSize: 13,
+                  color: t.dark ? t.colors.accD : t.colors.acc,
                 }}
               >
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: t.colors.ink,
-                    }}
-                  >
-                    {index + 1} ·{" "}
-                    {
-                      [
-                        "Say it until it feels natural",
-                        "Hear it in real sentences",
-                        "Make your own sentence",
-                      ][index]
-                    }
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 13.5,
-                      color: p[step] ? t.colors.acc : t.colors.ink3,
-                      fontWeight: p[step] ? "600" : "400",
-                    }}
-                  >
-                    {p[step]
-                      ? `Done · ${dateLabel(p[step]!)}`
-                      : [
-                          "Listen, repeat, then check",
-                          "Find a voice and a context",
-                          "At least one saved sentence",
-                        ][index]}
-                  </Text>
-                </View>
-                <ClearChip
-                  done={!!p[step]}
-                  disabled={busy}
-                  attention={gateAttention && !p[step]}
-                  onPress={() => {
-                    if (
-                      index === 2 &&
-                      !p[step] &&
-                      !state.data?.sentences.length
-                    ) {
-                      explainMissing("Save at least one sentence before clearing this step.");
-                      return;
-                    }
-                    void mutate(() => setStep(id, step, !p[step]));
+                {phraseStage(p)}
+              </Text>
+            </View>
+            <Serif
+              style={{
+                fontSize: 40,
+                lineHeight: 46,
+                fontWeight: "700",
+                letterSpacing: -0.6,
+                color: t.colors.ink,
+              }}
+            >
+              {p.text}
+            </Serif>
+            <Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.ink2 }}>
+              {details?.meaning || p.translation || "An expression to make your own."}
+            </Text>
+          </View>
+          {/* Listening is the page's first move, so it leads the page: the
+              voice, then its two settings beside it. */}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
+            <ListenCapsule
+              state={
+                voice.loadingId === id
+                  ? "loading"
+                  : voice.speakingId === id
+                    ? "playing"
+                    : "idle"
+              }
+              onPress={() => void voice.toggle(id, p.text)}
+            />
+            <ListenSetting
+              label="Playback speed"
+              value={`${rate}×`}
+              active={rate !== 1}
+              onPress={() => {
+                void voice.stop();
+                setRate(rate === 1 ? 0.75 : 1);
+              }}
+            >
+              <Text
+                style={{
+                  ...FONT.semibold,
+                  fontSize: 16,
+                  color: rate !== 1 ? t.colors.acc : t.colors.ink,
+                }}
+              >
+                {`${rate}×`}
+              </Text>
+            </ListenSetting>
+            <ListenSetting
+              label="Repeat"
+              value={repeat === 1 ? "Off" : "5 times"}
+              active={repeat !== 1}
+              onPress={() => {
+                void voice.stop();
+                setRepeat(repeat === 1 ? 5 : 1);
+              }}
+            >
+              <SymbolView
+                name="repeat"
+                size={19}
+                weight="semibold"
+                tintColor={repeat !== 1 ? t.colors.acc : t.colors.ink}
+              />
+              {repeat !== 1 ? (
+                <Text style={{ ...FONT.bold, fontSize: 14, color: t.colors.acc }}>5</Text>
+              ) : null}
+            </ListenSetting>
+          </View>
+          {/* The three steps as one grouped list. Progress is said once, in
+              the header; each step is cleared from its own circle. */}
+          <View style={{ gap: 10, marginTop: 12 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: 4,
+              }}
+            >
+              <Text
+                accessibilityRole="header"
+                style={{
+                  ...FONT.bold,
+                  fontSize: 22,
+                  lineHeight: 28,
+                  letterSpacing: -0.4,
+                  color: t.colors.ink,
+                }}
+              >
+                Practice
+              </Text>
+              <View
+                accessible
+                accessibilityLabel={`${completedSteps(p)} of 3 steps clear`}
+                style={{ flexDirection: "row", alignItems: "center", gap: 7 }}
+              >
+                <ProgressRing value={completedSteps(p) / 3} />
+                <Text
+                  style={{
+                    ...FONT.medium,
+                    fontSize: 15,
+                    color: t.colors.ink2,
+                    fontVariant: ["tabular-nums"],
                   }}
-                />
+                >
+                  {completedSteps(p)} of 3
+                </Text>
               </View>
-              <View style={{ gap: 10 }}>
-              {index === 0 ? (
-                <>
-                  {/* A transport row, as in Music: the play circle centred, its
-                      two settings flanking it as bare glyphs that change state
-                      on tap. The line under it says the state in words. */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 18,
-                      paddingVertical: 4,
-                    }}
-                  >
-                    <TransportToggle
-                      label="Playback speed"
-                      value={`${rate}×`}
-                      active={rate !== 1}
-                      onPress={() => {
-                        void voice.stop();
-                        setRate(rate === 1 ? 0.75 : 1);
+            </View>
+            <Card style={{ padding: 0 }}>
+              {STEPS.map((step, index) => (
+                <View
+                  key={step}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: 14,
+                    paddingHorizontal: 16,
+                    paddingTop: 14,
+                    paddingBottom: 15,
+                  }}
+                >
+                  {index > 0 ? (
+                    // Hairline inset to the text column, as iOS lists draw it.
+                    <View
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 16 + STEP_CHECK + 14,
+                        right: 0,
+                        height: StyleSheet.hairlineWidth,
+                        backgroundColor: t.colors.sep,
                       }}
-                    >
-                      <Text
-                        style={{
-                          fontFamily: FONT.semibold,
-                          fontSize: 17,
-                          color: rate !== 1 ? t.colors.acc : t.colors.ink2,
-                        }}
-                      >
-                        {`${rate}×`}
-                      </Text>
-                    </TransportToggle>
-                    <PlayCircle
-                      state={
-                        voice.loadingId === id
-                          ? "loading"
-                          : voice.speakingId === id
-                            ? "playing"
-                            : "idle"
-                      }
-                      label={
-                        voice.speakingId === id ? "Stop" : "Play pronunciation"
-                      }
-                      onPress={() => void voice.toggle(id, p.text)}
                     />
-                    <TransportToggle
-                      label="Repeat"
-                      value={repeat === 1 ? "Off" : "5 times"}
-                      active={repeat !== 1}
-                      onPress={() => {
-                        void voice.stop();
-                        setRepeat(repeat === 1 ? 5 : 1);
+                  ) : null}
+                  <StepCheck
+                    done={!!p[step]}
+                    label={STEP_TITLES[index]}
+                    disabled={busy}
+                    attention={gateAttention && !p[step]}
+                    onPress={() => {
+                      if (
+                        index === 2 &&
+                        !p[step] &&
+                        !state.data?.sentences.length
+                      ) {
+                        explainMissing("Save at least one sentence before clearing this step.");
+                        return;
+                      }
+                      void mutate(() => setStep(id, step, !p[step]));
+                    }}
+                  />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      style={{
+                        ...FONT.semibold,
+                        fontSize: 17,
+                        lineHeight: 22,
+                        color: t.colors.ink,
                       }}
                     >
-                      <View>
-                        <SymbolView
-                          name="repeat"
-                          size={22}
-                          weight="semibold"
-                          tintColor={repeat !== 1 ? t.colors.acc : t.colors.ink2}
-                        />
-                        {repeat !== 1 ? (
-                          <View
-                            style={{
-                              position: "absolute",
-                              top: -7,
-                              right: -10,
-                              minWidth: 15,
-                              height: 15,
-                              paddingHorizontal: 3,
-                              borderRadius: 8,
-                              backgroundColor: t.colors.acc,
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontFamily: FONT.bold,
-                                fontSize: 10,
-                                color: t.colors.onAcc,
-                              }}
-                            >
-                              5
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </TransportToggle>
-                  </View>
-                </>
-              ) : index === 1 ? (
-                <>
-                  {/* A browser sheet inside the app, not a jump to Safari: the
-                      learner comes back with Done, still on this phrase. The
-                      site itself stays outside the app — embedding YouGlish's
-                      widget in a mobile app needs their written permission. */}
-                  <Pill
-                    tone="tint"
-                    icon="link"
-                    style={{ alignSelf: "stretch" }}
-                    onPress={() =>
-                      void WebBrowser.openBrowserAsync(
-                        `https://youglish.com/pronounce/${encodeURIComponent(p.text)}/english`,
-                        { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET },
-                      ).catch((e) => setError(message(e)))
-                    }
-                  >
-                    Open YouGlish
-                  </Pill>
-                  <Hint>
-                    Real videos from youglish.com, opened in a browser inside Myne.
-                  </Hint>
-                </>
-              ) : (
-                <>
-                  {/* Reminders: saved rows with a filled check circle, then an
-                      always-present blank row that is the new-entry field.
-                      Return saves; swipe a row left to delete it. */}
-                  <View>
-                    {(state.data?.sentences ?? []).map((sentence: Sentence) => (
-                      <SwipeRow
-                        key={sentence.id}
-                        flat
-                        onDelete={() =>
-                          confirmDelete({
-                            title: "Delete this sentence?",
-                            message: "Removing the last sentence resets this step.",
-                            onConfirm: () =>
-                              void mutate(() => deleteSentence(sentence.id)),
-                          })
+                      {STEP_TITLES[index]}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 15,
+                        lineHeight: 20,
+                        marginTop: 2,
+                        color: p[step] ? t.colors.acc : t.colors.ink2,
+                      }}
+                    >
+                      {p[step] ? `Done · ${dateLabel(p[step]!)}` : STEP_HINTS[index]}
+                    </Text>
+                    {index === 1 ? (
+                      // A browser sheet inside the app, not a jump to Safari:
+                      // the learner comes back with Done, still on this phrase.
+                      // The site itself stays outside the app — embedding
+                      // YouGlish's widget in a mobile app needs their written
+                      // permission.
+                      <Pill
+                        small
+                        tone="soft"
+                        icon="link"
+                        style={{ marginTop: 10 }}
+                        onPress={() =>
+                          void WebBrowser.openBrowserAsync(
+                            `https://youglish.com/pronounce/${encodeURIComponent(p.text)}/english`,
+                            { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET },
+                          ).catch((e) => setError(message(e)))
                         }
                       >
-                        <ReminderRow done last={false}>
-                          <Text
-                            style={{ fontSize: 17, lineHeight: 24, color: t.colors.ink }}
+                        Open YouGlish
+                      </Pill>
+                    ) : null}
+                    {index === 2 ? (
+                      <>
+                        {/* The learner's sentences, then an always-present
+                            blank line that is the new-entry field. Return
+                            saves; swipe a sentence left to delete it. */}
+                        <View
+                          style={{
+                            marginTop: 10,
+                            borderRadius: 14,
+                            backgroundColor: t.colors.bg,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {(state.data?.sentences ?? []).map((sentence: Sentence) => (
+                            <SwipeRow
+                              key={sentence.id}
+                              flat
+                              onDelete={() =>
+                                confirmDelete({
+                                  title: "Delete this sentence?",
+                                  message: "Removing the last sentence resets this step.",
+                                  onConfirm: () =>
+                                    void mutate(() => deleteSentence(sentence.id)),
+                                })
+                              }
+                            >
+                              <View
+                                style={{
+                                  backgroundColor: t.colors.bg,
+                                  paddingHorizontal: 14,
+                                  paddingVertical: 11,
+                                  borderBottomWidth: StyleSheet.hairlineWidth,
+                                  borderBottomColor: t.colors.sep,
+                                }}
+                              >
+                                <Text style={{ fontSize: 16, lineHeight: 22, color: t.colors.ink }}>
+                                  {sentence.text}
+                                </Text>
+                              </View>
+                            </SwipeRow>
+                          ))}
+                          <TextInput
+                            accessibilityLabel="Your sentence"
+                            multiline
+                            submitBehavior="blurAndSubmit"
+                            returnKeyType="done"
+                            placeholder={`Use “${p.text}” in a sentence`}
+                            placeholderTextColor={t.colors.ink3}
+                            value={draft}
+                            onChangeText={(value) => {
+                              // The Save button appears below the field on the first character.
+                              if (!draft.trim() && value.trim()) revealSentence();
+                              setDraft(value);
+                            }}
+                            onFocus={() => {
+                              sentenceFocused.current = true;
+                              revealSentence();
+                            }}
+                            onBlur={() => {
+                              sentenceFocused.current = false;
+                            }}
+                            onContentSizeChange={revealSentence}
+                            onSubmitEditing={() => {
+                              if (!draft.trim() || busy) return;
+                              void mutate(async () => {
+                                await addSentence(id, draft);
+                                setDraft("");
+                              });
+                            }}
+                            style={{
+                              fontSize: 16,
+                              lineHeight: 22,
+                              color: t.colors.ink,
+                              paddingHorizontal: 14,
+                              paddingTop: 11,
+                              paddingBottom: 11,
+                              minHeight: 44,
+                            }}
+                          />
+                        </View>
+                        {draft.trim() ? (
+                          <Pill
+                            tone="soft"
+                            style={{ alignSelf: "stretch", marginTop: 10 }}
+                            onPress={() =>
+                              void mutate(async () => {
+                                await addSentence(id, draft);
+                                setDraft("");
+                              })
+                            }
                           >
-                            {sentence.text}
-                          </Text>
-                        </ReminderRow>
-                      </SwipeRow>
-                    ))}
-                    <ReminderRow done={false} last>
-                      <TextInput
-                        accessibilityLabel="Your sentence"
-                        multiline
-                        submitBehavior="blurAndSubmit"
-                        returnKeyType="done"
-                        placeholder={`Use “${p.text}” in a sentence`}
-                        placeholderTextColor={t.colors.ink3}
-                        value={draft}
-                        onChangeText={(value) => {
-                          // The Save button appears below the field on the first character.
-                          if (!draft.trim() && value.trim()) revealSentence();
-                          setDraft(value);
-                        }}
-                        onFocus={() => {
-                          sentenceFocused.current = true;
-                          revealSentence();
-                        }}
-                        onBlur={() => {
-                          sentenceFocused.current = false;
-                        }}
-                        onContentSizeChange={revealSentence}
-                        onSubmitEditing={() => {
-                          if (!draft.trim() || busy) return;
-                          void mutate(async () => {
-                            await addSentence(id, draft);
-                            setDraft("");
-                          });
-                        }}
-                        style={{
-                          fontSize: 17,
-                          lineHeight: 24,
-                          color: t.colors.ink,
-                          padding: 0,
-                          minHeight: 48,
-                        }}
-                      />
-                    </ReminderRow>
+                            {busy ? "Saving…" : "Save sentence"}
+                          </Pill>
+                        ) : null}
+                      </>
+                    ) : null}
                   </View>
-                  {draft.trim() ? (
-                    <Pill
-                      tone="soft"
-                      style={{ alignSelf: "stretch" }}
-                      onPress={() =>
-                        void mutate(async () => {
-                          await addSentence(id, draft);
-                          setDraft("");
-                        })
-                      }
-                    >
-                      {busy ? "Saving…" : "Save sentence"}
-                    </Pill>
-                  ) : null}
-                </>
-              )}
-              </View>
+                </View>
+              ))}
             </Card>
-          ))}
+          </View>
+          {details ? (
+            <Card style={{ padding: 0 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: detailsOpen }}
+                onPress={() => setDetailsOpen((open) => !open)}
+                style={({ pressed }) => ({
+                  minHeight: Motif.row,
+                  paddingHorizontal: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <Text style={{ ...FONT.medium, fontSize: 17, color: t.colors.ink }}>
+                  Phrase details
+                </Text>
+                <View style={{ transform: [{ rotate: detailsOpen ? "90deg" : "0deg" }] }}>
+                  <Icon name="chev" s={15} c={t.colors.ink3} />
+                </View>
+              </Pressable>
+              {detailsOpen ? (
+                <View
+                  style={{
+                    gap: 16,
+                    paddingHorizontal: 16,
+                    paddingTop: 14,
+                    paddingBottom: 18,
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: t.colors.sep,
+                  }}
+                >
+                  {[
+                    ["Type", details.kind === "phrase" ? "Expression" : details.kind.replace("_", " ").replace(/^./, c => c.toUpperCase())],
+                    ["How it’s used", details.usageNote],
+                    ["Context", details.context],
+                    ["Context translation", details.contextTranslation],
+                    ["Source", details.sourceLabel],
+                    ["Your note", details.learnerNote],
+                  ].filter(([, value]) => value.trim()).map(([label, value]) => (
+                    <View key={label} style={{ gap: 4 }}>
+                      <Label>{label}</Label>
+                      <Copy>{value}</Copy>
+                    </View>
+                  ))}
+                  <PhraseNoteLinks id={id} />
+                </View>
+              ) : null}
+            </Card>
+          ) : null}
           {error ? <Card><Copy>{error}</Copy></Card> : null}
             <Pill
               tone={phraseStage(p) === "Ready" ? "acc" : "soft"}
@@ -1580,6 +1644,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         error={state.error || (view !== "notes" ? folders.error : null)}
         retry={() => { void state.refresh(); void folders.refresh(); }}
       />
+      <Reanimated.View key={view} entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)} style={{ gap: t.gap }}>
       {!state.loading && view === "notes" && !visibleNotes.length && !state.error ? (
         query ? (
           <EmptyState compact title="No matching notes." body="Try a different word." />
@@ -1596,13 +1661,14 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         <EmptyState compact title="No notes in this folder yet." body="Create a note here or move one from Notes." />
       ) : null}
       {[...groups].map(([label, items]) => (
-        <SectionCard key={label} label={label}>
+        <SectionCard key={label} label={label} rows>
           {items.map((n, i) => {
             const title = n.title || "Untitled note";
             return (
-              <Row key={n.id} last={i === items.length - 1}>
+              <Row key={n.id} last={i === items.length - 1} lines={1}>
                 <Pressable
                   accessibilityRole="button"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.55 : 1 })}
                   accessibilityLabel={`Speak with ${title}`}
                   hitSlop={10}
                   onPress={() =>
@@ -1627,32 +1693,22 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                   accessibilityRole="button"
                   accessibilityLabel={`${title}, open note`}
                   onPress={() => nav.push("mvpNote", { id: n.id })}
-                  style={{
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.65 : 1,
+                    minHeight: 44,
                     flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
-                    marginLeft: 6,
+                    marginLeft: 12,
                     gap: 12,
-                  }}
+                  })}
                 >
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      numberOfLines={1}
-                      style={{
-                        fontFamily: FONT.semibold,
-                        fontSize: 16,
-                        color: t.colors.ink,
-                      }}
-                    >
-                      {title}
-                    </Text>
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontFamily: FONT.regular, fontSize: 14, color: t.colors.ink3 }}
-                    >
-                      {notePreview(n.body)}
-                    </Text>
-                  </View>
+                  <Text
+                    numberOfLines={1}
+                    style={{ flex: 1, ...FONT.semibold, fontSize: 16, lineHeight: 22, color: t.colors.ink }}
+                  >
+                    {title}
+                  </Text>
                   <Icon name="chev" s={14} c={t.colors.ink2} />
                 </Pressable>
               </Row>
@@ -1690,7 +1746,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                 })}
               >
                 <Row last={false}>
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={({ pressed }) => ({ flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.65 : 1 })}>
                     <Icon name="folder" s={20} c={t.colors.ink2} />
                     <Text style={{ color: t.colors.ink, fontSize: 16, flex: 1 }}>{folder.name}</Text>
                     <Text style={{ color: t.colors.ink3 }}>{notes.filter((n) => n.folder_id === folder.id).length}</Text>
@@ -1710,6 +1766,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
             )}
           </SectionCard>
       ) : null}
+      </Reanimated.View>
     </Screen>
   );
 }
@@ -1720,12 +1777,14 @@ const NOTE_HEADER = Motif.tapTarget + 8;
 const NOTE_FOOTER = 78;
 export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: string; practiceSessionId?: string }) {
   const { session } = useAuth();
-  const folderState = useRefresh(loadNoteFolders, nav.speakingDataRevision);
-  const loadGrowth = useCallback(async () => {
-    const [versions, practices] = await Promise.all([loadNoteVersions(id), loadNotePracticeHistory(id)]);
-    return { versions, practices };
-  }, [id]);
-  const growth = useRefresh(loadGrowth, nav.speakingDataRevision);
+  const [tool, setTool] = useState<NoteTool | null>(null);
+  const [askContext, setAskContext] = useState<{ mode: AskMode; question?: string }>({ mode: "note" });
+  const phrasePoint = useRef<string | null>(null);
+  const pageRoot = useRef<View>(null);
+  const pageScroll = useRef<ScrollView>(null);
+  const scrollOffset = useRef(0);
+  const pageFrame = useRef({ top: 0, height: 0, content: 0 });
+  const [dragging, setDragging] = useState(false);
   const draftKey = `saylo.note-draft.${session?.user.id}.${id}`;
   const t = useTheme(),
     insets = useSafeAreaInsets(),
@@ -1739,8 +1798,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
     [outlineRevision, setOutlineRevision] = useState(0);
   const outline = useRef<NoteOutlineHandle>(null),
     titleInput = useRef<TextInput>(null);
-  // While the keyboard is up, "…" turns into Done and the Speak button gives
-  // its place to the keyboard.
+  // Editing adds Done in the header; the keyboard replaces the Speak footer.
   useEffect(() => {
     const show = Keyboard.addListener("keyboardWillShow", () => setTyping(true));
     const hide = Keyboard.addListener("keyboardWillHide", () => setTyping(false));
@@ -1909,156 +1967,65 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           .catch((e) => setError(message(e)));
       },
     });
+  const openTool = async (next: NoteTool) => {
+    Keyboard.dismiss();
+    try { await flush(); setTool(next); } catch (error) { setError(message(error)); }
+  };
+  const pointAction = (action: PointAction, point: NotePointContext) => {
+    Keyboard.dismiss();
+    if (action === "phrases") { phrasePoint.current = point.id; setTool("phrases"); return; }
+    const context = `${point.section}\n${point.text}${point.note ? `\n\nNotes\n${point.note}` : ""}`;
+    setAskContext({ mode: action === "refine" ? "note" : "how_to_say", question: action === "refine" ? `Help me refine this point in my speaking note:\n${context}` : `How can I say this naturally in English?\n${context}` });
+    setAsking(true);
+  };
+  const dragScroll = useCallback((pageY: number) => {
+    const frame = pageFrame.current;
+    const upper = frame.top + insets.top + NOTE_HEADER + 48;
+    const lower = frame.top + frame.height - insets.bottom - NOTE_FOOTER - 44;
+    const step = pageY < upper ? -8 : pageY > lower ? 8 : 0;
+    if (!step) return;
+    const y = Math.max(0, Math.min(Math.max(0, frame.content - frame.height), scrollOffset.current + step));
+    if (y === scrollOffset.current) return;
+    scrollOffset.current = y;
+    pageScroll.current?.scrollTo({ y, animated: false });
+  }, [insets.top, insets.bottom]);
+  const accent = t.dark ? "#0A84FF" : "#3478F6";
   return (
-    <View style={{ flex: 1 }}>
-      {/* The page leaves room for the bars fixed over it: the back bar at the
-          top, the Speak button at the bottom. */}
-      <Screen bottomPad={note ? NOTE_FOOTER + 32 : 32}>
-        <View style={{ height: NOTE_HEADER }} />
-        {error ? (
-          <ErrorCard
-            error={error}
-            retry={() =>
-              note ? void flush().catch((e) => setError(message(e))) : void load()
-            }
-          />
-        ) : null}
-        {note ? (
-          <>
-            <View style={{ gap: 6 }}>
-              <TextInput
-                ref={titleInput}
-                accessibilityLabel="Note title"
-                maxLength={120}
-                placeholder="Give this moment a title"
-                placeholderTextColor={t.colors.ink3}
-                value={title}
-                returnKeyType="next"
-                submitBehavior="submit"
-                onSubmitEditing={() => outline.current?.focusStart()}
-                onChangeText={(value) => {
-                  setTitle(value);
-                  edited({ title: value });
-                }}
-                style={{
-                  fontFamily: FONT.display,
-                  fontSize: 36,
-                  lineHeight: 42,
-                  color: t.colors.ink,
-                }}
-              />
-              <Label>{status}</Label>
-            </View>
-            <NoteOutline
-              key={outlineRevision}
-              ref={outline}
-              body={body}
-              onChangeBody={(value) => {
-                setBody(value);
-                edited({ body: value });
-              }}
-            />
-            {growth.data && (growth.data.versions.length || growth.data.practices.length) ? (
-              <SectionCard label="How this Note grew">
-                {growth.data.versions.filter((version) => version.origin !== "manual").slice(0, 3).map((version) => (
-                  <Text key={version.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
-                    {version.origin === "practice" ? "Practice ideas applied" : "Draft accepted"} · {dateLabel(version.created_at)}
-                  </Text>
-                ))}
-                {growth.data.practices.slice(0, 3).map((practice) => (
-                  <Text key={practice.id} style={{ color: t.colors.ink2, paddingVertical: 6 }}>
-                    Spoke from this Note · {dateLabel(practice.created_at)}
-                  </Text>
-                ))}
-              </SectionCard>
-            ) : null}
-          </>
-        ) : !error ? (
-          <ActivityIndicator />
-        ) : null}
+    <View ref={pageRoot} style={{ flex: 1 }} onLayout={() => pageRoot.current?.measureInWindow((_, top, __, height) => { pageFrame.current = { ...pageFrame.current, top, height }; })}>
+      <Screen bottomPad={note ? NOTE_FOOTER + 32 : 32} style={{ paddingHorizontal: 20, gap: 0 }}
+        scrollRef={pageScroll} scrollEnabled={!dragging} scrollEventThrottle={16}
+        onScroll={event => { scrollOffset.current = event.nativeEvent.contentOffset.y; }}
+        onContentSizeChange={(_, content) => { pageFrame.current.content = content; }}>
+        <View style={{ height: NOTE_HEADER + 8 }} />
+        {error ? <ErrorCard error={error} retry={() => note ? void flush().catch(error => setError(message(error))) : void load()} /> : null}
+        {note ? <>
+          <TextInput ref={titleInput} accessibilityLabel="Note title" accessibilityHint={status} maxLength={120} placeholder="Title" placeholderTextColor={t.colors.ink3}
+            value={title} returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => outline.current?.focusStart()}
+            onChangeText={value => { setTitle(value); edited({ title: value }); }}
+            style={{ fontFamily: FONT_UI, fontSize: 34, fontWeight: "700", lineHeight: 41, color: accent, paddingVertical: 0 }} />
+          <NoteOutline key={outlineRevision} ref={outline} body={body} scrollOffset={scrollOffset} onDragChanged={setDragging} onDragScroll={dragScroll}
+            onPointAction={pointAction} onChangeBody={value => { setBody(value); edited({ body: value }); }} />
+        </> : !error ? <ActivityIndicator /> : null}
       </Screen>
-      {/* Fixed, so Done is in reach however far the note has scrolled. The
-          page fades out under it instead of running through the title. */}
-      <View
-        pointerEvents="box-none"
-        style={{ position: "absolute", top: 0, left: 0, right: 0 }}
-      >
-        <LinearGradient
-          pointerEvents="none"
-          colors={[t.colors.bg, t.colors.bg, `${t.colors.bg}00`]}
-          locations={[0, 0.8, 1]}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: (insets.top + 8 + NOTE_HEADER) / 0.8,
-          }}
-        />
-        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 18 }}>
-          <BackBar
-            title="Studio"
-            onBack={() => void leave()}
-            right={
-              typing ? (
-                // As wide as the back button in the layout, so the title stays
-                // centred; the capsule itself reaches leftwards out of that box.
-                <View style={{ width: Motif.tapTarget, alignItems: "flex-end" }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Done, hide keyboard"
-                    onPress={() => Keyboard.dismiss()}
-                    style={[
-                      {
-                        width: 74,
-                        height: Motif.tapTarget,
-                        borderRadius: Motif.tapTarget / 2,
-                        backgroundColor: t.colors.card,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: StyleSheet.hairlineWidth,
-                        borderColor: t.ring,
-                      },
-                      t.shadowCard,
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontSize: 16, fontWeight: "600", color: t.colors.accD }}
-                    >
-                      Done
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : note ? (
-                <MoreMenu>
-                  {(folderState.data ?? []).map((folder) => (
-                    <Button
-                      key={folder.id}
-                      label={`${note.folder_id === folder.id ? "✓ " : ""}Move to ${folder.name}`}
-                      systemImage="folder"
-                      onPress={() => void moveNoteToFolder(id, folder.id).then(() => {
-                        setNote({ ...note, folder_id: folder.id });
-                        nav.invalidateSpeakingData();
-                      }).catch((e) => setError(message(e)))}
-                    />
-                  ))}
-                  {note.folder_id ? (
-                    <Button label="Remove from folder" systemImage="tray" onPress={() => void moveNoteToFolder(id, null).then(() => {
-                      setNote({ ...note, folder_id: null });
-                      nav.invalidateSpeakingData();
-                    }).catch((e) => setError(message(e)))} />
-                  ) : null}
-                  <Button
-                    label="Delete note"
-                    systemImage="trash"
-                    role="destructive"
-                    onPress={remove}
-                  />
-                </MoreMenu>
-              ) : null
-            }
-          />
+      <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+        <LinearGradient pointerEvents="none" colors={[t.colors.bg, t.colors.bg, `${t.colors.bg}00`]} locations={[0, 0.7, 1]}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: insets.top + 8 + NOTE_HEADER }} />
+        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to Studio" onPress={() => void leave()}
+            style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.colors.card, alignItems: "center", justifyContent: "center" }, t.shadowCard]}>
+            <SymbolView name="chevron.left" size={23} weight="medium" tintColor={t.colors.ink} />
+          </Pressable>
+          <Text numberOfLines={1} style={{ flex: 1, fontFamily: FONT_UI, fontSize: 17, fontWeight: "600", color: t.colors.ink }}>{typing ? title : ""}</Text>
+          {note ? <MoreMenu>
+            <Button label="Move" systemImage="folder" onPress={() => void openTool("move")} />
+            <Button label="Update History" systemImage="clock.arrow.circlepath" onPress={() => void openTool("history")} />
+            <Button label="Talk History" systemImage="mic" onPress={() => void openTool("practice")} />
+            <Button label="Delete note" systemImage="trash" role="destructive" onPress={remove} />
+          </MoreMenu> : null}
+          {typing ? <Pressable accessibilityRole="button" accessibilityLabel="Done, hide keyboard" onPress={() => Keyboard.dismiss()}
+            style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: accent, alignItems: "center", justifyContent: "center" }, t.shadowCard]}>
+            <SymbolView name="checkmark" size={23} weight="medium" tintColor="#FFFFFF" />
+          </Pressable> : null}
         </View>
       </View>
       {note && !typing ? (
@@ -2084,7 +2051,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Ask for help with this note"
-                onPress={() => setAsking(true)}
+                onPress={() => { setAskContext({ mode: "note" }); setAsking(true); }}
                 style={[
                   {
                     width: Motif.buttonHeight.large,
@@ -2093,8 +2060,6 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
                     backgroundColor: t.colors.card,
                     alignItems: "center",
                     justifyContent: "center",
-                    borderWidth: StyleSheet.hairlineWidth,
-                    borderColor: t.ring,
                   },
                   t.shadowCard,
                 ]}
@@ -2108,11 +2073,15 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
           </View>
         </View>
       ) : null}
+      <NoteToolsSheet onOpenSession={session => { setTool(null); nav.push("mirrorRecord", { session }); }} tool={tool} noteId={id} folderId={note?.folder_id ?? null} onClose={() => setTool(null)}
+        onMove={async folderId => { await flush(); await moveNoteToFolder(id, folderId); setNote(current => current ? { ...current, folder_id: folderId } : current); nav.invalidateSpeakingData(); }}
+        onInsert={phrase => { if (phrasePoint.current) outline.current?.insertPhrase(phrasePoint.current, phrase); }} />
       {ASK_ENABLED ? (
         <AskSheet
           open={asking && Boolean(note)}
           onClose={() => setAsking(false)}
-          initialMode="note"
+          initialMode={askContext.mode}
+          initialQuestion={askContext.question}
           onOpenPhraseDraft={(askSeed) => {
             setAsking(false);
             nav.push("capture", { askSeed });
@@ -2122,10 +2091,11 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
             id,
             title,
             body,
-            apply: async (value) => {
+            apply: async (value, reviewedTitle) => {
               await flush();
-              await applyNoteVersion(id, current.current.title, value, practiceSessionId ? "practice" : "ask", practiceSessionId);
-              current.current.body = value;
+              await applyNoteVersion(id, reviewedTitle, value, practiceSessionId ? "practice" : "ask", practiceSessionId);
+              current.current = { title: reviewedTitle, body: value };
+              setTitle(reviewedTitle);
               saved.current = JSON.stringify(current.current);
               await AsyncStorage.removeItem(draftKey);
               setBody(value);
@@ -2195,6 +2165,9 @@ export function MvpProfile({ nav }: { nav: Nav }) {
       <ErrorCard error={state.error} retry={() => void state.refresh()} />
       <Pill tone="card" icon="gear" full onPress={() => nav.push("settings")}>
         Settings & account
+      </Pill>
+      <Pill tone="card" icon="text" full onPress={() => nav.push("personalSentences")}>
+        My Sentences
       </Pill>
       {state.loading ? <ActivityIndicator /> : null}
       {state.data ? (
@@ -2333,8 +2306,9 @@ export function MirrorRecord({
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [reviewPage, setReviewPage] = useState(0);
   return (
-    <Screen>
+    <SessionResultPager onPageChange={setReviewPage} first={<Screen>
       <BackBar title="My records" onBack={nav.pop} />
       <Label>{dateTimeLabel(session.created_at)}</Label>
       <SessionStatsCard transcript={session.transcript ?? ""} seconds={session.seconds} />
@@ -2372,6 +2346,6 @@ export function MirrorRecord({
         {busy ? "Deleting…" : "Delete session"}
       </Pill>
       <ErrorCard error={error} retry={() => setError(null)} />
-    </Screen>
+    </Screen>} second={<Screen><BackBar title="Speaking review" onBack={nav.pop}/><AdvancedFeedbackReport sessionId={session.id} active={reviewPage === 1} onRetry={retry => nav.startTalk({feedbackRetry:retry, noteId:session.note_id, returnTo:{tab:'speak',stack:[{name:'mirrorRecord',props:{id:session.id}}]}})}/></Screen>} />
   );
 }

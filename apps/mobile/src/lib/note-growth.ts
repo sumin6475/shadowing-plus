@@ -149,10 +149,11 @@ export async function loadNotePracticeHistory(noteId: string): Promise<NotePract
   return data ?? [];
 }
 
-export async function loadNoteVersions(noteId: string): Promise<NoteVersion[]> {
+export async function loadNoteVersions(noteId: string, offset = 0): Promise<NoteVersion[]> {
   const { data, error } = await supabase.from("note_versions")
     .select("id,note_id,title,body,origin,source_session_id,created_at")
-    .eq("note_id", noteId).order("created_at", { ascending: false });
+    .eq("note_id", noteId).order("created_at", { ascending: false }).order("id", { ascending: false })
+    .range(offset, offset + 49);
   if (error) failed(error, "Couldn’t load versions.");
   return data ?? [];
 }

@@ -6,6 +6,7 @@
 import { requireAiProcessingConsent } from "./ai-consent";
 import { mockReply } from "./ask-fixtures";
 import { buildAskRequest, type AskMode, type AskReply, type AskTurn } from "./ask-model";
+import { surfaceLanguage } from "./language-preferences";
 import { firstLanguage } from "./first-language";
 import { ASK_MOCK } from "./release-flags";
 import { supabase } from "./supabase";
@@ -29,7 +30,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Sends the conversation so far (the last turn is the new question) and
  *  returns the reply. Throws AskLimitError at the daily limit, and an Error
  *  whose message can be shown as is for anything else. */
-export async function askAssist(mode: AskMode, turns: AskTurn[], draftNow = false, noteId?: string | null, practiceSessionId?: string | null): Promise<AskResult> {
+export async function askAssist(mode: AskMode, turns: AskTurn[], draftNow = false, noteId?: string | null, practiceSessionId?: string | null, noteSnapshot?: { title: string; body: string }): Promise<AskResult> {
   if (ASK_MOCK) {
     await wait(900);
     const outcome = mockReply(mode, turns, draftNow);
@@ -42,7 +43,7 @@ export async function askAssist(mode: AskMode, turns: AskTurn[], draftNow = fals
   await requireAiProcessingConsent();
   const { data, error } = await supabase.functions.invoke<{ reply: AskReply; remaining: number }>(
     "ask-assist",
-    { body: buildAskRequest(mode, turns, firstLanguage(), draftNow, noteId, practiceSessionId) },
+    { body: { ...buildAskRequest(mode, turns, firstLanguage(), draftNow, noteId, practiceSessionId), response_language: surfaceLanguage("assistant"), ...(noteSnapshot ? { note_snapshot: noteSnapshot } : {}) } },
   );
   if (error) {
     // A non-2xx reply carries `{ error, code }`; the daily limit is a 429.

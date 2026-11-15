@@ -1,11 +1,10 @@
 // ui.tsx — shared primitives ported from sp-theme.jsx: Card, Hero, Block, Pill,
 // Chip, Badge, Avatar, Header, BackBar, Sect, Screen, Wave, StatTile, TabBar.
-import { Children as ReactChildren, Fragment, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
+import { Children as ReactChildren, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type Ref } from "react";
 import {
   Alert,
   Animated,
   Easing,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,7 +16,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Text } from "./text";
-import Reanimated, { FadeInDown } from "react-native-reanimated";
+import Reanimated, { FadeInDown, useReducedMotion } from "react-native-reanimated";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -30,12 +29,10 @@ import * as Haptics from "expo-haptics";
 import { useAuth } from "@/lib/auth";
 import { avatarInitialFromMetadata, avatarUrlFromMetadata } from "@/lib/profile-photo";
 import { statusStageLabel } from "@/lib/phrases";
-import { firstLanguage } from "@/lib/first-language";
-import { splitFigures } from "@/lib/figures";
 
 import { Icon, type IconName } from "./icon";
-import { BRAND, FONT, Gradients, Motif, TypeScale } from "./mobile-tokens";
-import { SERIF, hairline, statusColors, useTheme, type Theme } from "./theme";
+import { BRAND, FONT_UI, Gradients, Motif, TypeScale } from "./mobile-tokens";
+import { hairline, statusColors, useTheme, type Theme } from "./theme";
 
 export { Icon } from "./icon";
 export type { IconName } from "./icon";
@@ -63,91 +60,12 @@ export function toneColor(t: Theme, name: string): string {
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────
-// The brand serif renders at its Figma sizes as given. (Newsreader, the serif
-// before 2026-09-18, needed a 1.1 scale for its small x-height; keep this hook
-// in case a future face does too.)
-const SERIF_SCALE = 1;
-
-// The brand serif (Instrument Serif) draws Latin only. For text in another script, use a
-// serif that actually has the glyphs instead of letting iOS cascade that line
-// into the system SANS. Both faces below ship with iOS, so they cost no bundle
-// size. Korean and Chinese have no serif on iOS (a free one is 16–23 MB to
-// bundle), so they keep today's behavior: Newsreader, cascading to the system
-// font. Measured and decided in docs/release/first-language-readiness.md §3.4.
-const SERIF_SYSTEM = "ui-serif"; // New York: Latin, Cyrillic, Vietnamese
-const SERIF_MINCHO = "Hiragino Mincho ProN"; // Japanese
-const KANA = /[\u3040-\u30ff\u31f0-\u31ff]/;
-const CYRILLIC = /[\u0400-\u04ff]/;
-const HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
-
-interface SerifFace {
-  fontFamily: string;
-  /** Only the brand serif takes SERIF_SCALE; the fallback faces don't. */
-  scale: number;
-  /** Negative tracking suits a Latin serif; it crowds CJK. */
-  tracking: boolean;
+/** Legacy input helper: let the native family handle multilingual glyphs and tracking. */
+export function serifInputFace(): TextStyle {
+  return { fontFamily: FONT_UI, letterSpacing: 0 };
 }
 
-const BRAND_SERIF_FACE: SerifFace = { fontFamily: SERIF, scale: SERIF_SCALE, tracking: true };
-
-/** The serif that can draw `text`. Han without kana is ambiguous — Chinese and
- *  Japanese share those code points but not their glyph shapes — so the
- *  learner's first language decides. Mincho on Chinese text would show a
- *  Taiwanese learner Japanese letterforms. */
-function serifFace(text: string): SerifFace {
-  if (Platform.OS !== "ios") return BRAND_SERIF_FACE;
-  if (KANA.test(text) || (HAN.test(text) && firstLanguage() === "ja")) {
-    return { fontFamily: SERIF_MINCHO, scale: 1, tracking: false };
-  }
-  if (CYRILLIC.test(text)) return { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true };
-  return BRAND_SERIF_FACE;
-}
-
-/** Runs of figures inside brand-serif text take FONT.figure, so "11 min"
- *  stops reading "ll min". Elements among the children pass through. */
-function withFigures(children: ReactNode): ReactNode {
-  const parts = Array.isArray(children) ? children : [children];
-  const plain = (c: unknown): c is string | number =>
-    typeof c === "string" || typeof c === "number";
-  if (!parts.some((c) => plain(c) && /\d/.test(String(c)))) return children;
-  return parts.map((c, i) =>
-    plain(c) ? (
-      splitFigures(String(c)).map((run, j) =>
-        run.figure ? (
-          <Text key={`${i}.${j}`} style={{ fontFamily: FONT.figure, letterSpacing: 0 }}>
-            {run.text}
-          </Text>
-        ) : (
-          run.text
-        ),
-      )
-    ) : (
-      <Fragment key={i}>{c}</Fragment>
-    ),
-  );
-}
-
-function textOf(node: ReactNode): string {
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(textOf).join("");
-  return "";
-}
-
-/** Font family + tracking for a serif TextInput, following what the learner
- *  types — a note title can be in any language. */
-export function serifInputFace(text: string, tracking: number): TextStyle {
-  const face = serifFace(text);
-  return { fontFamily: face.fontFamily, letterSpacing: face.tracking ? tracking : 0 };
-}
-
-/**
- * `strong` is not a style flag, it is a different face. Only
- * InstrumentSerif-Regular is bundled, so fontWeight on a brand-serif run matches
- * nothing and iOS quietly draws Regular — the bold never arrives and nothing
- * warns you. The system serif (New York) ships every weight, costs no bundle,
- * and is already this design system's serif for Cyrillic, so a bold serif run
- * goes there instead, without SERIF_SCALE. Text that Newsreader cannot draw at all still routes by script.
- */
+/** Legacy display-text component, now sharing the system face with all UI copy. */
 export function Serif({
   children,
   style,
@@ -159,21 +77,12 @@ export function Serif({
   numberOfLines?: number;
   strong?: boolean;
 }) {
-  const text = textOf(children);
-  const natural = serifFace(text);
-  const face: SerifFace = strong && natural === BRAND_SERIF_FACE ? { fontFamily: SERIF_SYSTEM, scale: 1, tracking: true } : natural;
-  const flat = StyleSheet.flatten(style) as TextStyle | undefined;
-  const scaled: TextStyle = {};
-  if (face.scale !== 1) {
-    if (typeof flat?.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * face.scale);
-    if (typeof flat?.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * face.scale);
-  }
   return (
     <Text
       numberOfLines={numberOfLines}
-      style={[{ fontFamily: face.fontFamily, letterSpacing: face.tracking ? -0.2 : 0 }, style, scaled, strong ? { fontWeight: "700" } : null]}
+      style={[{ fontFamily: FONT_UI, letterSpacing: 0 }, style, strong ? { fontWeight: "700" } : null]}
     >
-      {face === BRAND_SERIF_FACE ? withFigures(children) : children}
+      {children}
     </Text>
   );
 }
@@ -185,13 +94,14 @@ export function Serif({
 export const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function usePressFx(depth = 0.975) {
+  const reduceMotion = useReducedMotion();
   // useMemo (not a ref) keeps the Animated.Value off the render-time ref-read
   // path, same as Wave below.
   const scale = useMemo(() => new Animated.Value(1), []);
   const pressIn = () =>
-    Animated.spring(scale, { toValue: depth, speed: 40, bounciness: 0, useNativeDriver: true }).start();
+    Animated.spring(scale, { toValue: reduceMotion ? 1 : depth, speed: 40, bounciness: 0, useNativeDriver: true }).start();
   const pressOut = () =>
-    Animated.spring(scale, { toValue: 1, speed: 22, bounciness: 7, useNativeDriver: true }).start();
+    Animated.spring(scale, { toValue: 1, speed: 30, bounciness: 2, useNativeDriver: true }).start();
   return { scale, pressIn, pressOut };
 }
 
@@ -211,7 +121,7 @@ export function EnterStagger({
   // Cap the delay so long lists don't keep trickling in forever.
   return (
     <Reanimated.View
-      entering={FadeInDown.delay(70 * Math.min(i, 8)).springify().damping(17).stiffness(160)}
+      entering={FadeInDown.delay(35 * Math.min(i, 4)).springify().damping(17).stiffness(160)}
       style={style}
     >
       {children}
@@ -427,6 +337,7 @@ const PILL_LIGHT_FG = BRAND.dark;
 export function Pill({
   children,
   onPress,
+  disabled = false,
   tone = "acc",
   full,
   small,
@@ -436,6 +347,7 @@ export function Pill({
 }: {
   children?: ReactNode;
   onPress?: () => void;
+  disabled?: boolean;
   tone?: PillTone;
   full?: boolean;
   small?: boolean;
@@ -477,12 +389,16 @@ export function Pill({
     );
   return (
     <AnimatedPressable
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
       onPress={onPress}
       onPressIn={fx.pressIn}
       onPressOut={fx.pressOut}
       style={[
         {
-          height: h,
+          minHeight: h,
+          paddingVertical: small ? 6 : 10,
           borderRadius: Motif.radius.pill,
           paddingHorizontal: small ? 16 : 24,
           flexDirection: "row",
@@ -490,6 +406,7 @@ export function Pill({
           justifyContent: "center",
           gap: 7,
           backgroundColor: tv.bg,
+          opacity: disabled ? 0.5 : 1,
           flex: full ? 1 : undefined,
           alignSelf: full ? "stretch" : "flex-start",
         },
@@ -504,7 +421,7 @@ export function Pill({
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
         {icon ? <Icon name={icon} s={small ? 15 : 17} w={2} c={tv.fg} /> : null}
         {isLabel ? (
-          <Text style={[{ color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
+          <Text style={[{ flexShrink: 1, textAlign: "center", color: tv.fg, fontSize: fs, fontWeight: "600", letterSpacing: -0.1 }, textStyle]}>
             {children}
           </Text>
         ) : (
@@ -541,7 +458,8 @@ export function Chip({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          height: Motif.buttonHeight.medium,
+          minHeight: Motif.buttonHeight.medium,
+          paddingVertical: 6,
           borderRadius: Motif.radius.pill,
           paddingHorizontal: icon && !children ? 10 : 15,
           flexDirection: "row",
@@ -639,7 +557,7 @@ export function Header({
         </View>
       ) : null}
       {typeof title === "string" ? (
-        <Serif style={{ fontSize: TypeScale.largeTitle, lineHeight: 37, color: t.colors.ink }}>{title}</Serif>
+        <Serif style={{ fontSize: TypeScale.largeTitle, lineHeight: 41, fontWeight: "700", color: t.colors.ink }}>{title}</Serif>
       ) : (
         title
       )}
@@ -711,7 +629,7 @@ export function Sect({
         style,
       ]}
     >
-      <Serif style={{ fontSize: 22, color: t.colors.ink }}>{title}</Serif>
+      <Serif style={{ fontSize: 22, fontWeight: "600", color: t.colors.ink }}>{title}</Serif>
       {action ? (
         <Pressable onPress={onAction}>
           <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>{action}</Text>
@@ -732,8 +650,11 @@ export function Screen({
   style,
   refreshControl,
   scrollEnabled = true,
+  keyboardInsets = true,
   onScroll,
   scrollRef,
+  onContentSizeChange,
+  scrollEventThrottle,
   onPullToSearch,
 }: {
   children: ReactNode;
@@ -744,11 +665,14 @@ export function Screen({
   refreshControl?: ReactElement<RefreshControlProps>;
   /** Set false while a nested drag-reorder is active so the page doesn't scroll. */
   scrollEnabled?: boolean;
+  keyboardInsets?: boolean;
   /** Scroll events (throttled) — e.g. incremental list loading near the end. */
   onScroll?: ScrollViewProps["onScroll"];
   /** Handle on the underlying ScrollView — e.g. the product tour scrolling a
    *  coach-mark target into view. Purely additive; nothing else reads it. */
   scrollRef?: Ref<ScrollView>;
+  onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
+  scrollEventThrottle?: number;
   /** Pull down past the top and release to open Search. Takes the place of
    *  pull-to-refresh, so don't pass it with `refreshControl`. iOS only
    *  (Android has no negative overscroll offset). */
@@ -769,7 +693,7 @@ export function Screen({
           {
             paddingTop: insets.top + 8,
             paddingBottom: bottomPad + insets.bottom,
-            paddingHorizontal: noPad ? 0 : 18,
+            paddingHorizontal: noPad ? 0 : 20,
             gap: t.gap,
           },
           style,
@@ -779,12 +703,13 @@ export function Screen({
         keyboardShouldPersistTaps="handled"
         // Focused inputs sit above the keyboard: iOS insets the scroll view for
         // the keyboard and scrolls the focused field into view automatically.
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustKeyboardInsets={keyboardInsets}
         keyboardDismissMode="interactive"
         refreshControl={refreshControl}
         onScroll={pull ? pull.onScroll : onScroll}
+        onContentSizeChange={onContentSizeChange}
         onScrollEndDrag={pull?.onScrollEndDrag}
-        scrollEventThrottle={pull ? 16 : onScroll ? 120 : undefined}
+        scrollEventThrottle={scrollEventThrottle ?? (pull ? 16 : onScroll ? 120 : undefined)}
       >
         {children}
       </Animated.ScrollView>

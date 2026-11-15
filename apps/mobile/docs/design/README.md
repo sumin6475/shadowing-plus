@@ -3,6 +3,10 @@
 The current product and content direction comes from `docs/product/`, not from an
 image filename or an older quality snapshot.
 
+## Button and recovery layouts
+
+Follow [button-guidelines.md](button-guidelines.md) for action widths, spacing, and failure states.
+
 ## Active visual references
 
 - `saylo-midnight-voice-main-screens-v1-01-today.png`

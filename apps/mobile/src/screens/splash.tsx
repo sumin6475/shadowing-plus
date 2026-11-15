@@ -118,7 +118,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
     <View style={{ overflow: "hidden" }}>
       <Text
         style={{
-          fontFamily: FONT.semibold,
+          ...FONT.semibold,
           fontSize: headSize,
           lineHeight: headLH,
           letterSpacing: -2.5 * k,
@@ -142,7 +142,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
           position: "absolute",
           left: 24,
           top: insets.top + 10,
-          fontFamily: FONT.semibold,
+          ...FONT.semibold,
           fontSize: 68 * k,
           letterSpacing: -1 * k,
           color: C.pale,
@@ -185,7 +185,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
         {headLine("in English.", l2)}
         <Text
           style={{
-            fontFamily: FONT.medium,
+            ...FONT.medium,
             fontSize: subSize,
             fontWeight: "500",
             color: C.sub,
@@ -217,7 +217,7 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
           transform: [{ translateY: (1 - btnE) * 120 * k }],
         }}
       >
-        <Text style={{ fontFamily: FONT.semibold, fontSize: 52 * k, color: C.btnText }}>Get started</Text>
+        <Text style={{ ...FONT.semibold, fontSize: 52 * k, color: C.btnText }}>Get started</Text>
         <View
           pointerEvents="none"
           style={{
@@ -256,8 +256,8 @@ export function SplashIntro({ onDone, onLogIn }: { onDone: () => void; onLogIn?:
             opacity: clamp(btnP * 1.8, 0, 1),
           }}
         >
-          <Text style={{ fontFamily: FONT.medium, fontSize: 40 * k, color: C.sub }}>
-            Already have an account? <Text style={{ fontFamily: FONT.semibold, color: C.pale, textDecorationLine: "underline" }}>Log in</Text>
+          <Text style={{ ...FONT.medium, fontSize: 40 * k, color: C.sub }}>
+            Already have an account? <Text style={{ ...FONT.semibold, color: C.pale, textDecorationLine: "underline" }}>Log in</Text>
           </Text>
         </Pressable>
       ) : null}

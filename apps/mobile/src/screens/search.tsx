@@ -58,7 +58,7 @@ export function SearchScreen({ nav, visit }: { nav: Nav; visit: number }) {
       <View style={{ alignItems: "center", gap: 12, paddingTop: 48 }}>
         <Text style={{ fontSize: 15, color: t.colors.ink2, textAlign: "center" }}>{error}</Text>
         <Pressable accessibilityRole="button" onPress={() => void load()} hitSlop={8}>
-          <Text style={{ fontFamily: FONT.semibold, fontSize: 16, color: t.colors.acc }}>Try again</Text>
+          <Text style={{ ...FONT.semibold, fontSize: 16, color: t.colors.acc }}>Try again</Text>
         </Pressable>
       </View>
     );
@@ -141,7 +141,7 @@ export function SearchScreen({ nav, visit }: { nav: Nav; visit: number }) {
           />
         </View>
         <Pressable accessibilityRole="button" onPress={nav.pop} hitSlop={8}>
-          <Text style={{ fontFamily: FONT.semibold, fontSize: 16, color: t.colors.acc }}>Cancel</Text>
+          <Text style={{ ...FONT.semibold, fontSize: 16, color: t.colors.acc }}>Cancel</Text>
         </Pressable>
       </View>
       <ScrollView
@@ -197,7 +197,7 @@ function ResultRow({
         style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}
       >
         <View style={{ flex: 1, gap: 2 }}>
-          <Text numberOfLines={1} style={{ fontFamily: FONT.semibold, fontSize: 16, color: t.colors.ink }}>
+          <Text numberOfLines={1} style={{ ...FONT.semibold, fontSize: 16, color: t.colors.ink }}>
             {title}
           </Text>
           {subtitle ? (

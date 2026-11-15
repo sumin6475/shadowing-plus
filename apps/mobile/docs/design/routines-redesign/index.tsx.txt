@@ -1,0 +1,202 @@
+import { Check, ChevronRight, ListFilter, Minus, Plus, Volume1 } from 'lucide-react'
+import { Stage, Phone, Avatar, type Act } from '../../kit'
+import './routines.css'
+
+// Myne's home routine, refined. The carousel's last tile adds a card; it opens
+// a native sheet (Cancel / title / Add) with a live preview of the card, the
+// two colors the home already has (the Studio card's midnight gradient and
+// the Today's phrases card's paper white), what to practice from, and the
+// settings as an inset-grouped list.
+//
+// Story: the add tile is tapped and the sheet rises; Midnight is chosen and
+// the preview takes the color; Add puts the card in the carousel, where the
+// add tile was, and the tile moves on. The next loop's sheet covers the
+// carousel while it is put back.
+//
+// Real strings: the product's own copy.
+
+type Tone = 'paper' | 'midnight'
+type S = { sheet: boolean; tone: Tone; added: boolean }
+// The loop opens with the sheet up on its default: the frame the story is about
+const START: S = { sheet: true, tone: 'paper', added: false }
+
+const REST = { x: 330, y: 610 }
+
+const script = async (a: Act<S>) => {
+  await a.wait(1300)
+  a.mark('color')
+  await a.click('swatch-midnight')
+  a.put({ tone: 'midnight' })
+  await a.wait(1500)
+  a.mark('add')
+  await a.click('sheet-add')
+  a.put({ sheet: false, added: true })
+  await a.wait(2800)
+  // The sheet is below the screen: it will open on its default again
+  await a.snap({ tone: 'paper' })
+  a.mark('open')
+  await a.click('add-tile')
+  a.put({ sheet: true })
+  await a.wait(750)
+  // Covered by the sheet now: the carousel is put back unseen
+  await a.snap({ added: false })
+  await a.move(REST)
+  await a.wait(300)
+}
+
+function RoutineCard({ tone, className = '' }: { tone: Tone; className?: string }) {
+  return (
+    <div className={`mr-card ${className}`} data-tone={tone}>
+      <span className="mr-card__wash" />
+      <div className="mr-card__text">
+        <span className="mr-card__eyebrow">My Sentences · 5 a session</span>
+        <span className="mr-card__title">Say it again, out loud.</span>
+      </div>
+      <span className="mr-card__pill">Start</span>
+    </div>
+  )
+}
+
+const LIST: [string, string[]][] = [
+  ['Today', ['feel left out']],
+  ['Yesterday', ['I’m doomed']],
+  ['Last 7 days', ['irresponsible', 'better late than never', 'treated myself to']],
+]
+
+export default function MyneRoutines() {
+  return (
+    <Stage<S>
+      width={440}
+      height={694}
+      compact={{ below: 440, width: 358, height: 609 }}
+      initial={START}
+      poster={{ sheet: true, tone: 'midnight', added: false }}
+      script={script}
+      cursor={{ at: REST, style: 'touch' }}
+      fidelity="realistic"
+      className="mr"
+    >
+      {(s, _rect, layout) => (
+        <>
+          <div className="mr-wash" />
+          <Phone width={layout === 'compact' ? 326 : 360} wallpaper="#F2F2F7" className="mr-phone">
+            <div className="mr-home">
+              <header className="mr-head">
+                <span className="mr-title">Phrases</span>
+                <span className="mr-tools">
+                  <Plus size={22} strokeWidth={2.2} />
+                  <ListFilter size={22} strokeWidth={2.2} />
+                </span>
+                <Avatar plain size={44} />
+              </header>
+
+              <div className="mr-deck">
+                <div className="mr-track" data-added={s.added || undefined}>
+                  <div className="mr-card mr-slot-1" data-tone="paper" data-gone={s.added || undefined}>
+                    <span className="mr-card__eyebrow">Today’s phrases for you.</span>
+                    <span className="mr-card__count">0 of 3</span>
+                    <span className="mr-card__pill">START</span>
+                  </div>
+                  <RoutineCard tone="midnight" className={`mr-slot-2${s.added ? ' is-in' : ''}`} />
+                  <span className="mr-add" data-target="add-tile" data-home={!s.added || undefined}>
+                    <span className="mr-add__plus">
+                      <Plus size={22} strokeWidth={2.4} />
+                    </span>
+                    <span className="mr-add__label">New card</span>
+                  </span>
+                </div>
+              </div>
+
+              <section className="mr-list">
+                {LIST.map(([label, rows]) => (
+                  <div key={label} className="mr-group">
+                    <span className="mr-group__label">{label}</span>
+                    <div className="mr-rows">
+                      {rows.map((text) => (
+                        <div key={text} className="mr-row">
+                          <span className="mr-row__listen">
+                            <Volume1 size={14} strokeWidth={2.4} />
+                          </span>
+                          <span className="mr-row__text">{text}</span>
+                          <ChevronRight size={16} strokeWidth={2.2} className="mr-row__chev" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            </div>
+
+            <span className="mr-dim" data-on={s.sheet || undefined} />
+
+            <div className="mr-sheet" data-open={s.sheet || undefined}>
+              <div className="mr-sheet__bar">
+                <span className="mr-sheet__cancel">Cancel</span>
+                <span className="mr-sheet__title">New card</span>
+                <span className="mr-sheet__add" data-target="sheet-add">
+                  Add
+                </span>
+              </div>
+
+              <section className="mr-form">
+              <div className="mr-preview">
+                <RoutineCard tone={s.tone} />
+              </div>
+
+              <div className="mr-field">
+                <span className="mr-field__label">Color</span>
+                <div className="mr-swatches">
+                  <span className="mr-swatch" data-tone="midnight" data-target="swatch-midnight" data-on={s.tone === 'midnight' || undefined}>
+                    Midnight
+                    <span className="mr-swatch__check">
+                      <Check size={14} strokeWidth={3} />
+                    </span>
+                  </span>
+                  <span className="mr-swatch" data-tone="paper" data-on={s.tone === 'paper' || undefined}>
+                    Paper
+                    <span className="mr-swatch__check">
+                      <Check size={14} strokeWidth={3} />
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="mr-field">
+                <span className="mr-field__label">Practice from</span>
+                <div className="mr-seg">
+                  <span>Phrases</span>
+                  <span>Studio</span>
+                  <span data-on>My Sentences</span>
+                </div>
+              </div>
+
+              <div className="mr-settings">
+                <div className="mr-setting">
+                  <span>Items per session</span>
+                  <span className="mr-stepper">
+                    <Minus size={16} strokeWidth={2.4} />
+                    <b>5</b>
+                    <Plus size={16} strokeWidth={2.4} />
+                  </span>
+                </div>
+                <div className="mr-setting">
+                  <span>Saved within</span>
+                  <span className="mr-setting__value">
+                    All time <ChevronRight size={15} strokeWidth={2.2} />
+                  </span>
+                </div>
+                <div className="mr-setting">
+                  <span>Order</span>
+                  <span className="mr-setting__value">
+                    Shuffle <ChevronRight size={15} strokeWidth={2.2} />
+                  </span>
+                </div>
+              </div>
+              </section>
+            </div>
+          </Phone>
+        </>
+      )}
+    </Stage>
+  )
+}

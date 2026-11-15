@@ -2626,7 +2626,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
               inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
               placeholder="Untitled note"
               placeholderTextColor={c.faint}
-              style={{ ...serifInputFace(title, -0.31), fontSize: 31, lineHeight: 35, color: c.ink, padding: 0 }}
+              style={{ ...serifInputFace(), fontSize: 31, lineHeight: 35, color: c.ink, padding: 0 }}
             />
             {/* Serif against the system-font body: the two lines read as
                 different kinds of text at a glance, without a form label. The
@@ -2640,7 +2640,7 @@ export function SpeakingNoteScreen({ id, nav, justPracticed }: { id: string; nav
               inputAccessoryViewID={Platform.OS === "ios" ? NOTE_ACCESSORY_ID : undefined}
               placeholder="What should this sound like? One sentence."
               placeholderTextColor={c.faint}
-              style={{ ...serifInputFace(goal, 0), fontSize: 17, lineHeight: 23, color: c.sub, padding: 0, marginTop: 7 }}
+              style={{ ...serifInputFace(), fontSize: 17, lineHeight: 23, color: c.sub, padding: 0, marginTop: 7 }}
             />
             <NoteBodyCard c={c} value={body} onOpen={(editing) => { setEditorEditing(editing); setEditorOpen(true); }} />
           </View>

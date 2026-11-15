@@ -1,8 +1,11 @@
+import {initialCoachingLevel} from '@/lib/coaching-level-migration';
+import { CoachingPreferencesForm } from '@/components/coaching-preferences-form';
+import { loadCoachingPreferences, saveCoachingPreferences } from '@/lib/advanced-feedback';
 // edit-profile.tsx — Profile subpages. Edit profile is name + goal (Supabase
 // user_metadata). First language and Feedback focus are their own screens and
 // persist locally, like Reminders.
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Switch, View } from "react-native";
 import { Text, TextInput } from "@/design/text";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -13,14 +16,10 @@ import { authErrorMessage } from "@/lib/auth-errors";
 import { supabase } from "@/lib/supabase";
 import { MAX_PHRASES_PER_DAY, MIN_PHRASES_PER_DAY, persistPhrasesPerDay, phrasesPerDay } from "@/lib/daily-phrases";
 import { DAILY_SPEAKING_GOAL_OPTIONS, dailySpeakingGoalMinutes, formatDailySpeakingGoal } from "@/lib/practice-length";
-import {
-  ENGLISH_LEVEL_DETAIL,
-  ENGLISH_LEVEL_OPTIONS,
-  englishLevel,
-  persistEnglishLevel,
-  type EnglishLevel,
-} from "@/lib/english-level";
 import { persistThemePref, themePref, THEME_PREF_OPTIONS, type ThemePref } from "@/lib/theme-pref";
+import { useAppCopy } from "@/lib/app-copy";
+import { languagePreferences, persistLanguagePreferences, useLanguagePreferences } from "@/lib/language-preferences";
+import type { LanguagePreferences } from "@/lib/language-policy";
 import { firstLanguage, persistFirstLanguage, L1_OPTIONS, type L1 } from "@/lib/first-language";
 import {
   persistTalkFocus,
@@ -268,29 +267,77 @@ export function ChangePasswordScreen({ nav }: { nav: Nav }) {
 
 export function FirstLanguageScreen({ nav }: { nav: Nav }) {
   const t = useTheme();
+  const { session } = useAuth();
   const [l1, setL1] = useState<L1>(firstLanguage());
+  const copy = useAppCopy();
+  const preferences = useLanguagePreferences();
+  const [saveError, setSaveError] = useState(false);
+  const update = (next: LanguagePreferences) => {
+    setSaveError(false);
+    void persistLanguagePreferences(next).catch(() => setSaveError(true));
+  };
+  const rows = [
+    { key: "app", label: "App settings & guidance", detail: "Use your first language for available settings and app explanations." },
+    { key: "assistant", label: "AI replies & note titles", detail: "Default language for How can I say, note conversations, and generated note titles." },
+    { key: "feedback", label: "Self-talk feedback", detail: "Explain feedback in your first language. English examples stay in English." },
+  ] as const;
+  const toggleRow = (label: string, detail: string, value: boolean, onChange: (value: boolean) => void) => (
+    <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 14 }}>
+      <View style={{ flex: 1, gap: 5 }}>
+        <Text style={{ fontSize: 16, fontWeight: "600", color: t.colors.ink }}>{copy(label)}</Text>
+        <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>{copy(detail)}</Text>
+      </View>
+      <Switch accessibilityLabel={copy(label)} value={value} onValueChange={onChange} trackColor={{ true: t.colors.acc }} />
+    </View>
+  );
 
-  const choose = (value: L1) => {
-    setL1(value);
-    void persistFirstLanguage(value);
+
+  const [languageBusy, setLanguageBusy] = useState(false);
+  const choose = async (value: L1) => {
+    if (languageBusy || !session?.user.id) return;
+    setLanguageBusy(true);
+    try {
+      const p = await loadCoachingPreferences();
+      await saveCoachingPreferences({ revision: p?.source_revision ?? 0, richText: p?.rich_text ?? '', level: p?.english_level ?? await initialCoachingLevel(session.user.id), language: value }, session.user.id);
+      await persistFirstLanguage(value);
+      setL1(value);
+    } catch { Alert.alert('Couldn’t update language', 'Your speaking focus is unchanged. Please try again.'); }
+    finally { setLanguageBusy(false); }
   };
 
   return (
     <Screen bottomPad={40}>
-      <BackBar title="First language" onBack={nav.pop} />
+      <BackBar title={copy("First language")} onBack={nav.pop} />
       <Card>
-        <Text style={fieldLabel(t.colors.accD)}>FIRST LANGUAGE</Text>
+        <Text style={fieldLabel(t.colors.accD)}>{copy("FIRST LANGUAGE")}</Text>
         <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3, marginTop: 6 }}>
-          We greet you in this language while you learn English.
+          {copy("Choose the language you use to understand English meanings.")}
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 12 }}>
           {L1_OPTIONS.map((option) => (
-            <Chip key={option.value} active={l1 === option.value} onPress={() => choose(option.value)}>
+            <Chip key={option.value} active={l1 === option.value} onPress={() => void choose(option.value)}>
               {option.label}
             </Chip>
           ))}
         </View>
       </Card>
+      <Card>
+        <Text style={fieldLabel(t.colors.accD)}>{copy("WHERE TO USE IT")}</Text>
+        {toggleRow("Use first language everywhere", "Turn all three options on or off. Off uses English.", Object.values(preferences).every(Boolean), (enabled) => update({ app: enabled, assistant: enabled, feedback: enabled }))}
+        {rows.map(({ key, label, detail }) => (
+          <View key={key} style={{ borderTopWidth: hairline, borderTopColor: t.colors.sep }}>
+            {toggleRow(label, detail, preferences[key], (enabled) => update({ ...languagePreferences(), [key]: enabled }))}
+          </View>
+        ))}
+      </Card>
+      <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <Icon name="check" s={18} c={t.colors.accD} />
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.ink }}>{copy("Meanings · Always on")}</Text>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink3 }}>{copy("Meanings always use your first language. These switches do not change them.")}</Text>
+        </View>
+      </Card>
+      {saveError ? <Text style={{ color: t.colors.warn, fontSize: 13 }}>Couldn’t save to this device. Your choice applies for this session; toggle again to retry.</Text> : null}
     </Screen>
   );
 }
@@ -429,62 +476,7 @@ export function FeedbackFocusScreen({ nav }: { nav: Nav }) {
 }
 
 export function EnglishLevelScreen({ nav }: { nav: Nav }) {
-  const t = useTheme();
-  const [level, setLevel] = useState<EnglishLevel>(englishLevel());
-
-  const choose = (value: EnglishLevel) => {
-    setLevel(value);
-    void persistEnglishLevel(value);
-  };
-
-  return (
-    <Screen bottomPad={40}>
-      <BackBar title="English level" onBack={nav.pop} />
-      <Card style={{ paddingVertical: 6, paddingHorizontal: 16 }}>
-        <Text style={[fieldLabel(t.colors.accD), { paddingTop: 10, paddingBottom: 4 }]}>ENGLISH LEVEL</Text>
-        <Text style={{ fontSize: 13, lineHeight: 19, color: t.colors.ink2, paddingBottom: 8 }}>
-          Speaking feedback pitches its suggestions at this level.
-        </Text>
-        {ENGLISH_LEVEL_OPTIONS.map((option, index) => {
-          const selected = level === option.value;
-          const last = index === ENGLISH_LEVEL_OPTIONS.length - 1;
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              onPress={() => choose(option.value)}
-              style={{
-                minHeight: 60,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-                paddingVertical: 10,
-                borderBottomWidth: last ? 0 : hairline,
-                borderBottomColor: t.colors.sep,
-              }}
-            >
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={{ fontSize: 16.5, fontWeight: selected ? "700" : "500", color: t.colors.ink }}>
-                  {option.label}
-                </Text>
-                <Text style={{ fontSize: 12.5, lineHeight: 17, color: t.colors.ink3 }}>
-                  {ENGLISH_LEVEL_DETAIL[option.value]}
-                </Text>
-              </View>
-              {selected ? (
-                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.acc, alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="check" s={12} w={2.5} c={t.colors.onAcc} />
-                </View>
-              ) : (
-                <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: t.colors.sep }} />
-              )}
-            </Pressable>
-          );
-        })}
-      </Card>
-    </Screen>
-  );
+  return <CoachingPreferencesForm onBack={nav.pop} />;
 }
 
 export function ThemeScreen({ nav }: { nav: Nav }) {

@@ -170,12 +170,11 @@ export async function createNote(
   return data;
 }
 export async function saveNote(id: string, title: string, body: string) {
-  const { data, error } = await supabase
-    .from("notes")
-    .update({ title, body, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
+  // The existing RPC stores an immutable history entry in the same
+  // transaction as the edit; a failed history write cannot lose the draft.
+  const { data, error } = await supabase.rpc("apply_note_version", {
+    p_note_id: id, p_title: title, p_body: body, p_origin: "manual", p_source_session_id: null,
+  });
   if (error || !data)
     throw new Error(error?.message ?? "This note is no longer available.");
 }
@@ -183,15 +182,17 @@ export async function deleteNote(id: string) {
   const { error } = await supabase.from("notes").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
-export async function loadMirrorSessions(): Promise<MirrorSession[]> {
+export async function loadMirrorSessions(noteId?: string): Promise<MirrorSession[]> {
   const rows: MirrorSession[] = [];
   for (let start = 0; ; start += 1000) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("talk_sessions")
       .select("id,note_id,note_version_id,transcript,seconds,duration_seconds,audio_key,created_at")
       .order("created_at", { ascending: false })
       .order("id")
       .range(start, start + 999);
+    if (noteId) query = query.eq("note_id", noteId);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     rows.push(
       ...data.map((row) => ({

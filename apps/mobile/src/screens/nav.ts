@@ -4,6 +4,8 @@
 import type { TabId } from "@/design/ui";
 
 export type ViewName =
+  | "personalSentences"
+  | "routinePractice"
   | "profile"
   | "mvpPhrase"
   | "mvpNote"
@@ -48,6 +50,7 @@ export interface ReturnTarget {
 }
 
 export interface TalkCtx {
+  feedbackRetry?: import("@/lib/advanced-feedback").FeedbackRetry;
   ctx?: string;
   sub?: string | null;
   prompt?: string | null;
