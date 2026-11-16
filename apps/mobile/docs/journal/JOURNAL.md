@@ -1568,3 +1568,11 @@ Sheet가 쓰던 구조로 통일.
 ## 2026-11-16 — Speaking review 실패: 서버 함수 재배포 + 배포 확인 스크립트
 
 TestFlight 51에서 리뷰가 항상 "Something went wrong". 원인은 앱이 아니라 11-06 배포된 `talk-advanced-feedback` v1이 11-11부터 앱이 보내는 `responseLanguage`를 거절한 것. v2로 재배포(실기기에서 같은 세션 리뷰 생성 확인, 7.0초)했고, 라이브 함수와 저장소 코드를 파일 단위로 비교하는 `npm run verify:edge-deploys`를 추가했다. → [postmortem](postmortems/2026-11-16-speaking-review-stale-edge-function.md)
+
+## 2026-11-16 — Speaking review 간격 넓히기 + 한국어 줄바꿈
+
+**만든 것.** 리포트가 "촘촘하다"는 피드백으로 `feedback-review.tsx`의 간격과 글자 크기를 다시 잡았다. 섹션 사이 26→36, 본문 15/22→16/25, 숫자 타일·포커스 카드·You said/A clearer way 상자·Your turn·Take with you·Next step의 안쪽 여백을 14→16~18로. 한국어 제목은 세리프가 없어 시스템 글꼴로 떨어지므로 26/36 굵게로 따로 처리(영문은 세리프 29/36 유지). stageshow 목업(`docs/design/speaking-review-report/`, `poster-spacing-ko.png`)에 한국어 리뷰를 넣어 먼저 값을 잡고 앱에 옮겼다.
+
+**실패 → 수정.** 넓힌 뒤 시뮬레이터에서 두 가지가 보였다. (1) 제목이 "개 / 선하기"로 단어 중간에서 끊김 → 본문 전용 `Para`에 `lineBreakStrategyIOS="hangul-word"`. (2) Take with you 둘째 항목의 둘째 줄 "분명해집니다."가 통째로 안 그려짐(틀 높이는 두 줄). 줄바꿈 설정과 무관했고, 글자 틀에 2pt 여유를 주면 나타났다 → iOS가 그릴 때 마지막 줄을 잴 때보다 살짝 높게 잡아, 틀이 딱 맞으면 그 줄을 버리는 것. `paddingBottom`은 효과 없음(내용 영역이 그대로). `Para` 끝에 2pt짜리 빈 줄을 넣어 그 줄이 대신 버려지게 했다.
+
+**검증.** `tsc`·eslint 통과, `test:mvp` 119/119. 시뮬레이터(:8084)에서 실제 리뷰(2026-11-16 세션, 한국어)로 상단·숫자·띠·순서·포커스 카드·Your turn·Take with you·Next step 확인. **미확인**: 영어 리뷰, 다크 모드, 포커스 여러 개, 되묻기·비교 카드, 실기기.
