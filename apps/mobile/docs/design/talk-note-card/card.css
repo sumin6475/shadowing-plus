@@ -1,0 +1,72 @@
+@font-face { font-family: 'Myne UI'; src: url('../myne-phrase/fonts/Pretendard-Regular.otf') format('opentype'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Myne UI'; src: url('../myne-phrase/fonts/Pretendard-Medium.otf') format('opentype'); font-weight: 500; font-display: block; }
+@font-face { font-family: 'Myne UI'; src: url('../myne-phrase/fonts/Pretendard-SemiBold.otf') format('opentype'); font-weight: 600; font-display: block; }
+@font-face { font-family: 'Myne UI'; src: url('../myne-phrase/fonts/Pretendard-Bold.otf') format('opentype'); font-weight: 700; font-display: block; }
+
+/* Myne's note cue card. One flat surface with an outer shadow; the three
+   section colors are the only color on it. */
+.nc {
+  & .ss-stage {
+    --opening: #5fd4a6;
+    --body: #f5b555;
+    --closing: #f28ba8;
+    --muted: rgba(255, 255, 255, 0.58);
+    --ui: 'Myne UI', -apple-system, system-ui, sans-serif;
+    --ss-accent: #6e8dd5;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #e9eaf0;
+  }
+  .nc-phone { position: absolute; top: 40px; }
+  .nc-phone--a { left: 40px; }
+  .nc-phone--b { left: 440px; }
+  .ss-stage[data-layout='compact'] .nc-phone--b { top: 16px; left: 16px; }
+
+  .nc-screen { position: relative; height: 700px; font-family: var(--ui); color: #fff; letter-spacing: -0.01em; }
+  .nc-screen p { margin: 0; }
+
+  .nc-card { position: absolute; left: 14px; right: 14px; bottom: 150px; padding: 20px 20px 14px; border-radius: 26px; background: #1b1d25; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 18px 40px rgba(0, 0, 0, 0.55); overflow: hidden; }
+  .nc-head { display: flex; align-items: center; gap: 8px; color: #b9bcc6; }
+  .nc-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; font-weight: 600; }
+  .nc-count { font-size: 12.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .nc-map { display: flex; gap: 4px; margin-top: 14px; }
+  .nc-map i { flex: 1; height: 4px; border-radius: 2px; opacity: 0.22; transition: opacity 0.3s; }
+  .nc-map i[data-done] { opacity: 0.5; }
+  .nc-map i[data-on] { opacity: 1; }
+  [data-tone='opening'] { --tone: var(--opening); }
+  [data-tone='body'] { --tone: var(--body); }
+  [data-tone='closing'] { --tone: var(--closing); }
+  .nc-map i { background: var(--tone); }
+
+  .nc-sec { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--tone); }
+
+  /* All points */
+  .nc-list { display: grid; gap: 4px; margin: 14px -8px 0; }
+  .nc-row { position: relative; display: flex; gap: 12px; padding: 12px 12px 13px 14px; border-radius: 16px; }
+  .nc-row .nc-num { width: 20px; padding-top: 1px; font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .nc-row p { margin-top: 5px; font-size: 14.5px; line-height: 21px; color: rgba(255, 255, 255, 0.6); }
+  .nc-row:not([data-on]) .nc-sec { opacity: 0.6; }
+  .nc-row[data-on] { background: rgba(255, 255, 255, 0.09); }
+  .nc-row[data-on]::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--tone); }
+  .nc-row[data-on] .nc-num { color: #fff; }
+  .nc-row[data-on] p { color: #fff; font-weight: 600; }
+
+  /* Current point */
+  .nc-pager { margin: 18px -20px 0; overflow: hidden; }
+  .nc-track { display: flex; will-change: transform; }
+  .nc-track[data-settle] { transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
+  .nc-page { flex: none; width: 365px; padding: 0 20px; box-sizing: border-box; min-height: 104px; }
+  .nc-page p { margin-top: 8px; font-size: 20px; line-height: 28px; font-weight: 600; }
+
+  .nc-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+  .nc-link { font-size: 14px; font-weight: 600; color: #bbd0ff; }
+  .nc-arrows { display: flex; gap: 8px; }
+  .nc-arrows span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 255, 255, 0.09); }
+  .nc-arrows span[data-off] { opacity: 0.35; }
+
+  .nc-controls { position: absolute; left: 0; right: 0; bottom: 26px; display: flex; align-items: flex-end; justify-content: center; gap: 40px; }
+  .nc-ctl { display: grid; justify-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: rgba(255, 255, 255, 0.86); }
+  .nc-ctl i { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: #1a1c22; }
+  .nc-mic { display: grid; place-items: center; width: 78px; height: 78px; margin-bottom: 14px; border-radius: 50%; background: #6e8dd5; color: #17255a; }
+}
