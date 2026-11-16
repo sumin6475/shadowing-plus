@@ -1564,3 +1564,7 @@ Sheet가 쓰던 구조로 통일.
 **원칙.** 색에 일을 준다(말한 것 = 호박, 더 분명한 것 = 초록). 지어낸 점수는 넣지 않고, 리포트가 실제로 가진 수와 위치만 그린다.
 
 **검증.** `tsc --noEmit`·eslint·`test:mvp` 통과(아래). 시뮬레이터(:8084)에서 실제 저장 리뷰(2026-11-11 세션)를 임시 값으로 띄워 확인 후 제거: 상단 요약·숫자·띠, 포커스 카드 본문, Your turn 힌트 열기, Take with you, Next step, 흰 배경과 하단 바. **미확인**: 띠의 위치 정확도(임시 전사문 길이로 봄), 포커스가 여러 개인 리뷰, 되묻기(needs clarification) 카드, 두 번째 시도 비교 카드, 다크 모드, 실기기. stageshow 게이트는 2줄 남음(REHEARSAL.md에 사유).
+
+## 2026-11-16 — Speaking review 실패: 서버 함수 재배포 + 배포 확인 스크립트
+
+TestFlight 51에서 리뷰가 항상 "Something went wrong". 원인은 앱이 아니라 11-06 배포된 `talk-advanced-feedback` v1이 11-11부터 앱이 보내는 `responseLanguage`를 거절한 것. v2로 재배포(실기기에서 같은 세션 리뷰 생성 확인, 7.0초)했고, 라이브 함수와 저장소 코드를 파일 단위로 비교하는 `npm run verify:edge-deploys`를 추가했다. → [postmortem](postmortems/2026-11-16-speaking-review-stale-edge-function.md)
