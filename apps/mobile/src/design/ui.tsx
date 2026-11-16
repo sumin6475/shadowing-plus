@@ -656,10 +656,14 @@ export function Screen({
   onContentSizeChange,
   scrollEventThrottle,
   onPullToSearch,
+  background,
 }: {
   children: ReactNode;
   noPad?: boolean;
   bottomPad?: number;
+  /** Page color, for a screen that is not on the standard grouped background
+   *  (the Speaking review reads as a white report). */
+  background?: string;
   style?: StyleProp<ViewStyle>;
   /** Optional <RefreshControl> for pull-to-refresh (data-backed screens). */
   refreshControl?: ReactElement<RefreshControlProps>;
@@ -685,10 +689,10 @@ export function Screen({
   // gentle multi-stop fade to nothing well below it so there's no visible edge.
   const frostH = insets.top + 40;
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: background ?? t.colors.bg }}>
       <Animated.ScrollView
         ref={scrollRef}
-        style={{ flex: 1, backgroundColor: t.colors.bg }}
+        style={{ flex: 1, backgroundColor: background ?? t.colors.bg }}
         contentContainerStyle={[
           {
             paddingTop: insets.top + 8,

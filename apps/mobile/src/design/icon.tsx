@@ -53,7 +53,8 @@ export type IconName =
   | "flask"
   | "link"
   | "grip"
-  | "repeat";
+  | "repeat"
+  | "retry";
 
 // One 5-point star sized to this set's own scale, so the filled and hollow
 // favorite states are the same shape and never jump when they swap.
@@ -286,6 +287,15 @@ export function Icon({ name, s = 20, c = "currentColor", w = 1.8 }: IconProps) {
           <Path d="M3 11v-1a4 4 0 0 1 4-4h14" />
           <Path d="M7 22l-4-4 4-4" />
           <Path d="M21 13v1a4 4 0 0 1-4 4H3" />
+        </G>
+      );
+      break;
+    case "retry":
+      // One clockwise arrow — "run this again". Distinct from `repeat` (a loop).
+      body = (
+        <G {...common}>
+          <Path d="M19.2 14.5a7.6 7.6 0 1 1-1.8-7.9L21 10" />
+          <Path d="M21 4.5V10h-5.5" />
         </G>
       );
       break;

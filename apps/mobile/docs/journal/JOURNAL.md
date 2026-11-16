@@ -1526,3 +1526,41 @@ Sheet가 쓰던 구조로 통일.
 **검증.** `tsc --noEmit` 통과, eslint(변경 파일) 오류 0, `test:mvp` 63/63, `expo export --platform ios` 번들 성공, 앱 코드에 옛 6개 테이블 `.from()` 호출 0. 시뮬레이터(iOS 26.5, 이 워크트리 Metro :8084): Phrases 홈, Studio 노트 목록·노트 편집, Talk(Hint 카드 포함), 구문 상세 → Edit(불러오기) → 그대로 Save changes(오류 없이 상세로 복귀). Talk의 "Failed to initialize recognizer"와 Talk을 Discard한 뒤 빈 화면은 기존 코드(:8083)에서도 똑같이 나와 이번 변경과 무관. **미확인**: 엣지 함수 Deno 타입 검사(Deno 미설치), 엣지 함수 재배포 안 함, 실기기.
 
 **리베이스(#38 머지 후).** 충돌 5곳: #38이 손본 `phrases.tsx`·`studio-information.tsx`·`today.tsx`(글꼴·크기 조정뿐)는 삭제 유지, `shell.tsx`는 routines import만 남김, 이 저널은 두 쪽 항목 모두 유지. 충돌 밖에서 하나 더: #38이 새로 넣은 `reuseSavedPhrase`가 `linkPhraseToSituation`을 불러 `tsc`가 깨짐(`TS2304: Cannot find name 'linkPhraseToSituation'`) → 그 호출 삭제. 이후 `tsc` 통과, eslint(변경 파일) 통과, `test:mvp` 119/119, `expo export --platform ios` 성공. 리베이스 후 시뮬레이터 재확인은 안 함.
+
+## 2026-11-15 — Speaking review 페이지: 자동 분석 + 한 번에 한 상태
+
+**만든 것.** 브랜치 `feat/speaking-review-states`(main `802ef1f` 기준, 미커밋). Mirror 결과의 두 번째 슬라이드에서 "Analyze this session" 카드와 그 아래 안내문·Try again 캡슐을 없앴다. 슬라이드가 처음 보일 때 분석이 스스로 시작되고, 페이지는 로딩 / AI 꺼짐 / 실패 / 리뷰 중 하나만 보여 준다(`src/components/review-state.tsx` 신설). 실패는 가운데 둥근 ↻(새 아이콘 `retry`), AI 꺼짐은 "Open Privacy settings ›" 바로가기(`nav.push("privacy")`), 켜고 돌아오면 분석이 자동 시작. 하단 고정 버튼은 Session 슬라이드에만 Listen back, Feedback 슬라이드는 Speak again + Done. 슬라이드를 넘기면 재생 중인 녹음은 멈춘다.
+
+**원칙.** 스스로 시작할 수 있는 일에 버튼을 두지 않는다. 고정 버튼이 이미 있는 화면의 본문 액션은 캡슐이 아닌 다른 모양으로(↻ 원, 텍스트 링크). `docs/design/button-guidelines.md`에 추가.
+
+**검증.** `tsc --noEmit` 통과, eslint(변경 파일) 통과, `test:mvp` 119/119. 시뮬레이터(iOS 26.5, Metro :8084, 결과 화면을 임시 값으로 띄워 확인 후 제거): 로딩 → 실패(↻, 탭하면 재실행 로그 2회 확인) → AI 꺼짐 → 바로가기로 Privacy 열림 → 돌아오면 자동 실행, 두 슬라이드의 하단 버튼. **미확인**: 실제 리뷰가 생성돼 표시되는 경로(시뮬레이터 음성 인식 불가 — 가짜 세션 id로는 실패 상태까지만), Listen back 표시·슬라이드 전환 시 일시정지(녹음 필요), 다크 모드, 실기기.
+
+**알게 된 것.** `lib/talk.ts`의 `suggestTalkPhrase`·`diagnoseTalk`·`diagnoseStuck`은 현재 어느 화면에서도 호출되지 않는다. 어제 재배포한 `talk-phrase-suggest`는 옛 빌드만 쓴다(어제 기록의 "앱은 Talk을 끝낸 뒤 부른다"는 틀림).
+
+## 2026-11-15 — AI 동의를 그 자리에서(시트) + 일러스트 한 벌로 통일
+
+**만든 것.** (같은 브랜치, 미커밋) ① `src/components/ai-consent-sheet.tsx`: AI가 꺼져 있을 때 Privacy 화면으로 보내지 않고 같은 페이지에서 뜨는 바텀시트. 스위치를 켜면 저장 → 시트 닫힘 → 리뷰 자동 시작. 내용은 첫 실행 동의 화면과 같은 항목(무엇을, OpenAI라는 제3자에게, 기본적으로 학습에 안 쓰임, 녹음은 기기에만, 스위치 하나가 모든 AI 기능에 적용, 개인정보처리방침 링크, 끄는 방법), 스위치는 꺼진 채 시작. ② `src/design/doodle.tsx`: 빈 상태 그림 3종(phrases·notes·sessions)을 같은 두들 화법으로 다시 그리고 `aiOff`(잠든 토글) 추가. `EmptyState`와 `ReviewState`가 함께 쓴다. ③ 세션 기록 화면(Profile → Recent sessions)의 Speaking review는 같은 컴포넌트라 자동 분석·상태 화면·시트가 그대로 적용, 가운데 정렬만 맞춤.
+
+**이유.** 스피킹 직후 결과 화면은 다시 들어갈 길이 없는 화면이라, 거기서 설정으로 내보내면 돌아오지 못한다(사용자 지적).
+
+**검증.** `tsc --noEmit`·eslint·`test:mvp` 통과(아래 실행). 시뮬레이터(:8084, AI 꺼짐을 임시로 강제 후 제거): 세션 기록 → 둘째 슬라이드에 aiOff 그림 + "Turn on AI processing" → 시트 표시 → 스위치 켬 → 저장 후 시트 닫힘. 그림 4종은 브라우저에서 라이트·다크로 확인. **미확인**: 실제로 꺼진 계정에서 켠 직후 리뷰가 생성되는 끝까지의 흐름(켜짐 전환 → 자동 시작은 앞서 확인), 앱 안의 phrases·notes·sessions 빈 화면(데이터가 있는 계정이라 못 봄), 다크 모드, 실기기. 시뮬레이터 도구의 탭으로는 스위치가 안 켜지고 밀어야 켜졌다 — 실기기에서 탭 확인 필요.
+
+## 2026-11-15 — AI 문구: 화면엔 "AI", 업체명은 동의 지점의 작은 글씨 한 줄 + 정책 페이지
+
+**만든 것.** (같은 브랜치, 미커밋) 앱 화면 문구에서 "OpenAI"를 빼고 "AI processing / our AI provider"로. 업체명은 `AI_PROVIDER_NOTE`(`src/lib/legal.ts`) 한 곳에만 두고, 동의를 받는 세 지점(첫 실행 동의 화면, 페이지 안 시트, Settings → Privacy 스위치 아래)에 작은 회색 글씨로 "Our AI provider is OpenAI…" + Full Privacy Policy 링크. `apps/myne-site/privacy/index.html` AI 절을 기능별로 다시 씀: 스피킹 리뷰·Ask(이번에 처음 명시)·뜻 채우기·사진·검색·음성마다 무엇을 보내는지, 보내지 않는 것, OpenAI(미국)의 기본 학습 미사용과 최대 30일 보관(OpenAI 문서 링크), AI 결과 저장·삭제, AI 오류 고지. 날짜 2026-11-15. 사이트 배포는 안 함.
+
+**결정 근거(조사).** Apple 5.1.2(i)(2025-11 개정)는 "third-party AI에 공유할 곳을 명확히 밝히고 명시적 허락"을 요구. 2026-02 실제 반려 문구는 "does not clearly explain what data is sent, identify who the data is sent to"이고, 개인정보처리방침에만 업체명을 쓴 앱이 다시 반려된 사례가 있음(Apple Developer Forums 815842, 816140). 그래서 업체명을 완전히 빼지 않고 동의 지점의 작은 글씨로만 남김 — 사용자 요청(화면에서 빼기)과의 절충, 최종 판단은 사용자.
+
+**검증.** `tsc`·eslint·`test:mvp` 통과. 시뮬레이터(:8084, AI 꺼짐 임시 강제 후 제거): 시트의 새 문구와 작은 글씨 확인, 설정은 바꾸지 않고 Not now로 닫음. 사이트는 로컬 서버로 AI 절 렌더 확인. **미확인**: 첫 실행 동의 화면·Settings → Privacy 실제 화면, 다크 모드.
+
+**배포(2026-11-15).** `apps/myne-site`를 기존 Vercel 프로젝트 `myne`(git 미연결, CLI 배포)에 `vercel --prod`로 재배포 → https://getmyne.vercel.app. 배포 전 라이브와 파일 단위 비교: privacy 외 홈·support·terms·css·js·assets 동일. 배포 후 라이브 `/privacy`가 커밋 파일과 바이트 단위로 같음("Last updated: 15 November 2026"), 나머지 페이지 변화 없음. 처음 시도는 CLI 미로그인으로 멈춤 → 사용자가 `vercel login` 후 진행.
+
+## 2026-11-15 — Speaking review를 "읽는 리포트"로 재디자인
+
+**만든 것.** `src/components/feedback-review.tsx`(신설)로 리포트 본문을 다시 짰다. 흰 페이지 위에: 헤드라인 + 듣는 사람 관점 → 숫자 3개(Focus area · Moments · Pattern to keep) → 말한 전체를 한 줄로 그린 띠에 문제 지점 표시(증거의 start 오프셋 ÷ 전사문 길이, 탭하면 해당 카드 열림) → 포커스 카드(접고 펼침: You said 호박색 → 설명 → A clearer way 초록 → Pattern to keep → Ask yourself + Show hint) → Your turn(남색 그라디언트, 힌트를 하나씩 열기, Try it aloud) → Take with you(초록 체크) → Next step. 색은 남색에 호박·초록 두 가지만 추가하고 역할을 고정. `Screen`에 `background` prop을 추가해 두 화면(직후 결과, 세션 기록)의 Feedback 페이지와 하단 바를 흰색으로. 목업: `docs/design/speaking-review-report/`(stageshow).
+
+**내부 이름 제거.** 카테고리 코드(`reference_clarity` 등)와 비교 결과 코드는 라벨 표를 거친다. 모델이 본문(권장 순서)에 코드를 그대로 써도 `humanize()`가 라벨로 바꾼다. "Saved review · B2 · ko"는 B2 칩만 남김. 권장 순서는 항목이 2개 이상일 때만 표시.
+
+**원칙.** 색에 일을 준다(말한 것 = 호박, 더 분명한 것 = 초록). 지어낸 점수는 넣지 않고, 리포트가 실제로 가진 수와 위치만 그린다.
+
+**검증.** `tsc --noEmit`·eslint·`test:mvp` 통과(아래). 시뮬레이터(:8084)에서 실제 저장 리뷰(2026-11-11 세션)를 임시 값으로 띄워 확인 후 제거: 상단 요약·숫자·띠, 포커스 카드 본문, Your turn 힌트 열기, Take with you, Next step, 흰 배경과 하단 바. **미확인**: 띠의 위치 정확도(임시 전사문 길이로 봄), 포커스가 여러 개인 리뷰, 되묻기(needs clarification) 카드, 두 번째 시도 비교 카드, 다크 모드, 실기기. stageshow 게이트는 2줄 남음(REHEARSAL.md에 사유).

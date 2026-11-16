@@ -33,7 +33,7 @@
   <div class="help-hero doc-hero">
     <p class="eyebrow enter" style="--i:0">Privacy</p>
     <h1 class="display enter" style="--i:1">Privacy Policy</h1>
-    <p class="doc-updated enter" style="--i:2">Last updated: 5 October 2026</p>
+    <p class="doc-updated enter" style="--i:2">Last updated: 15 November 2026</p>
     <p class="enter" style="--i:3">
   Myne (&ldquo;the app&rdquo;) is an independently run speaking-practice app
   for iPhone. This policy explains what we collect,
@@ -52,7 +52,7 @@
     <div class="card reveal">
       <span class="tag">AI</span>
       <strong>Only with your permission</strong>
-      <span class="sub">Nothing is sent to OpenAI unless you allow it, and you can turn it off any time.</span>
+      <span class="sub">Nothing is sent to our AI provider unless you allow it, and you can turn it off any time.</span>
     </div>
     <div class="card reveal">
       <span class="tag">No tracking</span>
@@ -102,17 +102,36 @@
       <section class="doc-section reveal" id="ai-features-only-with-your-permission">
         <h2 class="display">AI features (only with your permission)</h2>
 <p>
-  Some features use OpenAI: filling in the meaning and usage of a phrase,
-  reading text from a photo you choose, phrase search, and spoken
-  pronunciation of a phrase. <strong>Nothing is sent to OpenAI unless you allow
-  it</strong> on the consent screen or in Settings &rarr; Privacy, and you can turn
-  it off there at any time.
+  Some features in the app use AI. To run them, the content involved is sent
+  to our AI provider, <strong>OpenAI</strong> (OpenAI, L.L.C., United States),
+  through Myne&rsquo;s own server, and the result comes back to you.
+  <strong>Nothing is sent unless you allow it</strong> on the consent screen,
+  on the &ldquo;Turn on AI processing&rdquo; sheet shown inside a feature, or in
+  Settings &rarr; Privacy. One switch covers every AI feature, and you can turn
+  it off there at any time. With it off, AI features stay off and nothing is
+  sent.
 </p>
+<p>What each feature sends, and only when you use it:</p>
 <ul>
-  <li>Only the text or photo involved in the feature you use is sent. Recordings are never sent.</li>
-  <li>A photo you use to capture a phrase is processed for that capture and is not stored.</li>
-  <li>OpenAI processes this content under its API data policy and does not use API data to train its models by default.</li>
+  <li><strong>Speaking review.</strong> The transcript of the saved speaking session you are reviewing, your speaking focus (the goals you wrote), your English level, and the language you want the review in. If you answer a follow-up question or try a sentence again, that answer or the new transcript is sent too.</li>
+  <li><strong>Ask.</strong> The messages you type to Ask and, when you ask from a note or a practice session, that note&rsquo;s text or that session&rsquo;s transcript so the answer fits what you are working on.</li>
+  <li><strong>Phrase meaning and usage.</strong> The phrase you are saving and the context you typed with it.</li>
+  <li><strong>Reading text from a photo.</strong> The photo you pick. It is used for that capture only and is not stored by Myne.</li>
+  <li><strong>Phrase search.</strong> The text of your saved phrases, turned into search vectors (&ldquo;embeddings&rdquo;) so similar phrases can be found.</li>
+  <li><strong>AI voice.</strong> The phrase text, to generate its spoken pronunciation.</li>
 </ul>
+<p>What is never sent: your recordings (speaking audio stays on your phone), your camera image, your email address, or your password.</p>
+<p>How OpenAI handles it:</p>
+<ul>
+  <li>OpenAI does not use data sent through its API to train its models by default.</li>
+  <li>OpenAI may keep API inputs and outputs for up to 30 days to provide the service and detect abuse, then deletes them unless the law requires otherwise. See <a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noopener">OpenAI&rsquo;s API data controls</a> and <a href="https://openai.com/policies/privacy-policy/" target="_blank" rel="noopener">privacy policy</a>.</li>
+  <li>OpenAI processes this content on our behalf, under its API terms, to the same standard of protection described in this policy.</li>
+  <li>AI results (for example a speaking review, or a phrase&rsquo;s meaning) are saved to your account like the rest of your learning content and are deleted with it.</li>
+</ul>
+<p>
+  AI can be wrong. Treat reviews and explanations as practice help, not as
+  professional or authoritative advice.
+</p>
       </section>
 
       <section class="doc-section reveal" id="usage-analytics">
@@ -131,7 +150,7 @@
 <p>These companies process data on our behalf, only to run the service:</p>
 <ul>
   <li><strong>Supabase</strong> — sign-in, database, file storage (profile photos), and server functions.</li>
-  <li><strong>OpenAI</strong> — the AI features above, only with your permission.</li>
+  <li><strong>OpenAI</strong> — our AI provider for the AI features above, only with your permission (United States).</li>
   <li><strong>PostHog</strong> — usage analytics and crash diagnostics.</li>
   <li><strong>Cloudflare R2</strong> — storage for the spoken pronunciation of your phrases (so it plays instantly next time).</li>
   <li><strong>Vercel</strong> — hosting for this website.</li>

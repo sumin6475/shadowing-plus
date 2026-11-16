@@ -2,6 +2,7 @@ import { RoutineDeck, PhraseNoteLinks } from "../routines";
 import Reanimated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import { SessionResultPager } from '@/components/session-result-pager';
 import { AdvancedFeedbackReport } from '@/components/advanced-feedback-report';
+import { reviewPalette } from '@/components/feedback-review';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   useCallback,
@@ -2307,7 +2308,11 @@ export function MirrorRecord({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
+  const t = useTheme();
+  const paper = reviewPalette(t).paper;
   return (
+    // The Feedback page is a white report; the page dots follow it.
+    <View style={{ flex: 1, backgroundColor: reviewPage === 1 ? paper : t.colors.bg }}>
     <SessionResultPager onPageChange={setReviewPage} first={<Screen>
       <BackBar title="My records" onBack={nav.pop} />
       <Label>{dateTimeLabel(session.created_at)}</Label>
@@ -2346,6 +2351,7 @@ export function MirrorRecord({
         {busy ? "Deleting…" : "Delete session"}
       </Pill>
       <ErrorCard error={error} retry={() => setError(null)} />
-    </Screen>} second={<Screen><BackBar title="Speaking review" onBack={nav.pop}/><AdvancedFeedbackReport sessionId={session.id} active={reviewPage === 1} onRetry={retry => nav.startTalk({feedbackRetry:retry, noteId:session.note_id, returnTo:{tab:'speak',stack:[{name:'mirrorRecord',props:{id:session.id}}]}})}/></Screen>} />
+    </Screen>} second={<Screen style={{ flexGrow: 1 }} background={paper}><BackBar title="Speaking review" onBack={nav.pop}/><AdvancedFeedbackReport sessionId={session.id} transcriptLength={session.transcript?.length} active={reviewPage === 1} onRetry={retry => nav.startTalk({feedbackRetry:retry, noteId:session.note_id, returnTo:{tab:'speak',stack:[{name:'mirrorRecord',props:{id:session.id}}]}})}/></Screen>} />
+    </View>
   );
 }
