@@ -17,7 +17,7 @@
 // below, including when the model echoes a code inside its own text.
 import { LinearGradient } from "expo-linear-gradient";
 import { useState } from "react";
-import { LayoutAnimation, Pressable, View } from "react-native";
+import { LayoutAnimation, Pressable, View, type TextProps } from "react-native";
 
 import { Icon } from "@/design/icon";
 import { BRAND } from "@/design/mobile-tokens";
@@ -87,10 +87,27 @@ export function reviewPalette(t: Theme) {
       };
 }
 
+/**
+ * Running text written by the review (titles, explanations, quotes).
+ *  - Hangul breaks between words, not inside them ("개 / 선하기").
+ *  - It ends with a 2pt spacer line. iOS sometimes lays the last line a hair
+ *    taller when drawing than when measuring; with a frame that fits exactly it
+ *    then drops that line (a takeaway lost its "분명해집니다."). The spacer is
+ *    what gets dropped instead.
+ */
+function Para({ children, ...rest }: TextProps) {
+  return (
+    <Text lineBreakStrategyIOS="hangul-word" {...rest}>
+      {children}
+      <Text style={{ fontSize: 1, lineHeight: 2 }}>{"\n "}</Text>
+    </Text>
+  );
+}
+
 function Eyebrow({ children, color }: { children: string; color?: string }) {
   const t = useTheme();
   return (
-    <Text style={{ fontSize: 11.5, fontWeight: "700", letterSpacing: 0.9, color: color ?? t.colors.ink3 }}>
+    <Text style={{ fontSize: 12, lineHeight: 16, fontWeight: "700", letterSpacing: 1.1, color: color ?? t.colors.ink3 }}>
       {children.toUpperCase()}
     </Text>
   );
@@ -123,7 +140,11 @@ export function FeedbackReview({
   const moments = findings.flatMap((f, i) => f.evidence.map((e) => ({ at: e.start, n: i + 1 })));
   const patterns = findings.filter((f) => f.certainty === "supported" && f.pattern).length;
   const order = data.overview.suggested_order.map(humanize);
-  const body = { fontSize: 15.5, lineHeight: 23, color: t.colors.ink } as const;
+  const body = { fontSize: 16, lineHeight: 25, color: t.colors.ink } as const;
+  // The serif has no Hangul, kana or CJK: those titles fall back to the system
+  // face, which is heavier and taller, so they get a smaller size and more leading.
+  const wide = (text: string) => /[\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/.test(text);
+  const wideScript = wide(data.overview.title);
   const cardShadow = t.dark ? null : { shadowColor: BRAND.main, shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } };
 
   const toggle = (id: string) => {
@@ -141,30 +162,34 @@ export function FeedbackReview({
     data.practice.target_finding_ids.every((id) => findings.find((f) => f.id === id)?.certainty === "supported");
 
   return (
-    <View style={{ gap: 26 }}>
+    <View style={{ gap: 36 }}>
       {/* ── The big picture ── */}
-      <View style={{ gap: 10 }}>
+      <View style={{ gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Eyebrow>The big picture</Eyebrow>
           <View style={{ paddingHorizontal: 8, height: 20, borderRadius: 10, justifyContent: "center", backgroundColor: p.navySoft }}>
             <Text style={{ fontSize: 11.5, fontWeight: "700", color: t.colors.accD }}>{report.english_level.toUpperCase()}</Text>
           </View>
         </View>
-        <Serif style={{ fontSize: 29, lineHeight: 35, fontWeight: "600", letterSpacing: -0.4, color: t.colors.ink }}>
-          {data.overview.title}
-        </Serif>
-        <View style={{ flexDirection: "row", gap: 11, marginTop: 2 }}>
+        {wideScript ? (
+          <Para style={{ fontSize: 26, lineHeight: 36, fontWeight: "700", letterSpacing: -0.2, color: t.colors.ink }}>{data.overview.title}</Para>
+        ) : (
+          <Serif style={{ fontSize: 29, lineHeight: 36, fontWeight: "600", letterSpacing: -0.3, color: t.colors.ink }}>
+            {data.overview.title}
+          </Serif>
+        )}
+        <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
           <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: p.navySoft }}>
             <Icon name="ear" s={16} w={2} c={t.colors.accD} />
           </View>
-          <Text style={{ flex: 1, fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>{data.overview.listener_view}</Text>
+          <Para style={{ flex: 1, fontSize: 16, lineHeight: 25, color: t.colors.ink2 }}>{data.overview.listener_view}</Para>
         </View>
       </View>
 
       {/* ── At a glance ── */}
       {findings.length ? (
-        <View style={{ gap: 16 }}>
-          <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ gap: 26 }}>
+          <View style={{ flexDirection: "row", gap: 10 }}>
             {[
               { n: findings.length, label: findings.length === 1 ? "Focus area" : "Focus areas", c: t.colors.acc },
               { n: moments.length, label: moments.length === 1 ? "Moment" : "Moments", c: p.amber },
@@ -174,18 +199,18 @@ export function FeedbackReview({
                 key={s.label}
                 accessible
                 accessibilityLabel={`${s.n} ${s.label}`}
-                style={{ flex: 1, gap: 2, paddingHorizontal: 13, paddingTop: 12, paddingBottom: 11, borderRadius: 18, backgroundColor: p.tile }}
+                style={{ flex: 1, gap: 6, paddingHorizontal: 15, paddingTop: 16, paddingBottom: 15, borderRadius: 20, backgroundColor: p.tile }}
               >
-                <Text style={{ fontSize: 26, lineHeight: 30, fontWeight: "700", letterSpacing: -0.5, color: s.c, fontVariant: ["tabular-nums"] }}>{s.n}</Text>
-                <Text style={{ fontSize: 12, lineHeight: 15, fontWeight: "500", color: t.colors.ink2 }}>{s.label}</Text>
+                <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: "700", letterSpacing: -0.5, color: s.c, fontVariant: ["tabular-nums"] }}>{s.n}</Text>
+                <Text style={{ fontSize: 13, lineHeight: 17, fontWeight: "500", color: t.colors.ink2 }}>{s.label}</Text>
               </View>
             ))}
           </View>
 
           {transcriptLength && moments.length ? (
             <View accessible accessibilityLabel={`Where it showed up in your talk: ${moments.length} ${moments.length === 1 ? "moment" : "moments"}`}>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: t.colors.ink }}>Where it showed up</Text>
-              <View style={{ height: 22, marginTop: 8, justifyContent: "center", marginHorizontal: 11 }}>
+              <Text style={{ fontSize: 14, lineHeight: 18, fontWeight: "600", color: t.colors.ink }}>Where it showed up</Text>
+              <View style={{ height: 22, marginTop: 12, justifyContent: "center", marginHorizontal: 11 }}>
                 <View style={{ height: 10, borderRadius: 5, backgroundColor: p.navySoft, marginHorizontal: -11 }} />
                 {moments.map((m, i) => (
                   <Pressable
@@ -213,9 +238,9 @@ export function FeedbackReview({
                   </Pressable>
                 ))}
               </View>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
-                <Text style={{ fontSize: 11.5, color: t.colors.ink3 }}>Start of talk</Text>
-                <Text style={{ fontSize: 11.5, color: t.colors.ink3 }}>End</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
+                <Text style={{ fontSize: 12.5, lineHeight: 16, color: t.colors.ink3 }}>Start of talk</Text>
+                <Text style={{ fontSize: 12.5, lineHeight: 16, color: t.colors.ink3 }}>End</Text>
               </View>
             </View>
           ) : null}
@@ -224,14 +249,14 @@ export function FeedbackReview({
 
       {/* ── Order to work in: only worth saying when there is more than one ── */}
       {order.length > 1 ? (
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 14 }}>
           <Eyebrow>Work on, in this order</Eyebrow>
           {order.map((s, i) => (
-            <View key={i} style={{ flexDirection: "row", gap: 11, alignItems: "flex-start" }}>
-              <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: p.navySoft }}>
+            <View key={i} style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+              <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: p.navySoft }}>
                 <Text style={{ fontSize: 12.5, fontWeight: "700", color: t.colors.accD }}>{i + 1}</Text>
               </View>
-              <Text style={[body, { flex: 1 }]}>{s}</Text>
+              <Para style={[body, { flex: 1 }]}>{s}</Para>
             </View>
           ))}
         </View>
@@ -239,7 +264,7 @@ export function FeedbackReview({
 
       {/* ── Focus areas ── */}
       {findings.length ? (
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 14 }}>
           <Eyebrow>{findings.length === 1 ? "Focus area" : "Focus areas"}</Eyebrow>
           {findings.map((f, i) => {
             const open = openId === f.id;
@@ -256,17 +281,17 @@ export function FeedbackReview({
                   accessibilityRole="button"
                   accessibilityState={{ expanded: open }}
                   onPress={() => toggle(f.id)}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14 }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: 18 }}
                 >
                   <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: p.amberMark }}>
                     <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>{i + 1}</Text>
                   </View>
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={{ fontSize: 12, fontWeight: "600", color: supported ? t.colors.accD : p.amber }}>
+                  <View style={{ flex: 1, gap: 5 }}>
+                    <Text style={{ fontSize: 13, lineHeight: 17, fontWeight: "600", color: supported ? t.colors.accD : p.amber }}>
                       {CATEGORY_LABEL[f.category] ?? humanize(f.category)}
                       {supported ? "" : " · Needs your answer"}
                     </Text>
-                    <Text style={{ fontSize: 17, lineHeight: 22, fontWeight: "600", color: t.colors.ink }}>{f.title}</Text>
+                    <Para style={{ fontSize: 18, lineHeight: 25, fontWeight: "600", color: t.colors.ink }}>{f.title}</Para>
                   </View>
                   <View style={{ transform: [{ rotate: open ? "-90deg" : "90deg" }] }}>
                     <Icon name="chev" s={16} w={2.2} c={t.colors.ink3} />
@@ -274,49 +299,49 @@ export function FeedbackReview({
                 </Pressable>
 
                 {open ? (
-                  <View style={{ gap: 12, paddingHorizontal: 14, paddingBottom: 16 }}>
-                    <View style={{ gap: 6, padding: 12, borderRadius: 16, backgroundColor: p.amberSoft }}>
+                  <View style={{ gap: 18, paddingHorizontal: 18, paddingBottom: 22 }}>
+                    <View style={{ gap: 8, padding: 16, borderRadius: 18, backgroundColor: p.amberSoft }}>
                       <Eyebrow color={p.amber}>You said</Eyebrow>
                       {f.evidence.map((e, n) => (
-                        <Text key={n} selectable style={{ fontSize: 15.5, lineHeight: 22, color: t.colors.ink }}>
+                        <Para key={n} selectable style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink }}>
                           “{e.quote.replace(/\s+/g, " ").trim()}”
-                        </Text>
+                        </Para>
                       ))}
                     </View>
 
-                    <Text style={[body, { color: t.colors.ink2, fontSize: 15, lineHeight: 22 }]}>{f.explanation}</Text>
+                    <Para style={[body, { color: t.colors.ink2 }]}>{f.explanation}</Para>
 
                     {supported ? (
                       <>
                         {f.correction ? (
-                          <View style={{ gap: 6, padding: 12, borderRadius: 16, backgroundColor: p.greenSoft }}>
+                          <View style={{ gap: 8, padding: 16, borderRadius: 18, backgroundColor: p.greenSoft }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
                               <Icon name="check" s={12} w={3} c={p.green} />
                               <Eyebrow color={p.green}>A clearer way</Eyebrow>
                             </View>
-                            <Text selectable style={{ fontSize: 15.5, lineHeight: 22, color: t.colors.ink }}>{f.correction}</Text>
+                            <Para selectable style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink }}>{f.correction}</Para>
                           </View>
                         ) : null}
                         {f.pattern ? (
-                          <View style={{ gap: 4, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: t.colors.acc }}>
+                          <View style={{ gap: 8, paddingLeft: 14, paddingVertical: 2, borderLeftWidth: 3, borderLeftColor: t.colors.acc }}>
                             <Eyebrow>Pattern to keep</Eyebrow>
-                            <Text selectable style={{ fontSize: 17, lineHeight: 24, fontWeight: "600", color: t.colors.accD }}>{f.pattern}</Text>
+                            <Para selectable style={{ fontSize: 17, lineHeight: 25, fontWeight: "600", color: t.colors.accD }}>{f.pattern}</Para>
                           </View>
                         ) : null}
                         {f.practice_question ? (
-                          <View style={{ gap: 4 }}>
+                          <View style={{ gap: 8 }}>
                             <Eyebrow>Ask yourself</Eyebrow>
-                            <Text style={body}>{f.practice_question}</Text>
+                            <Para style={body}>{f.practice_question}</Para>
                             {f.hint ? (
                               shownHints[f.id] ? (
-                                <Text style={{ fontSize: 14.5, lineHeight: 21, color: t.colors.ink2, marginTop: 2 }}>{f.hint}</Text>
+                                <Para style={{ fontSize: 15, lineHeight: 23, color: t.colors.ink2 }}>{f.hint}</Para>
                               ) : (
                                 <Pressable
                                   accessibilityRole="button"
                                   onPress={() => setShownHints((h) => ({ ...h, [f.id]: true }))}
                                   style={{ minHeight: 36, justifyContent: "center", alignSelf: "flex-start" }}
                                 >
-                                  <Text style={{ fontSize: 14.5, fontWeight: "600", color: t.colors.accD }}>Show hint</Text>
+                                  <Text style={{ fontSize: 15, fontWeight: "600", color: t.colors.accD }}>Show hint</Text>
                                 </Pressable>
                               )
                             ) : null}
@@ -324,8 +349,8 @@ export function FeedbackReview({
                         ) : null}
                       </>
                     ) : (
-                      <View style={{ gap: 12, padding: 12, borderRadius: 16, backgroundColor: p.navySoft }}>
-                        <Text style={[body, { fontWeight: "600" }]}>{f.clarification_question ?? "What did you mean here?"}</Text>
+                      <View style={{ gap: 14, padding: 16, borderRadius: 18, backgroundColor: p.navySoft }}>
+                        <Para style={[body, { fontWeight: "600" }]}>{f.clarification_question ?? "What did you mean here?"}</Para>
                         <TextInput
                           multiline
                           maxLength={1200}
@@ -364,13 +389,13 @@ export function FeedbackReview({
 
       {/* ── Second try, when this session was a retry ── */}
       {data.comparison ? (
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 14 }}>
           <Eyebrow>Your second try</Eyebrow>
           {data.comparison.targets.map((target) => {
             const good = target.outcome === "clearer";
             const tone = good ? p.greenFill : target.outcome === "still_unclear" ? p.amberMark : t.colors.ink3;
             return (
-              <View key={target.finding_id} style={[{ gap: 10, padding: 14, borderRadius: 22, backgroundColor: p.raised, borderWidth: hairline, borderColor: t.colors.sep }, cardShadow]}>
+              <View key={target.finding_id} style={[{ gap: 14, padding: 18, borderRadius: 22, backgroundColor: p.raised, borderWidth: hairline, borderColor: t.colors.sep }, cardShadow]}>
                 <View style={{ alignSelf: "flex-start", paddingHorizontal: 10, height: 24, borderRadius: 12, justifyContent: "center", backgroundColor: tone }}>
                   <Text style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}>{OUTCOME_LABEL[target.outcome] ?? humanize(target.outcome)}</Text>
                 </View>
@@ -379,19 +404,19 @@ export function FeedbackReview({
                   { label: "Now", rows: target.after, c: p.green, ink: t.colors.ink },
                 ].map((side) =>
                   side.rows.length ? (
-                    <View key={side.label} style={{ flexDirection: "row", gap: 10 }}>
-                      <View style={{ width: 52, paddingTop: 3 }}>
+                    <View key={side.label} style={{ flexDirection: "row", gap: 12 }}>
+                      <View style={{ width: 56, paddingTop: 4 }}>
                         <Eyebrow color={side.c}>{side.label}</Eyebrow>
                       </View>
-                      <View style={{ flex: 1, gap: 4 }}>
+                      <View style={{ flex: 1, gap: 6 }}>
                         {side.rows.map((e, i) => (
-                          <Text key={i} style={{ fontSize: 15, lineHeight: 22, color: side.ink }}>{e.quote.replace(/\s+/g, " ").trim()}</Text>
+                          <Para key={i} style={{ fontSize: 16, lineHeight: 24, color: side.ink }}>{e.quote.replace(/\s+/g, " ").trim()}</Para>
                         ))}
                       </View>
                     </View>
                   ) : null,
                 )}
-                <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2 }}>{target.observation}</Text>
+                <Para style={{ fontSize: 16, lineHeight: 25, color: t.colors.ink2 }}>{target.observation}</Para>
               </View>
             );
           })}
@@ -404,15 +429,21 @@ export function FeedbackReview({
         locations={[0, 0.7, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ borderRadius: 26, padding: 20, gap: 14 }}
+        style={{ borderRadius: 26, paddingHorizontal: 22, paddingTop: 24, paddingBottom: 22, gap: 20 }}
       >
         <Eyebrow color="rgba(255,255,255,0.62)">Your turn</Eyebrow>
-        <Serif style={{ fontSize: 23, lineHeight: 30, fontWeight: "600", letterSpacing: -0.2, color: "#fff", marginTop: -4 }}>
-          {data.practice.question}
-        </Serif>
+        {wide(data.practice.question) ? (
+          <Para style={{ fontSize: 21, lineHeight: 31, fontWeight: "700", letterSpacing: -0.2, color: "#fff", marginTop: -8 }}>
+            {data.practice.question}
+          </Para>
+        ) : (
+          <Serif style={{ fontSize: 23, lineHeight: 32, fontWeight: "600", letterSpacing: -0.2, color: "#fff", marginTop: -8 }}>
+            {data.practice.question}
+          </Serif>
+        )}
         {turnSteps.length ? (
-          <View style={{ gap: 10 }}>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          <View style={{ gap: 14 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {turnSteps.map((s, i) => {
                 const shown = i < step;
                 const next = i === step;
@@ -428,9 +459,9 @@ export function FeedbackReview({
                     }}
                     hitSlop={{ top: 8, bottom: 8 }}
                     style={{
-                      paddingHorizontal: 13,
-                      height: 30,
-                      borderRadius: 15,
+                      paddingHorizontal: 15,
+                      height: 34,
+                      borderRadius: 17,
                       justifyContent: "center",
                       backgroundColor: shown ? "#fff" : "rgba(255,255,255,0.14)",
                       opacity: shown || next ? 1 : 0.5,
@@ -444,10 +475,10 @@ export function FeedbackReview({
               })}
             </View>
             {turnSteps.slice(0, step).map((s) => (
-              <Text key={s.label} style={{ fontSize: 15, lineHeight: 22, color: "rgba(255,255,255,0.9)" }}>
+              <Para key={s.label} style={{ fontSize: 16, lineHeight: 25, color: "rgba(255,255,255,0.9)" }}>
                 <Text style={{ fontWeight: "700", color: "#fff" }}>{s.label} · </Text>
                 {s.text}
-              </Text>
+              </Para>
             ))}
           </View>
         ) : null}
@@ -466,23 +497,27 @@ export function FeedbackReview({
 
       {/* ── What to carry out of this session ── */}
       {data.takeaway.length ? (
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: 14 }}>
           <Eyebrow>Take with you</Eyebrow>
+          <View style={{ gap: 10 }}>
           {data.takeaway.map((s, i) => (
-            <View key={i} style={{ flexDirection: "row", gap: 11, padding: 13, borderRadius: 18, backgroundColor: p.greenSoft }}>
+            <View key={i} style={{ flexDirection: "row", gap: 12, padding: 16, borderRadius: 18, backgroundColor: p.greenSoft }}>
               <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: p.greenFill }}>
                 <Icon name="check" s={12} w={3} c="#fff" />
               </View>
-              <Text style={{ flex: 1, fontSize: 15, lineHeight: 22, color: t.colors.ink }}>{s}</Text>
+              <View style={{ flex: 1 }}>
+                <Para style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink }}>{s}</Para>
+              </View>
             </View>
           ))}
+          </View>
         </View>
       ) : null}
 
       {data.overview.next_step ? (
-        <View style={{ gap: 4, padding: 14, borderRadius: 18, backgroundColor: p.navySoft, marginBottom: 12 }}>
+        <View style={{ gap: 8, padding: 18, borderRadius: 20, backgroundColor: p.navySoft, marginBottom: 12 }}>
           <Eyebrow color={t.colors.accD}>Next step</Eyebrow>
-          <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink }}>{data.overview.next_step}</Text>
+          <Para style={{ fontSize: 16, lineHeight: 25, color: t.colors.ink }}>{data.overview.next_step}</Para>
         </View>
       ) : null}
     </View>

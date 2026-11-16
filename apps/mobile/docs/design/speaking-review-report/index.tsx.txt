@@ -47,24 +47,23 @@ function Top({ open }: { open: boolean }) {
       </nav>
 
       <div className="mv-eyebrow">The big picture</div>
-      <h1 className="mv-title">Say who “he” is, and the story lands.</h1>
+      <h1 className="mv-title mv-title--ko">명확한 지시 대상 표현으로 의미 전달 개선하기</h1>
 
       <div className="mv-listener">
         <span className="mv-listener__icon"><Ear size={16} strokeWidth={2.2} /></span>
-        <p>You talk about stress from your boss, then switch to “he” without saying who. A listener has to guess.</p>
+        <p>감정과 생각을 솔직하게 표현하고 있지만, ‘them’, ‘him’ 같은 대명사가 많아 청자가 누구를 가리키는지 혼동할 수 있습니다.</p>
       </div>
 
       <div className="mv-stats">
         <div className="mv-stat"><b data-c="navy">1</b><span>Focus area</span></div>
-        <div className="mv-stat"><b data-c="amber">2</b><span>Moments</span></div>
+        <div className="mv-stat"><b data-c="amber">1</b><span>Moment</span></div>
         <div className="mv-stat"><b data-c="green">1</b><span>Pattern to keep</span></div>
       </div>
 
       <div className="mv-map">
         <div className="mv-map__head"><span>Where it showed up</span><span className="mv-map__len">11 min talk</span></div>
         <div className="mv-map__track">
-          <i style={{ left: '18%' }}>1</i>
-          <i style={{ left: '41%' }}>1</i>
+          <i style={{ left: '88%' }}>1</i>
         </div>
         <div className="mv-map__ends"><span>Start</span><span>End</span></div>
       </div>
@@ -75,7 +74,7 @@ function Top({ open }: { open: boolean }) {
           <span className="mv-num">1</span>
           <div className="mv-focus__text">
             <span className="mv-cat"><Users size={12} strokeWidth={2.6} /> Clear references</span>
-            <span className="mv-focus__title">“He” without a name</span>
+            <span className="mv-focus__title">대명사 지시 대상이 불명확함</span>
           </div>
           <ChevronDown className="mv-chev" size={20} strokeWidth={2.2} />
         </div>
@@ -83,15 +82,15 @@ function Top({ open }: { open: boolean }) {
           <div className="mv-focus__body">
             <div className="mv-said">
               <span className="mv-tag" data-c="amber"><Quote size={11} strokeWidth={2.8} /> You said</span>
-              <p>Is because of my boss he’s so biased and so rude</p>
+              <p>“trust on them or on on him”</p>
             </div>
             <div className="mv-try">
               <span className="mv-tag" data-c="green"><Check size={12} strokeWidth={3} /> Try</span>
-              <p>It’s because of my boss. <b>My boss</b> is so biased and so rude.</p>
+              <p>I can’t rely on <b>my coworkers</b> or on <b>my manager</b>.</p>
             </div>
             <div className="mv-keep">
               <span className="mv-keep__label">Pattern to keep</span>
-              <p>Name the person first, then use “he” or “she”.</p>
+              <p>Name the person first, then use “he” or “them”.</p>
             </div>
           </div>
         </Collapse>
@@ -139,7 +138,7 @@ export default function MyneReview() {
   const [ready, setReady] = useState(false)
   useEffect(() => {
     let live = true
-    Promise.all(FACES.map(f => document.fonts.load(f, 'Say who he is'))).catch(() => undefined).then(() => live && setReady(true))
+    Promise.all(FACES.map(f => document.fonts.load(f, '명확한 Say'))).catch(() => undefined).then(() => live && setReady(true))
     return () => { live = false }
   }, [])
   if (!ready) return null
