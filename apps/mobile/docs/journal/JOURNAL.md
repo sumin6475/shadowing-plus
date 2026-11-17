@@ -1565,6 +1565,17 @@ Sheet가 쓰던 구조로 통일.
 
 **검증.** `tsc --noEmit`·eslint·`test:mvp` 통과(아래). 시뮬레이터(:8084)에서 실제 저장 리뷰(2026-11-11 세션)를 임시 값으로 띄워 확인 후 제거: 상단 요약·숫자·띠, 포커스 카드 본문, Your turn 힌트 열기, Take with you, Next step, 흰 배경과 하단 바. **미확인**: 띠의 위치 정확도(임시 전사문 길이로 봄), 포커스가 여러 개인 리뷰, 되묻기(needs clarification) 카드, 두 번째 시도 비교 카드, 다크 모드, 실기기. stageshow 게이트는 2줄 남음(REHEARSAL.md에 사유).
 
+## 2026-11-16 — Talk의 스피킹 노트 카드 다시 만들기
+
+**만든 것.** `talk-note-cue.tsx`를 새로 짰다. (1) 겹쳐 보이던 뒤쪽 종이 레이어를 없애고 평평한 면 하나 + 바깥 그림자. 안쪽 여백 20, 모서리 26. (2) 섹션 색: Opening 민트 `#5FD4A6`, Body 호박 `#F5B555`, Closing 로즈 `#F28BA8`. 브랜드 남색 계열을 피했고, 카드에서 색을 쓰는 곳은 이 셋뿐이다. 제목 아래 띠가 포인트 하나당 한 칸으로 전체 흐름을 같은 색으로 보여준다. (3) All points에서 현재 포인트는 밝은 배경 줄 + 섹션 색 막대 + 흰 굵은 글씨, 나머지는 흐리게. 열 때와 화살표로 넘길 때 현재 줄로 스크롤. (4) Current point는 가로 페이저라 스와이프로 넘긴다. 화살표는 남겼다(스와이프를 못 찾는 사람, VoiceOver).
+
+**섹션 판단.** 제목이 자유 입력이라 `lib/note-sections.ts`의 `sectionTones()`가 이름(Opening/Intro, Closing/Conclusion 등)을 먼저 보고, 모르는 이름은 순서(첫 섹션=Opening, 마지막=Closing)로 정한다. `tests/note-sections.test.mjs` 3건 추가.
+
+**실패 → 수정.** 첫 구현은 스와이프가 페이지 중간에 멈췄다. `contentOffset`을 현재 위치에 묶어 둬서 스와이프 중 값이 바뀔 때마다 손가락과 싸웠다 → 페이저가 열릴 때만 정하는 값으로 분리. 카드 모서리 밖으로 옆 페이지 글자가 비친 것은 그림자용 바깥 뷰와 자르는 안쪽 뷰로 나눠 해결.
+
+**검증.** `tsc`·eslint 통과, `test:mvp` 122/122. 시뮬레이터(:8084)에서 스와이프 1→3, 화살표, All points 열기·현재 줄 강조·따라가기 확인. 목업: `docs/design/talk-note-card/`(stageshow). **미확인**: 카메라 켠 상태의 가독성, 섹션 없는 노트, 실기기 스와이프 감, VoiceOver. 시뮬레이터에서 "All points" 왼쪽 절반 탭이 안 먹는 건 개발용 톱니 버튼이 덮어서였다(앱 문제 아님).
+
+**노트 여닫기 아이콘(같은 날 추가).** 오른쪽 위 토글을 선 아이콘에서 두들로 바꿨다: 닫혀 있으면 책갈피 달린 덮인 책, 열려 있으면 펼친 책 + 반짝임. `design/doodle.tsx`에 `BookDoodle`(32×32, 같은 붓을 아이콘 크기로)로 추가. 시뮬레이터에서 두 상태 확인.
 ## 2026-11-16 — Speaking review 실패: 서버 함수 재배포 + 배포 확인 스크립트
 
 TestFlight 51에서 리뷰가 항상 "Something went wrong". 원인은 앱이 아니라 11-06 배포된 `talk-advanced-feedback` v1이 11-11부터 앱이 보내는 `responseLanguage`를 거절한 것. v2로 재배포(실기기에서 같은 세션 리뷰 생성 확인, 7.0초)했고, 라이브 함수와 저장소 코드를 파일 단위로 비교하는 `npm run verify:edge-deploys`를 추가했다. → [postmortem](postmortems/2026-11-16-speaking-review-stale-edge-function.md)
