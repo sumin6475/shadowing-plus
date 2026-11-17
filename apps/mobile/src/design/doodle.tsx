@@ -75,3 +75,62 @@ export function Doodle({ kind, width = 160 }: { kind: DoodleKind; width?: number
     </Svg>
   );
 }
+
+// ── Small doodles: the same hand at icon size ─────────────────────────────
+// A control whose two states are a picture (the note in Talk: shut / open)
+// uses these instead of a line icon. 32×32 viewBox, same brushes scaled down.
+// Colors are passed in because Talk is always dark, whatever the theme.
+const BOOK: Record<"shut" | "open", readonly (readonly [Brush, string])[]> = {
+  shut: [
+    ["blob", "M11 6C16 2.500 27 4 29 10.500C30.500 17 28 25.500 22 27.500C16 29 10 27 8.500 21C7.500 15.500 8 9 11 6Z"],
+    // Cover, a little askew, with the page block showing along the bottom.
+    ["paper", "M7.500 6.200C7.400 4.900 8.300 4.200 9.600 4.100L21.800 3.500C23.200 3.400 24 4.200 24.100 5.500L24.700 23.600C24.700 24.900 24 25.700 22.700 25.800L10.300 26.500C9 26.600 8.100 25.800 8 24.500Z"],
+    ["thin", "M8.300 22.600C9.400 21.300 10.600 21.200 24.500 20.600"],
+    ["line", "M11.300 4.200L11.800 21.200"],
+    ["accent", "M17.800 3.700L18 11L19.900 9.500L21.700 10.900L21.500 3.500"],
+    ["thin", "M14.300 14.600C16 14.100 18.200 14.900 20.800 14.300"],
+  ],
+  open: [
+    ["blob", "M8 9C13 4.500 26 5.500 29 12C31 18.500 28 26 21.500 28C14.500 29.500 7.500 27.500 6 21C5 16 5.500 11.500 8 9Z"],
+    // Two pages falling open from the spine.
+    ["paper", "M16 9.300C13 7 8.200 6.700 3.800 8.200L4.200 23.800C8.400 22.500 13 22.800 16 25.200Z"],
+    ["paper", "M16 9.300C19 7 23.800 6.700 28.200 8.200L27.800 23.800C23.600 22.500 19 22.800 16 25.200Z"],
+    ["thin", "M7 12.200C9.200 11.500 11.200 11.700 13.200 12.700M7.200 16.200C9.300 15.500 11.300 15.700 13.200 16.700"],
+    ["thin", "M18.800 12.700C20.800 11.700 22.800 11.500 25 12.200M18.800 16.700C20.700 15.700 22.700 15.500 24.800 16.200"],
+    ["line", "M25.500 1.200L26.200 3L28 3.700L26.200 4.400L25.500 6.200L24.800 4.400L23 3.700L24.800 3Z"],
+    ["thin", "M30 6.800L31.300 6.300M4.500 4.200L3.300 3.300"],
+  ],
+};
+
+/** The speaking note as a book: shut while it is put away, open while it shows. */
+export function BookDoodle({
+  open,
+  size = 28,
+  ink = "#fff",
+  tint = "rgba(187,208,255,0.30)",
+  paper = "rgba(20,22,28,0.92)",
+}: {
+  open: boolean;
+  size?: number;
+  ink?: string;
+  /** The soft blob behind, and the bookmark. */
+  tint?: string;
+  /** Fills the cover and pages so the blob doesn't show through the lines. */
+  paper?: string;
+}) {
+  const round = { strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  const brushes: Record<Brush, object> = {
+    line: { fill: "none", stroke: ink, strokeWidth: 1.7, ...round },
+    paper: { fill: paper, stroke: ink, strokeWidth: 1.7, ...round },
+    accent: { fill: tint, stroke: ink, strokeWidth: 1.5, ...round },
+    blob: { fill: tint },
+    thin: { fill: "none", stroke: ink, strokeWidth: 1.3, ...round },
+  };
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32">
+      {BOOK[open ? "open" : "shut"].map(([brush, d], i) => (
+        <Path key={i} d={d} {...brushes[brush]} />
+      ))}
+    </Svg>
+  );
+}

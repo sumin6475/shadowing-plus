@@ -1,0 +1,173 @@
+import { BookOpen, ChevronLeft, ChevronRight, Lightbulb, Mic, Square } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Stage, Phone, type Act } from '../../kit'
+import './card.css'
+
+// Myne's speaking-note cue card on the dark Talk screen.
+//
+// Left phone: "All points". The current point sits on its own lighter row with
+// a bar in its section's color; the rest recede.
+// Right phone: "Current point". One point at a time; a swipe moves to the next,
+// and the section label changes color with the section: Opening mint, Body
+// amber, Closing rose. The strip of segments under the title is the same map.
+//
+// Real strings: the note's own points.
+
+type Tone = 'opening' | 'body' | 'closing'
+const POINTS: { tone: Tone; text: string }[] = [
+  { tone: 'opening', text: 'I want to tell you about my study on AI in group discussions.' },
+  { tone: 'body', text: 'My research investigates how AI’s role and communication style affect group decision making.' },
+  { tone: 'body', text: 'Each participant starts with different information, so they need to share it to make the best decision.' },
+  { tone: 'body', text: 'I changed the AI’s role and communication style across groups.' },
+  { tone: 'body', text: 'Groups shared more when the AI asked instead of told.' },
+  { tone: 'closing', text: 'Also, when AI was assigned the Chair role, people trusted it more.' },
+]
+const LABEL: Record<Tone, string> = { opening: 'Opening', body: 'Body', closing: 'Closing' }
+
+type S = { at: number; dx: number; settle: boolean }
+const START: S = { at: 0, dx: 0, settle: false }
+const PAGE = 365
+const REST = { x: 660, y: 640 }
+
+const script = async (a: Act<S>) => {
+  for (let i = 0; i < 2; i++) {
+    await a.wait(1500)
+    a.mark(`swipe-${i}`)
+    const page = a.rect('page')
+    const y = page.y + page.height * 0.55
+    const from = page.x + page.width * 0.78
+    await a.move({ x: from, y })
+    await a.wait(200)
+    await a.drag({ x: from - 170, y }, at => a.put({ dx: at.x - from, settle: false }))
+    a.put({ at: i + 1, dx: 0, settle: true })
+    await a.wait(500)
+  }
+  await a.wait(1800)
+  a.mark('reset')
+  await a.click('first')
+  a.put({ at: 0, dx: 0, settle: true })
+  await a.move(REST)
+  await a.wait(500)
+  a.put({ settle: false })
+}
+
+const FACES = ['400 16px "Myne UI"', '500 16px "Myne UI"', '600 16px "Myne UI"', '700 16px "Myne UI"']
+
+function Head({ at }: { at: number }) {
+  return (
+    <>
+      <div className="nc-head">
+        <BookOpen size={15} strokeWidth={2.2} />
+        <span className="nc-title">Human-AI Teaming Research</span>
+        <span className="nc-count">{at + 1} / {POINTS.length}</span>
+      </div>
+      <div className="nc-map">
+        {POINTS.map((p, i) => <i key={i} data-tone={p.tone} data-on={i === at || undefined} data-done={i < at || undefined} />)}
+      </div>
+    </>
+  )
+}
+
+function Foot({ label, at, first }: { label: string; at: number; first?: boolean }) {
+  return (
+    <div className="nc-foot">
+      <span className="nc-link">{label}</span>
+      <span className="nc-arrows">
+        <span data-off={at === 0 || undefined} data-target={first ? 'first' : undefined}><ChevronLeft size={18} strokeWidth={2.4} /></span>
+        <span data-off={at === POINTS.length - 1 || undefined}><ChevronRight size={18} strokeWidth={2.4} /></span>
+      </span>
+    </div>
+  )
+}
+
+function Controls() {
+  return (
+    <div className="nc-controls">
+      <span className="nc-ctl"><i><Lightbulb size={20} strokeWidth={2} /></i>Hint</span>
+      <span className="nc-mic"><Mic size={26} strokeWidth={2.2} /></span>
+      <span className="nc-ctl"><i><Square size={16} strokeWidth={0} fill="#fff" /></i>Finish</span>
+    </div>
+  )
+}
+
+function All() {
+  const at = 1
+  return (
+    <div className="nc-screen">
+      <div className="nc-card">
+        <Head at={at} />
+        <div className="nc-list">
+          {POINTS.slice(0, 4).map((p, i) => (
+            <div key={i} className="nc-row" data-tone={p.tone} data-on={i === at || undefined}>
+              <span className="nc-num">{String(i + 1).padStart(2, '0')}</span>
+              <div>
+                <span className="nc-sec" data-tone={p.tone}>{LABEL[p.tone]}</span>
+                <p>{p.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <Foot label="Current point" at={at} />
+      </div>
+      <Controls />
+    </div>
+  )
+}
+
+function One({ s }: { s: S }) {
+  return (
+    <div className="nc-screen">
+      <div className="nc-card">
+        <Head at={s.at} />
+        <div className="nc-pager" data-target="page">
+          <div className="nc-track" data-settle={s.settle || undefined} style={{ transform: `translateX(${-s.at * PAGE + s.dx}px)` }}>
+            {POINTS.map((p, i) => (
+              <div key={i} className="nc-page">
+                <span className="nc-sec" data-tone={p.tone}>{LABEL[p.tone]}</span>
+                <p>{p.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <Foot label="All points" at={s.at} first />
+      </div>
+      <Controls />
+    </div>
+  )
+}
+
+export default function MyneNoteCard() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let live = true
+    Promise.all(FACES.map(f => document.fonts.load(f, 'Opening'))).catch(() => undefined).then(() => live && setReady(true))
+    return () => { live = false }
+  }, [])
+  if (!ready) return null
+  return (
+    <Stage<S>
+      width={840}
+      height={724}
+      compact={{ below: 600, width: 358, height: 660 }}
+      initial={START}
+      poster={{ at: 1, dx: 0, settle: true }}
+      script={script}
+      cursor={{ at: REST, style: 'touch' }}
+      fidelity="realistic"
+      className="nc"
+    >
+      {(s, _rect, layout) => (
+        <>
+          {layout === 'compact' ? null : (
+            <Phone width={360} wallpaper="#07080B" className="nc-phone nc-phone--a" dark>
+              <All />
+            </Phone>
+          )}
+          <Phone width={layout === 'compact' ? 326 : 360} wallpaper="#07080B" className="nc-phone nc-phone--b" dark>
+            <One s={s} />
+          </Phone>
+        </>
+      )}
+    </Stage>
+  )
+}

@@ -41,6 +41,7 @@ import { snapshotNoteVersion } from "@/lib/note-growth";
 import type { Nav, TalkCtx } from "./nav";
 import { PhraseChipsCard, SessionStatsCard, TranscriptCard } from "./session-stats";
 import { FROST, HintDeck, USED, UsedToast } from "./talk-hints";
+import { BookDoodle } from "@/design/doodle";
 import { TalkNoteCue } from "./talk-note-cue";
 const CAMERA_ACC = "#6E8DD5";
 const CAMERA_ON_ACC = "#0D1A3B";
@@ -555,7 +556,7 @@ export function TalkScreen({ nav, talkCtx }: { nav: Nav; talkCtx?: TalkCtx }) {
             zIndex: 20,
           }}
         >
-          <Icon name="book" s={23} w={1.9} c={noteOpen ? "#BBD0FF" : "#fff"} />
+          <BookDoodle open={noteOpen} size={30} ink={noteOpen ? "#BBD0FF" : "#fff"} tint={noteOpen ? "rgba(187,208,255,0.34)" : "rgba(255,255,255,0.20)"} />
         </Pressable>
       ) : null}
 
