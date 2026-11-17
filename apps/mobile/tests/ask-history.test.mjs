@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import ts from "typescript";
+import * as askModel from "../src/lib/ask-model.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(here, "../src/lib/ask-history.ts"), "utf8");
@@ -36,7 +37,7 @@ function historyWithResponses(responses) {
     exports,
     require: (id) => {
       if (id === "./supabase") return { supabase };
-      if (id === "./ask-model") return { assistantContent: (reply) => JSON.stringify({ reply }) };
+      if (id === "./ask-model") return askModel;
       throw new Error(`Unexpected import ${id}`);
     },
   });
@@ -67,4 +68,17 @@ test("Ask history restores old and new turns in reading order", async () => {
   assert.equal(page.turns[1].id, "a-1");
   assert.equal(page.turns[1].reply.type, "off_topic");
   assert.equal(page.before, null);
+});
+
+test("a question about a note point keeps its point through history", async () => {
+  const point = { section: "Body", index: 2, text: "We decide when to speak." };
+  const { api, writes } = historyWithResponses([]);
+  await api.saveAskTurn("chat-1", { id: "u-1", role: "user", mode: "how_to_say", text: "더 짧게", point });
+  assert.equal(writes[0].value.content, "[[point Body 2]] We decide when to speak.\n더 짧게");
+  const { api: reader } = historyWithResponses([{ data: [
+    { client_turn_id: "u-1", role: "user", mode: "how_to_say", draft_now: false, content: writes[0].value.content, created_at: "2026-11-17T10:00:00Z" },
+  ], error: null }]);
+  const page = await reader.loadAskTurns("chat-1");
+  assert.equal(page.turns[0].text, "더 짧게", "the tag never shows as the learner's words");
+  assert.deepEqual(page.turns[0].point, point);
 });

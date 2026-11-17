@@ -1595,3 +1595,15 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 ## 2026-11-17 — Google 로그인이 올린 프로필 사진을 덮어쓰던 문제
 
 같은 이메일로 Google 로그인하면 Supabase가 `avatar_url`을 Google 사진으로 다시 씀(DB에서 `avatar_path`는 남고 `avatar_url`만 `lh3.googleusercontent.com`인 계정 확인). 앱이 직접 쓰는 `avatar_path`를 기준으로 URL을 다시 만들도록 바꿈. `tsc` 통과, `test:mvp` 130/130. 실제 로그인 화면 확인은 미확인. → [postmortem](postmortems/2026-11-17-google-sign-in-overwrites-avatar.md)
+
+## 2026-11-17 — Ask를 노트 포인트에 연결: 연결 칩, 포인트 문맥, Use 시트
+
+**만든 것.** 노트 포인트 툴바의 Refine / How to say가 이제 포인트 내용을 질문 칸에 붙여넣지 않고 Ask를 그 포인트에 *연결*해서 연다. (1) 입력창 안 위쪽에 연결 칩("노트 제목 · Opening · 1" + 포인트 문장 + ×). ×를 누르면 일반 Ask로 돌아가고 모드 스위치가 다시 보인다. 연결 중에 보낸 질문 버블 위에도 어느 포인트에 대한 질문인지 한 줄 표시. (2) 결과의 `+ Save`가 연결 중엔 `+ Use`가 되고, 바텀시트가 한 페이지에 행동 하나씩 연다: 고르기(이 포인트 고치기 / Others에 두기 / Phrases에 저장) → 비교(Step 1/2, 지금 vs 제안, 바뀐 단어 표시) → 편집(Step 2/2, 제안이 미리 채워진 입력칸 → Apply to note). 적용하면 노트 편집기 아웃라인이 바로 바뀌고 `ask` 버전이 기록된다.
+
+**AI 문맥.** 질문이 포인트에 대한 것이면 사용자 턴 첫 줄에 `[[point Opening 1]] <포인트>` 태그를 붙인다. 모델과 저장된 기록이 같은 형태라, 노트에 연결된 지난 대화에서도 "어느 포인트에 대해 뭘 요청했는지"가 남는다(DB 마이그레이션 없음). 서버(`ask-assist`)는 태그가 있으면 How to say 모드에서도 노트 스냅샷·연결 대화를 읽고, `note_versions`에서 그 포인트의 이전 표현들(`pointTrail`, 같은 섹션에서 가장 비슷한 줄)을 뽑아 넣는다. Point focus 프롬프트는 "포인트를 통째로 대체할 수 있는 완결 문장", "학습자가 고쳐 온 방향을 되돌리지 말 것"을 요구한다. 부수 수정: How to say 요청에 붙던 Note용 문장("Ask one relevant question; do not draft")을 뺐다.
+
+**결정.** 연결 중엔 Note 모드를 숨긴다. Note 모드는 노트 전체를 처음부터 쓰는 흐름(clarify → Draft now)이라 포인트 하나를 고치는 데 맞지 않는다. Refine과 How to say는 같은 포인트 채팅이고 빈 화면(시작 문구·스타터)만 다르다.
+
+**검증.** `tsc`·eslint(기존 경고 3) 통과, `test:mvp` 134/134, `ask-assist` core 22/22(포인트 태그 왕복·길이 예산·pointTrail·프롬프트 테스트 추가). 시뮬레이터(:8086, 배포된 *기존* 함수)에서 임시 노트로 Refine 스타터 → Use → Fix → 비교 → 편집 → 적용, Keep in Others, × 해제, Update History에 `ask` 버전 3개까지 확인 후 임시 노트와 테스트 대화 2개 삭제. 기존 서버는 포인트 규칙이 없어 "It works in real time." 같은 조각을 돌려줬다 → 새 함수 배포 후 다시 볼 것. **미확인**: 새 `ask-assist` 배포 후 실제 응답 품질(포인트 대체 문장, 버전 히스토리 반영), 화면 키보드가 올라온 상태의 편집 시트 위치, 다크 모드, 실기기.
+
+**배포(같은 날).** `ask-assist` v6 → v7 배포(JWT 검증 유지, 비인증 401, `verify:edge-deploys` 일치). v6은 main보다 오래된 버전이라 main에 머지만 되고 배포 안 됐던 노트 스냅샷·연결 대화 기억·`response_language`·초안 제목·"Revise this draft"도 이번에 같이 라이브가 됐다. Sumin이 배포 후 시뮬레이터에서 Refine 응답을 확인했다.

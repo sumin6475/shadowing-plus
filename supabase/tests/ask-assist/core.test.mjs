@@ -12,6 +12,9 @@ import {
   normalizeReply,
   noteHistoryContext,
   parseAskBody,
+  POINT_TAG_TEXT,
+  pointTrail,
+  readPointTag,
   SCHEMAS,
 } from "../../functions/ask-assist/core.ts";
 
@@ -205,4 +208,72 @@ test("note memory and current edits are references before the latest user reques
   assert.equal(request.messages.at(-1).content, "Refine the second point");
   const unlinked = parseAskBody({ mode: "note", messages: [user("Hello")], note_snapshot: { body: "Other note" } });
   assert.equal(unlinked.request.noteSnapshot, undefined);
+});
+
+// ── Point-linked questions (Refine / How to say from one note point) ───────
+
+const NOTE_ID = "12345678-1234-1234-1234-123456789abc";
+const tagged = (section, index, point, question) => `[[point ${section} ${index}]] ${point}\n${question}`;
+
+test("readPointTag splits a point-linked question and leaves plain text alone", () => {
+  assert.deepEqual(readPointTag(tagged("Opening", 2, "I built HAIT.", "더 자연스럽게")), {
+    point: { section: "Opening", index: 2, text: "I built HAIT." },
+    text: "더 자연스럽게",
+  });
+  assert.equal(readPointTag("[[point Intro 1]] x\nq"), null, "unknown sections are not tags");
+  assert.equal(readPointTag("더 자연스럽게"), null);
+});
+
+test("a How to say question about a point reads its note; a plain one still does not", () => {
+  const pointed = parseAskBody({
+    mode: "how_to_say", note_id: NOTE_ID,
+    messages: [user(tagged("Body", 1, "We decide when to speak.", "언제 말할지 판단하는 시스템"))],
+    note_snapshot: { title: "HAIT", body: "Body\n- We decide when to speak." },
+  });
+  assert.equal(pointed.request.noteId, NOTE_ID);
+  assert.deepEqual(pointed.request.targetPoint, { section: "Body", index: 1, text: "We decide when to speak." });
+  assert.equal(pointed.request.noteSnapshot.title, "HAIT");
+  const plain = parseAskBody({ mode: "how_to_say", note_id: NOTE_ID, messages: [user("늦을 것 같아")], note_snapshot: { title: "x", body: "y" } });
+  assert.equal(plain.request.noteId, null);
+  assert.equal(plain.request.targetPoint, undefined);
+  assert.equal(plain.request.noteSnapshot, undefined);
+});
+
+test("a point tag does not eat the question's length budget", () => {
+  const question = "q".repeat(MAX_USER_CHARS);
+  const parsed = parseAskBody({ mode: "how_to_say", note_id: NOTE_ID, messages: [user(tagged("Body", 1, "p".repeat(POINT_TAG_TEXT), question))] });
+  assert.equal(readPointTag(parsed.request.messages[0].content).text, question);
+});
+
+test("a point request adds the point rules and the point with its earlier wordings", () => {
+  const parsed = parseAskBody({ mode: "how_to_say", note_id: NOTE_ID, messages: [user(tagged("Opening", 1, "I built HAIT.", "refine"))] });
+  const request = buildOpenAIRequest({ ...parsed.request, pointTrail: ["I made a system."] });
+  const plain = buildOpenAIRequest({ mode: "how_to_say", messages: [user("늦을 것 같아")], l1: "Korean" });
+  assert.equal(request.messages[0].content, plain.messages[0].content, "the shared How to say prompt stays the cached prefix");
+  assert.match(request.messages[1].content, /Point focus/);
+  assert.match(request.messages[1].content, /Do not undo the learner's progress/);
+  const reference = request.messages.find((message) => message.content.includes("the point being edited"));
+  assert.ok(reference.content.includes("I made a system."));
+  assert.equal(request.response_format.json_schema.name, "ask_how_to_say");
+  assert.ok(!plain.messages.some((message) => message.content.includes("Point focus")));
+  assert.ok(!plain.messages[1].content.includes("Draft now"), "How to say is not told about Note drafting");
+});
+
+test("pointTrail follows one point through earlier versions, oldest first", () => {
+  const versions = [
+    "Opening\n- Robots are everywhere.\n\nBody\n- It listens.",
+    "Opening\n- I made a system that decides when robots talk.\n\nBody\n- It listens.",
+    "Opening\n- Hi everyone.\n- I made a system that decides when robots speak.\n\nBody\n- It listens.",
+    "Opening\n- Hi everyone.\n- I made a system that decides when robots speak.\n  > HAIT\n\nBody\n- It listens.",
+    "Opening\n- Hi everyone.\n- I built HAIT, a system that decides when robots speak.",
+  ];
+  const point = { section: "Opening", index: 2, text: "I built HAIT, a system that decides when a robot should speak." };
+  assert.deepEqual(pointTrail(versions, point), [
+    "I made a system that decides when robots talk.",
+    "I made a system that decides when robots speak.",
+    "I built HAIT, a system that decides when robots speak.",
+  ]);
+  // "Robots are everywhere." sat in the same slot once, but it is another thought.
+  assert.deepEqual(pointTrail(versions, { ...point, text: "" }), [], "an empty point has no history to follow");
+  assert.deepEqual(pointTrail(["Closing\n- Thanks."], point), [], "other sections are never matched");
 });

@@ -1,6 +1,6 @@
 // Cross-device Ask history. The database owns each conversation and its turns;
 // only the last 40 turns are sent to the model (ask-model.ts).
-import { assistantContent, type AskMode, type AskReply, type AskTurn } from "./ask-model";
+import { assistantContent, readPointTag, userContent, type AskMode, type AskReply, type AskTurn } from "./ask-model";
 import { supabase } from "./supabase";
 
 export interface AskConversation {
@@ -77,7 +77,7 @@ export async function saveAskTurn(conversationId: string, turn: AskTurn): Promis
     role: turn.role,
     mode: turn.mode,
     draft_now: turn.role === "user" && turn.draftNow === true,
-    content: turn.role === "user" ? turn.text : assistantContent(turn.reply),
+    content: turn.role === "user" ? userContent(turn) : assistantContent(turn.reply),
   }, { onConflict: "conversation_id,client_turn_id", ignoreDuplicates: true });
   if (error) throw new Error("Couldn’t save this conversation.");
 }
@@ -95,7 +95,10 @@ export async function loadAskTurns(conversationId: string, before?: string): Pro
   const rows = data ?? [];
   const turns = rows.reverse().flatMap((row): AskTurn[] => {
     const mode: AskMode = row.mode === "note" ? "note" : "how_to_say";
-    if (row.role === "user") return [{ id: row.client_turn_id, role: "user", text: row.content, mode, draftNow: row.draft_now }];
+    if (row.role === "user") {
+      const { text, point } = readPointTag(row.content);
+      return [{ id: row.client_turn_id, role: "user", text, mode, draftNow: row.draft_now, ...(point ? { point } : {}) }];
+    }
     try {
       const reply = JSON.parse(row.content)?.reply as AskReply | undefined;
       return reply ? [{ id: row.client_turn_id, role: "assistant", reply, mode }] : [];
