@@ -49,7 +49,14 @@ const FONT_SIZE = 17;
 const LINE = 22;
 const PAD = 10;
 
-export interface NotePointContext { id: string; section: string; text: string; note: string }
+export interface NotePointContext {
+  id: string;
+  section: string;
+  /** 1-based position within the section. */
+  index: number;
+  text: string;
+  note: string;
+}
 export type PointAction = "phrases" | "refine" | "how_to_say";
 
 // Remain unique when Fast Refresh retains existing rows but reloads this module.
@@ -62,6 +69,10 @@ export interface NoteOutlineHandle {
    *  draft from Ask). Goes through the same path as typing, so it autosaves. */
   append: (sections: OutlineSection[]) => void;
   insertPhrase: (pointId: string, phrase: string) => void;
+  /** Rewrites one point (from Ask). When the outline was rebuilt since, falls
+   *  back to the point at the same place that still reads `expected`; returns
+   *  the id it changed, or null when the point is gone. */
+  replacePoint: (pointId: string, expected: { section: string; index: number; text: string }, text: string) => string | null;
 }
 
 export function NoteOutline({
@@ -204,6 +215,19 @@ export function NoteOutline({
         expandedRef.current = pointId;
         setExpanded(pointId);
       },
+      replacePoint: (pointId, expected, text) => {
+        const points = live.current.flatMap(s => s.points);
+        const inPlace = live.current.find(s => (s.heading ?? "Note") === expected.section)?.points[expected.index - 1];
+        const point = points.find(p => p.id === pointId)
+          ?? (inPlace && inPlace.text.trim() === expected.text.trim() ? inPlace : undefined)
+          // A written point may have moved; an empty one is only trusted in place.
+          ?? (expected.text.trim() ? points.find(p => p.text.trim() === expected.text.trim()) : undefined);
+        if (!point) return null;
+        apply({ sections: setPointText(live.current, point.id, text.replace(/\s*\n\s*/g, " ").trim(), newId).sections });
+        // A text set from here keeps its old height until measured again.
+        setTextEdits(n => n + 1);
+        return point.id;
+      },
     }),
     [focusEnd, apply],
   );
@@ -314,8 +338,9 @@ export function NoteOutline({
           <Pressable key={tool.action} accessibilityRole="button" accessibilityLabel={`${tool.label} for ${text || "this point"}`}
             onPress={() => {
               const section = live.current.find(entry => entry.points.some(point => point.id === id));
-              const point = section?.points.find(point => point.id === id);
-              if (point) onPointAction(tool.action, { id: point.id, section: section?.heading ?? "Others", text: point.text, note: point.note ?? "" });
+              const index = section?.points.findIndex(point => point.id === id) ?? -1;
+              const point = section?.points[index];
+              if (point) onPointAction(tool.action, { id: point.id, section: section?.heading ?? "Note", index: index + 1, text: point.text, note: point.note ?? "" });
             }}
             style={({ pressed }) => ({ flex: 1, minHeight: 46, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.5 : 1 })}>
             <SymbolView name={tool.symbol} size={19} tintColor={t.colors.ink} />

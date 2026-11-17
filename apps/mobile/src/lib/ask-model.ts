@@ -72,15 +72,53 @@ export const isNoteCard = (reply: AskReply): reply is NoteCard =>
 export const isHowToSayCard = (reply: AskReply): reply is HowToSayCard =>
   reply.type === "card" && "expressions" in reply;
 
+/** One point of a speaking note that a question is about. */
+export interface AskPoint {
+  /** Opening / Body / Closing / Others; "Note" for points above any heading. */
+  section: string;
+  /** 1-based position within the section. */
+  index: number;
+  /** The point as it read when the question was asked. */
+  text: string;
+}
+
 /** One line of the conversation as the sheet holds it. */
 export type AskTurn =
-  | { id: string; role: "user"; text: string; mode: AskMode; draftNow?: boolean }
+  | { id: string; role: "user"; text: string; mode: AskMode; draftNow?: boolean; point?: AskPoint }
   | { id: string; role: "assistant"; reply: AskReply; mode: AskMode };
 
 export interface AskMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+// A question about a point carries the point as a first line, both to the
+// model and in stored history: "[[point Opening 2]] I built…\n<question>".
+// Mirror of readPointTag in supabase/functions/ask-assist/core.ts.
+/** Longest point text a tag carries (server: POINT_TAG_TEXT). */
+export const POINT_TAG_TEXT = 240;
+const POINT_SECTIONS = ["Opening", "Body", "Closing", "Others", "Note"];
+const POINT_TAG = /^\[\[point (Opening|Body|Closing|Others|Note) (\d{1,3})\]\] ?([^\n]*)\n/;
+
+export const pointSection = (heading: string | null | undefined) =>
+  heading && POINT_SECTIONS.includes(heading) ? heading : "Note";
+
+export function withPointTag(text: string, point: AskPoint): string {
+  const line = point.text.replace(/\s+/g, " ").trim().slice(0, POINT_TAG_TEXT);
+  return `[[point ${pointSection(point.section)} ${Math.max(1, Math.min(999, Math.round(point.index)))}]] ${line}\n${text}`;
+}
+/** A stored or sent user message, split back into its point and question. */
+export function readPointTag(content: string): { text: string; point?: AskPoint } {
+  const match = POINT_TAG.exec(content);
+  if (!match) return { text: content };
+  return { text: content.slice(match[0].length), point: { section: match[1], index: Number(match[2]), text: match[3].trim() } };
+}
+/** What the learner sent, as the model and history store it. */
+export const userContent = (turn: Extract<AskTurn, { role: "user" }>) =>
+  turn.point ? withPointTag(turn.text, turn.point) : turn.text;
+/** "Opening · 2" — how a point is named in the sheet. */
+export const pointLabel = (point: Pick<AskPoint, "section" | "index">) =>
+  point.section === "Note" ? `Point ${point.index}` : `${point.section} · ${point.index}`;
 
 /** How a past reply goes back to the model. Must match `assistantContent` in
  *  the function's core.ts: compact JSON, so the model sees its own structure. */
@@ -93,20 +131,34 @@ export function trimHistory(turns: AskTurn[], max = ASK_HISTORY_TURNS): AskMessa
   while (kept.length && kept[0].role !== "user") kept = kept.slice(1);
   return kept.map((turn) =>
     turn.role === "user"
-      ? { role: "user", content: turn.text }
+      ? { role: "user", content: userContent(turn) }
       : { role: "assistant", content: assistantContent(turn.reply) },
   );
 }
 
-/** Request shape shared with the Edge Function's parseAskBody contract. */
+/** The point the latest question is about, if it is about one. */
+export function askedPoint(turns: AskTurn[]): AskPoint | null {
+  const last = turns[turns.length - 1];
+  return last?.role === "user" && last.point ? last.point : null;
+}
+
+/** Request shape shared with the Edge Function's parseAskBody contract. A
+ *  Note-mode question, or a question about one of the note's points, reads the
+ *  note on the server. */
 export const buildAskRequest = (mode: AskMode, turns: AskTurn[], firstLanguage: string, draftNow = false, noteId?: string | null, practiceSessionId?: string | null) => ({
   mode,
   messages: trimHistory(turns),
   first_language: firstLanguage,
   draft_now: draftNow,
-  ...(mode === "note" && noteId ? { note_id: noteId } : {}),
+  ...((mode === "note" || askedPoint(turns)) && noteId ? { note_id: noteId } : {}),
   ...(mode === "note" && practiceSessionId ? { practice_session_id: practiceSessionId } : {}),
 });
+
+/** The reply to the question at `index`'s left: is it about a point? */
+export function pointForReply(turns: AskTurn[], index: number): AskPoint | null {
+  const question = turns[index - 1];
+  return question?.role === "user" && question.point ? question.point : null;
+}
 
 const EMPTY_DRAFT: Draft = { opening: "", body: "", closing: "" };
 /** A draft with an answer's rewritten sections laid over it. */

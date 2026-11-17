@@ -6,7 +6,7 @@
 // also what the daily limit counts.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-import { buildOpenAIRequest, costUsd, DAILY_LIMIT, MODEL, normalizeReply, parseAskBody, noteHistoryContext } from "./core.ts";
+import { buildOpenAIRequest, costUsd, DAILY_LIMIT, MODEL, normalizeReply, parseAskBody, noteHistoryContext, pointTrail } from "./core.ts";
 
 /** Optional secret to switch models without a code change (e.g. after a golden
  *  A/B). Unset → the default in core.ts. */
@@ -37,8 +37,10 @@ Deno.serve(async (req: Request) => {
   const { request } = parsedBody;
 
   // Folder context is fetched under the signed-in user's RLS. The client can
-  // name a Note, but cannot supply or impersonate its confirmed facts.
-  if (request.mode === "note" && request.noteId) {
+  // name a Note, but cannot supply or impersonate its confirmed facts. A note
+  // reaches here in Note mode, or in How to say when the question is about one
+  // of its points (parseAskBody drops note_id otherwise).
+  if (request.noteId) {
     const { data: note, error: noteError } = await supabase.from("notes")
       .select("folder_id,title,body").eq("user_id", user.id).eq("id", request.noteId).maybeSingle();
     if (noteError) return json({ error: "Couldn’t read Note context.", code: "ask_note_context" }, 503);
@@ -55,6 +57,15 @@ Deno.serve(async (req: Request) => {
         .select("text").eq("folder_id", note.folder_id).order("confirmed_at").limit(20);
       if (factsError) return json({ error: "Couldn’t read confirmed context.", code: "ask_note_context" }, 503);
       request.confirmedFacts = (facts ?? []).map((fact) => fact.text);
+    }
+    if (request.targetPoint) {
+      // How the point read before, so a suggestion never undoes the learner's
+      // own edits. Best-effort: without it the answer is still useful.
+      const { data: versions, error: versionsError } = await supabase.from("note_versions")
+        .select("body").eq("note_id", request.noteId)
+        .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(12);
+      if (versionsError) console.error("ask-assist: note versions failed", versionsError.message);
+      else request.pointTrail = pointTrail((versions ?? []).map((version) => version.body as string).reverse(), request.targetPoint);
     }
     if (request.practiceSessionId) {
       const { data: session, error: sessionError } = await supabase.from("talk_sessions")

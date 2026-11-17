@@ -47,12 +47,16 @@ import {
   isNoteCard,
   noteTitle,
   patchesDraft,
+  pointForReply,
+  pointLabel,
+  pointSection,
   questionFor,
   prepareAskCaptureSeed,
   toPhraseInput,
   type AskCaptureSeed,
   type AskAnswer,
   type AskMode,
+  type AskPoint,
   type AskTurn,
   type Draft,
   type Example,
@@ -67,6 +71,7 @@ import { PhraseSaveReviewSheet } from "./phrase-save-review-sheet";
 import { extractPhraseFromAsk } from "@/lib/phrase-capture";
 import { applyNoteVersion } from "@/lib/note-growth";
 import { NoteDraftEditor } from "./note-draft-editor";
+import { PointUseSheet, type PointUseTarget } from "./point-use-sheet";
 
 const MODE_LABEL: Record<AskMode, string> = { how_to_say: "How to say", note: "Note" };
 const INTRO: Record<AskMode, { title: string; body: string; placeholder: string }> = {
@@ -110,7 +115,47 @@ const DRAFT_NOW: Record<L1, string> = {
 };
 const OFF_TOPIC = "I can help you find an English expression or shape a speaking note for a question or topic.";
 
+/** Opened from a point: Refine starts from these, in the learner's language. */
+const REFINE_STARTERS: Record<L1, string[]> = {
+  en: ["Make it sound more natural", "Make it shorter and easier to say", "Make it sound more confident"],
+  ko: ["더 자연스럽게 다듬어줘", "더 짧고 말하기 쉽게", "더 자신감 있게"],
+  ja: ["もっと自然な言い方にして", "短く、言いやすくして", "もっと自信がある感じにして"],
+  "zh-Hant": ["讓它聽起來更自然", "更短、更好說", "聽起來更有自信"],
+  es: ["Que suene más natural", "Más corto y fácil de decir", "Que suene más seguro"],
+  ru: ["Сделай естественнее", "Короче и проще произнести", "Звучит увереннее"],
+};
+const POINT_INTRO: Record<AskPointIntent, { title: string; body: string; placeholder: string }> = {
+  refine: {
+    title: "Refine this point",
+    body: "Pick how it should change, or say it in your own words.",
+    placeholder: "How should it change?",
+  },
+  how_to_say: {
+    title: "What do you want to say here?",
+    body: "Type it in your own language. You get English that fits this point.",
+    placeholder: "Say it in your own language",
+  },
+};
+
 type SaveState = "saving" | "saved" | "failed";
+/** What a Use row did to the note. */
+type UseOutcome = "fixed" | "kept";
+
+/** Which point-toolbar action opened Ask. */
+export type AskPointIntent = "refine" | "how_to_say";
+/** Ask opened for one point of the note: the chat is about that point, and a
+ *  suggestion can replace it or be kept under Others. */
+export interface AskPointLink {
+  section: string;
+  /** 1-based position within the section. */
+  index: number;
+  /** The point as it reads now — updated after a fix. */
+  text: string;
+  intent: AskPointIntent;
+  /** Resolves false when the point is no longer in the note. */
+  replace: (text: string) => Promise<boolean>;
+  keep: (text: string) => Promise<void>;
+}
 
 export interface AskSheetProps {
   open: boolean;
@@ -120,6 +165,8 @@ export interface AskSheetProps {
   practiceSessionId?: string | null;
   /** Set when opened from a Note: accepting a proposal creates a version. */
   note?: { id: string; title: string; body: string; apply: (body: string, title: string) => Promise<void> };
+  /** Set when opened from one point of `note` (Refine / How to say). */
+  point?: AskPointLink;
   /** A phrase or a note was written — lists elsewhere should reload. */
   onSaved?: () => void;
   /** Open a note this sheet just created (the sheet closes first). */
@@ -173,11 +220,18 @@ function ReplyReveal({ children, reducedMotion }: { children: ReactNode; reduced
   );
 }
 
-function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, onSaved, onOpenNote, onOpenPhraseDraft, practiceSessionId }: AskSheetProps) {
+function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, point, onSaved, onOpenNote, onOpenPhraseDraft, practiceSessionId }: AskSheetProps) {
   const t = useTheme();
   const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AskMode>(initialMode);
+  // Linked to the point Ask was opened for, until the learner unlinks it (×) or
+  // opens another conversation. The link reads the point live from props, so a
+  // fix applied from this sheet shows up in the chip at once.
+  const [linked, setLinked] = useState(Boolean(point && note));
+  const link = linked && point && note ? point : null;
+  const [uses, setUses] = useState<Record<string, UseOutcome>>({});
+  const [useTarget, setUseTarget] = useState<(PointUseTarget & { question: string; usage: string; expression: Expression }) | null>(null);
   const [turns, setTurns] = useState<AskTurn[]>([]);
   const [text, setText] = useState(initialQuestion ?? (practiceSessionId ? "I want to develop this Note using what I said in practice. What should I clarify first?" : ""));
   const [pending, setPending] = useState(false);
@@ -298,6 +352,9 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       setMode(page.turns.at(-1)?.mode ?? chat.initialMode);
       setText("");
       setSaves({});
+      setUses({});
+      // Another conversation is not about the point this sheet was opened for.
+      setLinked(false);
       setMadeNotes({});
       turnTops.current.clear();
       setLiveIds(new Set());
@@ -324,6 +381,8 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
     setText("");
     setFailure(null);
     setSaves({});
+    setUses({});
+    setLinked(Boolean(point && note));
     setMadeNotes({});
     turnTops.current.clear();
     setLiveIds(new Set());
@@ -371,13 +430,17 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
   useEffect(() => {
     const show = Keyboard.addListener("keyboardWillShow", () => setTyping(true));
     const hide = Keyboard.addListener("keyboardWillHide", () => setTyping(false));
-    // After the sheet has slid up, so the keyboard does not fight it.
-    const focus = setTimeout(() => input.current?.focus(), 450);
+    // After the sheet has slid up, so the keyboard does not fight it. Refine
+    // on a written point opens on its one-tap starters, so no keyboard there.
+    const startsOnStarters = point?.intent === "refine" && Boolean(point.text.trim());
+    const focus = startsOnStarters ? undefined : setTimeout(() => input.current?.focus(), 450);
     return () => {
       show.remove();
       hide.remove();
       clearTimeout(focus);
     };
+    // Mount-only: how the sheet opened decides the first focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const request = async (next: AskTurn[], asked: AskMode, draftNow = false) => {
@@ -423,10 +486,13 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       setPending(false);
     }
   };
-  const send = (question: string, draftNow = false, requestedMode: AskMode = mode) => {
+  const send = (question: string, draftNow = false, chosenMode: AskMode = mode) => {
+    // A linked chat is about one point: always a How to say card for it.
+    const requestedMode: AskMode = link ? "how_to_say" : chosenMode;
     const asked = draftNow && requestedMode === "note" ? question.trim() : question.replace(/\s+/g, " ").trim().slice(0, ASK_MAX_CHARS);
     if (!asked || pending || limited || loadingHistory || turns[turns.length - 1]?.role === "user") return;
-    const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode: requestedMode, draftNow }];
+    const about: AskPoint | undefined = link ? { section: pointSection(link.section), index: link.index, text: link.text } : undefined;
+    const next: AskTurn[] = [...turns, { id: turnId(), role: "user", text: asked, mode: requestedMode, draftNow, ...(about ? { point: about } : {}) }];
     const questionId = next[next.length - 1].id;
     setLiveIds(ids => new Set(ids).add(questionId));
     followQuestion.current = questionId;
@@ -474,6 +540,23 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
       setFailure(caught instanceof Error ? caught.message : "Couldn’t prepare this phrase. Try again.");
     }
   };
+  /** A suggestion's Use button, while linked: choose what it does to the note. */
+  const openUse = (key: string, expression: Expression, question: string, usage: string) => {
+    Keyboard.dismiss();
+    setUseTarget({ key, en: expression.en, meaning: expression.meaning, question, usage, expression });
+  };
+  /** The row button for one suggestion: Use while linked to a point, Save otherwise. */
+  const rowAction = (index: number, n: number, expression: Expression, usage: string, save: () => void) => {
+    const key = `${turns[index].id}.${n}`;
+    const outcome = uses[key];
+    const pointed = Boolean(link && pointForReply(turns, index));
+    return {
+      state: outcome ? ("saved" as const) : saves[key],
+      label: pointed ? "Use" : "Save",
+      doneLabel: outcome === "fixed" ? "Applied" : outcome === "kept" ? "In Others" : "Saved",
+      onPress: pointed ? () => openUse(key, expression, questionFor(turns, index), usage) : save,
+    };
+  };
   const saveDraft = (index: number, draft: Draft) => {
     const card = turns.slice(0, index + 1).reverse().find(turn => turn.role === "assistant" && isNoteCard(turn.reply));
     const source = card?.role === "assistant" && isNoteCard(card.reply) ? card.reply : null;
@@ -505,9 +588,16 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
     !pending && !failure && last?.role === "assistant" && (last.reply.type === "card" || last.reply.type === "answer")
       ? last.reply.follow_ups
       : [];
-  const collecting = mode === "note" && last?.role === "assistant" && last.reply.type === "clarify";
-  const intro = INTRO[mode];
-  const starters = STARTERS[mode][firstLanguage()] ?? STARTERS[mode].en;
+  const activeMode: AskMode = link ? "how_to_say" : mode;
+  const collecting = activeMode === "note" && last?.role === "assistant" && last.reply.type === "clarify";
+  // An empty point has nothing to refine yet: Refine on it reads as How to say.
+  const pointIntent: AskPointIntent | null = link ? (link.intent === "refine" && link.text.trim() ? "refine" : "how_to_say") : null;
+  const intro = pointIntent ? POINT_INTRO[pointIntent] : INTRO[mode];
+  const starters = pointIntent === "how_to_say"
+    ? []
+    : pointIntent === "refine"
+      ? REFINE_STARTERS[firstLanguage()] ?? REFINE_STARTERS.en
+      : STARTERS[mode][firstLanguage()] ?? STARTERS[mode].en;
   const canSend = Boolean(text.trim()) && !pending && !limited && !loadingHistory && last?.role !== "user";
   // iOS pageSheet can report a bottom inset that includes the sheet offset
   // (83pt on the simulator). Keep only the home-indicator allowance.
@@ -603,14 +693,16 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
                   <Text style={{ fontSize: 16, lineHeight: 24, color: t.colors.ink2 }}>{intro.body}</Text>
                 </View>
               </View>
-              <View style={{ gap: 9 }}>
-                <Caption>Try a question</Caption>
-                {starters.map((starter) => (
-                  <QuestionChip key={starter} variant="starter" reducedMotion={reducedMotion} onPress={() => send(starter)}>
-                    {starter}
-                  </QuestionChip>
-                ))}
-              </View>
+              {starters.length ? (
+                <View style={{ gap: 9 }}>
+                  <Caption>{pointIntent ? "Start with" : "Try a question"}</Caption>
+                  {starters.map((starter) => (
+                    <QuestionChip key={starter} variant="starter" reducedMotion={reducedMotion} onPress={() => send(starter)}>
+                      {starter}
+                    </QuestionChip>
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -631,18 +723,20 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
             >
               <ReplyReveal reducedMotion={reducedMotion || !liveIds.has(turn.id)}>
               {turn.role === "user" ? (
-                <View
-                  style={{
-                    alignSelf: "flex-end",
-                    maxWidth: "86%",
-                    backgroundColor: t.colors.acc,
-                    borderRadius: 20,
-                    borderBottomRightRadius: 6,
-                    paddingVertical: 10,
-                    paddingHorizontal: 15,
-                  }}
-                >
-                  <Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.onAcc }}>{turn.draftNow && turn.text.startsWith("Revise this draft: ") ? turn.text.split("\n\nDraft: ")[0] : turn.text}</Text>
+                <View style={{ alignItems: "flex-end", gap: 6 }}>
+                  {turn.point ? <PointQuote point={turn.point} /> : null}
+                  <View
+                    style={{
+                      maxWidth: "86%",
+                      backgroundColor: t.colors.acc,
+                      borderRadius: 20,
+                      borderBottomRightRadius: 6,
+                      paddingVertical: 10,
+                      paddingHorizontal: 15,
+                    }}
+                  >
+                    <Text style={{ fontSize: 17, lineHeight: 24, color: t.colors.onAcc }}>{turn.draftNow && turn.text.startsWith("Revise this draft: ") ? turn.text.split("\n\nDraft: ")[0] : turn.text}</Text>
+                  </View>
                 </View>
               ) : turn.reply.type === "off_topic" ? (
                 <Text style={{ fontSize: 15, lineHeight: 22, color: t.colors.ink2, paddingHorizontal: 2 }}>
@@ -651,10 +745,8 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
               ) : isHowToSayCard(turn.reply) ? (
                 <HowToSay
                   card={turn.reply}
-                  saveState={(n) => saves[`${turn.id}.${n}`]}
-                  onSave={(n, expression) =>
-                    void reviewAskPhrase(`${turn.id}.${n}`, expression, questionFor(turns, i), (turn.reply as HowToSayCard).nuance)
-                  }
+                  action={(n, expression) => rowAction(i, n, expression, (turn.reply as HowToSayCard).nuance, () =>
+                    void reviewAskPhrase(`${turn.id}.${n}`, expression, questionFor(turns, i), (turn.reply as HowToSayCard).nuance))}
                 />
               ) : isNoteCard(turn.reply) ? (
                 <NoteDraft
@@ -682,12 +774,10 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
                     saveDraft(i, draft)
                   }
                   onOpenNote={onOpenNote}
-                  saveState={(n) => saves[`${turn.id}.${n}`]}
-                  onSave={(n, phrase) =>
+                  action={(n, phrase) => rowAction(i, n, phrase, phrase.when, () =>
                     void (turn.mode === "how_to_say"
                       ? reviewAskPhrase(`${turn.id}.${n}`, phrase, questionFor(turns, i), phrase.when)
-                      : savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i)))
-                  }
+                      : savePhrase(`${turn.id}.${n}`, phrase, phrase.example, "", questionFor(turns, i))))}
                 />
               )}
               </ReplyReveal>
@@ -720,7 +810,7 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
 
         {/* Composer: the question, with the mode and send under it. */}
         <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: composerBottomInset }}>
-          {mode === "note" && turns.some((turn) => turn.role === "user" && turn.mode === "note") ? (
+          {activeMode === "note" && turns.some((turn) => turn.role === "user" && turn.mode === "note") ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Draft now with what I have shared"
@@ -752,30 +842,42 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
               t.shadowCard,
             ]}
           >
-            <TextInput
-              ref={input}
-              accessibilityLabel="Your question"
-              editable={!limited}
-              multiline
-              maxLength={ASK_MAX_CHARS}
-              placeholder={collecting ? "Answer in your own words" : intro.placeholder}
-              placeholderTextColor={t.colors.ink3}
-              value={text}
-              onChangeText={setText}
-              style={{
-                fontSize: 17,
-                lineHeight: 23,
-                maxHeight: 120,
-                paddingHorizontal: 8,
-                paddingTop: 8,
-                paddingBottom: 6,
-                color: t.colors.ink,
-              }}
-            />
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <ModeSwitch mode={mode} onChange={changeMode} />
-              <SendButton enabled={canSend} reducedMotion={reducedMotion} onPress={() => send(text)} />
+            {link ? (
+              <PointChip noteTitle={note?.title ?? ""} point={link} onUnlink={() => {
+                void Haptics.selectionAsync().catch(() => {});
+                setLinked(false);
+              }} />
+            ) : null}
+            <View style={link ? { flexDirection: "row", alignItems: "flex-end", gap: 8 } : undefined}>
+              <TextInput
+                ref={input}
+                accessibilityLabel={link ? `Your question about ${pointLabel(link)}` : "Your question"}
+                editable={!limited}
+                multiline
+                maxLength={ASK_MAX_CHARS}
+                placeholder={collecting ? "Answer in your own words" : intro.placeholder}
+                placeholderTextColor={t.colors.ink3}
+                value={text}
+                onChangeText={setText}
+                style={{
+                  flex: link ? 1 : undefined,
+                  fontSize: 17,
+                  lineHeight: 23,
+                  maxHeight: 120,
+                  paddingHorizontal: 8,
+                  paddingTop: 8,
+                  paddingBottom: link ? 11 : 6,
+                  color: t.colors.ink,
+                }}
+              />
+              {link ? <SendButton enabled={canSend} reducedMotion={reducedMotion} onPress={() => send(text)} /> : null}
             </View>
+            {!link ? (
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <ModeSwitch mode={mode} onChange={changeMode} />
+                <SendButton enabled={canSend} reducedMotion={reducedMotion} onPress={() => send(text)} />
+              </View>
+            ) : null}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -874,6 +976,25 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, o
         </Animated.View>
       </View>
       <PhraseSaveReviewSheet review={phraseSave.review} onConfirm={phraseSave.onConfirm} onEdit={phraseSave.onEdit} onDismiss={phraseSave.onDismiss} />
+      {point ? (
+        <PointUseSheet
+          target={link ? useTarget : null}
+          point={{ label: pointLabel({ section: pointSection(point.section), index: point.index }), noteTitle: note?.title ?? "", text: point.text }}
+          onFix={point.replace}
+          onKeep={point.keep}
+          onSavePhrase={(target) => {
+            const chosen = useTarget;
+            setUseTarget(null);
+            if (chosen) void reviewAskPhrase(target.key, chosen.expression, chosen.question, chosen.usage);
+          }}
+          onDone={(target, outcome) => {
+            setUses((current) => ({ ...current, [target.key]: outcome }));
+            setUseTarget(null);
+            onSaved?.();
+          }}
+          onClose={() => setUseTarget(null)}
+        />
+      ) : null}
       {draftReview ? (
         <NoteDraftEditor key={draftReview.key} initialTitle={draftReview.title} initialDraft={draftReview.draft}
           saving={saves[draftReview.key] === "saving"} failed={saves[draftReview.key] === "failed"}
@@ -1018,14 +1139,65 @@ function Caption({ children }: { children: string }) {
   );
 }
 
-/** Save to Phrase, on one expression. */
-function SaveButton({ state, onPress }: { state: SaveState | undefined; onPress: () => void }) {
+/** Inside the composer while linked: which note and point this chat is about.
+ *  × unlinks, and the chat goes back to plain Ask. */
+function PointChip({ noteTitle, point, onUnlink }: { noteTitle: string; point: AskPointLink; onUnlink: () => void }) {
+  const t = useTheme();
+  const label = pointLabel({ section: pointSection(point.section), index: point.index });
+  const body = point.text.trim();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: t.colors.bg, borderRadius: 14, paddingLeft: 11, paddingVertical: 9, marginTop: 2 }}>
+      <View style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: t.colors.acc }} />
+      <View accessible accessibilityLabel={`Working on ${noteTitle ? `${noteTitle}, ` : ""}${label}: ${body || "empty point"}`} style={{ flex: 1, gap: 2 }}>
+        <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontWeight: "700", letterSpacing: 0.2, color: t.colors.accD }}>
+          {noteTitle ? `${noteTitle} · ${label}` : label}
+        </Text>
+        <Text numberOfLines={2} style={{ fontSize: 14.5, lineHeight: 20, color: body ? t.colors.ink : t.colors.ink3 }}>
+          {body || "Empty point"}
+        </Text>
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Stop working on this point" hitSlop={6} onPress={onUnlink}
+        style={({ pressed }) => ({ width: 40, height: 40, alignItems: "center", justifyContent: "center", opacity: pressed ? 0.5 : 1 })}>
+        <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: t.colors.soft, alignItems: "center", justifyContent: "center" }}>
+          <Icon name="x" s={10} w={2.6} c={t.colors.ink2} />
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Above a question that was asked about a point. */
+function PointQuote({ point }: { point: AskPoint }) {
+  const t = useTheme();
+  return (
+    <View style={{ maxWidth: "86%", flexDirection: "row", alignItems: "center", gap: 7, paddingRight: 2 }}>
+      <View style={{ width: 2.5, height: 15, borderRadius: 2, backgroundColor: t.colors.acc, opacity: 0.55 }} />
+      <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 13, lineHeight: 18, color: t.colors.ink2 }}>
+        <Text style={{ fontWeight: "700", color: t.colors.accD }}>{pointLabel(point)}</Text>
+        {point.text ? `  ${point.text}` : "  Empty point"}
+      </Text>
+    </View>
+  );
+}
+
+/** The button on one suggestion: Save to Phrases, or Use while the chat is
+ *  linked to a note point. */
+interface RowAction {
+  state: SaveState | undefined;
+  label: string;
+  doneLabel: string;
+  onPress: () => void;
+}
+const saveAction = (state: SaveState | undefined, onPress: () => void): RowAction =>
+  ({ state, label: "Save", doneLabel: "Saved", onPress });
+
+function SaveButton({ state, label = "Save", doneLabel = "Saved", onPress }: { state: SaveState | undefined; label?: string; doneLabel?: string; onPress: () => void }) {
   const t = useTheme();
   const saved = state === "saved";
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={saved ? "Saved to Phrases" : "Save to Phrases"}
+      accessibilityLabel={saved ? doneLabel : label === "Use" ? "Use this sentence in your note" : "Save to Phrases"}
       disabled={saved || state === "saving"}
       hitSlop={8}
       onPress={onPress}
@@ -1048,7 +1220,7 @@ function SaveButton({ state, onPress }: { state: SaveState | undefined; onPress:
         <>
           <Icon name={saved ? "check" : "plus"} s={12} w={2.6} c={saved ? t.colors.ink2 : t.colors.accD} />
           <Text style={{ fontSize: 13.5, fontWeight: "600", color: saved ? t.colors.ink2 : t.colors.accD }}>
-            {saved ? "Saved" : state === "failed" ? "Retry" : "Save"}
+            {saved ? doneLabel : state === "failed" ? "Retry" : label}
           </Text>
         </>
       )}
@@ -1061,14 +1233,12 @@ function ExpressionRow({
   expression,
   large,
   example,
-  state,
-  onSave,
+  action,
 }: {
   expression: Expression;
   large?: boolean;
   example?: Example;
-  state: SaveState | undefined;
-  onSave: () => void;
+  action: RowAction;
 }) {
   const t = useTheme();
   return (
@@ -1082,7 +1252,7 @@ function ExpressionRow({
             {expression.en}
           </Text>
         )}
-        <SaveButton state={state} onPress={onSave} />
+        <SaveButton state={action.state} label={action.label} doneLabel={action.doneLabel} onPress={action.onPress} />
       </View>
       {expression.meaning ? (
         <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.ink2 }}>{expression.meaning}</Text>
@@ -1112,12 +1282,10 @@ function ClarifyingQuestion({ text, question }: { text: string; question: string
 
 function HowToSay({
   card,
-  saveState,
-  onSave,
+  action,
 }: {
   card: HowToSayCard;
-  saveState: (n: number) => SaveState | undefined;
-  onSave: (n: number, expression: Expression) => void;
+  action: (n: number, expression: Expression) => RowAction;
 }) {
   const t = useTheme();
   return (
@@ -1128,8 +1296,7 @@ function HowToSay({
           <ExpressionRow
             large
             expression={expression}
-            state={saveState(n)}
-            onSave={() => onSave(n, expression)}
+            action={action(n, expression)}
           />
         </View>
       ))}
@@ -1292,8 +1459,7 @@ function NoteDraft({
               <ExpressionRow
                 expression={{ ...phrase, when: "" }}
                 example={phrase.example}
-                state={saveState(n)}
-                onSave={() => onSave(n, phrase)}
+                action={saveAction(saveState(n), () => onSave(n, phrase))}
               />
             </View>
           ))}
@@ -1325,8 +1491,7 @@ function Answer({
   madeNote,
   onSaveDraft,
   onOpenNote,
-  saveState,
-  onSave,
+  action,
 }: {
   answer: AskAnswer;
   inNote: boolean;
@@ -1337,8 +1502,7 @@ function Answer({
   madeNote: string | undefined;
   onSaveDraft: (draft: Draft) => void;
   onOpenNote?: (id: string) => void;
-  saveState: (n: number) => SaveState | undefined;
-  onSave: (n: number, phrase: Expression & { example: Example }) => void;
+  action: (n: number, phrase: Expression & { example: Example }) => RowAction;
 }) {
   const t = useTheme();
   return (
@@ -1361,7 +1525,7 @@ function Answer({
       {answer.expressions.map((phrase, n) => (
         <View key={phrase.en} style={{ gap: 14 }}>
           <Rule />
-          <ExpressionRow expression={phrase} example={phrase.example} state={saveState(n)} onSave={() => onSave(n, phrase)} />
+          <ExpressionRow expression={phrase} example={phrase.example} action={action(n, phrase)} />
         </View>
       ))}
     </Sheet>

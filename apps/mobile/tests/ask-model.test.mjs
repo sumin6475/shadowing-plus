@@ -9,6 +9,11 @@ import {
   exampleFor,
   noteTitle,
   noteTopicFor,
+  pointForReply,
+  pointLabel,
+  pointSection,
+  readPointTag,
+  withPointTag,
   patchesDraft,
   questionFor,
   sentences,
@@ -17,7 +22,7 @@ import {
   prepareAskCaptureSeed,
   trimHistory,
 } from "../src/lib/ask-model.ts";
-import { parseAskBody } from "../../../supabase/functions/ask-assist/core.ts";
+import { parseAskBody, readPointTag as serverReadPointTag } from "../../../supabase/functions/ask-assist/core.ts";
 
 const card = {
   type: "card",
@@ -246,4 +251,42 @@ test("review feedback preserves the edited draft past the normal question limit 
   assert.equal(result.request.messages[1].content, assistantContent(noteCard));
   assert.equal(result.request.responseLanguage, "English");
   assert.equal(result.request.draftNow, true);
+});
+
+// ── Asking about one point of a note ───────────────────────────────────────
+
+const NOTE = "12345678-1234-1234-1234-123456789abc";
+const point = { section: "Opening", index: 1, text: "I built HAIT, a system that decides when to speak." };
+
+test("a point tag round-trips through the client and reads the same on the server", () => {
+  const content = withPointTag("더 자연스럽게", point);
+  assert.deepEqual(readPointTag(content), { text: "더 자연스럽게", point });
+  assert.deepEqual(serverReadPointTag(content), { text: "더 자연스럽게", point });
+  assert.deepEqual(readPointTag("plain question"), { text: "plain question" });
+  const multiline = withPointTag("q", { ...point, text: "line one\nline two" });
+  assert.equal(readPointTag(multiline).point.text, "line one line two", "a point is one line in its tag");
+  assert.equal(pointSection(null), "Note");
+  assert.equal(pointSection("Others"), "Others");
+  assert.equal(pointLabel(point), "Opening · 1");
+  assert.equal(pointLabel({ section: "Note", index: 3 }), "Point 3");
+});
+
+test("a question about a point sends the point and the note, and the server targets it", () => {
+  const turns = [{ id: "q", role: "user", text: "언제 말할지 판단하는 시스템", mode: "how_to_say", point }];
+  const body = buildAskRequest("how_to_say", turns, "ko", false, NOTE);
+  assert.equal(body.note_id, NOTE);
+  assert.equal(body.messages[0].content, withPointTag("언제 말할지 판단하는 시스템", point));
+  const parsed = parseAskBody({ ...body, note_snapshot: { title: "HAIT", body: "Opening\n- " + point.text } });
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.request.targetPoint, point);
+  assert.equal(parsed.request.noteId, NOTE);
+  const plain = buildAskRequest("how_to_say", [user("1", "늦을 것 같아")], "ko", false, NOTE);
+  assert.equal(plain.note_id, undefined, "a plain How to say question never reads the note");
+});
+
+test("only replies to a point question act on the point", () => {
+  const turns = [user("1", "늦을 것 같아"), bot("2", card), { id: "3", role: "user", text: "refine", mode: "how_to_say", point }, bot("4", card)];
+  assert.equal(pointForReply(turns, 1), null);
+  assert.deepEqual(pointForReply(turns, 3), point);
+  assert.equal(trimHistory(turns).at(-2).content, withPointTag("refine", point));
 });

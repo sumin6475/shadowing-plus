@@ -42,7 +42,7 @@ import {
 } from "@expo/ui/swift-ui";
 import { frame, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { ASK_ENABLED, SEARCH_ENABLED } from "@/lib/release-flags";
-import { AskSheet } from "@/components/ask-sheet";
+import { AskSheet, type AskPointIntent } from "@/components/ask-sheet";
 import { NoteToolsSheet, type NoteTool } from "@/components/note-tools-sheet";
 import { askDefaultMode } from "@/lib/ask-pref";
 import { addConfirmedFact, applyNoteVersion, createNoteFolder, deleteNoteFolder, loadNoteFacts, loadNoteFolders, moveNoteToFolder } from "@/lib/note-growth";
@@ -1780,6 +1780,8 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
   const { session } = useAuth();
   const [tool, setTool] = useState<NoteTool | null>(null);
   const [askContext, setAskContext] = useState<{ mode: AskMode; question?: string }>({ mode: "note" });
+  /** The point Ask was opened for, from the point toolbar; null from the sparkle. */
+  const [askPoint, setAskPoint] = useState<(NotePointContext & { intent: AskPointIntent }) | null>(null);
   const phrasePoint = useRef<string | null>(null);
   const pageRoot = useRef<View>(null);
   const pageScroll = useRef<ScrollView>(null);
@@ -1975,9 +1977,47 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
   const pointAction = (action: PointAction, point: NotePointContext) => {
     Keyboard.dismiss();
     if (action === "phrases") { phrasePoint.current = point.id; setTool("phrases"); return; }
-    const context = `${point.section}\n${point.text}${point.note ? `\n\nNotes\n${point.note}` : ""}`;
-    setAskContext({ mode: action === "refine" ? "note" : "how_to_say", question: action === "refine" ? `Help me refine this point in my speaking note:\n${context}` : `How can I say this naturally in English?\n${context}` });
+    // Ask opens linked to this point: the point travels as context, not as
+    // text pasted into the question.
+    setAskPoint({ ...point, intent: action });
+    setAskContext({ mode: "how_to_say" });
     setAsking(true);
+  };
+  /** Ask changed the outline through its handle (so the editor shows it at
+   *  once); keep that change as an "ask" version, which is also how later Ask
+   *  requests see how this point evolved. */
+  const recordAskEdit = () => {
+    const snapshot = { ...current.current };
+    const key = JSON.stringify(snapshot);
+    queue.current = queue.current
+      .catch(() => {})
+      .then(async () => {
+        await applyNoteVersion(id, snapshot.title, snapshot.body, "ask");
+        saved.current = key;
+        if (JSON.stringify(current.current) === key) await AsyncStorage.removeItem(draftKey);
+        nav.invalidateSpeakingData();
+        if (alive.current) {
+          setStatus(JSON.stringify(current.current) === key ? "All changes saved" : "Unsaved changes");
+          setError(null);
+        }
+      });
+    return queue.current;
+  };
+  const replaceAskPoint = async (text: string) => {
+    if (!askPoint) return false;
+    const before = current.current.body;
+    const changed = outline.current?.replacePoint(askPoint.id, askPoint, text);
+    if (!changed) return false;
+    setAskPoint(point => point ? { ...point, id: changed, text } : point);
+    if (current.current.body !== before) await recordAskEdit();
+    return true;
+  };
+  const keepInOthers = async (text: string) => {
+    if (!outline.current) throw new Error("Open the note again to add this.");
+    const before = current.current.body;
+    // Already under Others: appendPoints skips it, and there is nothing to record.
+    outline.current.append([{ heading: "Others", points: [text] }]);
+    if (current.current.body !== before) await recordAskEdit();
   };
   const dragScroll = useCallback((pageY: number) => {
     const frame = pageFrame.current;
@@ -2052,7 +2092,7 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Ask for help with this note"
-                onPress={() => { setAskContext({ mode: "note" }); setAsking(true); }}
+                onPress={() => { setAskPoint(null); setAskContext({ mode: "note" }); setAsking(true); }}
                 style={[
                   {
                     width: Motif.buttonHeight.large,
@@ -2088,6 +2128,14 @@ export function NoteEditor({ nav, id, practiceSessionId }: { nav: Nav; id: strin
             nav.push("capture", { askSeed });
           }}
           practiceSessionId={practiceSessionId}
+          point={askPoint ? {
+            section: askPoint.section,
+            index: askPoint.index,
+            text: askPoint.text,
+            intent: askPoint.intent,
+            replace: replaceAskPoint,
+            keep: keepInOthers,
+          } : undefined}
           note={{
             id,
             title,
