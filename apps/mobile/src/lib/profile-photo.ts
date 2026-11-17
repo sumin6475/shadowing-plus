@@ -5,6 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import { File } from "expo-file-system";
 import { Alert, Linking } from "react-native";
 
+import { resolveAvatarUrl } from "./avatar-url";
 import { supabase } from "./supabase";
 
 export const AVATAR_BUCKET = "avatars";
@@ -18,12 +19,9 @@ type UserMeta = {
   name?: string;
 };
 
+/** An uploaded photo (avatar_path) always wins over the sign-in provider's photo. */
 export function avatarUrlFromMetadata(meta: Record<string, unknown> | undefined | null): string | null {
-  const data = (meta ?? {}) as UserMeta;
-  const custom = data.avatar_url?.trim();
-  if (custom) return custom;
-  const picture = data.picture?.trim();
-  return picture || null;
+  return resolveAvatarUrl(meta, (path) => supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl);
 }
 
 export function avatarInitialFromMetadata(
@@ -111,9 +109,10 @@ export async function pickAndUploadAvatar(origin: "library" | "camera"): Promise
   }
 
   const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
-  const avatarUrl = `${data.publicUrl}?t=${Date.now()}`;
+  const version = String(Date.now());
+  const avatarUrl = `${data.publicUrl}?t=${version}`;
   const { error: updateError } = await supabase.auth.updateUser({
-    data: { avatar_url: avatarUrl, avatar_path: path },
+    data: { avatar_url: avatarUrl, avatar_path: path, avatar_version: version },
   });
   if (updateError) throw updateError;
   return avatarUrl;
@@ -129,7 +128,7 @@ export async function clearUploadedAvatar(): Promise<void> {
   const path = meta.avatar_path?.trim() || `${userId}/avatar.jpg`;
   await supabase.storage.from(AVATAR_BUCKET).remove([path]);
   const { error } = await supabase.auth.updateUser({
-    data: { avatar_url: "", avatar_path: "" },
+    data: { avatar_url: "", avatar_path: "", avatar_version: "" },
   });
   if (error) throw error;
 }

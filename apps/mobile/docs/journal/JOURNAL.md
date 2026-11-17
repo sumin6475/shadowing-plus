@@ -1591,3 +1591,7 @@ TestFlight 51에서 리뷰가 항상 "Something went wrong". 원인은 앱이 �
 ## 2026-11-16 — Apple 로그인 네이티브 전환
 
 Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 항상 실패(apple identity 0건). Supabase Apple client id가 번들 ID라 웹 흐름은 안 되고, 네이티브 identity token에는 바로 맞음 → iOS를 `expo-apple-authentication` + `signInWithIdToken`으로 바꿈. 시뮬레이터에서 시스템 Apple 시트 확인, Google 재확인, `test:mvp` 125/125. 실제 Apple 계정 로그인은 미확인. → [postmortem](postmortems/2026-11-16-apple-sign-in-invalid-client.md)
+
+## 2026-11-17 — Google 로그인이 올린 프로필 사진을 덮어쓰던 문제
+
+같은 이메일로 Google 로그인하면 Supabase가 `avatar_url`을 Google 사진으로 다시 씀(DB에서 `avatar_path`는 남고 `avatar_url`만 `lh3.googleusercontent.com`인 계정 확인). 앱이 직접 쓰는 `avatar_path`를 기준으로 URL을 다시 만들도록 바꿈. `tsc` 통과, `test:mvp` 130/130. 실제 로그인 화면 확인은 미확인. → [postmortem](postmortems/2026-11-17-google-sign-in-overwrites-avatar.md)
