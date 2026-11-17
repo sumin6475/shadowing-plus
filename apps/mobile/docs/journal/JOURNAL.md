@@ -1605,3 +1605,5 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 **결정.** 연결 중엔 Note 모드를 숨긴다. Note 모드는 노트 전체를 처음부터 쓰는 흐름(clarify → Draft now)이라 포인트 하나를 고치는 데 맞지 않는다. Refine과 How to say는 같은 포인트 채팅이고 빈 화면(시작 문구·스타터)만 다르다.
 
 **검증.** `tsc`·eslint(기존 경고 3) 통과, `test:mvp` 134/134, `ask-assist` core 22/22(포인트 태그 왕복·길이 예산·pointTrail·프롬프트 테스트 추가). 시뮬레이터(:8086, 배포된 *기존* 함수)에서 임시 노트로 Refine 스타터 → Use → Fix → 비교 → 편집 → 적용, Keep in Others, × 해제, Update History에 `ask` 버전 3개까지 확인 후 임시 노트와 테스트 대화 2개 삭제. 기존 서버는 포인트 규칙이 없어 "It works in real time." 같은 조각을 돌려줬다 → 새 함수 배포 후 다시 볼 것. **미확인**: 새 `ask-assist` 배포 후 실제 응답 품질(포인트 대체 문장, 버전 히스토리 반영), 화면 키보드가 올라온 상태의 편집 시트 위치, 다크 모드, 실기기.
+
+**배포(같은 날).** `ask-assist` v6 → v7 배포(JWT 검증 유지, 비인증 401, `verify:edge-deploys` 일치). v6은 main보다 오래된 버전이라 main에 머지만 되고 배포 안 됐던 노트 스냅샷·연결 대화 기억·`response_language`·초안 제목·"Revise this draft"도 이번에 같이 라이브가 됐다. Sumin이 배포 후 시뮬레이터에서 Refine 응답을 확인했다.
