@@ -1,4 +1,6 @@
 import type { Session } from "@supabase/supabase-js";
+import * as AppleAuthentication from "expo-apple-authentication";
+import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import {
@@ -11,6 +13,7 @@ import {
 } from "react";
 import { Platform } from "react-native";
 
+import { appleDisplayName, appleSignInErrorMessage, isAppleSignInCancel } from "./apple-sign-in";
 import {
   getSocialProviderAvailability,
   supabase,
@@ -82,6 +85,47 @@ async function createSessionFromUrl(url: string): Promise<Session | null> {
     return data.session;
   }
   return null;
+}
+
+/**
+ * Native Sign in with Apple. Apple signs the identity token for the app's
+ * bundle id, which is the client id the Supabase Apple provider is set to;
+ * the web OAuth flow can't use that id (see lib/apple-sign-in.ts).
+ */
+async function signInWithAppleNative(): Promise<"signed_in" | "cancelled"> {
+  // Apple hashes the nonce into the token; Supabase checks it against the raw one.
+  const rawNonce = Crypto.randomUUID();
+  const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+  let credential: AppleAuthentication.AppleAuthenticationCredential;
+  try {
+    credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    });
+  } catch (error) {
+    if (isAppleSignInCancel(error)) return "cancelled";
+    const message = appleSignInErrorMessage(error);
+    throw message ? new Error(message) : error;
+  }
+  if (!credential.identityToken) throw new Error("Apple didn’t return a sign-in token. Please try again.");
+
+  const { data, error } = await supabase.auth.signInWithIdToken({
+    provider: "apple",
+    token: credential.identityToken,
+    nonce: rawNonce,
+  });
+  if (error) throw error;
+
+  // Apple shares the name only on the first authorization — keep it then,
+  // without overwriting a name the learner already set.
+  const name = appleDisplayName(credential.fullName);
+  if (name && !data.user?.user_metadata?.display_name) {
+    await supabase.auth.updateUser({ data: { display_name: name } }).catch(() => {});
+  }
+  return "signed_in";
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -179,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return data.session ? "signed_in" : "confirmation_required";
       },
       async signInWithSocial(provider) {
+        if (provider === "apple" && Platform.OS === "ios") return signInWithAppleNative();
         const redirectTo = Linking.createURL("auth/callback");
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider,

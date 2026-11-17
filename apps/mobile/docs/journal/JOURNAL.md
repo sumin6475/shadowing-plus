@@ -1587,3 +1587,7 @@ TestFlight 51에서 리뷰가 항상 "Something went wrong". 원인은 앱이 �
 **실패 → 수정.** 넓힌 뒤 시뮬레이터에서 두 가지가 보였다. (1) 제목이 "개 / 선하기"로 단어 중간에서 끊김 → 본문 전용 `Para`에 `lineBreakStrategyIOS="hangul-word"`. (2) Take with you 둘째 항목의 둘째 줄 "분명해집니다."가 통째로 안 그려짐(틀 높이는 두 줄). 줄바꿈 설정과 무관했고, 글자 틀에 2pt 여유를 주면 나타났다 → iOS가 그릴 때 마지막 줄을 잴 때보다 살짝 높게 잡아, 틀이 딱 맞으면 그 줄을 버리는 것. `paddingBottom`은 효과 없음(내용 영역이 그대로). `Para` 끝에 2pt짜리 빈 줄을 넣어 그 줄이 대신 버려지게 했다.
 
 **검증.** `tsc`·eslint 통과, `test:mvp` 119/119. 시뮬레이터(:8084)에서 실제 리뷰(2026-11-16 세션, 한국어)로 상단·숫자·띠·순서·포커스 카드·Your turn·Take with you·Next step 확인. **미확인**: 영어 리뷰, 다크 모드, 포커스 여러 개, 되묻기·비교 카드, 실기기.
+
+## 2026-11-16 — Apple 로그인 네이티브 전환
+
+Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 항상 실패(apple identity 0건). Supabase Apple client id가 번들 ID라 웹 흐름은 안 되고, 네이티브 identity token에는 바로 맞음 → iOS를 `expo-apple-authentication` + `signInWithIdToken`으로 바꿈. 시뮬레이터에서 시스템 Apple 시트 확인, Google 재확인, `test:mvp` 125/125. 실제 Apple 계정 로그인은 미확인. → [postmortem](postmortems/2026-11-16-apple-sign-in-invalid-client.md)
