@@ -1500,6 +1500,11 @@ export function NotesStudio({ nav }: { nav: Nav }) {
     folders = useRefresh(loadNoteFolders, nav.speakingDataRevision),
     [query, setQuery] = useState(""),
     [view, setView] = useState("notes"),
+    // The list fades in only after the learner switches Folders / Notes / a
+    // folder — never as it mounts. A mount-time entering animation is cut off
+    // by an app reload and stays frozen part-way (opacity near 0), leaving a
+    // loaded list invisible: rows, empty state and all.
+    [fadeOnSwitch, setFadeOnSwitch] = useState(false),
     [creatingFolder, setCreatingFolder] = useState(false),
     [folderName, setFolderName] = useState(""),
     [factText, setFactText] = useState(""),
@@ -1531,6 +1536,10 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         Animated.timing(errorOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
       ]).start(() => setError(null));
     }, 3000);
+  };
+  const switchView = (next: string) => {
+    setFadeOnSwitch(true);
+    setView(next);
   };
   const create = async () => {
     if (busy) return;
@@ -1569,7 +1578,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
       {folderDetail ? (
         <BackBar
           title={openFolder?.name ?? "Folder"}
-          onBack={() => setView("folders")}
+          onBack={() => switchView("folders")}
           right={
             <Pressable accessibilityRole="button" accessibilityLabel="New note in folder" onPress={() => void create()} hitSlop={8}>
               <Icon name="plus" s={26} w={1.75} c={t.colors.ink} />
@@ -1586,7 +1595,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
             options: [],
             selected: "",
             onSelect: () => {},
-            onSearch: () => { setView("notes"); setSearching(true); },
+            onSearch: () => { switchView("notes"); setSearching(true); },
           }}
           filtered={!!query.trim()}
         />
@@ -1600,7 +1609,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                 key={tab}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
-                onPress={() => setView(tab === "Folders" ? "folders" : "notes")}
+                onPress={() => switchView(tab === "Folders" ? "folders" : "notes")}
                 style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: Motif.radius.pill, backgroundColor: selected ? t.colors.soft : "transparent" }}
               >
                 <Text style={{ color: selected ? t.colors.ink : t.colors.ink2, fontSize: 14, fontWeight: selected ? "600" : "500" }}>{tab}</Text>
@@ -1645,7 +1654,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
         error={state.error || (view !== "notes" ? folders.error : null)}
         retry={() => { void state.refresh(); void folders.refresh(); }}
       />
-      <Reanimated.View key={view} entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)} style={{ gap: t.gap }}>
+      <Reanimated.View key={view} entering={fadeOnSwitch ? FadeIn.duration(150).reduceMotion(ReduceMotion.System) : undefined} style={{ gap: t.gap }}>
       {!state.loading && view === "notes" && !visibleNotes.length && !state.error ? (
         query ? (
           <EmptyState compact title="No matching notes." body="Try a different word." />
@@ -1747,7 +1756,7 @@ export function NotesStudio({ nav }: { nav: Nav }) {
                 })}
               >
                 <Row last={false}>
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => setView(folder.id)} style={({ pressed }) => ({ flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.65 : 1 })}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${folder.name} folder`} onPress={() => switchView(folder.id)} style={({ pressed }) => ({ flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.65 : 1 })}>
                     <Icon name="folder" s={20} c={t.colors.ink2} />
                     <Text style={{ color: t.colors.ink, fontSize: 16, flex: 1 }}>{folder.name}</Text>
                     <Text style={{ color: t.colors.ink3 }}>{notes.filter((n) => n.folder_id === folder.id).length}</Text>

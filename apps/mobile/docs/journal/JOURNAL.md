@@ -1607,3 +1607,7 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 **검증.** `tsc`·eslint(기존 경고 3) 통과, `test:mvp` 134/134, `ask-assist` core 22/22(포인트 태그 왕복·길이 예산·pointTrail·프롬프트 테스트 추가). 시뮬레이터(:8086, 배포된 *기존* 함수)에서 임시 노트로 Refine 스타터 → Use → Fix → 비교 → 편집 → 적용, Keep in Others, × 해제, Update History에 `ask` 버전 3개까지 확인 후 임시 노트와 테스트 대화 2개 삭제. 기존 서버는 포인트 규칙이 없어 "It works in real time." 같은 조각을 돌려줬다 → 새 함수 배포 후 다시 볼 것. **미확인**: 새 `ask-assist` 배포 후 실제 응답 품질(포인트 대체 문장, 버전 히스토리 반영), 화면 키보드가 올라온 상태의 편집 시트 위치, 다크 모드, 실기기.
 
 **배포(같은 날).** `ask-assist` v6 → v7 배포(JWT 검증 유지, 비인증 401, `verify:edge-deploys` 일치). v6은 main보다 오래된 버전이라 main에 머지만 되고 배포 안 됐던 노트 스냅샷·연결 대화 기억·`response_language`·초안 제목·"Revise this draft"도 이번에 같이 라이브가 됐다. Sumin이 배포 후 시뮬레이터에서 Refine 응답을 확인했다.
+
+## 2026-11-17 — Studio Notes 목록이 안 보이던 문제
+
+목록 래퍼의 마운트 시 FadeIn이 앱 리로드 때 중간에 멈춰, 로드된 목록이 투명하게 남았다(데이터 로딩 문제 아님, 임시 로그로 확인). 페이드는 사용자가 Folders/Notes를 바꿀 때만 돌게 했다. 시뮬레이터 full reload 재현 → 수정 후 4회 정상, `test:mvp` 136/136. → [postmortem](postmortems/2026-11-17-studio-notes-list-invisible.md)
