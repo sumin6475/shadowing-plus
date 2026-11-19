@@ -1611,3 +1611,15 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 ## 2026-11-17 — Studio Notes 목록이 안 보이던 문제
 
 목록 래퍼의 마운트 시 FadeIn이 앱 리로드 때 중간에 멈춰, 로드된 목록이 투명하게 남았다(데이터 로딩 문제 아님, 임시 로그로 확인). 페이드는 사용자가 Folders/Notes를 바꿀 때만 돌게 했다. 시뮬레이터 full reload 재현 → 수정 후 4회 정상, `test:mvp` 136/136. → [postmortem](postmortems/2026-11-17-studio-notes-list-invisible.md)
+
+## 2026-11-17 — How to say 저장 두 갈래(Phrase / My Sentences) + 얕은 개인화 레이어
+
+**진단(결정 전).** Phrase 추출(`phrase-capture`)은 gpt-4o-mini 한 번 호출에 "재사용 가능한 핵심 표현 하나, 동사구·관용구·패턴 우선, 원문 그대로" 한 줄 기준뿐이었다. 사용자 레벨·목표·이미 저장한 Phrase는 전혀 몰랐다. 레벨과 코칭 프로필(Speaking focus 자유 입력 → 목표·포커스·말투로 컴파일)은 Talk 스피킹 리뷰에만 쓰이고, Ask와 Phrase 추출은 L1만 알았다. My Sentences는 프로필 화면 수동 입력뿐이었다. Sumin이 B(흐름 분리 + AI 추천 + 얕은 레이어)를 골랐다.
+
+**만든 것.** (1) How to say 답의 문장마다 `phrase`/`phrase_meaning`/`phrase_kind`를 같이 받는다(원문 그대로의 부분만, 저장된 Phrase와 같으면 서버가 비움). 카드에서 그 부분에 밑줄. (2) Save → 시트: "Save phrase · <추천>"(두 번째 AI 호출 없이 편집기 바로 열림) / "Save to My Sentences"(문장+뜻 바로 저장, 같은 문장은 한 번만). 포인트 연결 중엔 Fix / Keep in Others가 위에 붙는다. 한 문장에 여러 저장 가능, 끝난 항목은 체크. (3) `_shared/learner-context.ts`: 계정의 코칭 레벨(없으면 기기에서 고른 레벨), 컴파일된 코칭 프로필, 최근 저장 Phrase 40개를 RLS 안에서 읽어 `ask-assist`(두 모드)와 `phrase-capture`(사용자가 직접 고른 표현 모드 제외)에 참고 데이터로 넣는다. 저장할수록 추천이 바뀌는 게 이번 단계의 "학습". (4) 옛 답(추천 필드 없음)은 기존 추출로 fallback.
+
+**실패 → 수정.** 시뮬레이터에서 Phrase 편집기의 "How it's used"에 카드 전체 Nuance("첫 번째 표현은… 두 번째는…")가 들어갔다. 추천 경로는 추출의 usage_note가 없어서 카드 nuance로 떨어진 것 → 그 문장의 상황 라벨(`when`)을 쓰게 바꾸고 테스트 추가.
+
+**검증.** `tsc`·eslint(기존 경고 3), `test:mvp` 138/138, 서버 30/30(추천 검증·저장된 Phrase 제외·learner-context·capture 프롬프트). 배포: `ask-assist` v8, `phrase-capture` v10(라이브 = 이 브랜치, JWT 유지, 비인증 401). 시뮬레이터(:8086, 실제 계정): "나중에 다시 얘기해도 될까요?" → 추천 밑줄 → My Sentences 저장·재오픈 체크·목록 확인 후 삭제, Save phrase → 편집기 즉시 프리필(저장 안 함), 포인트 연결 시 4개 옵션. 테스트 대화·임시 노트 삭제. **미확인**: 레벨/목표가 추천을 실제로 바꾸는지(레벨별 비교 안 함), 추천 품질("talk about this later"처럼 내용어가 섞인 덩어리), 다크 모드, 실기기. 관찰: 노트 삭제 직후 Studio Notes 탭이 잠시 빈 화면(데이터는 정상, 이 브랜치와 무관한 코드).
+
+**디자인 수정(같은 날).** Sumin 피드백: 파란 밑줄 추천이 링크처럼 보임 → 본문색 글씨 + 형광펜 배경. 처음엔 `accS`(남색 틴트)였으나 "더 밝은 채도" 요청으로 노란 형광펜 토큰 `mark`를 새로 추가(라이트 `#FFEFA6` 글씨 대비 16:1, 다크 `#5C4F17` 8:1). 코발트 앱에서 파랑 계열은 링크로, 오렌지는 폐기된 테라코타로 읽혀 노랑을 골랐다. 모바일 팔레트의 `butter`는 이름과 달리 코발트 색상환 틴트라 쓸 수 없었다. 카드와 저장 시트가 `phraseHighlight()` 하나를 같이 씀. 시뮬레이터 라이트·다크 확인. 남은 점: 두 줄로 넘어가는 추천은 줄 끝 공백까지 칠해진다(iOS 인라인 배경).

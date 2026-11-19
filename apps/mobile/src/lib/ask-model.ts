@@ -22,6 +22,12 @@ export interface Expression {
   meaning: string;
   /** Situation label; "" when there is only one reading. */
   when: string;
+  /** How to say only: the one chunk inside `en` worth saving as a Phrase,
+   *  picked for this learner. "" = nothing worth saving; absent = a reply from
+   *  before the pick existed (the app then extracts one itself). */
+  phrase?: string;
+  phrase_meaning?: string;
+  phrase_kind?: string;
 }
 export interface ExpressionWithExample extends Expression {
   example: Example;
@@ -280,13 +286,36 @@ export function toAskCaptureSeed(
   };
 }
 
-/** Extraction is optional for review; Ask's answer is enough to open the editor. */
+const PHRASE_KINDS: readonly PhraseCaptureDraft["kind"][] = ["word", "phrasal_verb", "pattern", "idiom", "phrase"];
+
+/** The phrase Ask already picked for this sentence, as the capture editor's
+ *  draft — no second AI call. An empty pick opens the editor with the sentence
+ *  only, for the learner to choose the words themselves. */
+export function pickedPhraseDraft(expression: Expression): PhraseCaptureDraft {
+  const phrase = expression.phrase?.trim() ?? "";
+  const kind = PHRASE_KINDS.find((value) => value === expression.phrase_kind) ?? "phrase";
+  return {
+    contextText: expression.en,
+    contextTranslation: expression.meaning,
+    suggestedPhrase: phrase,
+    kind,
+    meaning: phrase ? expression.phrase_meaning?.trim() ?? "" : "",
+    // The sentence's own situation label. The card's nuance compares every
+    // option on the card, so it never describes one phrase.
+    usageNote: expression.when.trim(),
+    confidence: phrase ? 0.9 : 0,
+  };
+}
+
+/** Extraction is optional for review; Ask's answer is enough to open the editor.
+ *  A sentence that carries Ask's own phrase pick never calls `extract`. */
 export async function prepareAskCaptureSeed(
   expression: Expression,
   question: string,
   usageNote: string,
   extract: (sentence: string) => Promise<PhraseCaptureDraft>,
 ): Promise<AskCaptureSeed> {
+  if (expression.phrase !== undefined) return toAskCaptureSeed(expression, question, usageNote, pickedPhraseDraft(expression));
   let draft: PhraseCaptureDraft;
   try {
     draft = await extract(expression.en);
@@ -316,6 +345,26 @@ export function toPhraseInput(
     sourceLabel: "Saved from Ask",
   };
 }
+/** What "Save to My Sentences" stores: the whole sentence, and its meaning in
+ *  the learner's language — the learner's own question when Ask gave none
+ *  (the table requires a meaning). */
+export function toPersonalSentence(expression: Expression, question: string): { text: string; meaning: string } {
+  return {
+    text: expression.en.trim(),
+    meaning: expression.meaning.trim() || question.replace(/\s+/g, " ").trim() || expression.en.trim(),
+  };
+}
+
+/** The phrase pick inside a sentence, for highlighting: [before, phrase, after],
+ *  or null when there is no pick or it is not found. */
+export function splitAtPhrase(sentence: string, phrase: string | undefined): [string, string, string] | null {
+  const needle = phrase?.trim();
+  if (!needle) return null;
+  const at = sentence.toLocaleLowerCase("en").indexOf(needle.toLocaleLowerCase("en"));
+  if (at < 0) return null;
+  return [sentence.slice(0, at), sentence.slice(at, at + needle.length), sentence.slice(at + needle.length)];
+}
+
 /** The example that shows `expression`: one that contains it, else the one
  *  at the same position, else the first. */
 export function exampleFor(expression: Expression, index: number, examples: Example[]): Example | null {

@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { firstLanguage } from "./first-language";
+import { chosenEnglishLevel } from "./english-level";
 import { requireAiProcessingConsent } from "./ai-consent";
 import type { PhraseKind } from "./phrases";
 
@@ -53,7 +54,8 @@ async function invokePhraseCapture(
   // language, so the function has to be told which one that is — the server has
   // no way to know (L1 lives on the device / in user metadata, not in a column).
   const { data, error } = await supabase.functions.invoke<CaptureResponse>("phrase-capture", {
-    body: { ...body, first_language: firstLanguage() },
+    // The level lets the server pick an expression that suits this learner.
+    body: { ...body, first_language: firstLanguage(), ...(chosenEnglishLevel() ? { english_level: chosenEnglishLevel() } : {}) },
   });
   if (error) throw new Error(await readFunctionError(error, unavailableCopy));
   return {

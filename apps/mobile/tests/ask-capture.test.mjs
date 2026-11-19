@@ -28,6 +28,7 @@ test("Ask save requests a second extraction pass before opening the review draft
     } } } },
     "./first-language": { firstLanguage: () => "ko" },
     "./ai-consent": { requireAiProcessingConsent: async () => {} },
+    "./english-level": { chosenEnglishLevel: () => "b2" },
   };
   runInNewContext(compiled, {
     exports: subject,
@@ -41,5 +42,6 @@ test("Ask save requests a second extraction pass before opening the review draft
   assert.equal(request.capture_intent, "ask_result");
   assert.equal(request.context_text, "I feel down when I'm not feeling well.");
   assert.equal(request.first_language, "ko");
+  assert.equal(request.english_level, "b2", "the chosen level goes with the request");
   assert.equal(draft.suggestedPhrase, "feel down");
 });

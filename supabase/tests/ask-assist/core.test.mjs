@@ -12,6 +12,7 @@ import {
   normalizeReply,
   noteHistoryContext,
   parseAskBody,
+  phrasePickFor,
   POINT_TAG_TEXT,
   pointTrail,
   readPointTag,
@@ -276,4 +277,53 @@ test("pointTrail follows one point through earlier versions, oldest first", () =
   // "Robots are everywhere." sat in the same slot once, but it is another thought.
   assert.deepEqual(pointTrail(versions, { ...point, text: "" }), [], "an empty point has no history to follow");
   assert.deepEqual(pointTrail(["Closing\n- Thanks."], point), [], "other sections are never matched");
+});
+
+// ── How to say phrase pick + the learner layer ─────────────────────────────
+
+const sentence = "I feel like I'm walking on eggshells.";
+
+test("a phrase pick survives only when it is inside the sentence and not already saved", () => {
+  assert.deepEqual(phrasePickFor(sentence, { phrase: "walking on eggshells", phrase_meaning: "조심조심하다", phrase_kind: "idiom" }), {
+    phrase: "walking on eggshells", phrase_meaning: "조심조심하다", phrase_kind: "idiom",
+  });
+  const none = { phrase: "", phrase_meaning: "", phrase_kind: "" };
+  assert.deepEqual(phrasePickFor(sentence, { phrase: "walk on eggshells", phrase_kind: "idiom" }), none, "not a substring");
+  assert.deepEqual(phrasePickFor(sentence, { phrase: "Walking on eggshells", phrase_kind: "idiom" }, ["walking on eggshells!"]), none, "already in the bank");
+  assert.deepEqual(phrasePickFor(sentence, { phrase: "", phrase_meaning: "x" }), none);
+  assert.equal(phrasePickFor(sentence, { phrase: "eggshells", phrase_kind: "slang" }).phrase_kind, "phrase", "unknown kinds fall back");
+});
+
+test("How to say replies carry a phrase pick per sentence; Note replies do not", () => {
+  const card = normalizeReply("how_to_say", JSON.stringify({ reply: {
+    type: "card", query: "눈치 보여", nuance: "", examples: [], tip: "", follow_ups: [],
+    expressions: [
+      { en: sentence, meaning: "눈치 보여", when: "", phrase: "walking on eggshells", phrase_meaning: "조심조심하다", phrase_kind: "idiom" },
+      { en: "I feel awkward leaving early.", meaning: "먼저 가기 눈치 보여", when: "", phrase: "feel awkward", phrase_meaning: "", phrase_kind: "pattern" },
+    ],
+  } }), ["feel awkward"]);
+  assert.equal(card.expressions[0].phrase, "walking on eggshells");
+  assert.equal(card.expressions[1].phrase, "", "a saved phrase is never recommended again");
+  const answer = normalizeReply("how_to_say", JSON.stringify({ reply: { type: "answer", text: "차이는…", follow_ups: [],
+    expressions: [{ en: "Let's touch base later.", meaning: "나중에 얘기해요", when: "", example: { en: "x", l1: "y" }, phrase: "touch base", phrase_meaning: "연락하다", phrase_kind: "idiom" }] } }));
+  assert.equal(answer.expressions[0].phrase, "touch base");
+  const note = normalizeReply("note", JSON.stringify({ reply: { type: "answer", text: "t", follow_ups: [], draft_patch: {},
+    expressions: [{ en: "touch base", meaning: "m", when: "", example: { en: "x", l1: "y" }, phrase: "touch base" }] } }));
+  assert.equal(note.expressions[0].phrase, undefined);
+  for (const option of SCHEMAS.how_to_say.properties.reply.anyOf) assertStrict(option);
+  assert.deepEqual(SCHEMAS.how_to_say.properties.reply.anyOf[0].properties.expressions.items.required,
+    ["en", "meaning", "when", "phrase", "phrase_meaning", "phrase_kind"]);
+});
+
+test("the learner profile rides as reference data and the prompt says how to use it", () => {
+  const plain = buildOpenAIRequest({ mode: "how_to_say", messages: [user("눈치 보여")], l1: "Korean" });
+  assert.ok(!plain.messages.some((m) => m.content.includes("learner profile (what they chose")));
+  assert.match(plain.messages[0].content, /"phrase" \(on every expression\)/);
+  assert.match(plain.messages[0].content, /fit the English to it/);
+  const personal = buildOpenAIRequest({ mode: "how_to_say", messages: [user("눈치 보여")], l1: "Korean", learner: "English level: B2" });
+  const reference = personal.messages.find((m) => m.content.includes("learner profile (what they chose"));
+  assert.ok(reference.content.includes("English level: B2"));
+  assert.equal(reference.role, "user", "profile text is data, never a system instruction");
+  assert.equal(personal.messages.at(-1).content, "눈치 보여");
+  assert.equal(parseAskBody({ mode: "how_to_say", messages: [user("x")], english_level: "b2" }).request.clientLevel, "b2");
 });
