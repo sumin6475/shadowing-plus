@@ -43,6 +43,12 @@ export function englishLevel(): EnglishLevel {
   return override ?? DEFAULT_LEVEL;
 }
 
+/** The level the learner actually chose on this device, or null — for AI
+ *  requests, where the B1 default would claim a level nobody picked. */
+export function chosenEnglishLevel(): EnglishLevel | null {
+  return override;
+}
+
 export async function loadEnglishLevel(): Promise<void> {
   try {
     const saved = await AsyncStorage.getItem(STORAGE_KEY);

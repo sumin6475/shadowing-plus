@@ -8,6 +8,7 @@ import { mockReply } from "./ask-fixtures";
 import { buildAskRequest, type AskMode, type AskReply, type AskTurn } from "./ask-model";
 import { surfaceLanguage } from "./language-preferences";
 import { firstLanguage } from "./first-language";
+import { chosenEnglishLevel } from "./english-level";
 import { ASK_MOCK } from "./release-flags";
 import { supabase } from "./supabase";
 
@@ -27,6 +28,13 @@ export interface AskResult {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The device's chosen English level, for the server's learner layer. The
+ *  account's saved coaching level wins on the server; unset sends nothing. */
+export function learnerLevel(): { english_level?: string } {
+  const level = chosenEnglishLevel();
+  return level ? { english_level: level } : {};
+}
+
 /** Sends the conversation so far (the last turn is the new question) and
  *  returns the reply. Throws AskLimitError at the daily limit, and an Error
  *  whose message can be shown as is for anything else. */
@@ -43,7 +51,7 @@ export async function askAssist(mode: AskMode, turns: AskTurn[], draftNow = fals
   await requireAiProcessingConsent();
   const { data, error } = await supabase.functions.invoke<{ reply: AskReply; remaining: number }>(
     "ask-assist",
-    { body: { ...buildAskRequest(mode, turns, firstLanguage(), draftNow, noteId, practiceSessionId), response_language: surfaceLanguage("assistant"), ...(noteSnapshot ? { note_snapshot: noteSnapshot } : {}) } },
+    { body: { ...buildAskRequest(mode, turns, firstLanguage(), draftNow, noteId, practiceSessionId), response_language: surfaceLanguage("assistant"), ...(noteSnapshot ? { note_snapshot: noteSnapshot } : {}), ...learnerLevel() } },
   );
   if (error) {
     // A non-2xx reply carries `{ error, code }`; the daily limit is a 429.

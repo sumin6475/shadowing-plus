@@ -7,6 +7,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { buildOpenAIRequest, costUsd, DAILY_LIMIT, MODEL, normalizeReply, parseAskBody, noteHistoryContext, pointTrail } from "./core.ts";
+import { describeLearner, loadLearnerContext } from "../_shared/learner-context.ts";
 
 /** Optional secret to switch models without a code change (e.g. after a golden
  *  A/B). Unset → the default in core.ts. */
@@ -76,6 +77,12 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // The light personal layer: level, compiled coaching goal/focus, and the
+  // phrase bank (so a saved phrase is never recommended again). Best-effort.
+  const learner = await loadLearnerContext(supabase, user.id, request.clientLevel);
+  request.learner = describeLearner(learner);
+  request.savedPhrases = learner.savedPhrases;
+
   // Rolling 24h window, so there is no timezone question about "today". The
   // user-scoped client is enough: the usage_events owner policy (008) lets a
   // user count and insert their own rows. Concurrent requests can overshoot by
@@ -130,7 +137,7 @@ Deno.serve(async (req: Request) => {
   if (choice?.finish_reason === "length") {
     return json({ error: "That answer ran long. Try a shorter question.", code: "ask_truncated" }, 502);
   }
-  const reply = normalizeReply(request.mode, choice?.message?.content ?? "");
+  const reply = normalizeReply(request.mode, choice?.message?.content ?? "", request.savedPhrases);
   if (!reply) return json({ error: "Couldn't understand the answer. Try again.", code: "ask_parse" }, 502);
 
   return json({ mode: request.mode, reply, remaining: Math.max(0, DAILY_LIMIT - count - 1) });

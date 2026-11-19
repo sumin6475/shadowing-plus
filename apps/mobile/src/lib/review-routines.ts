@@ -30,6 +30,23 @@ export type PersonalSentence = {
   created_at: string;
   note_id: string | null;
 };
+/** Adds a sentence to My Sentences (from Ask). The same sentence is kept once:
+ *  saving it again reports "exists" instead of adding a second row. */
+export async function savePersonalSentence(
+  sentence: { text: string; meaning: string },
+  noteId: string | null = null,
+): Promise<"saved" | "exists"> {
+  const text = sentence.text.trim();
+  const meaning = sentence.meaning.trim();
+  if (!text || !meaning) throw new Error("This sentence can’t be saved without its meaning.");
+  const { data: existing, error: findError } = await supabase
+    .from("personal_sentences").select("id").eq("text", text).limit(1);
+  if (findError) throw new Error("Couldn’t save to My Sentences. Try again.");
+  if (existing?.length) return "exists";
+  const { error } = await supabase.from("personal_sentences").insert({ text, meaning, note_id: noteId });
+  if (error) throw new Error("Couldn’t save to My Sentences. Try again.");
+  return "saved";
+}
 export async function sentences(): Promise<PersonalSentence[]> {
   const rows: PersonalSentence[] = [];
   for (let start = 0; ; start += 500) {

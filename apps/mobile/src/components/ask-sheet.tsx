@@ -52,6 +52,8 @@ import {
   pointSection,
   questionFor,
   prepareAskCaptureSeed,
+  splitAtPhrase,
+  toPersonalSentence,
   toPhraseInput,
   type AskCaptureSeed,
   type AskAnswer,
@@ -71,7 +73,8 @@ import { PhraseSaveReviewSheet } from "./phrase-save-review-sheet";
 import { extractPhraseFromAsk } from "@/lib/phrase-capture";
 import { applyNoteVersion } from "@/lib/note-growth";
 import { NoteDraftEditor } from "./note-draft-editor";
-import { PointUseSheet, type PointUseTarget } from "./point-use-sheet";
+import { AskUseSheet, phraseHighlight, type AskUseTarget, type UseOutcome } from "./ask-use-sheet";
+import { savePersonalSentence } from "@/lib/review-routines";
 
 const MODE_LABEL: Record<AskMode, string> = { how_to_say: "How to say", note: "Note" };
 const INTRO: Record<AskMode, { title: string; body: string; placeholder: string }> = {
@@ -138,8 +141,7 @@ const POINT_INTRO: Record<AskPointIntent, { title: string; body: string; placeho
 };
 
 type SaveState = "saving" | "saved" | "failed";
-/** What a Use row did to the note. */
-type UseOutcome = "fixed" | "kept";
+const OUTCOME_LABEL: Record<UseOutcome, string> = { fixed: "Applied", kept: "In Others", sentence: "Saved" };
 
 /** Which point-toolbar action opened Ask. */
 export type AskPointIntent = "refine" | "how_to_say";
@@ -230,8 +232,9 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, p
   // fix applied from this sheet shows up in the chip at once.
   const [linked, setLinked] = useState(Boolean(point && note));
   const link = linked && point && note ? point : null;
-  const [uses, setUses] = useState<Record<string, UseOutcome>>({});
-  const [useTarget, setUseTarget] = useState<(PointUseTarget & { question: string; usage: string; expression: Expression }) | null>(null);
+  // What each sentence's Save / Use sheet did (a sentence can be saved and used).
+  const [uses, setUses] = useState<Record<string, UseOutcome[]>>({});
+  const [useTarget, setUseTarget] = useState<(AskUseTarget & { question: string; usage: string; expression: Expression }) | null>(null);
   const [turns, setTurns] = useState<AskTurn[]>([]);
   const [text, setText] = useState(initialQuestion ?? (practiceSessionId ? "I want to develop this Note using what I said in practice. What should I clarify first?" : ""));
   const [pending, setPending] = useState(false);
@@ -540,21 +543,25 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, p
       setFailure(caught instanceof Error ? caught.message : "Couldn’t prepare this phrase. Try again.");
     }
   };
-  /** A suggestion's Use button, while linked: choose what it does to the note. */
+  /** A How to say sentence's Save / Use: one sheet with every way to keep it. */
   const openUse = (key: string, expression: Expression, question: string, usage: string) => {
     Keyboard.dismiss();
-    setUseTarget({ key, en: expression.en, meaning: expression.meaning, question, usage, expression });
+    setUseTarget({ key, en: expression.en, meaning: expression.meaning, phrase: expression.phrase, phraseMeaning: expression.phrase_meaning, question, usage, expression });
   };
-  /** The row button for one suggestion: Use while linked to a point, Save otherwise. */
-  const rowAction = (index: number, n: number, expression: Expression, usage: string, save: () => void) => {
+  /** The row button for one suggestion. A How to say sentence opens the sheet
+   *  (Phrase or My Sentences; plus the point while linked) and stays open to
+   *  more than one choice; Note mode's chunks still save straight to Phrases. */
+  const rowAction = (index: number, n: number, expression: Expression, usage: string, save: () => void): RowAction => {
     const key = `${turns[index].id}.${n}`;
-    const outcome = uses[key];
-    const pointed = Boolean(link && pointForReply(turns, index));
+    if (turns[index].mode !== "how_to_say") return saveAction(saves[key], save);
+    const outcomes = uses[key] ?? [];
+    const last = outcomes[outcomes.length - 1];
     return {
-      state: outcome ? ("saved" as const) : saves[key],
-      label: pointed ? "Use" : "Save",
-      doneLabel: outcome === "fixed" ? "Applied" : outcome === "kept" ? "In Others" : "Saved",
-      onPress: pointed ? () => openUse(key, expression, questionFor(turns, index), usage) : save,
+      state: last ? "saved" : saves[key],
+      label: link && pointForReply(turns, index) ? "Use" : "Save",
+      doneLabel: last ? OUTCOME_LABEL[last] : "Saved",
+      reopen: true,
+      onPress: () => openUse(key, expression, questionFor(turns, index), usage),
     };
   };
   const saveDraft = (index: number, draft: Draft) => {
@@ -976,25 +983,32 @@ function AskBody({ onClose, initialMode = "how_to_say", initialQuestion, note, p
         </Animated.View>
       </View>
       <PhraseSaveReviewSheet review={phraseSave.review} onConfirm={phraseSave.onConfirm} onEdit={phraseSave.onEdit} onDismiss={phraseSave.onDismiss} />
-      {point ? (
-        <PointUseSheet
-          target={link ? useTarget : null}
-          point={{ label: pointLabel({ section: pointSection(point.section), index: point.index }), noteTitle: note?.title ?? "", text: point.text }}
-          onFix={point.replace}
-          onKeep={point.keep}
-          onSavePhrase={(target) => {
-            const chosen = useTarget;
-            setUseTarget(null);
-            if (chosen) void reviewAskPhrase(target.key, chosen.expression, chosen.question, chosen.usage);
-          }}
-          onDone={(target, outcome) => {
-            setUses((current) => ({ ...current, [target.key]: outcome }));
-            setUseTarget(null);
-            onSaved?.();
-          }}
-          onClose={() => setUseTarget(null)}
-        />
-      ) : null}
+      <AskUseSheet
+        target={useTarget}
+        done={useTarget ? uses[useTarget.key] ?? [] : []}
+        point={link && point ? {
+          label: pointLabel({ section: pointSection(point.section), index: point.index }),
+          noteTitle: note?.title ?? "",
+          text: point.text,
+          onFix: point.replace,
+          onKeep: point.keep,
+        } : undefined}
+        onSavePhrase={(target) => {
+          const chosen = useTarget;
+          setUseTarget(null);
+          if (chosen) void reviewAskPhrase(target.key, chosen.expression, chosen.question, chosen.usage);
+        }}
+        onSaveSentence={() => {
+          if (!useTarget) return Promise.resolve("exists" as const);
+          return savePersonalSentence(toPersonalSentence(useTarget.expression, useTarget.question), activeNoteId.current);
+        }}
+        onDone={(target, outcome) => {
+          setUses((current) => ({ ...current, [target.key]: [...(current[target.key] ?? []).filter((o) => o !== outcome), outcome] }));
+          setUseTarget(null);
+          onSaved?.();
+        }}
+        onClose={() => setUseTarget(null)}
+      />
       {draftReview ? (
         <NoteDraftEditor key={draftReview.key} initialTitle={draftReview.title} initialDraft={draftReview.draft}
           saving={saves[draftReview.key] === "saving"} failed={saves[draftReview.key] === "failed"}
@@ -1186,19 +1200,21 @@ interface RowAction {
   state: SaveState | undefined;
   label: string;
   doneLabel: string;
+  /** Still tappable when done: the sheet behind it has more than one choice. */
+  reopen?: boolean;
   onPress: () => void;
 }
 const saveAction = (state: SaveState | undefined, onPress: () => void): RowAction =>
   ({ state, label: "Save", doneLabel: "Saved", onPress });
 
-function SaveButton({ state, label = "Save", doneLabel = "Saved", onPress }: { state: SaveState | undefined; label?: string; doneLabel?: string; onPress: () => void }) {
+function SaveButton({ state, label = "Save", doneLabel = "Saved", reopen, onPress }: { state: SaveState | undefined; label?: string; doneLabel?: string; reopen?: boolean; onPress: () => void }) {
   const t = useTheme();
   const saved = state === "saved";
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={saved ? doneLabel : label === "Use" ? "Use this sentence in your note" : "Save to Phrases"}
-      disabled={saved || state === "saving"}
+      accessibilityLabel={saved ? doneLabel : label === "Use" ? "Use this sentence in your note" : reopen ? "Save this sentence" : "Save to Phrases"}
+      disabled={(saved && !reopen) || state === "saving"}
       hitSlop={8}
       onPress={onPress}
       style={({ pressed }) => ({
@@ -1228,6 +1244,20 @@ function SaveButton({ state, label = "Save", doneLabel = "Saved", onPress }: { s
   );
 }
 
+/** The sentence with Ask's phrase pick marked: the part worth saving. */
+function PhraseMarked({ expression }: { expression: Expression }) {
+  const t = useTheme();
+  const split = splitAtPhrase(expression.en, expression.phrase);
+  if (!split) return <>{expression.en}</>;
+  return (
+    <>
+      {split[0]}
+      <Text accessibilityHint="The phrase worth saving" style={phraseHighlight(t)}>{split[1]}</Text>
+      {split[2]}
+    </>
+  );
+}
+
 /** The expression itself, with its situation label, meaning and Save. */
 function ExpressionRow({
   expression,
@@ -1246,13 +1276,13 @@ function ExpressionRow({
       {expression.when ? <Caption>{expression.when}</Caption> : null}
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
         {large ? (
-          <Serif style={{ flex: 1, fontSize: 24, lineHeight: 29, color: t.colors.ink }}>{expression.en}</Serif>
+          <Serif style={{ flex: 1, fontSize: 24, lineHeight: 29, color: t.colors.ink }}><PhraseMarked expression={expression} /></Serif>
         ) : (
           <Text style={{ flex: 1, fontSize: 17, lineHeight: 23, fontWeight: "600", color: t.colors.ink }}>
-            {expression.en}
+            <PhraseMarked expression={expression} />
           </Text>
         )}
-        <SaveButton state={action.state} label={action.label} doneLabel={action.doneLabel} onPress={action.onPress} />
+        <SaveButton state={action.state} label={action.label} doneLabel={action.doneLabel} reopen={action.reopen} onPress={action.onPress} />
       </View>
       {expression.meaning ? (
         <Text style={{ fontSize: 15, lineHeight: 21, color: t.colors.ink2 }}>{expression.meaning}</Text>

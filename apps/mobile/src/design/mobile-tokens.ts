@@ -92,6 +92,10 @@ export interface ColorSlots {
   onB: string;
   onB2: string;
   pill: string;
+  /** Highlighter behind marked words (Ask's phrase pick). Yellow on purpose:
+   *  a cobalt/blue tint reads as a link in an app whose accent is cobalt.
+   *  Body ink on it: 16:1 light, 8:1 dark. */
+  mark: string;
 }
 
 const P = (l: number, c: number) => oklchToRgb(l, c, SP_H);
@@ -121,6 +125,7 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       onB: P(0.32, 0.09),
       onB2: P(0.45, 0.09),
       pill: "#1C1C1E",
+      mark: "#FFEFA6",
     },
     dark: {
       bg: "#000000",
@@ -142,6 +147,7 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       onB: P(0.93, 0.04),
       onB2: P(0.78, 0.05),
       pill: "#2C2C2E",
+      mark: "#5C4F17",
     },
   },
   // LEGACY / OPTIONAL (web Cobalt Editorial port). Not used by the runtime app.
@@ -166,6 +172,7 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       onB: oklchToRgb(0.3, 0.03, 60),
       onB2: oklchToRgb(0.45, 0.035, 60),
       pill: oklchToRgb(0.24, 0.015, 50),
+      mark: "#FFEFA6",
     },
     dark: {
       bg: oklchToRgb(0.205, 0.012, 60),
@@ -187,6 +194,7 @@ export const PALETTES: Record<Palette, Record<"light" | "dark", ColorSlots>> = {
       onB: oklchToRgb(0.93, 0.015, 80),
       onB2: oklchToRgb(0.75, 0.02, 80),
       pill: oklchToRgb(0.3, 0.015, 55),
+      mark: "#5C4F17",
     },
   },
 };

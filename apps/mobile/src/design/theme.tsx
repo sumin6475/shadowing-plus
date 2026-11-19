@@ -51,6 +51,8 @@ export interface Theme {
     onB: string;
     onB2: string;
     pill: string;
+    /** Highlighter yellow behind marked words; text on it stays `ink`. */
+    mark: string;
   };
   padc: number;
   gap: number;

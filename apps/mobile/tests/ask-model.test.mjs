@@ -9,6 +9,9 @@ import {
   exampleFor,
   noteTitle,
   noteTopicFor,
+  pickedPhraseDraft,
+  splitAtPhrase,
+  toPersonalSentence,
   pointForReply,
   pointLabel,
   pointSection,
@@ -289,4 +292,50 @@ test("only replies to a point question act on the point", () => {
   assert.equal(pointForReply(turns, 1), null);
   assert.deepEqual(pointForReply(turns, 3), point);
   assert.equal(trimHistory(turns).at(-2).content, withPointTag("refine", point));
+});
+
+// ── Saving a How to say sentence: Phrase or My Sentences ───────────────────
+
+const eggshells = { en: "I feel like I'm walking on eggshells.", meaning: "계속 눈치 보는 중이야", when: "" };
+
+test("Ask's own phrase pick fills the Phrase editor without a second AI call", async () => {
+  let extracted = 0;
+  const extract = async () => { extracted += 1; throw new Error("should not run"); };
+  const picked = { ...eggshells, when: "분위기가 살얼음판일 때", phrase: "walking on eggshells", phrase_meaning: "조심조심하다", phrase_kind: "idiom" };
+  const seed = await prepareAskCaptureSeed(picked, "눈치 보여", "첫 번째 표현은 … 두 번째는 …", extract);
+  assert.equal(seed.usageNote, "분위기가 살얼음판일 때", "the sentence's own label, not the card-wide comparison");
+  assert.equal(seed.suggestedPhrase, "walking on eggshells");
+  assert.equal(seed.kind, "idiom");
+  assert.equal(seed.meaning, "조심조심하다");
+  assert.equal(seed.contextText, eggshells.en);
+  assert.equal(seed.contextTranslation, eggshells.meaning);
+  assert.equal(seed.learnerNote, "눈치 보여");
+
+  const nothing = await prepareAskCaptureSeed({ ...eggshells, phrase: "", phrase_meaning: "", phrase_kind: "" }, "눈치 보여", "", extract);
+  assert.equal(nothing.suggestedPhrase, "", "no pick: the learner chooses the words");
+  assert.equal(nothing.confidence, 0);
+  assert.equal(extracted, 0);
+  assert.deepEqual(pickedPhraseDraft({ ...eggshells, phrase: "eggshells", phrase_kind: "slang" }).kind, "phrase");
+});
+
+test("an older reply without a pick still asks the extractor", async () => {
+  let extracted = 0;
+  const extract = async (sentence) => {
+    extracted += 1;
+    return { contextText: sentence, contextTranslation: "", suggestedPhrase: "walking on eggshells", kind: "idiom", meaning: "조심조심", usageNote: "", confidence: 0.8 };
+  };
+  const seed = await prepareAskCaptureSeed(eggshells, "눈치 보여", "", extract);
+  assert.equal(extracted, 1);
+  assert.equal(seed.suggestedPhrase, "walking on eggshells");
+});
+
+test("My Sentences keeps the whole sentence and always has a meaning", () => {
+  assert.deepEqual(toPersonalSentence(eggshells, "눈치 보여"), { text: eggshells.en, meaning: "계속 눈치 보는 중이야" });
+  assert.deepEqual(toPersonalSentence({ ...eggshells, meaning: " " }, "  눈치  보여 "), { text: eggshells.en, meaning: "눈치 보여" });
+});
+
+test("the picked phrase is marked inside its sentence", () => {
+  assert.deepEqual(splitAtPhrase(eggshells.en, "Walking on eggshells"), ["I feel like I'm ", "walking on eggshells", "."]);
+  assert.equal(splitAtPhrase(eggshells.en, ""), null);
+  assert.equal(splitAtPhrase(eggshells.en, "touch base"), null);
 });
