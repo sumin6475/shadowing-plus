@@ -25,7 +25,11 @@ ITMS-90725 on build 53: uploads must use the iOS 27 SDK (Xcode 27) from April 20
 
 ## After the build
 
-Right after starting it, Sumin decided to keep building on the default image until April and asked to cancel 55; it had already finished. The next regular build from main (default image) takes 56 and supersedes 55 in TestFlight. To keep testers off 55, expire it in App Store Connect -> TestFlight.
+Right after starting it, Sumin decided to keep building on the default image until April and asked to cancel 55; it had already finished.
+
+The regular main build had already run as **1.0.1 (54)** (EAS `1e618e58`, main `754671b`, default Xcode 26.6 image, auto-submitted). So **55 is the newest build in TestFlight**, ahead of the main release candidate 54. Testers who take the latest build get this Xcode 27 test. For App Review, pick **54**. To keep testers off 55, expire it in App Store Connect -> TestFlight; the next main build (56+) also supersedes it.
+
+Server-side, `talk-advanced-feedback` v3 (PR #48) is live, so 54 and 55 both get that fix.
 
 Still open: Apple's processing email for 55 (ITMS-90725 gone?), and launch + auth deep link / OAuth / reminder tap / Apple sign-in on an iOS 27 device.
 
