@@ -1623,3 +1623,15 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 **검증.** `tsc`·eslint(기존 경고 3), `test:mvp` 138/138, 서버 30/30(추천 검증·저장된 Phrase 제외·learner-context·capture 프롬프트). 배포: `ask-assist` v8, `phrase-capture` v10(라이브 = 이 브랜치, JWT 유지, 비인증 401). 시뮬레이터(:8086, 실제 계정): "나중에 다시 얘기해도 될까요?" → 추천 밑줄 → My Sentences 저장·재오픈 체크·목록 확인 후 삭제, Save phrase → 편집기 즉시 프리필(저장 안 함), 포인트 연결 시 4개 옵션. 테스트 대화·임시 노트 삭제. **미확인**: 레벨/목표가 추천을 실제로 바꾸는지(레벨별 비교 안 함), 추천 품질("talk about this later"처럼 내용어가 섞인 덩어리), 다크 모드, 실기기. 관찰: 노트 삭제 직후 Studio Notes 탭이 잠시 빈 화면(데이터는 정상, 이 브랜치와 무관한 코드).
 
 **디자인 수정(같은 날).** Sumin 피드백: 파란 밑줄 추천이 링크처럼 보임 → 본문색 글씨 + 형광펜 배경. 처음엔 `accS`(남색 틴트)였으나 "더 밝은 채도" 요청으로 노란 형광펜 토큰 `mark`를 새로 추가(라이트 `#FFEFA6` 글씨 대비 16:1, 다크 `#5C4F17` 8:1). 코발트 앱에서 파랑 계열은 링크로, 오렌지는 폐기된 테라코타로 읽혀 노랑을 골랐다. 모바일 팔레트의 `butter`는 이름과 달리 코발트 색상환 틴트라 쓸 수 없었다. 카드와 저장 시트가 `phraseHighlight()` 하나를 같이 씀. 시뮬레이터 라이트·다크 확인. 남은 점: 두 줄로 넘어가는 추천은 줄 끝 공백까지 칠해진다(iOS 인라인 배경).
+
+## 2026-11-19 — Xcode 27 빌드 준비(ITMS-90725): 이미지 + UIScene 라이프사이클
+
+**문제.** 빌드 53 업로드 때 App Store Connect가 ITMS-90725 경고를 보냈다. iOS 26.5 SDK로 빌드됐는데, 2027년 4월부터는 iOS 27 SDK(Xcode 27)로 빌드해야 업로드할 수 있다. 원인은 `eas.json`에 `ios.image`가 없어서 SDK 57 기본 이미지(`macos-tahoe-26.5-xcode-26.6`)를 쓴 것이다.
+
+**함정.** 이미지만 Xcode 27로 바꾸면 빌드는 통과하지만, iOS 27에서는 앱이 실행되자마자 종료된다: `Application failed to launch: UIScene life cycle is required for apps built with this SDK.` (expo/expo#46664). SDK 57에서는 scene 라이프사이클을 직접 켜야 한다(expo ≥ 57.0.23 + expo-build-properties `ios.enableSceneSupport`). SDK 58부터는 기본으로 켜져 있다.
+
+**만든 것(브랜치 `chore/eas-xcode27-image`).** production/testflight 이미지를 `macos-tahoe-26.6-xcode-27.2`로 바꿨다. expo는 57.0.8에서 57.0.33으로, expo-*와 RN 0.86.3은 `expo install --fix`로 맞췄다. expo-build-properties에 `enableSceneSupport: true`를 넣었다. `verify-release-config`가 Xcode 27 이미지에 scene 지원이 빠진 경우를 잡도록 했고, 빠뜨린 상태에서 실패하는 것도 확인했다. 로컬 prebuild 결과 Info.plist에 `UIApplicationSceneManifest`(`EXExpoAppSceneDelegate`)가 생겼고, AppDelegate가 RN을 직접 띄우지 않으며 Linking override는 유지됐다. 커스텀 플러그인(알림 entitlement 제거)과도 충돌하지 않는다.
+
+**검증.** `validate` 통과(기존 경고 3), `test:mvp` 140/140. EAS 빌드 1.0.1 (55)는 FINISHED였다(Xcode 27.2 27B52, `iPhoneOS27.2.sdk`, IPA 24.3MB, 5분). TestFlight 자동 제출이 같이 걸려 있었다. **미확인**: Apple 처리 메일의 ITMS-90725 여부, iOS 27 실기기에서 실행·auth 딥링크(`Linking.getInitialURL`)·OAuth·알림 탭·Apple 로그인. 로컬 Xcode가 26.6이라 iOS 27 런타임으로는 볼 수 없었다.
+
+**결정.** Sumin은 4월까지 지금처럼 기본 이미지로 빌드한다. 브랜치는 PR로만 두고, 언제 바꿀지는 Sumin이 정한다. 빌드 55는 취소하려 했지만 그 전에 끝났다.
