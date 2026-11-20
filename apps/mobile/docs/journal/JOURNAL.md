@@ -1623,3 +1623,7 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 **검증.** `tsc`·eslint(기존 경고 3), `test:mvp` 138/138, 서버 30/30(추천 검증·저장된 Phrase 제외·learner-context·capture 프롬프트). 배포: `ask-assist` v8, `phrase-capture` v10(라이브 = 이 브랜치, JWT 유지, 비인증 401). 시뮬레이터(:8086, 실제 계정): "나중에 다시 얘기해도 될까요?" → 추천 밑줄 → My Sentences 저장·재오픈 체크·목록 확인 후 삭제, Save phrase → 편집기 즉시 프리필(저장 안 함), 포인트 연결 시 4개 옵션. 테스트 대화·임시 노트 삭제. **미확인**: 레벨/목표가 추천을 실제로 바꾸는지(레벨별 비교 안 함), 추천 품질("talk about this later"처럼 내용어가 섞인 덩어리), 다크 모드, 실기기. 관찰: 노트 삭제 직후 Studio Notes 탭이 잠시 빈 화면(데이터는 정상, 이 브랜치와 무관한 코드).
 
 **디자인 수정(같은 날).** Sumin 피드백: 파란 밑줄 추천이 링크처럼 보임 → 본문색 글씨 + 형광펜 배경. 처음엔 `accS`(남색 틴트)였으나 "더 밝은 채도" 요청으로 노란 형광펜 토큰 `mark`를 새로 추가(라이트 `#FFEFA6` 글씨 대비 16:1, 다크 `#5C4F17` 8:1). 코발트 앱에서 파랑 계열은 링크로, 오렌지는 폐기된 테라코타로 읽혀 노랑을 골랐다. 모바일 팔레트의 `butter`는 이름과 달리 코발트 색상환 틴트라 쓸 수 없었다. 카드와 저장 시트가 `phraseHighlight()` 하나를 같이 씀. 시뮬레이터 라이트·다크 확인. 남은 점: 두 줄로 넘어가는 추천은 줄 끝 공백까지 칠해진다(iOS 인라인 배경).
+
+## 2026-11-19 — Speaking review 실패: 증거 인용 검사가 너무 엄격했음
+
+긴 셀프톡 세션에서 리뷰가 항상 "Couldn’t complete the analysis". 임시 로그로 `400 feedback_invalid_evidence` 확인. 모델이 인용한 구절이 전사문과 글자 그대로 한 번만 일치해야 했는데, 음성 전사의 이중 공백·반복·따옴표 차이 하나로 리포트 전체가 버려졌다. 공백·따옴표·대소문자·가장자리 문장부호를 접어 맞추고, 반복은 모델이 준 위치에 가장 가까운 것을 쓰도록 고침(지어낸 문장은 여전히 거부). `test:mvp` 142/142, `test:feedback` 22/22. `talk-advanced-feedback` v3 배포 후 같은 세션 재시도 → 리포트 정상 생성. → [postmortem](postmortems/2026-11-19-speaking-review-invalid-evidence.md)
