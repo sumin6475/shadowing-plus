@@ -66,9 +66,28 @@ for (const profile of ["development", "preview", "production", "testflight"]) {
   );
 }
 
+// Xcode 27 (iOS 27 SDK) apps that skip the UIKit scene lifecycle build fine
+// but are killed at launch on iOS 27 ("UIScene life cycle is required for apps
+// built with this SDK", expo/expo#46664). On SDK 57 the scene lifecycle is an
+// opt-in build property, so an Xcode 27 image without it ships a dead app.
+const buildIos = (profile) => {
+  const config = eas.build?.[profile] ?? {};
+  return { ...(config.extends ? buildIos(config.extends) : {}), ...(config.ios ?? {}) };
+};
+const buildProperties = (app.plugins ?? []).find((p) => Array.isArray(p) && p[0] === "expo-build-properties")?.[1];
+for (const profile of ["development", "preview", "production", "testflight"]) {
+  const image = buildIos(profile).image ?? "";
+  if (/xcode-(2[7-9]|[3-9]\d)/.test(image)) {
+    assert(
+      buildProperties?.ios?.enableSceneSupport === true,
+      `${profile} builds on ${image}, so expo-build-properties must set ios.enableSceneSupport: true (or the app dies at launch on iOS 27)`,
+    );
+  }
+}
+
 const png = readFileSync(resolve(root, iconPath));
 assert(png.subarray(1, 4).toString("ascii") === "PNG", "Saylo icon must be a PNG");
 assert(png.readUInt32BE(16) === 1024 && png.readUInt32BE(20) === 1024, "Saylo icon must be 1024×1024");
 assert(png[25] === 2, "Saylo icon must be opaque RGB with no alpha channel");
 
-console.log("PASS: release transport, iOS icon, privacy manifest, single-build profiles");
+console.log("PASS: release transport, iOS icon, privacy manifest, single-build profiles, Xcode 27 scene lifecycle");
