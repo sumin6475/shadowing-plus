@@ -1624,6 +1624,10 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 
 **디자인 수정(같은 날).** Sumin 피드백: 파란 밑줄 추천이 링크처럼 보임 → 본문색 글씨 + 형광펜 배경. 처음엔 `accS`(남색 틴트)였으나 "더 밝은 채도" 요청으로 노란 형광펜 토큰 `mark`를 새로 추가(라이트 `#FFEFA6` 글씨 대비 16:1, 다크 `#5C4F17` 8:1). 코발트 앱에서 파랑 계열은 링크로, 오렌지는 폐기된 테라코타로 읽혀 노랑을 골랐다. 모바일 팔레트의 `butter`는 이름과 달리 코발트 색상환 틴트라 쓸 수 없었다. 카드와 저장 시트가 `phraseHighlight()` 하나를 같이 씀. 시뮬레이터 라이트·다크 확인. 남은 점: 두 줄로 넘어가는 추천은 줄 끝 공백까지 칠해진다(iOS 인라인 배경).
 
+## 2026-11-19 — Speaking review 실패: 증거 인용 검사가 너무 엄격했음
+
+긴 셀프톡 세션에서 리뷰가 항상 "Couldn’t complete the analysis". 임시 로그로 `400 feedback_invalid_evidence` 확인. 모델이 인용한 구절이 전사문과 글자 그대로 한 번만 일치해야 했는데, 음성 전사의 이중 공백·반복·따옴표 차이 하나로 리포트 전체가 버려졌다. 공백·따옴표·대소문자·가장자리 문장부호를 접어 맞추고, 반복은 모델이 준 위치에 가장 가까운 것을 쓰도록 고침(지어낸 문장은 여전히 거부). `test:mvp` 142/142, `test:feedback` 22/22. `talk-advanced-feedback` v3 배포 후 같은 세션 재시도 → 리포트 정상 생성. → [postmortem](postmortems/2026-11-19-speaking-review-invalid-evidence.md)
+
 ## 2026-11-19 — Xcode 27 빌드 준비(ITMS-90725): 이미지 + UIScene 라이프사이클
 
 **문제.** 빌드 53 업로드 때 App Store Connect가 ITMS-90725 경고를 보냈다. iOS 26.5 SDK로 빌드됐는데, 2027년 4월부터는 iOS 27 SDK(Xcode 27)로 빌드해야 업로드할 수 있다. 원인은 `eas.json`에 `ios.image`가 없어서 SDK 57 기본 이미지(`macos-tahoe-26.5-xcode-26.6`)를 쓴 것이다.

@@ -228,6 +228,53 @@ export function analysisRequest(context: AnalysisContext, model = MODEL) {
     ],
   };
 }
+/** One character as quotes are compared: case, curly quotes and dashes folded. */
+function fold(ch: string): string {
+  if (/[‘’‛′`]/.test(ch)) return "'";
+  if (/[“”‟″]/.test(ch)) return '"';
+  if (/[–—]/.test(ch)) return "-";
+  const lower = ch.toLowerCase();
+  return lower.length === 1 ? lower : ch;
+}
+/** Text folded for matching, with each folded character's index in `text`.
+ *  Runs of whitespace become one space. */
+function folded(text: string): { value: string; at: number[] } {
+  let value = "";
+  const at: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (/\s/.test(text[i])) {
+      if (value.endsWith(" ")) continue;
+      value += " ";
+    } else value += fold(text[i]);
+    at.push(i);
+  }
+  return { value, at };
+}
+const EDGE = /^[\s.,!?;:…"'()\-]+|[\s.,!?;:…"'()\-]+$/g;
+
+/** Where a quote really sits in the transcript, or null when it is not there.
+ *  Speech transcripts are full of double spaces, repeats and recognition
+ *  artifacts, so the model's offsets — and the fine print of its quote — are
+ *  often off (2026-11-19: one tidied quote failed a whole review). A quote is
+ *  still grounded when, with whitespace, quote marks, dashes and case folded
+ *  and punctuation trimmed at its edges, it occurs in the transcript; when it
+ *  occurs more than once, the occurrence nearest the claimed start wins. Words
+ *  that are not in the transcript are never accepted. */
+export function locateQuote(
+  quote: string,
+  transcript: string,
+  near = 0,
+): { start: number; end: number } | null {
+  const needle = folded(quote).value.replace(EDGE, "");
+  if (!needle) return null;
+  const hay = folded(transcript);
+  let best: { start: number; end: number } | null = null;
+  for (let i = hay.value.indexOf(needle); i >= 0; i = hay.value.indexOf(needle, i + 1)) {
+    const start = hay.at[i], end = hay.at[i + needle.length - 1] + 1;
+    if (!best || Math.abs(start - near) < Math.abs(best.start - near)) best = { start, end };
+  }
+  return best;
+}
 function verifyEvidence(items: FeedbackEvidence[], transcript: string) {
   for (const item of items) {
     if (!bounded(item.quote, 500)) throw new Error("feedback_invalid_evidence");
@@ -236,12 +283,12 @@ function verifyEvidence(items: FeedbackEvidence[], transcript: string) {
       item.end <= transcript.length &&
       transcript.slice(item.start, item.end) === item.quote
     ) continue;
-    const at = transcript.indexOf(item.quote);
-    if (at < 0 || transcript.indexOf(item.quote, at + 1) >= 0) {
-      throw new Error("feedback_invalid_evidence");
-    }
-    item.start = at;
-    item.end = at + item.quote.length;
+    const found = locateQuote(item.quote, transcript, item.start);
+    if (!found) throw new Error("feedback_invalid_evidence");
+    item.start = found.start;
+    item.end = found.end;
+    // Keep the learner's own words, exactly as transcribed, as the evidence.
+    item.quote = transcript.slice(found.start, found.end);
   }
 }
 export function parseFeedback(
