@@ -1627,3 +1627,15 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 ## 2026-11-19 — Speaking review 실패: 증거 인용 검사가 너무 엄격했음
 
 긴 셀프톡 세션에서 리뷰가 항상 "Couldn’t complete the analysis". 임시 로그로 `400 feedback_invalid_evidence` 확인. 모델이 인용한 구절이 전사문과 글자 그대로 한 번만 일치해야 했는데, 음성 전사의 이중 공백·반복·따옴표 차이 하나로 리포트 전체가 버려졌다. 공백·따옴표·대소문자·가장자리 문장부호를 접어 맞추고, 반복은 모델이 준 위치에 가장 가까운 것을 쓰도록 고침(지어낸 문장은 여전히 거부). `test:mvp` 142/142, `test:feedback` 22/22. `talk-advanced-feedback` v3 배포 후 같은 세션 재시도 → 리포트 정상 생성. → [postmortem](postmortems/2026-11-19-speaking-review-invalid-evidence.md)
+
+## 2026-11-19 — Xcode 27 빌드 준비(ITMS-90725): 이미지 + UIScene 라이프사이클
+
+**문제.** 빌드 53 업로드 때 App Store Connect가 ITMS-90725 경고를 보냈다. iOS 26.5 SDK로 빌드됐는데, 2027년 4월부터는 iOS 27 SDK(Xcode 27)로 빌드해야 업로드할 수 있다. 원인은 `eas.json`에 `ios.image`가 없어서 SDK 57 기본 이미지(`macos-tahoe-26.5-xcode-26.6`)를 쓴 것이다.
+
+**함정.** 이미지만 Xcode 27로 바꾸면 빌드는 통과하지만, iOS 27에서는 앱이 실행되자마자 종료된다: `Application failed to launch: UIScene life cycle is required for apps built with this SDK.` (expo/expo#46664). SDK 57에서는 scene 라이프사이클을 직접 켜야 한다(expo ≥ 57.0.23 + expo-build-properties `ios.enableSceneSupport`). SDK 58부터는 기본으로 켜져 있다.
+
+**만든 것(브랜치 `chore/eas-xcode27-image`).** production/testflight 이미지를 `macos-tahoe-26.6-xcode-27.2`로 바꿨다. expo는 57.0.8에서 57.0.33으로, expo-*와 RN 0.86.3은 `expo install --fix`로 맞췄다. expo-build-properties에 `enableSceneSupport: true`를 넣었다. `verify-release-config`가 Xcode 27 이미지에 scene 지원이 빠진 경우를 잡도록 했고, 빠뜨린 상태에서 실패하는 것도 확인했다. 로컬 prebuild 결과 Info.plist에 `UIApplicationSceneManifest`(`EXExpoAppSceneDelegate`)가 생겼고, AppDelegate가 RN을 직접 띄우지 않으며 Linking override는 유지됐다. 커스텀 플러그인(알림 entitlement 제거)과도 충돌하지 않는다.
+
+**검증.** `validate` 통과(기존 경고 3), `test:mvp` 140/140. EAS 빌드 1.0.1 (55)는 FINISHED였다(Xcode 27.2 27B52, `iPhoneOS27.2.sdk`, IPA 24.3MB, 5분). TestFlight 자동 제출이 같이 걸려 있었다. **미확인**: Apple 처리 메일의 ITMS-90725 여부, iOS 27 실기기에서 실행·auth 딥링크(`Linking.getInitialURL`)·OAuth·알림 탭·Apple 로그인. 로컬 Xcode가 26.6이라 iOS 27 런타임으로는 볼 수 없었다.
+
+**결정.** Sumin은 4월까지 지금처럼 기본 이미지로 빌드한다. 브랜치는 PR로만 두고, 언제 바꿀지는 Sumin이 정한다. 빌드 55는 취소하려 했지만 그 전에 끝났다.
