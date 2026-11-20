@@ -38,4 +38,4 @@ One tidied or repeated quote failed the entire analysis. The exact failing quote
 
 ## Before / after
 - Before: `400 feedback_invalid_evidence` for this session, every retry.
-- After: pending the production deploy of `talk-advanced-feedback` (needs explicit approval), then a retry of the same session on the simulator.
+- After: `talk-advanced-feedback` v3 deployed from this branch (live code matches, JWT on, unauthenticated 401). Retrying the same session on the simulator produced a full report: Big Picture at B2, 1 focus area (Clear references), 2 moments quoting "These defense" and "these apps".

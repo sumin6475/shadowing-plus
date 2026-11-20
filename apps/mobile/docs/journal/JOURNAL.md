@@ -1626,4 +1626,4 @@ Apple 로그인이 웹 시트에서 `Invalid client id or web redirect url.`로 
 
 ## 2026-11-19 — Speaking review 실패: 증거 인용 검사가 너무 엄격했음
 
-긴 셀프톡 세션에서 리뷰가 항상 "Couldn’t complete the analysis". 임시 로그로 `400 feedback_invalid_evidence` 확인. 모델이 인용한 구절이 전사문과 글자 그대로 한 번만 일치해야 했는데, 음성 전사의 이중 공백·반복·따옴표 차이 하나로 리포트 전체가 버려졌다. 공백·따옴표·대소문자·가장자리 문장부호를 접어 맞추고, 반복은 모델이 준 위치에 가장 가까운 것을 쓰도록 고침(지어낸 문장은 여전히 거부). `test:mvp` 142/142, `test:feedback` 22/22. 배포 승인 대기. → [postmortem](postmortems/2026-11-19-speaking-review-invalid-evidence.md)
+긴 셀프톡 세션에서 리뷰가 항상 "Couldn’t complete the analysis". 임시 로그로 `400 feedback_invalid_evidence` 확인. 모델이 인용한 구절이 전사문과 글자 그대로 한 번만 일치해야 했는데, 음성 전사의 이중 공백·반복·따옴표 차이 하나로 리포트 전체가 버려졌다. 공백·따옴표·대소문자·가장자리 문장부호를 접어 맞추고, 반복은 모델이 준 위치에 가장 가까운 것을 쓰도록 고침(지어낸 문장은 여전히 거부). `test:mvp` 142/142, `test:feedback` 22/22. `talk-advanced-feedback` v3 배포 후 같은 세션 재시도 → 리포트 정상 생성. → [postmortem](postmortems/2026-11-19-speaking-review-invalid-evidence.md)
