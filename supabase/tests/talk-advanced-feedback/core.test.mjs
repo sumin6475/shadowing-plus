@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   analysisRequest,
   FEEDBACK_SCHEMA,
+  locateQuote,
   parseFeedback,
   parseRequest,
   requestFingerprint,
@@ -72,12 +73,35 @@ test("valid report preserves original evidence and repairs a uniquely misplaced 
   const fabricated = feedback();
   fabricated.findings[0].evidence[0].quote = "Not in the transcript";
   assert.throws(() => parseFeedback(fabricated, context()), /evidence/);
+  // A repeated quote no longer fails the review: the occurrence nearest the
+  // claimed offset is the evidence (2026-11-19, feedback_invalid_evidence).
   const repeated = feedback("it");
   repeated.findings[0].evidence[0].start = 99;
-  assert.throws(
-    () => parseFeedback(repeated, context("it and it")),
-    /evidence/,
-  );
+  const resolved = parseFeedback(repeated, context("it and it")).findings[0].evidence[0];
+  assert.deepEqual([resolved.start, resolved.end, resolved.quote], [7, 9, "it"]);
+});
+test("a tidied quote of messy speech still finds its place, but invented words never do", () => {
+  // From the 2026-11-19 failure: transcripts keep double spaces, curly
+  // apostrophes, repeats and odd casing; the model's quote tidies them.
+  const transcript = "Have have  These defense, so by the time I’m I’m I. I'm gonna be free.";
+  const at = (quote, start = 0) => {
+    const r = feedback(transcript);
+    r.findings[0].evidence[0] = { quote, start, end: start + quote.length };
+    return parseFeedback(r, context(transcript)).findings[0].evidence[0];
+  };
+  const spaced = at("Have have These defense", 40);
+  assert.deepEqual([spaced.start, spaced.quote], [0, "Have have  These defense"]);
+  assert.equal(at("i'm i'm i").quote, "I’m I’m I", "curly apostrophes and case fold");
+  assert.equal(at("so by the time.").quote, "so by the time", "edge punctuation trims");
+  assert.equal(at("I'm gonna", 60).quote, "I'm gonna", "nearest repeat wins");
+  assert.equal(at("I'm gonna", 60).start, 52);
+  for (const invented of ["I am going to be free", "Have these defenses", "the deadline"]) {
+    assert.throws(() => at(invented), /feedback_invalid_evidence/, invented);
+  }
+});
+test("comparison evidence uses the same forgiving match", () => {
+  assert.deepEqual(locateQuote("so  BY the time", "and so by the time it was"), { start: 4, end: 18 });
+  assert.equal(locateQuote("...", "and so"), null, "punctuation alone is no quote");
 });
 test("uncertain meaning and recognition errors withhold all subject-dependent repairs", () => {
   for (
